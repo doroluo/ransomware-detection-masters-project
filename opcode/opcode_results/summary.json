@@ -1,0 +1,1622 @@
+{
+  "files_scanned": 20,
+  "extensions": [
+    ".asm",
+    ".s",
+    ".txt"
+  ],
+  "overall_top_opcodes": [
+    [
+      "push",
+      61067
+    ],
+    [
+      "mov",
+      30565
+    ],
+    [
+      "pop",
+      25219
+    ],
+    [
+      "xchg",
+      18972
+    ],
+    [
+      "inc",
+      18119
+    ],
+    [
+      "call",
+      14067
+    ],
+    [
+      "cmp",
+      12739
+    ],
+    [
+      "decl",
+      10594
+    ],
+    [
+      "sbb",
+      10569
+    ],
+    [
+      "xor",
+      10545
+    ],
+    [
+      "sub",
+      10539
+    ],
+    [
+      "and",
+      10086
+    ],
+    [
+      "or",
+      9774
+    ],
+    [
+      "test",
+      9390
+    ],
+    [
+      "out",
+      9310
+    ]
+  ],
+  "overall_category_counts": {
+    "data_transfer": 142972,
+    "other": 127578,
+    "control_flow": 56633,
+    "arithmetic": 54215,
+    "logic_bitwise": 43478,
+    "flags": 23774,
+    "string_ops": 18142,
+    "system": 6767,
+    "stack_frame": 4136,
+    "floating_point_simd": 650
+  },
+  "per_file": {
+    "sample1.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3144
+        ],
+        [
+          "mov",
+          1496
+        ],
+        [
+          "pop",
+          1390
+        ],
+        [
+          "xchg",
+          1108
+        ],
+        [
+          "inc",
+          950
+        ],
+        [
+          "call",
+          781
+        ],
+        [
+          "decl",
+          749
+        ],
+        [
+          "cmp",
+          668
+        ],
+        [
+          "sub",
+          631
+        ],
+        [
+          "sbb",
+          630
+        ],
+        [
+          "xor",
+          556
+        ],
+        [
+          "and",
+          521
+        ],
+        [
+          "or",
+          502
+        ],
+        [
+          "test",
+          469
+        ],
+        [
+          "in",
+          462
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7511,
+        "other": 6856,
+        "arithmetic": 2993,
+        "control_flow": 2889,
+        "logic_bitwise": 2238,
+        "flags": 1324,
+        "string_ops": 968,
+        "system": 374,
+        "stack_frame": 228,
+        "floating_point_simd": 36
+      },
+      "total_opcodes": 25417
+    },
+    "sample10.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3420
+        ],
+        [
+          "mov",
+          1592
+        ],
+        [
+          "pop",
+          1348
+        ],
+        [
+          "xchg",
+          1018
+        ],
+        [
+          "inc",
+          969
+        ],
+        [
+          "call",
+          778
+        ],
+        [
+          "cmp",
+          713
+        ],
+        [
+          "out",
+          625
+        ],
+        [
+          "in",
+          625
+        ],
+        [
+          "sub",
+          601
+        ],
+        [
+          "xor",
+          585
+        ],
+        [
+          "sbb",
+          570
+        ],
+        [
+          "and",
+          552
+        ],
+        [
+          "or",
+          534
+        ],
+        [
+          "test",
+          532
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7698,
+        "other": 7229,
+        "control_flow": 3201,
+        "arithmetic": 2966,
+        "logic_bitwise": 2446,
+        "flags": 1357,
+        "string_ops": 995,
+        "system": 397,
+        "stack_frame": 241,
+        "floating_point_simd": 35
+      },
+      "total_opcodes": 26565
+    },
+    "sample11.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3165
+        ],
+        [
+          "mov",
+          1636
+        ],
+        [
+          "pop",
+          1250
+        ],
+        [
+          "xchg",
+          1015
+        ],
+        [
+          "inc",
+          1003
+        ],
+        [
+          "call",
+          781
+        ],
+        [
+          "decl",
+          753
+        ],
+        [
+          "cmp",
+          712
+        ],
+        [
+          "xor",
+          608
+        ],
+        [
+          "sub",
+          555
+        ],
+        [
+          "sbb",
+          550
+        ],
+        [
+          "and",
+          505
+        ],
+        [
+          "or",
+          490
+        ],
+        [
+          "in",
+          473
+        ],
+        [
+          "out",
+          470
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7407,
+        "other": 7028,
+        "control_flow": 2953,
+        "arithmetic": 2945,
+        "logic_bitwise": 2259,
+        "flags": 1340,
+        "string_ops": 863,
+        "system": 348,
+        "stack_frame": 257,
+        "floating_point_simd": 40
+      },
+      "total_opcodes": 25440
+    },
+    "sample12.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3526
+        ],
+        [
+          "mov",
+          1712
+        ],
+        [
+          "pop",
+          1379
+        ],
+        [
+          "xchg",
+          1089
+        ],
+        [
+          "inc",
+          1033
+        ],
+        [
+          "call",
+          769
+        ],
+        [
+          "cmp",
+          733
+        ],
+        [
+          "xor",
+          598
+        ],
+        [
+          "sbb",
+          591
+        ],
+        [
+          "sub",
+          555
+        ],
+        [
+          "out",
+          545
+        ],
+        [
+          "test",
+          542
+        ],
+        [
+          "in",
+          534
+        ],
+        [
+          "and",
+          504
+        ],
+        [
+          "or",
+          490
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 8060,
+        "other": 7026,
+        "control_flow": 3047,
+        "arithmetic": 3041,
+        "logic_bitwise": 2360,
+        "flags": 1311,
+        "string_ops": 1065,
+        "system": 375,
+        "stack_frame": 234,
+        "floating_point_simd": 29
+      },
+      "total_opcodes": 26548
+    },
+    "sample13.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3523
+        ],
+        [
+          "mov",
+          1674
+        ],
+        [
+          "pop",
+          1431
+        ],
+        [
+          "inc",
+          1128
+        ],
+        [
+          "xchg",
+          1025
+        ],
+        [
+          "call",
+          768
+        ],
+        [
+          "cmp",
+          679
+        ],
+        [
+          "and",
+          581
+        ],
+        [
+          "out",
+          568
+        ],
+        [
+          "sbb",
+          545
+        ],
+        [
+          "sub",
+          535
+        ],
+        [
+          "xor",
+          526
+        ],
+        [
+          "or",
+          513
+        ],
+        [
+          "test",
+          512
+        ],
+        [
+          "in",
+          506
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 8117,
+        "other": 7158,
+        "control_flow": 3131,
+        "arithmetic": 3035,
+        "logic_bitwise": 2310,
+        "flags": 1380,
+        "string_ops": 1042,
+        "system": 360,
+        "stack_frame": 233,
+        "floating_point_simd": 40
+      },
+      "total_opcodes": 26806
+    },
+    "sample14.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3526
+        ],
+        [
+          "mov",
+          1712
+        ],
+        [
+          "pop",
+          1378
+        ],
+        [
+          "xchg",
+          1089
+        ],
+        [
+          "inc",
+          1034
+        ],
+        [
+          "call",
+          769
+        ],
+        [
+          "cmp",
+          733
+        ],
+        [
+          "xor",
+          597
+        ],
+        [
+          "sbb",
+          591
+        ],
+        [
+          "sub",
+          555
+        ],
+        [
+          "out",
+          545
+        ],
+        [
+          "test",
+          542
+        ],
+        [
+          "in",
+          534
+        ],
+        [
+          "and",
+          504
+        ],
+        [
+          "or",
+          488
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 8059,
+        "other": 7031,
+        "control_flow": 3049,
+        "arithmetic": 3042,
+        "logic_bitwise": 2357,
+        "flags": 1311,
+        "string_ops": 1065,
+        "system": 375,
+        "stack_frame": 234,
+        "floating_point_simd": 29
+      },
+      "total_opcodes": 26552
+    },
+    "sample15.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3444
+        ],
+        [
+          "mov",
+          1615
+        ],
+        [
+          "pop",
+          1342
+        ],
+        [
+          "inc",
+          1032
+        ],
+        [
+          "xchg",
+          983
+        ],
+        [
+          "call",
+          768
+        ],
+        [
+          "cmp",
+          657
+        ],
+        [
+          "and",
+          553
+        ],
+        [
+          "out",
+          527
+        ],
+        [
+          "sbb",
+          523
+        ],
+        [
+          "sub",
+          522
+        ],
+        [
+          "xor",
+          509
+        ],
+        [
+          "test",
+          497
+        ],
+        [
+          "or",
+          491
+        ],
+        [
+          "in",
+          475
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7801,
+        "other": 6777,
+        "control_flow": 3018,
+        "arithmetic": 2868,
+        "logic_bitwise": 2221,
+        "flags": 1318,
+        "string_ops": 993,
+        "system": 347,
+        "stack_frame": 221,
+        "floating_point_simd": 37
+      },
+      "total_opcodes": 25601
+    },
+    "sample16.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3245
+        ],
+        [
+          "mov",
+          1748
+        ],
+        [
+          "pop",
+          1344
+        ],
+        [
+          "xchg",
+          1064
+        ],
+        [
+          "inc",
+          934
+        ],
+        [
+          "call",
+          779
+        ],
+        [
+          "decl",
+          745
+        ],
+        [
+          "cmp",
+          700
+        ],
+        [
+          "and",
+          656
+        ],
+        [
+          "sbb",
+          605
+        ],
+        [
+          "sub",
+          601
+        ],
+        [
+          "xor",
+          594
+        ],
+        [
+          "or",
+          544
+        ],
+        [
+          "out",
+          520
+        ],
+        [
+          "test",
+          507
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7753,
+        "other": 7292,
+        "control_flow": 3217,
+        "arithmetic": 2958,
+        "logic_bitwise": 2519,
+        "flags": 1291,
+        "string_ops": 1046,
+        "system": 407,
+        "stack_frame": 220,
+        "floating_point_simd": 36
+      },
+      "total_opcodes": 26739
+    },
+    "sample17.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3527
+        ],
+        [
+          "mov",
+          1675
+        ],
+        [
+          "pop",
+          1434
+        ],
+        [
+          "inc",
+          1129
+        ],
+        [
+          "xchg",
+          1025
+        ],
+        [
+          "call",
+          768
+        ],
+        [
+          "cmp",
+          680
+        ],
+        [
+          "and",
+          583
+        ],
+        [
+          "out",
+          568
+        ],
+        [
+          "sbb",
+          545
+        ],
+        [
+          "sub",
+          535
+        ],
+        [
+          "xor",
+          527
+        ],
+        [
+          "or",
+          513
+        ],
+        [
+          "test",
+          512
+        ],
+        [
+          "in",
+          506
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 8127,
+        "other": 7162,
+        "control_flow": 3132,
+        "arithmetic": 3038,
+        "logic_bitwise": 2313,
+        "flags": 1380,
+        "string_ops": 1042,
+        "system": 360,
+        "stack_frame": 233,
+        "floating_point_simd": 40
+      },
+      "total_opcodes": 26827
+    },
+    "sample18.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3523
+        ],
+        [
+          "mov",
+          1675
+        ],
+        [
+          "pop",
+          1431
+        ],
+        [
+          "inc",
+          1131
+        ],
+        [
+          "xchg",
+          1025
+        ],
+        [
+          "call",
+          768
+        ],
+        [
+          "cmp",
+          680
+        ],
+        [
+          "and",
+          581
+        ],
+        [
+          "out",
+          568
+        ],
+        [
+          "sbb",
+          544
+        ],
+        [
+          "sub",
+          534
+        ],
+        [
+          "xor",
+          526
+        ],
+        [
+          "test",
+          512
+        ],
+        [
+          "or",
+          512
+        ],
+        [
+          "in",
+          505
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 8119,
+        "other": 7157,
+        "control_flow": 3131,
+        "arithmetic": 3037,
+        "logic_bitwise": 2309,
+        "flags": 1380,
+        "string_ops": 1042,
+        "system": 360,
+        "stack_frame": 233,
+        "floating_point_simd": 40
+      },
+      "total_opcodes": 26808
+    },
+    "sample19.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          677
+        ],
+        [
+          "mov",
+          643
+        ],
+        [
+          "pop",
+          339
+        ],
+        [
+          "ret",
+          287
+        ],
+        [
+          "or",
+          281
+        ],
+        [
+          "jne",
+          238
+        ],
+        [
+          "lea",
+          209
+        ],
+        [
+          "cmp",
+          173
+        ],
+        [
+          "test",
+          170
+        ],
+        [
+          "je",
+          168
+        ],
+        [
+          "xor",
+          153
+        ],
+        [
+          "cmpl",
+          141
+        ],
+        [
+          "int3",
+          85
+        ],
+        [
+          "inc",
+          83
+        ],
+        [
+          "jmp",
+          76
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 1883,
+        "control_flow": 926,
+        "logic_bitwise": 674,
+        "other": 558,
+        "arithmetic": 341,
+        "string_ops": 18,
+        "flags": 15,
+        "stack_frame": 5,
+        "system": 5
+      },
+      "total_opcodes": 4425
+    },
+    "sample2.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3141
+        ],
+        [
+          "mov",
+          1496
+        ],
+        [
+          "pop",
+          1390
+        ],
+        [
+          "xchg",
+          1107
+        ],
+        [
+          "inc",
+          949
+        ],
+        [
+          "call",
+          781
+        ],
+        [
+          "decl",
+          749
+        ],
+        [
+          "cmp",
+          668
+        ],
+        [
+          "sub",
+          631
+        ],
+        [
+          "sbb",
+          630
+        ],
+        [
+          "xor",
+          556
+        ],
+        [
+          "and",
+          521
+        ],
+        [
+          "or",
+          503
+        ],
+        [
+          "test",
+          469
+        ],
+        [
+          "in",
+          462
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7507,
+        "other": 6854,
+        "arithmetic": 2992,
+        "control_flow": 2889,
+        "logic_bitwise": 2239,
+        "flags": 1322,
+        "string_ops": 967,
+        "system": 373,
+        "stack_frame": 228,
+        "floating_point_simd": 36
+      },
+      "total_opcodes": 25407
+    },
+    "sample20.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          677
+        ],
+        [
+          "mov",
+          643
+        ],
+        [
+          "pop",
+          339
+        ],
+        [
+          "ret",
+          287
+        ],
+        [
+          "or",
+          281
+        ],
+        [
+          "jne",
+          238
+        ],
+        [
+          "lea",
+          209
+        ],
+        [
+          "cmp",
+          173
+        ],
+        [
+          "test",
+          170
+        ],
+        [
+          "je",
+          168
+        ],
+        [
+          "xor",
+          153
+        ],
+        [
+          "cmpl",
+          141
+        ],
+        [
+          "int3",
+          85
+        ],
+        [
+          "inc",
+          83
+        ],
+        [
+          "jmp",
+          76
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 1883,
+        "control_flow": 926,
+        "logic_bitwise": 674,
+        "other": 558,
+        "arithmetic": 341,
+        "string_ops": 18,
+        "flags": 15,
+        "stack_frame": 5,
+        "system": 5
+      },
+      "total_opcodes": 4425
+    },
+    "sample3.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3126
+        ],
+        [
+          "mov",
+          1506
+        ],
+        [
+          "pop",
+          1340
+        ],
+        [
+          "xchg",
+          1000
+        ],
+        [
+          "inc",
+          980
+        ],
+        [
+          "call",
+          787
+        ],
+        [
+          "decl",
+          748
+        ],
+        [
+          "cmp",
+          638
+        ],
+        [
+          "sub",
+          619
+        ],
+        [
+          "xor",
+          605
+        ],
+        [
+          "sbb",
+          563
+        ],
+        [
+          "and",
+          560
+        ],
+        [
+          "or",
+          551
+        ],
+        [
+          "test",
+          510
+        ],
+        [
+          "in",
+          476
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7289,
+        "other": 6904,
+        "arithmetic": 2904,
+        "control_flow": 2892,
+        "logic_bitwise": 2424,
+        "flags": 1304,
+        "string_ops": 944,
+        "system": 381,
+        "stack_frame": 237,
+        "floating_point_simd": 45
+      },
+      "total_opcodes": 25324
+    },
+    "sample4.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3173
+        ],
+        [
+          "mov",
+          1645
+        ],
+        [
+          "pop",
+          1288
+        ],
+        [
+          "xchg",
+          1017
+        ],
+        [
+          "inc",
+          906
+        ],
+        [
+          "call",
+          779
+        ],
+        [
+          "decl",
+          745
+        ],
+        [
+          "cmp",
+          680
+        ],
+        [
+          "and",
+          594
+        ],
+        [
+          "sbb",
+          584
+        ],
+        [
+          "sub",
+          577
+        ],
+        [
+          "xor",
+          573
+        ],
+        [
+          "or",
+          522
+        ],
+        [
+          "test",
+          497
+        ],
+        [
+          "out",
+          496
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7460,
+        "other": 6977,
+        "control_flow": 3096,
+        "arithmetic": 2860,
+        "logic_bitwise": 2389,
+        "flags": 1239,
+        "string_ops": 1014,
+        "system": 386,
+        "stack_frame": 209,
+        "floating_point_simd": 35
+      },
+      "total_opcodes": 25665
+    },
+    "sample5.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3143
+        ],
+        [
+          "mov",
+          1496
+        ],
+        [
+          "pop",
+          1391
+        ],
+        [
+          "xchg",
+          1107
+        ],
+        [
+          "inc",
+          952
+        ],
+        [
+          "call",
+          781
+        ],
+        [
+          "decl",
+          749
+        ],
+        [
+          "cmp",
+          669
+        ],
+        [
+          "sub",
+          631
+        ],
+        [
+          "sbb",
+          631
+        ],
+        [
+          "xor",
+          557
+        ],
+        [
+          "and",
+          521
+        ],
+        [
+          "or",
+          503
+        ],
+        [
+          "test",
+          469
+        ],
+        [
+          "in",
+          463
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7511,
+        "other": 6859,
+        "arithmetic": 2997,
+        "control_flow": 2889,
+        "logic_bitwise": 2240,
+        "flags": 1322,
+        "string_ops": 968,
+        "system": 373,
+        "stack_frame": 228,
+        "floating_point_simd": 36
+      },
+      "total_opcodes": 25423
+    },
+    "sample6.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3245
+        ],
+        [
+          "mov",
+          1748
+        ],
+        [
+          "pop",
+          1345
+        ],
+        [
+          "xchg",
+          1064
+        ],
+        [
+          "inc",
+          934
+        ],
+        [
+          "call",
+          779
+        ],
+        [
+          "decl",
+          745
+        ],
+        [
+          "cmp",
+          701
+        ],
+        [
+          "and",
+          656
+        ],
+        [
+          "sbb",
+          605
+        ],
+        [
+          "sub",
+          601
+        ],
+        [
+          "xor",
+          594
+        ],
+        [
+          "or",
+          543
+        ],
+        [
+          "out",
+          519
+        ],
+        [
+          "test",
+          507
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7754,
+        "other": 7289,
+        "control_flow": 3215,
+        "arithmetic": 2958,
+        "logic_bitwise": 2518,
+        "flags": 1292,
+        "string_ops": 1046,
+        "system": 407,
+        "stack_frame": 219,
+        "floating_point_simd": 36
+      },
+      "total_opcodes": 26734
+    },
+    "sample7.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3174
+        ],
+        [
+          "mov",
+          1645
+        ],
+        [
+          "pop",
+          1289
+        ],
+        [
+          "xchg",
+          1017
+        ],
+        [
+          "inc",
+          906
+        ],
+        [
+          "call",
+          779
+        ],
+        [
+          "decl",
+          745
+        ],
+        [
+          "cmp",
+          679
+        ],
+        [
+          "and",
+          594
+        ],
+        [
+          "sbb",
+          584
+        ],
+        [
+          "sub",
+          579
+        ],
+        [
+          "xor",
+          573
+        ],
+        [
+          "or",
+          523
+        ],
+        [
+          "test",
+          497
+        ],
+        [
+          "out",
+          496
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7462,
+        "other": 6980,
+        "control_flow": 3097,
+        "arithmetic": 2861,
+        "logic_bitwise": 2390,
+        "flags": 1240,
+        "string_ops": 1014,
+        "system": 386,
+        "stack_frame": 209,
+        "floating_point_simd": 35
+      },
+      "total_opcodes": 25674
+    },
+    "sample8.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3526
+        ],
+        [
+          "mov",
+          1712
+        ],
+        [
+          "pop",
+          1381
+        ],
+        [
+          "xchg",
+          1089
+        ],
+        [
+          "inc",
+          1034
+        ],
+        [
+          "call",
+          769
+        ],
+        [
+          "cmp",
+          733
+        ],
+        [
+          "xor",
+          598
+        ],
+        [
+          "sbb",
+          591
+        ],
+        [
+          "sub",
+          555
+        ],
+        [
+          "out",
+          546
+        ],
+        [
+          "test",
+          542
+        ],
+        [
+          "in",
+          534
+        ],
+        [
+          "and",
+          505
+        ],
+        [
+          "or",
+          488
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 8062,
+        "other": 7029,
+        "control_flow": 3046,
+        "arithmetic": 3042,
+        "logic_bitwise": 2359,
+        "flags": 1311,
+        "string_ops": 1065,
+        "system": 375,
+        "stack_frame": 234,
+        "floating_point_simd": 29
+      },
+      "total_opcodes": 26552
+    },
+    "sample9.asm": {
+      "top_opcodes": [
+        [
+          "push",
+          3142
+        ],
+        [
+          "mov",
+          1496
+        ],
+        [
+          "pop",
+          1390
+        ],
+        [
+          "xchg",
+          1108
+        ],
+        [
+          "inc",
+          949
+        ],
+        [
+          "call",
+          781
+        ],
+        [
+          "decl",
+          749
+        ],
+        [
+          "cmp",
+          670
+        ],
+        [
+          "sub",
+          632
+        ],
+        [
+          "sbb",
+          631
+        ],
+        [
+          "xor",
+          557
+        ],
+        [
+          "and",
+          521
+        ],
+        [
+          "or",
+          502
+        ],
+        [
+          "test",
+          469
+        ],
+        [
+          "in",
+          462
+        ]
+      ],
+      "category_counts": {
+        "data_transfer": 7509,
+        "other": 6854,
+        "arithmetic": 2996,
+        "control_flow": 2889,
+        "logic_bitwise": 2239,
+        "flags": 1322,
+        "string_ops": 967,
+        "system": 373,
+        "stack_frame": 228,
+        "floating_point_simd": 36
+      },
+      "total_opcodes": 25413
+    }
+  }
+}

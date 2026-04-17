@@ -1,0 +1,11 @@
+category,count
+data_transfer,142972
+other,127578
+control_flow,56633
+arithmetic,54215
+logic_bitwise,43478
+flags,23774
+string_ops,18142
+system,6767
+stack_frame,4136
+floating_point_simd,650
