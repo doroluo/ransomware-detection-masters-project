@@ -1,0 +1,4088 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [
+    {
+      "id": 0,
+      "content": "<UNK>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 1,
+      "content": "<SEP>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 2,
+      "content": "<MASK>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 3,
+      "content": "<CLS>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    }
+  ],
+  "normalizer": null,
+  "pre_tokenizer": {
+    "type": "Whitespace"
+  },
+  "post_processor": null,
+  "decoder": null,
+  "model": {
+    "type": "BPE",
+    "dropout": null,
+    "unk_token": "<UNK>",
+    "continuing_subword_prefix": null,
+    "end_of_word_suffix": null,
+    "fuse_unk": false,
+    "byte_fallback": false,
+    "ignore_merges": false,
+    "vocab": {
+      "<UNK>": 0,
+      "<SEP>": 1,
+      "<MASK>": 2,
+      "<CLS>": 3,
+      "0": 4,
+      "1": 5,
+      "2": 6,
+      "3": 7,
+      "4": 8,
+      "5": 9,
+      "6": 10,
+      "7": 11,
+      "8": 12,
+      "9": 13,
+      "a": 14,
+      "b": 15,
+      "c": 16,
+      "d": 17,
+      "e": 18,
+      "f": 19,
+      "g": 20,
+      "h": 21,
+      "i": 22,
+      "j": 23,
+      "k": 24,
+      "l": 25,
+      "m": 26,
+      "n": 27,
+      "o": 28,
+      "p": 29,
+      "q": 30,
+      "r": 31,
+      "s": 32,
+      "t": 33,
+      "u": 34,
+      "v": 35,
+      "w": 36,
+      "x": 37,
+      "y": 38,
+      "z": 39,
+      "sh": 40,
+      "pu": 41,
+      "push": 42,
+      "in": 43,
+      "op": 44,
+      "mo": 45,
+      "mov": 46,
+      "pop": 47,
+      "st": 48,
+      "or": 49,
+      "cl": 50,
+      "mp": 51,
+      "sb": 52,
+      "ca": 53,
+      "ch": 54,
+      "xch": 55,
+      "xchg": 56,
+      "inc": 57,
+      "cmp": 58,
+      "ll": 59,
+      "ou": 60,
+      "re": 61,
+      "call": 62,
+      "out": 63,
+      "lo": 64,
+      "ub": 65,
+      "sub": 66,
+      "nd": 67,
+      "te": 68,
+      "ret": 69,
+      "sbb": 70,
+      "xor": 71,
+      "de": 72,
+      "and": 73,
+      "decl": 74,
+      "test": 75,
+      "int": 76,
+      "jn": 77,
+      "sl": 78,
+      "ds": 79,
+      "le": 80,
+      "loop": 81,
+      "sca": 82,
+      "scas": 83,
+      "jb": 84,
+      "ja": 85,
+      "lret": 86,
+      "la": 87,
+      "os": 88,
+      "stos": 89,
+      "jg": 90,
+      "je": 91,
+      "aa": 92,
+      "lods": 93,
+      "hf": 94,
+      "fi": 95,
+      "lea": 96,
+      "sa": 97,
+      "rep": 98,
+      "mu": 99,
+      "da": 100,
+      "popa": 101,
+      "ne": 102,
+      "mul": 103,
+      "jmp": 104,
+      "cw": 105,
+      "ad": 106,
+      "di": 107,
+      "div": 108,
+      "16": 109,
+      "int1": 110,
+      "xla": 111,
+      "xlat": 112,
+      "tl": 113,
+      "loope": 114,
+      "jle": 115,
+      "clt": 116,
+      "aam": 117,
+      "int3": 118,
+      "cltd": 119,
+      "movsb": 120,
+      "pushf": 121,
+      "hl": 122,
+      "pusha": 123,
+      "outsb": 124,
+      "en": 125,
+      "jnp": 126,
+      "hlt": 127,
+      "loopne": 128,
+      "insl": 129,
+      "cwtl": 130,
+      "jbe": 131,
+      "jno": 132,
+      "cli": 133,
+      "cx": 134,
+      "stc": 135,
+      "cxz": 136,
+      "into": 137,
+      "jecxz": 138,
+      "jae": 139,
+      "jne": 140,
+      "nop": 141,
+      "jo": 142,
+      "jp": 143,
+      "sahf": 144,
+      "movsl": 145,
+      "jns": 146,
+      "cmpsl": 147,
+      "mc": 148,
+      "jl": 149,
+      "cmc": 150,
+      "ve": 151,
+      "cld": 152,
+      "ter": 153,
+      "enter": 154,
+      "outsl": 155,
+      "popf": 156,
+      "iret": 157,
+      "cmpsb": 158,
+      "std": 159,
+      "clc": 160,
+      "wa": 161,
+      "jge": 162,
+      "sti": 163,
+      "lahf": 164,
+      "pl": 165,
+      "it": 166,
+      "aas": 167,
+      "js": 168,
+      "fwa": 169,
+      "fwait": 170,
+      "insb": 171,
+      "leave": 172,
+      "add": 173,
+      "das": 174,
+      "ck": 175,
+      "rl": 176,
+      "co": 177,
+      "lock": 178,
+      "imul": 179,
+      "ar": 180,
+      "arpl": 181,
+      "nz": 182,
+      "repnz": 183,
+      "repz": 184,
+      "shl": 185,
+      "gs": 186,
+      "ss": 187,
+      "fs": 188,
+      "r16": 189,
+      "addr16": 190,
+      "cs": 191,
+      "lds": 192,
+      "es": 193,
+      "rc": 194,
+      "ro": 195,
+      "ror": 196,
+      "rcl": 197,
+      "fist": 198,
+      "fsub": 199,
+      "rb": 200,
+      "com": 201,
+      "bou": 202,
+      "bound": 203,
+      "ta": 204,
+      "data": 205,
+      "data16": 206,
+      "ld": 207,
+      "les": 208,
+      "fdiv": 209,
+      "rol": 210,
+      "fst": 211,
+      "comp": 212,
+      "shlb": 213,
+      "shll": 214,
+      "ps": 215,
+      "rs": 216,
+      "fidiv": 217,
+      "fn": 218,
+      "cmov": 219,
+      "fld": 220,
+      "fisub": 221,
+      "mull": 222,
+      "fcom": 223,
+      "fcmov": 224,
+      "shr": 225,
+      "rcr": 226,
+      "rclb": 227,
+      "fnst": 228,
+      "no": 229,
+      "rcrl": 230,
+      "rolb": 231,
+      "sarl": 232,
+      "rorb": 233,
+      "idiv": 234,
+      "roll": 235,
+      "addl": 236,
+      "fistt": 237,
+      "sar": 238,
+      "rorl": 239,
+      "shrl": 240,
+      "shrb": 241,
+      "adds": 242,
+      "fmul": 243,
+      "neg": 244,
+      "rcrb": 245,
+      "comps": 246,
+      "rcll": 247,
+      "sarb": 248,
+      "fu": 249,
+      "fb": 250,
+      "cmpb": 251,
+      "pll": 252,
+      "not": 253,
+      "fild": 254,
+      "orb": 255,
+      "ficom": 256,
+      "fsubr": 257,
+      "compl": 258,
+      "sbbb": 259,
+      "xorb": 260,
+      "fucom": 261,
+      "subb": 262,
+      "fiadds": 263,
+      "fldl": 264,
+      "fidivrs": 265,
+      "ficomps": 266,
+      "fdivr": 267,
+      "testb": 268,
+      "andb": 269,
+      "sw": 270,
+      "fstp": 271,
+      "fsubrl": 272,
+      "bnd": 273,
+      "fcmovn": 274,
+      "fimul": 275,
+      "fimuls": 276,
+      "incl": 277,
+      "fisubs": 278,
+      "faddl": 279,
+      "fists": 280,
+      "ljmp": 281,
+      "fcoml": 282,
+      "fucomi": 283,
+      "lcall": 284,
+      "movb": 285,
+      "fisubrs": 286,
+      "fimull": 287,
+      "orl": 288,
+      "fildll": 289,
+      "flds": 290,
+      "fcompl": 291,
+      "stp": 292,
+      "fidivs": 293,
+      "fstpt": 294,
+      "fstpl": 295,
+      "fbstp": 296,
+      "fnstsw": 297,
+      "fisttpll": 298,
+      "env": 299,
+      "fnstenv": 300,
+      "fsubl": 301,
+      "subl": 302,
+      "save": 303,
+      "fbld": 304,
+      "fnsave": 305,
+      "fcomps": 306,
+      "filds": 307,
+      "notl": 308,
+      "fmuls": 309,
+      "fistl": 310,
+      "fdivrl": 311,
+      "fstps": 312,
+      "ficoms": 313,
+      "fl": 314,
+      "nv": 315,
+      "denv": 316,
+      "andl": 317,
+      "fldenv": 318,
+      "divl": 319,
+      "fistpll": 320,
+      "fldt": 321,
+      "fcomi": 322,
+      "fnstcw": 323,
+      "fstl": 324,
+      "fidivl": 325,
+      "fldcw": 326,
+      "fistps": 327,
+      "be": 328,
+      "xorl": 329,
+      "fdivl": 330,
+      "idivb": 331,
+      "idivl": 332,
+      "fisubl": 333,
+      "fcoms": 334,
+      "fsubrs": 335,
+      "negl": 336,
+      "notb": 337,
+      "fadds": 338,
+      "fsubrp": 339,
+      "adcl": 340,
+      "fisttpl": 341,
+      "fisttps": 342,
+      "ficoml": 343,
+      "fmull": 344,
+      "ff": 345,
+      "imull": 346,
+      "ree": 347,
+      "ffree": 348,
+      "fsubs": 349,
+      "negb": 350,
+      "se": 351,
+      "incb": 352,
+      "fiaddl": 353,
+      "fistpl": 354,
+      "fidivrl": 355,
+      "fisubrl": 356,
+      "fdivs": 357,
+      "fsts": 358,
+      "fdivrs": 359,
+      "fildl": 360,
+      "divb": 361,
+      "fr": 362,
+      "ficompl": 363,
+      "fdivp": 364,
+      "fmulp": 365,
+      "stor": 366,
+      "cmpl": 367,
+      "imulb": 368,
+      "frstor": 369,
+      "mulb": 370,
+      "fucomip": 371,
+      "fdivrp": 372,
+      "fsubp": 373,
+      "sbbl": 374,
+      "fcmovbe": 375,
+      "addp": 376,
+      "faddp": 377,
+      "fcmovnu": 378,
+      "fcmovnb": 379,
+      "fcmovu": 380,
+      "bs": 381,
+      "xa": 382,
+      "fcomp": 383,
+      "fcomip": 384,
+      "bt": 385,
+      "fucomp": 386,
+      "fcmovne": 387,
+      "np": 388,
+      "set": 389,
+      "wap": 390,
+      "fcmove": 391,
+      "bswap": 392,
+      "bor": 393,
+      "ffreep": 394,
+      "xabor": 395,
+      "xabort": 396,
+      "pushw": 397,
+      "fcmovnbe": 398,
+      "fxch": 399,
+      "pm": 400,
+      "cv": 401,
+      "cvt": 402,
+      "pi": 403,
+      "padd": 404,
+      "fcmovb": 405,
+      "npck": 406,
+      "ms": 407,
+      "ra": 408,
+      "sy": 409,
+      "pcmp": 410,
+      "qr": 411,
+      "punpck": 412,
+      "qrt": 413,
+      "dq": 414,
+      "fldl2": 415,
+      "popw": 416,
+      "eq": 417,
+      "retw": 418,
+      "pcmpeq": 419,
+      "punpckh": 420,
+      "em": 421,
+      "psub": 422,
+      "wd": 423,
+      "psrl": 424,
+      "psra": 425,
+      "sys": 426,
+      "psraw": 427,
+      "ax": 428,
+      "cmova": 429,
+      "fldl2e": 430,
+      "bl": 431,
+      "rd": 432,
+      "nt": 433,
+      "2ps": 434,
+      "cos": 435,
+      "fcos": 436,
+      "fsqrt": 437,
+      "setb": 438,
+      "fch": 439,
+      "pmul": 440,
+      "movnt": 441,
+      "ps2": 442,
+      "pmax": 443,
+      "cvtpi": 444,
+      "fchs": 445,
+      "cvtpi2ps": 446,
+      "fldz": 447,
+      "sysret": 448,
+      "udq": 449,
+      "vd": 450,
+      "invd": 451,
+      "mple": 452,
+      "sass": 453,
+      "sample": 454,
+      "disass": 455,
+      "psll": 456,
+      "btr": 457,
+      "embl": 458,
+      "pmuludq": 459,
+      "disassembl": 460,
+      "disassembly": 461,
+      "iss": 462,
+      "pa": 463,
+      "pand": 464,
+      "wb": 465,
+      "init": 466,
+      "clts": 467,
+      "comiss": 468,
+      "fninit": 469,
+      "msr": 470,
+      "psrlq": 471,
+      "ps2pi": 472,
+      "bw": 473,
+      "ex": 474,
+      "usb": 475,
+      "wr": 476,
+      "addwd": 477,
+      "fld1": 478,
+      "seta": 479,
+      "pmaddwd": 480,
+      "pcmpeqw": 481,
+      "et": 482,
+      "pre": 483,
+      "psubb": 484,
+      "rw": 485,
+      "ud": 486,
+      "ups": 487,
+      "ucomiss": 488,
+      "vm": 489,
+      "insw": 490,
+      "movsw": 491,
+      "movups": 492,
+      "clex": 493,
+      "popaw": 494,
+      "fnclex": 495,
+      "wbinvd": 496,
+      "cq": 497,
+      "hps": 498,
+      "ire": 499,
+      "uire": 500,
+      "xre": 501,
+      "xadd": 502,
+      "lease": 503,
+      "xacq": 504,
+      "xrelease": 505,
+      "xacquire": 506,
+      "2x": 507,
+      "fx": 508,
+      "lsl": 509,
+      "m1": 510,
+      "movz": 511,
+      "movms": 512,
+      "callw": 513,
+      "setl": 514,
+      "bsf": 515,
+      "setg": 516,
+      "qrtps": 517,
+      "rdmsr": 518,
+      "sample1": 519,
+      "movmsk": 520,
+      "ct": 521,
+      "ite": 522,
+      "lps": 523,
+      "pin": 524,
+      "srw": 525,
+      "tra": 526,
+      "vg": 527,
+      "vmov": 528,
+      "movd": 529,
+      "movq": 530,
+      "movhps": 531,
+      "cmpxchg": 532,
+      "xorps": 533,
+      "lretw": 534,
+      "pushfw": 535,
+      "nopl": 536,
+      "leavew": 537,
+      "cmovg": 538,
+      "cmovnp": 539,
+      "bts": 540,
+      "paddb": 541,
+      "punpckhwd": 542,
+      "movnti": 543,
+      "pmaxub": 544,
+      "pmaxsw": 545,
+      "pslld": 546,
+      "pavg": 547,
+      "write": 548,
+      "vmwrite": 549,
+      "fxtra": 550,
+      "pinsrw": 551,
+      "fxtract": 552,
+      "fsca": 553,
+      "ns": 554,
+      "pmc": 555,
+      "td": 556,
+      "subps": 557,
+      "loopw": 558,
+      "cmovne": 559,
+      "fucompp": 560,
+      "cvtps2pi": 561,
+      "paddusb": 562,
+      "punpckhdq": 563,
+      "emms": 564,
+      "psubsw": 565,
+      "rdpmc": 566,
+      "movntps": 567,
+      "setae": 568,
+      "fscale": 569,
+      "fnop": 570,
+      "fpre": 571,
+      "get": 572,
+      "lfs": 573,
+      "tps2pi": 574,
+      "vsub": 575,
+      "xit": 576,
+      "str": 577,
+      "cmpsw": 578,
+      "cwtd": 579,
+      "hlps": 580,
+      "ldx": 581,
+      "cmovl": 582,
+      "shrd": 583,
+      "bndldx": 584,
+      "sec": 585,
+      "sexit": 586,
+      "btc": 587,
+      "cvttps2pi": 588,
+      "paddq": 589,
+      "sysexit": 590,
+      "pcmpeqb": 591,
+      "punpckhbw": 592,
+      "pavgb": 593,
+      "getsec": 594,
+      "vsubss": 595,
+      "cbt": 596,
+      "dbw": 597,
+      "fet": 598,
+      "f2x": 599,
+      "g2": 600,
+      "lgs": 601,
+      "nps": 602,
+      "psa": 603,
+      "padds": 604,
+      "pmovmsk": 605,
+      "sqrtps": 606,
+      "unpck": 607,
+      "movlps": 608,
+      "cmpps": 609,
+      "outsw": 610,
+      "andps": 611,
+      "andnps": 612,
+      "jmpw": 613,
+      "divps": 614,
+      "cmovp": 615,
+      "fldlg2": 616,
+      "sets": 617,
+      "setnp": 618,
+      "paddd": 619,
+      "fldl2t": 620,
+      "pcmpeqd": 621,
+      "psubusb": 622,
+      "prefet": 623,
+      "movzbl": 624,
+      "cbtw": 625,
+      "f2xm1": 626,
+      "psadbw": 627,
+      "paddsw": 628,
+      "pmovmskb": 629,
+      "prefetch": 630,
+      "as": 631,
+      "cstp": 632,
+      "dt": 633,
+      "dtl": 634,
+      "fy": 635,
+      "fde": 636,
+      "femms": 637,
+      "kmovq": 638,
+      "l2x": 639,
+      "max": 640,
+      "mas": 641,
+      "n2": 642,
+      "p1": 643,
+      "psh": 644,
+      "pxor": 645,
+      "rad": 646,
+      "ufb": 647,
+      "vmul": 648,
+      "vadds": 649,
+      "vpsrl": 650,
+      "vpavgb": 651,
+      "wl": 652,
+      "orps": 653,
+      "pushaw": 654,
+      "addps": 655,
+      "shld": 656,
+      "shlw": 657,
+      "psrad": 658,
+      "rsqrtps": 659,
+      "cmove": 660,
+      "cmovno": 661,
+      "cmovns": 662,
+      "fldln2": 663,
+      "bsr": 664,
+      "fcompp": 665,
+      "pminsw": 666,
+      "paddw": 667,
+      "psubq": 668,
+      "psrlw": 669,
+      "psllq": 670,
+      "wrmsr": 671,
+      "ud0": 672,
+      "ud1": 673,
+      "movzwl": 674,
+      "movmskps": 675,
+      "vmovss": 676,
+      "vmovhlps": 677,
+      "fprem1": 678,
+      "fyl2x": 679,
+      "fdecstp": 680,
+      "maxps": 681,
+      "maskmovq": 682,
+      "pshufb": 683,
+      "vmulss": 684,
+      "vaddss": 685,
+      "vpsrld": 686,
+      "fyl2xp1": 687,
+      "ft": 688,
+      "jcxz": 689,
+      "pd": 690,
+      "por": 691,
+      "pps": 692,
+      "rr": 693,
+      "sc": 694,
+      "tsc": 695,
+      "usw": 696,
+      "vdiv": 697,
+      "stx": 698,
+      "read": 699,
+      "sldt": 700,
+      "lar": 701,
+      "movsbl": 702,
+      "verr": 703,
+      "popfw": 704,
+      "fsin": 705,
+      "rcpps": 706,
+      "rolw": 707,
+      "rsm": 708,
+      "cmovb": 709,
+      "cmovo": 710,
+      "cmovs": 711,
+      "fldpi": 712,
+      "bndstx": 713,
+      "setns": 714,
+      "cvtps2": 715,
+      "pcmpg": 716,
+      "psubd": 717,
+      "syscall": 718,
+      "sysenter": 719,
+      "rdtsc": 720,
+      "pack": 721,
+      "ud2": 722,
+      "vmread": 723,
+      "movswl": 724,
+      "unpcklps": 725,
+      "ftst": 726,
+      "vdivss": 727,
+      "cvtps2pd": 728,
+      "aps": 729,
+      "abs": 730,
+      "cpu": 731,
+      "fxa": 732,
+      "fabs": 733,
+      "gdtl": 734,
+      "id": 735,
+      "idtl": 736,
+      "kand": 737,
+      "lss": 738,
+      "lidtl": 739,
+      "qdq": 740,
+      "sgdtl": 741,
+      "t0": 742,
+      "tw": 743,
+      "vpunpckh": 744,
+      "vpmaxub": 745,
+      "inub": 746,
+      "mont": 747,
+      "movhlps": 748,
+      "movaps": 749,
+      "ndint": 750,
+      "sbbw": 751,
+      "decw": 752,
+      "mulps": 753,
+      "divw": 754,
+      "verw": 755,
+      "sswb": 756,
+      "cmovbe": 757,
+      "frndint": 758,
+      "setno": 759,
+      "setbe": 760,
+      "pminub": 761,
+      "punpckl": 762,
+      "cmovae": 763,
+      "pmulh": 764,
+      "psllw": 765,
+      "pavgw": 766,
+      "fprem": 767,
+      "unpckhps": 768,
+      "prefetcht0": 769,
+      "pcmpgtw": 770,
+      "packsswb": 771,
+      "cpuid": 772,
+      "fxam": 773,
+      "kandw": 774,
+      "vpunpckhqdq": 775,
+      "montmul": 776,
+      "fpa": 777,
+      "knot": 778,
+      "kandb": 779,
+      "pmull": 780,
+      "pex": 781,
+      "trw": 782,
+      "uw": 783,
+      "use": 784,
+      "vaddp": 785,
+      "vpsub": 786,
+      "vdivps": 787,
+      "lldt": 788,
+      "xorw": 789,
+      "loopew": 790,
+      "loopnew": 791,
+      "iretw": 792,
+      "rorw": 793,
+      "tan": 794,
+      "ldq": 795,
+      "lddq": 796,
+      "cmovle": 797,
+      "sete": 798,
+      "setne": 799,
+      "cvtdq": 800,
+      "paddusw": 801,
+      "punpckldq": 802,
+      "psubsb": 803,
+      "movntq": 804,
+      "sample3": 805,
+      "sample4": 806,
+      "sample5": 807,
+      "sample7": 808,
+      "sample9": 809,
+      "pause": 810,
+      "pandn": 811,
+      "fxsave": 812,
+      "setge": 813,
+      "sample10": 814,
+      "sample11": 815,
+      "sample12": 816,
+      "sample13": 817,
+      "sample14": 818,
+      "sample15": 819,
+      "sample17": 820,
+      "sample18": 821,
+      "uswb": 822,
+      "pcmpgtd": 823,
+      "packuswb": 824,
+      "punpcklwd": 825,
+      "punpcklbw": 826,
+      "pmulhw": 827,
+      "pmulhuw": 828,
+      "fpatan": 829,
+      "knotw": 830,
+      "pmullw": 831,
+      "pextrw": 832,
+      "vaddpd": 833,
+      "vpsubusw": 834,
+      "lddqu": 835,
+      "cvtdq2ps": 836
+    },
+    "merges": [
+      [
+        "s",
+        "h"
+      ],
+      [
+        "p",
+        "u"
+      ],
+      [
+        "pu",
+        "sh"
+      ],
+      [
+        "i",
+        "n"
+      ],
+      [
+        "o",
+        "p"
+      ],
+      [
+        "m",
+        "o"
+      ],
+      [
+        "mo",
+        "v"
+      ],
+      [
+        "p",
+        "op"
+      ],
+      [
+        "s",
+        "t"
+      ],
+      [
+        "o",
+        "r"
+      ],
+      [
+        "c",
+        "l"
+      ],
+      [
+        "m",
+        "p"
+      ],
+      [
+        "s",
+        "b"
+      ],
+      [
+        "c",
+        "a"
+      ],
+      [
+        "c",
+        "h"
+      ],
+      [
+        "x",
+        "ch"
+      ],
+      [
+        "xch",
+        "g"
+      ],
+      [
+        "in",
+        "c"
+      ],
+      [
+        "c",
+        "mp"
+      ],
+      [
+        "l",
+        "l"
+      ],
+      [
+        "o",
+        "u"
+      ],
+      [
+        "r",
+        "e"
+      ],
+      [
+        "ca",
+        "ll"
+      ],
+      [
+        "ou",
+        "t"
+      ],
+      [
+        "l",
+        "o"
+      ],
+      [
+        "u",
+        "b"
+      ],
+      [
+        "s",
+        "ub"
+      ],
+      [
+        "n",
+        "d"
+      ],
+      [
+        "t",
+        "e"
+      ],
+      [
+        "re",
+        "t"
+      ],
+      [
+        "sb",
+        "b"
+      ],
+      [
+        "x",
+        "or"
+      ],
+      [
+        "d",
+        "e"
+      ],
+      [
+        "a",
+        "nd"
+      ],
+      [
+        "de",
+        "cl"
+      ],
+      [
+        "te",
+        "st"
+      ],
+      [
+        "in",
+        "t"
+      ],
+      [
+        "j",
+        "n"
+      ],
+      [
+        "s",
+        "l"
+      ],
+      [
+        "d",
+        "s"
+      ],
+      [
+        "l",
+        "e"
+      ],
+      [
+        "lo",
+        "op"
+      ],
+      [
+        "s",
+        "ca"
+      ],
+      [
+        "sca",
+        "s"
+      ],
+      [
+        "j",
+        "b"
+      ],
+      [
+        "j",
+        "a"
+      ],
+      [
+        "l",
+        "ret"
+      ],
+      [
+        "l",
+        "a"
+      ],
+      [
+        "o",
+        "s"
+      ],
+      [
+        "st",
+        "os"
+      ],
+      [
+        "j",
+        "g"
+      ],
+      [
+        "j",
+        "e"
+      ],
+      [
+        "a",
+        "a"
+      ],
+      [
+        "lo",
+        "ds"
+      ],
+      [
+        "h",
+        "f"
+      ],
+      [
+        "f",
+        "i"
+      ],
+      [
+        "le",
+        "a"
+      ],
+      [
+        "s",
+        "a"
+      ],
+      [
+        "re",
+        "p"
+      ],
+      [
+        "m",
+        "u"
+      ],
+      [
+        "d",
+        "a"
+      ],
+      [
+        "pop",
+        "a"
+      ],
+      [
+        "n",
+        "e"
+      ],
+      [
+        "mu",
+        "l"
+      ],
+      [
+        "j",
+        "mp"
+      ],
+      [
+        "c",
+        "w"
+      ],
+      [
+        "a",
+        "d"
+      ],
+      [
+        "d",
+        "i"
+      ],
+      [
+        "di",
+        "v"
+      ],
+      [
+        "1",
+        "6"
+      ],
+      [
+        "int",
+        "1"
+      ],
+      [
+        "x",
+        "la"
+      ],
+      [
+        "xla",
+        "t"
+      ],
+      [
+        "t",
+        "l"
+      ],
+      [
+        "loop",
+        "e"
+      ],
+      [
+        "j",
+        "le"
+      ],
+      [
+        "cl",
+        "t"
+      ],
+      [
+        "aa",
+        "m"
+      ],
+      [
+        "int",
+        "3"
+      ],
+      [
+        "clt",
+        "d"
+      ],
+      [
+        "mov",
+        "sb"
+      ],
+      [
+        "push",
+        "f"
+      ],
+      [
+        "h",
+        "l"
+      ],
+      [
+        "push",
+        "a"
+      ],
+      [
+        "out",
+        "sb"
+      ],
+      [
+        "e",
+        "n"
+      ],
+      [
+        "jn",
+        "p"
+      ],
+      [
+        "hl",
+        "t"
+      ],
+      [
+        "loop",
+        "ne"
+      ],
+      [
+        "in",
+        "sl"
+      ],
+      [
+        "cw",
+        "tl"
+      ],
+      [
+        "jb",
+        "e"
+      ],
+      [
+        "jn",
+        "o"
+      ],
+      [
+        "cl",
+        "i"
+      ],
+      [
+        "c",
+        "x"
+      ],
+      [
+        "st",
+        "c"
+      ],
+      [
+        "cx",
+        "z"
+      ],
+      [
+        "int",
+        "o"
+      ],
+      [
+        "je",
+        "cxz"
+      ],
+      [
+        "ja",
+        "e"
+      ],
+      [
+        "jn",
+        "e"
+      ],
+      [
+        "n",
+        "op"
+      ],
+      [
+        "j",
+        "o"
+      ],
+      [
+        "j",
+        "p"
+      ],
+      [
+        "sa",
+        "hf"
+      ],
+      [
+        "mov",
+        "sl"
+      ],
+      [
+        "jn",
+        "s"
+      ],
+      [
+        "cmp",
+        "sl"
+      ],
+      [
+        "m",
+        "c"
+      ],
+      [
+        "j",
+        "l"
+      ],
+      [
+        "c",
+        "mc"
+      ],
+      [
+        "v",
+        "e"
+      ],
+      [
+        "cl",
+        "d"
+      ],
+      [
+        "te",
+        "r"
+      ],
+      [
+        "en",
+        "ter"
+      ],
+      [
+        "out",
+        "sl"
+      ],
+      [
+        "pop",
+        "f"
+      ],
+      [
+        "i",
+        "ret"
+      ],
+      [
+        "cmp",
+        "sb"
+      ],
+      [
+        "st",
+        "d"
+      ],
+      [
+        "cl",
+        "c"
+      ],
+      [
+        "w",
+        "a"
+      ],
+      [
+        "jg",
+        "e"
+      ],
+      [
+        "st",
+        "i"
+      ],
+      [
+        "la",
+        "hf"
+      ],
+      [
+        "p",
+        "l"
+      ],
+      [
+        "i",
+        "t"
+      ],
+      [
+        "aa",
+        "s"
+      ],
+      [
+        "j",
+        "s"
+      ],
+      [
+        "f",
+        "wa"
+      ],
+      [
+        "fwa",
+        "it"
+      ],
+      [
+        "in",
+        "sb"
+      ],
+      [
+        "lea",
+        "ve"
+      ],
+      [
+        "ad",
+        "d"
+      ],
+      [
+        "da",
+        "s"
+      ],
+      [
+        "c",
+        "k"
+      ],
+      [
+        "r",
+        "l"
+      ],
+      [
+        "c",
+        "o"
+      ],
+      [
+        "lo",
+        "ck"
+      ],
+      [
+        "i",
+        "mul"
+      ],
+      [
+        "a",
+        "r"
+      ],
+      [
+        "ar",
+        "pl"
+      ],
+      [
+        "n",
+        "z"
+      ],
+      [
+        "rep",
+        "nz"
+      ],
+      [
+        "rep",
+        "z"
+      ],
+      [
+        "sh",
+        "l"
+      ],
+      [
+        "g",
+        "s"
+      ],
+      [
+        "s",
+        "s"
+      ],
+      [
+        "f",
+        "s"
+      ],
+      [
+        "r",
+        "16"
+      ],
+      [
+        "add",
+        "r16"
+      ],
+      [
+        "c",
+        "s"
+      ],
+      [
+        "l",
+        "ds"
+      ],
+      [
+        "e",
+        "s"
+      ],
+      [
+        "r",
+        "c"
+      ],
+      [
+        "r",
+        "o"
+      ],
+      [
+        "r",
+        "or"
+      ],
+      [
+        "r",
+        "cl"
+      ],
+      [
+        "fi",
+        "st"
+      ],
+      [
+        "f",
+        "sub"
+      ],
+      [
+        "r",
+        "b"
+      ],
+      [
+        "co",
+        "m"
+      ],
+      [
+        "b",
+        "ou"
+      ],
+      [
+        "bou",
+        "nd"
+      ],
+      [
+        "t",
+        "a"
+      ],
+      [
+        "da",
+        "ta"
+      ],
+      [
+        "data",
+        "16"
+      ],
+      [
+        "l",
+        "d"
+      ],
+      [
+        "le",
+        "s"
+      ],
+      [
+        "f",
+        "div"
+      ],
+      [
+        "ro",
+        "l"
+      ],
+      [
+        "f",
+        "st"
+      ],
+      [
+        "co",
+        "mp"
+      ],
+      [
+        "shl",
+        "b"
+      ],
+      [
+        "sh",
+        "ll"
+      ],
+      [
+        "p",
+        "s"
+      ],
+      [
+        "r",
+        "s"
+      ],
+      [
+        "fi",
+        "div"
+      ],
+      [
+        "f",
+        "n"
+      ],
+      [
+        "c",
+        "mov"
+      ],
+      [
+        "f",
+        "ld"
+      ],
+      [
+        "fi",
+        "sub"
+      ],
+      [
+        "mu",
+        "ll"
+      ],
+      [
+        "f",
+        "com"
+      ],
+      [
+        "f",
+        "cmov"
+      ],
+      [
+        "sh",
+        "r"
+      ],
+      [
+        "rc",
+        "r"
+      ],
+      [
+        "rcl",
+        "b"
+      ],
+      [
+        "fn",
+        "st"
+      ],
+      [
+        "n",
+        "o"
+      ],
+      [
+        "rc",
+        "rl"
+      ],
+      [
+        "rol",
+        "b"
+      ],
+      [
+        "sa",
+        "rl"
+      ],
+      [
+        "ror",
+        "b"
+      ],
+      [
+        "i",
+        "div"
+      ],
+      [
+        "ro",
+        "ll"
+      ],
+      [
+        "add",
+        "l"
+      ],
+      [
+        "fist",
+        "t"
+      ],
+      [
+        "sa",
+        "r"
+      ],
+      [
+        "ror",
+        "l"
+      ],
+      [
+        "sh",
+        "rl"
+      ],
+      [
+        "sh",
+        "rb"
+      ],
+      [
+        "ad",
+        "ds"
+      ],
+      [
+        "f",
+        "mul"
+      ],
+      [
+        "ne",
+        "g"
+      ],
+      [
+        "rc",
+        "rb"
+      ],
+      [
+        "comp",
+        "s"
+      ],
+      [
+        "rcl",
+        "l"
+      ],
+      [
+        "sa",
+        "rb"
+      ],
+      [
+        "f",
+        "u"
+      ],
+      [
+        "f",
+        "b"
+      ],
+      [
+        "cmp",
+        "b"
+      ],
+      [
+        "p",
+        "ll"
+      ],
+      [
+        "no",
+        "t"
+      ],
+      [
+        "fi",
+        "ld"
+      ],
+      [
+        "or",
+        "b"
+      ],
+      [
+        "fi",
+        "com"
+      ],
+      [
+        "fsub",
+        "r"
+      ],
+      [
+        "comp",
+        "l"
+      ],
+      [
+        "sbb",
+        "b"
+      ],
+      [
+        "xor",
+        "b"
+      ],
+      [
+        "fu",
+        "com"
+      ],
+      [
+        "sub",
+        "b"
+      ],
+      [
+        "fi",
+        "adds"
+      ],
+      [
+        "fld",
+        "l"
+      ],
+      [
+        "fidiv",
+        "rs"
+      ],
+      [
+        "fi",
+        "comps"
+      ],
+      [
+        "fdiv",
+        "r"
+      ],
+      [
+        "test",
+        "b"
+      ],
+      [
+        "and",
+        "b"
+      ],
+      [
+        "s",
+        "w"
+      ],
+      [
+        "fst",
+        "p"
+      ],
+      [
+        "fsub",
+        "rl"
+      ],
+      [
+        "b",
+        "nd"
+      ],
+      [
+        "fcmov",
+        "n"
+      ],
+      [
+        "fi",
+        "mul"
+      ],
+      [
+        "fimul",
+        "s"
+      ],
+      [
+        "in",
+        "cl"
+      ],
+      [
+        "fisub",
+        "s"
+      ],
+      [
+        "f",
+        "addl"
+      ],
+      [
+        "fist",
+        "s"
+      ],
+      [
+        "l",
+        "jmp"
+      ],
+      [
+        "fcom",
+        "l"
+      ],
+      [
+        "fucom",
+        "i"
+      ],
+      [
+        "l",
+        "call"
+      ],
+      [
+        "mov",
+        "b"
+      ],
+      [
+        "fisub",
+        "rs"
+      ],
+      [
+        "fi",
+        "mull"
+      ],
+      [
+        "or",
+        "l"
+      ],
+      [
+        "fild",
+        "ll"
+      ],
+      [
+        "f",
+        "lds"
+      ],
+      [
+        "f",
+        "compl"
+      ],
+      [
+        "st",
+        "p"
+      ],
+      [
+        "fidiv",
+        "s"
+      ],
+      [
+        "fstp",
+        "t"
+      ],
+      [
+        "fst",
+        "pl"
+      ],
+      [
+        "fb",
+        "stp"
+      ],
+      [
+        "fnst",
+        "sw"
+      ],
+      [
+        "fistt",
+        "pll"
+      ],
+      [
+        "en",
+        "v"
+      ],
+      [
+        "fnst",
+        "env"
+      ],
+      [
+        "fsub",
+        "l"
+      ],
+      [
+        "sub",
+        "l"
+      ],
+      [
+        "sa",
+        "ve"
+      ],
+      [
+        "fb",
+        "ld"
+      ],
+      [
+        "fn",
+        "save"
+      ],
+      [
+        "f",
+        "comps"
+      ],
+      [
+        "fi",
+        "lds"
+      ],
+      [
+        "no",
+        "tl"
+      ],
+      [
+        "fmul",
+        "s"
+      ],
+      [
+        "fist",
+        "l"
+      ],
+      [
+        "fdiv",
+        "rl"
+      ],
+      [
+        "fst",
+        "ps"
+      ],
+      [
+        "ficom",
+        "s"
+      ],
+      [
+        "f",
+        "l"
+      ],
+      [
+        "n",
+        "v"
+      ],
+      [
+        "de",
+        "nv"
+      ],
+      [
+        "and",
+        "l"
+      ],
+      [
+        "fl",
+        "denv"
+      ],
+      [
+        "div",
+        "l"
+      ],
+      [
+        "fist",
+        "pll"
+      ],
+      [
+        "fld",
+        "t"
+      ],
+      [
+        "fcom",
+        "i"
+      ],
+      [
+        "fnst",
+        "cw"
+      ],
+      [
+        "fst",
+        "l"
+      ],
+      [
+        "fidiv",
+        "l"
+      ],
+      [
+        "fld",
+        "cw"
+      ],
+      [
+        "fist",
+        "ps"
+      ],
+      [
+        "b",
+        "e"
+      ],
+      [
+        "xor",
+        "l"
+      ],
+      [
+        "fdiv",
+        "l"
+      ],
+      [
+        "idiv",
+        "b"
+      ],
+      [
+        "idiv",
+        "l"
+      ],
+      [
+        "fisub",
+        "l"
+      ],
+      [
+        "fcom",
+        "s"
+      ],
+      [
+        "fsub",
+        "rs"
+      ],
+      [
+        "neg",
+        "l"
+      ],
+      [
+        "not",
+        "b"
+      ],
+      [
+        "f",
+        "adds"
+      ],
+      [
+        "fsubr",
+        "p"
+      ],
+      [
+        "ad",
+        "cl"
+      ],
+      [
+        "fistt",
+        "pl"
+      ],
+      [
+        "fistt",
+        "ps"
+      ],
+      [
+        "ficom",
+        "l"
+      ],
+      [
+        "f",
+        "mull"
+      ],
+      [
+        "f",
+        "f"
+      ],
+      [
+        "i",
+        "mull"
+      ],
+      [
+        "re",
+        "e"
+      ],
+      [
+        "ff",
+        "ree"
+      ],
+      [
+        "fsub",
+        "s"
+      ],
+      [
+        "neg",
+        "b"
+      ],
+      [
+        "s",
+        "e"
+      ],
+      [
+        "inc",
+        "b"
+      ],
+      [
+        "fi",
+        "addl"
+      ],
+      [
+        "fist",
+        "pl"
+      ],
+      [
+        "fidiv",
+        "rl"
+      ],
+      [
+        "fisub",
+        "rl"
+      ],
+      [
+        "fdiv",
+        "s"
+      ],
+      [
+        "fst",
+        "s"
+      ],
+      [
+        "fdiv",
+        "rs"
+      ],
+      [
+        "fild",
+        "l"
+      ],
+      [
+        "div",
+        "b"
+      ],
+      [
+        "f",
+        "r"
+      ],
+      [
+        "fi",
+        "compl"
+      ],
+      [
+        "fdiv",
+        "p"
+      ],
+      [
+        "fmul",
+        "p"
+      ],
+      [
+        "st",
+        "or"
+      ],
+      [
+        "cmp",
+        "l"
+      ],
+      [
+        "imul",
+        "b"
+      ],
+      [
+        "fr",
+        "stor"
+      ],
+      [
+        "mul",
+        "b"
+      ],
+      [
+        "fucomi",
+        "p"
+      ],
+      [
+        "fdivr",
+        "p"
+      ],
+      [
+        "fsub",
+        "p"
+      ],
+      [
+        "sbb",
+        "l"
+      ],
+      [
+        "fcmov",
+        "be"
+      ],
+      [
+        "add",
+        "p"
+      ],
+      [
+        "f",
+        "addp"
+      ],
+      [
+        "fcmovn",
+        "u"
+      ],
+      [
+        "fcmovn",
+        "b"
+      ],
+      [
+        "fcmov",
+        "u"
+      ],
+      [
+        "b",
+        "s"
+      ],
+      [
+        "x",
+        "a"
+      ],
+      [
+        "f",
+        "comp"
+      ],
+      [
+        "fcomi",
+        "p"
+      ],
+      [
+        "b",
+        "t"
+      ],
+      [
+        "fu",
+        "comp"
+      ],
+      [
+        "fcmov",
+        "ne"
+      ],
+      [
+        "n",
+        "p"
+      ],
+      [
+        "se",
+        "t"
+      ],
+      [
+        "wa",
+        "p"
+      ],
+      [
+        "fcmov",
+        "e"
+      ],
+      [
+        "bs",
+        "wap"
+      ],
+      [
+        "b",
+        "or"
+      ],
+      [
+        "ffree",
+        "p"
+      ],
+      [
+        "xa",
+        "bor"
+      ],
+      [
+        "xabor",
+        "t"
+      ],
+      [
+        "push",
+        "w"
+      ],
+      [
+        "fcmovn",
+        "be"
+      ],
+      [
+        "f",
+        "xch"
+      ],
+      [
+        "p",
+        "m"
+      ],
+      [
+        "c",
+        "v"
+      ],
+      [
+        "cv",
+        "t"
+      ],
+      [
+        "p",
+        "i"
+      ],
+      [
+        "p",
+        "add"
+      ],
+      [
+        "fcmov",
+        "b"
+      ],
+      [
+        "np",
+        "ck"
+      ],
+      [
+        "m",
+        "s"
+      ],
+      [
+        "r",
+        "a"
+      ],
+      [
+        "s",
+        "y"
+      ],
+      [
+        "p",
+        "cmp"
+      ],
+      [
+        "q",
+        "r"
+      ],
+      [
+        "pu",
+        "npck"
+      ],
+      [
+        "qr",
+        "t"
+      ],
+      [
+        "d",
+        "q"
+      ],
+      [
+        "fldl",
+        "2"
+      ],
+      [
+        "pop",
+        "w"
+      ],
+      [
+        "e",
+        "q"
+      ],
+      [
+        "ret",
+        "w"
+      ],
+      [
+        "pcmp",
+        "eq"
+      ],
+      [
+        "punpck",
+        "h"
+      ],
+      [
+        "e",
+        "m"
+      ],
+      [
+        "p",
+        "sub"
+      ],
+      [
+        "w",
+        "d"
+      ],
+      [
+        "ps",
+        "rl"
+      ],
+      [
+        "ps",
+        "ra"
+      ],
+      [
+        "sy",
+        "s"
+      ],
+      [
+        "psra",
+        "w"
+      ],
+      [
+        "a",
+        "x"
+      ],
+      [
+        "cmov",
+        "a"
+      ],
+      [
+        "fldl2",
+        "e"
+      ],
+      [
+        "b",
+        "l"
+      ],
+      [
+        "r",
+        "d"
+      ],
+      [
+        "n",
+        "t"
+      ],
+      [
+        "2",
+        "ps"
+      ],
+      [
+        "c",
+        "os"
+      ],
+      [
+        "f",
+        "cos"
+      ],
+      [
+        "fs",
+        "qrt"
+      ],
+      [
+        "set",
+        "b"
+      ],
+      [
+        "f",
+        "ch"
+      ],
+      [
+        "p",
+        "mul"
+      ],
+      [
+        "mov",
+        "nt"
+      ],
+      [
+        "ps",
+        "2"
+      ],
+      [
+        "pm",
+        "ax"
+      ],
+      [
+        "cvt",
+        "pi"
+      ],
+      [
+        "fch",
+        "s"
+      ],
+      [
+        "cvtpi",
+        "2ps"
+      ],
+      [
+        "fld",
+        "z"
+      ],
+      [
+        "sys",
+        "ret"
+      ],
+      [
+        "u",
+        "dq"
+      ],
+      [
+        "v",
+        "d"
+      ],
+      [
+        "in",
+        "vd"
+      ],
+      [
+        "mp",
+        "le"
+      ],
+      [
+        "sa",
+        "ss"
+      ],
+      [
+        "sa",
+        "mple"
+      ],
+      [
+        "di",
+        "sass"
+      ],
+      [
+        "ps",
+        "ll"
+      ],
+      [
+        "bt",
+        "r"
+      ],
+      [
+        "em",
+        "bl"
+      ],
+      [
+        "pmul",
+        "udq"
+      ],
+      [
+        "disass",
+        "embl"
+      ],
+      [
+        "disassembl",
+        "y"
+      ],
+      [
+        "i",
+        "ss"
+      ],
+      [
+        "p",
+        "a"
+      ],
+      [
+        "p",
+        "and"
+      ],
+      [
+        "w",
+        "b"
+      ],
+      [
+        "in",
+        "it"
+      ],
+      [
+        "clt",
+        "s"
+      ],
+      [
+        "com",
+        "iss"
+      ],
+      [
+        "fn",
+        "init"
+      ],
+      [
+        "ms",
+        "r"
+      ],
+      [
+        "psrl",
+        "q"
+      ],
+      [
+        "ps2",
+        "pi"
+      ],
+      [
+        "b",
+        "w"
+      ],
+      [
+        "e",
+        "x"
+      ],
+      [
+        "u",
+        "sb"
+      ],
+      [
+        "w",
+        "r"
+      ],
+      [
+        "add",
+        "wd"
+      ],
+      [
+        "fld",
+        "1"
+      ],
+      [
+        "se",
+        "ta"
+      ],
+      [
+        "pm",
+        "addwd"
+      ],
+      [
+        "pcmpeq",
+        "w"
+      ],
+      [
+        "e",
+        "t"
+      ],
+      [
+        "p",
+        "re"
+      ],
+      [
+        "p",
+        "subb"
+      ],
+      [
+        "r",
+        "w"
+      ],
+      [
+        "u",
+        "d"
+      ],
+      [
+        "u",
+        "ps"
+      ],
+      [
+        "u",
+        "comiss"
+      ],
+      [
+        "v",
+        "m"
+      ],
+      [
+        "in",
+        "sw"
+      ],
+      [
+        "mov",
+        "sw"
+      ],
+      [
+        "mov",
+        "ups"
+      ],
+      [
+        "cl",
+        "ex"
+      ],
+      [
+        "popa",
+        "w"
+      ],
+      [
+        "fn",
+        "clex"
+      ],
+      [
+        "wb",
+        "invd"
+      ],
+      [
+        "c",
+        "q"
+      ],
+      [
+        "h",
+        "ps"
+      ],
+      [
+        "i",
+        "re"
+      ],
+      [
+        "u",
+        "ire"
+      ],
+      [
+        "x",
+        "re"
+      ],
+      [
+        "x",
+        "add"
+      ],
+      [
+        "lea",
+        "se"
+      ],
+      [
+        "xa",
+        "cq"
+      ],
+      [
+        "xre",
+        "lease"
+      ],
+      [
+        "xacq",
+        "uire"
+      ],
+      [
+        "2",
+        "x"
+      ],
+      [
+        "f",
+        "x"
+      ],
+      [
+        "l",
+        "sl"
+      ],
+      [
+        "m",
+        "1"
+      ],
+      [
+        "mov",
+        "z"
+      ],
+      [
+        "mov",
+        "ms"
+      ],
+      [
+        "call",
+        "w"
+      ],
+      [
+        "se",
+        "tl"
+      ],
+      [
+        "bs",
+        "f"
+      ],
+      [
+        "set",
+        "g"
+      ],
+      [
+        "qrt",
+        "ps"
+      ],
+      [
+        "rd",
+        "msr"
+      ],
+      [
+        "sample",
+        "1"
+      ],
+      [
+        "movms",
+        "k"
+      ],
+      [
+        "c",
+        "t"
+      ],
+      [
+        "i",
+        "te"
+      ],
+      [
+        "l",
+        "ps"
+      ],
+      [
+        "p",
+        "in"
+      ],
+      [
+        "s",
+        "rw"
+      ],
+      [
+        "t",
+        "ra"
+      ],
+      [
+        "v",
+        "g"
+      ],
+      [
+        "v",
+        "mov"
+      ],
+      [
+        "mov",
+        "d"
+      ],
+      [
+        "mov",
+        "q"
+      ],
+      [
+        "mov",
+        "hps"
+      ],
+      [
+        "cmp",
+        "xchg"
+      ],
+      [
+        "xor",
+        "ps"
+      ],
+      [
+        "lret",
+        "w"
+      ],
+      [
+        "pushf",
+        "w"
+      ],
+      [
+        "nop",
+        "l"
+      ],
+      [
+        "leave",
+        "w"
+      ],
+      [
+        "cmov",
+        "g"
+      ],
+      [
+        "cmov",
+        "np"
+      ],
+      [
+        "bt",
+        "s"
+      ],
+      [
+        "padd",
+        "b"
+      ],
+      [
+        "punpckh",
+        "wd"
+      ],
+      [
+        "movnt",
+        "i"
+      ],
+      [
+        "pmax",
+        "ub"
+      ],
+      [
+        "pmax",
+        "sw"
+      ],
+      [
+        "psll",
+        "d"
+      ],
+      [
+        "pa",
+        "vg"
+      ],
+      [
+        "wr",
+        "ite"
+      ],
+      [
+        "vm",
+        "write"
+      ],
+      [
+        "fx",
+        "tra"
+      ],
+      [
+        "pin",
+        "srw"
+      ],
+      [
+        "fxtra",
+        "ct"
+      ],
+      [
+        "f",
+        "sca"
+      ],
+      [
+        "n",
+        "s"
+      ],
+      [
+        "p",
+        "mc"
+      ],
+      [
+        "t",
+        "d"
+      ],
+      [
+        "sub",
+        "ps"
+      ],
+      [
+        "loop",
+        "w"
+      ],
+      [
+        "cmov",
+        "ne"
+      ],
+      [
+        "fucomp",
+        "p"
+      ],
+      [
+        "cvt",
+        "ps2pi"
+      ],
+      [
+        "padd",
+        "usb"
+      ],
+      [
+        "punpckh",
+        "dq"
+      ],
+      [
+        "em",
+        "ms"
+      ],
+      [
+        "psub",
+        "sw"
+      ],
+      [
+        "rd",
+        "pmc"
+      ],
+      [
+        "movnt",
+        "ps"
+      ],
+      [
+        "seta",
+        "e"
+      ],
+      [
+        "fsca",
+        "le"
+      ],
+      [
+        "f",
+        "nop"
+      ],
+      [
+        "f",
+        "pre"
+      ],
+      [
+        "g",
+        "et"
+      ],
+      [
+        "l",
+        "fs"
+      ],
+      [
+        "t",
+        "ps2pi"
+      ],
+      [
+        "v",
+        "sub"
+      ],
+      [
+        "x",
+        "it"
+      ],
+      [
+        "st",
+        "r"
+      ],
+      [
+        "cmp",
+        "sw"
+      ],
+      [
+        "cw",
+        "td"
+      ],
+      [
+        "hl",
+        "ps"
+      ],
+      [
+        "ld",
+        "x"
+      ],
+      [
+        "cmov",
+        "l"
+      ],
+      [
+        "shr",
+        "d"
+      ],
+      [
+        "bnd",
+        "ldx"
+      ],
+      [
+        "se",
+        "c"
+      ],
+      [
+        "se",
+        "xit"
+      ],
+      [
+        "bt",
+        "c"
+      ],
+      [
+        "cvt",
+        "tps2pi"
+      ],
+      [
+        "padd",
+        "q"
+      ],
+      [
+        "sy",
+        "sexit"
+      ],
+      [
+        "pcmpeq",
+        "b"
+      ],
+      [
+        "punpckh",
+        "bw"
+      ],
+      [
+        "pavg",
+        "b"
+      ],
+      [
+        "get",
+        "sec"
+      ],
+      [
+        "vsub",
+        "ss"
+      ],
+      [
+        "c",
+        "bt"
+      ],
+      [
+        "d",
+        "bw"
+      ],
+      [
+        "f",
+        "et"
+      ],
+      [
+        "f",
+        "2x"
+      ],
+      [
+        "g",
+        "2"
+      ],
+      [
+        "l",
+        "gs"
+      ],
+      [
+        "n",
+        "ps"
+      ],
+      [
+        "p",
+        "sa"
+      ],
+      [
+        "p",
+        "adds"
+      ],
+      [
+        "p",
+        "movmsk"
+      ],
+      [
+        "s",
+        "qrtps"
+      ],
+      [
+        "u",
+        "npck"
+      ],
+      [
+        "mov",
+        "lps"
+      ],
+      [
+        "cmp",
+        "ps"
+      ],
+      [
+        "out",
+        "sw"
+      ],
+      [
+        "and",
+        "ps"
+      ],
+      [
+        "and",
+        "nps"
+      ],
+      [
+        "jmp",
+        "w"
+      ],
+      [
+        "div",
+        "ps"
+      ],
+      [
+        "cmov",
+        "p"
+      ],
+      [
+        "fldl",
+        "g2"
+      ],
+      [
+        "set",
+        "s"
+      ],
+      [
+        "set",
+        "np"
+      ],
+      [
+        "padd",
+        "d"
+      ],
+      [
+        "fldl2",
+        "t"
+      ],
+      [
+        "pcmpeq",
+        "d"
+      ],
+      [
+        "psub",
+        "usb"
+      ],
+      [
+        "pre",
+        "fet"
+      ],
+      [
+        "movz",
+        "bl"
+      ],
+      [
+        "cbt",
+        "w"
+      ],
+      [
+        "f2x",
+        "m1"
+      ],
+      [
+        "psa",
+        "dbw"
+      ],
+      [
+        "padds",
+        "w"
+      ],
+      [
+        "pmovmsk",
+        "b"
+      ],
+      [
+        "prefet",
+        "ch"
+      ],
+      [
+        "a",
+        "s"
+      ],
+      [
+        "c",
+        "stp"
+      ],
+      [
+        "d",
+        "t"
+      ],
+      [
+        "d",
+        "tl"
+      ],
+      [
+        "f",
+        "y"
+      ],
+      [
+        "f",
+        "de"
+      ],
+      [
+        "f",
+        "emms"
+      ],
+      [
+        "k",
+        "movq"
+      ],
+      [
+        "l",
+        "2x"
+      ],
+      [
+        "m",
+        "ax"
+      ],
+      [
+        "m",
+        "as"
+      ],
+      [
+        "n",
+        "2"
+      ],
+      [
+        "p",
+        "1"
+      ],
+      [
+        "p",
+        "sh"
+      ],
+      [
+        "p",
+        "xor"
+      ],
+      [
+        "r",
+        "ad"
+      ],
+      [
+        "u",
+        "fb"
+      ],
+      [
+        "v",
+        "mul"
+      ],
+      [
+        "v",
+        "adds"
+      ],
+      [
+        "v",
+        "psrl"
+      ],
+      [
+        "v",
+        "pavgb"
+      ],
+      [
+        "w",
+        "l"
+      ],
+      [
+        "or",
+        "ps"
+      ],
+      [
+        "pusha",
+        "w"
+      ],
+      [
+        "add",
+        "ps"
+      ],
+      [
+        "shl",
+        "d"
+      ],
+      [
+        "shl",
+        "w"
+      ],
+      [
+        "ps",
+        "rad"
+      ],
+      [
+        "rs",
+        "qrtps"
+      ],
+      [
+        "cmov",
+        "e"
+      ],
+      [
+        "cmov",
+        "no"
+      ],
+      [
+        "cmov",
+        "ns"
+      ],
+      [
+        "fldl",
+        "n2"
+      ],
+      [
+        "bs",
+        "r"
+      ],
+      [
+        "fcomp",
+        "p"
+      ],
+      [
+        "pm",
+        "insw"
+      ],
+      [
+        "padd",
+        "w"
+      ],
+      [
+        "psub",
+        "q"
+      ],
+      [
+        "psrl",
+        "w"
+      ],
+      [
+        "psll",
+        "q"
+      ],
+      [
+        "wr",
+        "msr"
+      ],
+      [
+        "ud",
+        "0"
+      ],
+      [
+        "ud",
+        "1"
+      ],
+      [
+        "movz",
+        "wl"
+      ],
+      [
+        "movmsk",
+        "ps"
+      ],
+      [
+        "vmov",
+        "ss"
+      ],
+      [
+        "vmov",
+        "hlps"
+      ],
+      [
+        "fpre",
+        "m1"
+      ],
+      [
+        "fy",
+        "l2x"
+      ],
+      [
+        "fde",
+        "cstp"
+      ],
+      [
+        "max",
+        "ps"
+      ],
+      [
+        "mas",
+        "kmovq"
+      ],
+      [
+        "psh",
+        "ufb"
+      ],
+      [
+        "vmul",
+        "ss"
+      ],
+      [
+        "vadds",
+        "s"
+      ],
+      [
+        "vpsrl",
+        "d"
+      ],
+      [
+        "fyl2x",
+        "p1"
+      ],
+      [
+        "f",
+        "t"
+      ],
+      [
+        "j",
+        "cxz"
+      ],
+      [
+        "p",
+        "d"
+      ],
+      [
+        "p",
+        "or"
+      ],
+      [
+        "p",
+        "ps"
+      ],
+      [
+        "r",
+        "r"
+      ],
+      [
+        "s",
+        "c"
+      ],
+      [
+        "t",
+        "sc"
+      ],
+      [
+        "u",
+        "sw"
+      ],
+      [
+        "v",
+        "div"
+      ],
+      [
+        "st",
+        "x"
+      ],
+      [
+        "re",
+        "ad"
+      ],
+      [
+        "sl",
+        "dt"
+      ],
+      [
+        "la",
+        "r"
+      ],
+      [
+        "movsb",
+        "l"
+      ],
+      [
+        "ve",
+        "rr"
+      ],
+      [
+        "popf",
+        "w"
+      ],
+      [
+        "fs",
+        "in"
+      ],
+      [
+        "rc",
+        "pps"
+      ],
+      [
+        "rol",
+        "w"
+      ],
+      [
+        "rs",
+        "m"
+      ],
+      [
+        "cmov",
+        "b"
+      ],
+      [
+        "cmov",
+        "o"
+      ],
+      [
+        "cmov",
+        "s"
+      ],
+      [
+        "fld",
+        "pi"
+      ],
+      [
+        "bnd",
+        "stx"
+      ],
+      [
+        "set",
+        "ns"
+      ],
+      [
+        "cvt",
+        "ps2"
+      ],
+      [
+        "pcmp",
+        "g"
+      ],
+      [
+        "psub",
+        "d"
+      ],
+      [
+        "sys",
+        "call"
+      ],
+      [
+        "sys",
+        "enter"
+      ],
+      [
+        "rd",
+        "tsc"
+      ],
+      [
+        "pa",
+        "ck"
+      ],
+      [
+        "ud",
+        "2"
+      ],
+      [
+        "vm",
+        "read"
+      ],
+      [
+        "movsw",
+        "l"
+      ],
+      [
+        "unpck",
+        "lps"
+      ],
+      [
+        "ft",
+        "st"
+      ],
+      [
+        "vdiv",
+        "ss"
+      ],
+      [
+        "cvtps2",
+        "pd"
+      ],
+      [
+        "a",
+        "ps"
+      ],
+      [
+        "a",
+        "bs"
+      ],
+      [
+        "c",
+        "pu"
+      ],
+      [
+        "f",
+        "xa"
+      ],
+      [
+        "f",
+        "abs"
+      ],
+      [
+        "g",
+        "dtl"
+      ],
+      [
+        "i",
+        "d"
+      ],
+      [
+        "i",
+        "dtl"
+      ],
+      [
+        "k",
+        "and"
+      ],
+      [
+        "l",
+        "ss"
+      ],
+      [
+        "l",
+        "idtl"
+      ],
+      [
+        "q",
+        "dq"
+      ],
+      [
+        "s",
+        "gdtl"
+      ],
+      [
+        "t",
+        "0"
+      ],
+      [
+        "t",
+        "w"
+      ],
+      [
+        "v",
+        "punpckh"
+      ],
+      [
+        "v",
+        "pmaxub"
+      ],
+      [
+        "in",
+        "ub"
+      ],
+      [
+        "mo",
+        "nt"
+      ],
+      [
+        "mov",
+        "hlps"
+      ],
+      [
+        "mov",
+        "aps"
+      ],
+      [
+        "nd",
+        "int"
+      ],
+      [
+        "sbb",
+        "w"
+      ],
+      [
+        "de",
+        "cw"
+      ],
+      [
+        "mul",
+        "ps"
+      ],
+      [
+        "div",
+        "w"
+      ],
+      [
+        "ve",
+        "rw"
+      ],
+      [
+        "ss",
+        "wb"
+      ],
+      [
+        "cmov",
+        "be"
+      ],
+      [
+        "fr",
+        "ndint"
+      ],
+      [
+        "set",
+        "no"
+      ],
+      [
+        "set",
+        "be"
+      ],
+      [
+        "pm",
+        "inub"
+      ],
+      [
+        "punpck",
+        "l"
+      ],
+      [
+        "cmova",
+        "e"
+      ],
+      [
+        "pmul",
+        "h"
+      ],
+      [
+        "psll",
+        "w"
+      ],
+      [
+        "pavg",
+        "w"
+      ],
+      [
+        "fpre",
+        "m"
+      ],
+      [
+        "unpck",
+        "hps"
+      ],
+      [
+        "prefetch",
+        "t0"
+      ],
+      [
+        "pcmpg",
+        "tw"
+      ],
+      [
+        "pack",
+        "sswb"
+      ],
+      [
+        "cpu",
+        "id"
+      ],
+      [
+        "fxa",
+        "m"
+      ],
+      [
+        "kand",
+        "w"
+      ],
+      [
+        "vpunpckh",
+        "qdq"
+      ],
+      [
+        "mont",
+        "mul"
+      ],
+      [
+        "f",
+        "pa"
+      ],
+      [
+        "k",
+        "not"
+      ],
+      [
+        "k",
+        "andb"
+      ],
+      [
+        "p",
+        "mull"
+      ],
+      [
+        "p",
+        "ex"
+      ],
+      [
+        "t",
+        "rw"
+      ],
+      [
+        "u",
+        "w"
+      ],
+      [
+        "u",
+        "se"
+      ],
+      [
+        "v",
+        "addp"
+      ],
+      [
+        "v",
+        "psub"
+      ],
+      [
+        "v",
+        "divps"
+      ],
+      [
+        "ll",
+        "dt"
+      ],
+      [
+        "xor",
+        "w"
+      ],
+      [
+        "loope",
+        "w"
+      ],
+      [
+        "loopne",
+        "w"
+      ],
+      [
+        "iret",
+        "w"
+      ],
+      [
+        "ror",
+        "w"
+      ],
+      [
+        "ta",
+        "n"
+      ],
+      [
+        "ld",
+        "q"
+      ],
+      [
+        "ld",
+        "dq"
+      ],
+      [
+        "cmov",
+        "le"
+      ],
+      [
+        "se",
+        "te"
+      ],
+      [
+        "set",
+        "ne"
+      ],
+      [
+        "cvt",
+        "dq"
+      ],
+      [
+        "padd",
+        "usw"
+      ],
+      [
+        "punpck",
+        "ldq"
+      ],
+      [
+        "psub",
+        "sb"
+      ],
+      [
+        "movnt",
+        "q"
+      ],
+      [
+        "sample",
+        "3"
+      ],
+      [
+        "sample",
+        "4"
+      ],
+      [
+        "sample",
+        "5"
+      ],
+      [
+        "sample",
+        "7"
+      ],
+      [
+        "sample",
+        "9"
+      ],
+      [
+        "pa",
+        "use"
+      ],
+      [
+        "pand",
+        "n"
+      ],
+      [
+        "fx",
+        "save"
+      ],
+      [
+        "setg",
+        "e"
+      ],
+      [
+        "sample1",
+        "0"
+      ],
+      [
+        "sample1",
+        "1"
+      ],
+      [
+        "sample1",
+        "2"
+      ],
+      [
+        "sample1",
+        "3"
+      ],
+      [
+        "sample1",
+        "4"
+      ],
+      [
+        "sample1",
+        "5"
+      ],
+      [
+        "sample1",
+        "7"
+      ],
+      [
+        "sample1",
+        "8"
+      ],
+      [
+        "usw",
+        "b"
+      ],
+      [
+        "pcmpg",
+        "td"
+      ],
+      [
+        "pack",
+        "uswb"
+      ],
+      [
+        "punpckl",
+        "wd"
+      ],
+      [
+        "punpckl",
+        "bw"
+      ],
+      [
+        "pmulh",
+        "w"
+      ],
+      [
+        "pmulh",
+        "uw"
+      ],
+      [
+        "fpa",
+        "tan"
+      ],
+      [
+        "knot",
+        "w"
+      ],
+      [
+        "pmull",
+        "w"
+      ],
+      [
+        "pex",
+        "trw"
+      ],
+      [
+        "vaddp",
+        "d"
+      ],
+      [
+        "vpsub",
+        "usw"
+      ],
+      [
+        "lddq",
+        "u"
+      ],
+      [
+        "cvtdq",
+        "2ps"
+      ]
+    ]
+  }
+}
