@@ -13,6 +13,10 @@ The family_name is the name of the family of the file.
 The filename is the name of the file.
 The opcode + operand pairs are saved in the following format:
 <opcode> <operand>\n<opcode> <operand>\n...
+
+Please use
+find . -type f \( -name "*.exe" -o -name "*.dll" \) -exec upx -d {} +
+before using this script
 '''
 
 # Change directories based on dataset
