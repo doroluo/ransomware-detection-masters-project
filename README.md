@@ -13,8 +13,8 @@ This repository evaluates the adversarial robustness of static Portable Executab
 ```
 
 ### Dataset
-[Download the Goodware Dataset](https://data.mendeley.com/datasets/p3v94dft2y/3)
-[Download the Ransomware PE Header Dataset](https://data.mendeley.com/datasets/p3v94dft2y/3)
+- [Download the Goodware Dataset](https://data.mendeley.com/datasets/p3v94dft2y/3)
+- [Download the Ransomware PE Header Dataset](https://data.mendeley.com/datasets/p3v94dft2y/3)
 
 
 ## Objectives
@@ -40,17 +40,12 @@ The extractor and sanitizer files are run along with the train_and_defend file.
 python3 train_and_defend.py
 ```
 
-## Model Comparison
+
+### Model Comparison
 | Metric / Dimension | Baseline LightGBM | Feature Pruning Defense | Adversarial Retraining |
-| --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- |
 | **Core Mechanism** | Standard gradient-boosted decision trees trained strictly on unperturbed clean data (`X_clean`). | Proactively strips all brittle byte/entropy/string features prior to training and testing. | Augments the training set with mild synthetic mimicry attacks (`X_adv_train`) before training. |
 | **Feature Space Used** | All 537 features (Byte/Entropy Histograms + PE Headers + String Stats). | Reduced 21 features (Structural Headers & Section Metrics only; `0:512` and string features removed). | All 537 features, but decision trees dynamically adjust split weights. |
-| **Clean Accuracy** | Precision: 96.97%<br>
-
-<br>Recall: 97.96% | Precision: 98.95%<br>
-
-<br>Recall: 95.92% | Precision: 97.00%<br>
-
-<br>Recall: 98.98% |
-| **Evasion Rate (α = 0.60)** | 46.94% (High Vulnerability) | 14.29% (Moderate Robustness) | 5.10% (High Robustness) |
+| **Clean Accuracy** | **Precision:** 96.97% <br> **Recall:** 97.96% | **Precision:** 98.95% <br> **Recall:** 95.92% | **Precision:** 97.00% <br> **Recall:** 98.98% |
+| **Evasion Rate (&alpha; = 0.60)** | 46.94% (High Vulnerability) | 14.29% (Moderate Robustness) | 5.10% (High Robustness) |
 | **Primary Trade-off** | Achieves high clean accuracy, but heavily over-indexes on easily manipulated byte distributions. | Dramatically improves robustness without complex data generation, but slightly lowers clean recall. | Achieves the highest overall resilience and recall, but requires generating realistic synthetic training attacks. |
