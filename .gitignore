@@ -4,3 +4,9 @@
 !asm_parser.py
 !stratified_split.py
 !model_train.py
+
+# CT_GAT transformer pipeline (code + docs only; not data/processed)
+!CT_GAT/
+!CT_GAT/README.md
+!CT_GAT/preprocessing/
+!CT_GAT/preprocessing/*.py
