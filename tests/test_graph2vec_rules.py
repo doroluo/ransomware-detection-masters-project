@@ -207,6 +207,451 @@ def test_wl_separates_different_shapes(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# tuned graph-construction options (block cap, cross-section targets, import
+# thunks as extern nodes, edge labels, windowed sampling)
+# ---------------------------------------------------------------------------
+def _thunk_asm(tmp_path) -> Path:
+    #  0x1000 push        |  0x1001 call [0x405128]  (import A)
+    #  0x1002 call [0x405128]  same import -> same extern node
+    #  0x1003 call [0x40512c]  a different import
+    #  0x1004 ret
+    return write_asm(tmp_path / "thunk.asm", [
+        "; section .text va=0x401000 size=32",
+        (0x1000, "push", "ebp"),
+        (0x1001, "call", "dword ptr [0x405128]"),
+        (0x1002, "call", "dword ptr [0x405128]"),
+        (0x1003, "call", "dword ptr [0x40512c]"),
+        (0x1004, "ret", ""),
+    ])
+
+
+def test_mem_operand_shapes():
+    assert C._mem_operand("dword ptr [0x405128]") == (0x405128, False)
+    assert C._mem_operand("qword ptr [rip + 0x1234]") == (0x1234, True)
+    assert C._mem_operand("qword ptr [rip - 0x10]") == (-0x10, True)
+    assert C._mem_operand("eax") == (-1, False)
+    assert C._mem_operand("dword ptr [eax + ecx*4]") == (-1, False)
+
+
+def test_rip_relative_thunk_resolves_against_next_instruction(tmp_path):
+    p = write_asm(tmp_path / "rip.asm", [
+        "; section .text va=0x401000 size=32",
+        (0x1000, "call", "qword ptr [rip + 0x20]"),
+        (0x1006, "ret", ""),
+    ])
+    a = C.parse_asm(p)
+    # the displacement is relative to the address after the call, i.e. 0x1006
+    assert a.mem_target == [0x1006 + 0x20, -1]
+
+
+def test_extern_nodes_share_one_node_per_import(tmp_path):
+    p = _thunk_asm(tmp_path)
+    off = C.cfg_from_file(p, extern_nodes=False)
+    on = C.cfg_from_file(p, extern_nodes=True)
+    assert off.stats["extern_nodes"] == 0
+    # two distinct import slots -> two extern nodes, three call sites
+    assert on.stats["extern_nodes"] == 2
+    # a call does not end a block here, but it does start one, so the three
+    # call sites sit in three different blocks: three edges into two nodes.
+    assert on.stats["extern_edges"] == 3
+    ext_targets = [v for (u, v), t in zip(on.edges, on.etypes)
+                   if t == C.E_EXTERN]
+    assert len(ext_targets) == 3 and len(set(ext_targets)) == 2
+    assert on.n_blocks == off.n_blocks
+    assert len(on.labels) == on.n_blocks + 2
+    assert on.labels[-1] == "EXTERN"
+    # and they turn unresolved branch targets into resolved ones
+    assert on.stats["unresolved_targets"] < off.stats["unresolved_targets"]
+
+
+def test_extern_nodes_need_calls_enabled(tmp_path):
+    g = C.cfg_from_file(_thunk_asm(tmp_path), extern_nodes=True,
+                        include_calls=False)
+    assert g.stats["extern_nodes"] == 0
+
+
+def test_cross_section_targets(tmp_path):
+    p = write_asm(tmp_path / "xs.asm", [
+        "; section .text va=0x401000 size=16",
+        (0x1000, "jmp", "0x2000"),
+        "; section .itext va=0x402000 size=16",
+        (0x2000, "ret", ""),
+    ])
+    off = C.cfg_from_file(p, cross_section=False)
+    on = C.cfg_from_file(p, cross_section=True)
+    assert off.edges == [] and off.stats["unresolved_targets"] == 1
+    assert on.edges == [(0, 1)] and on.stats["resolved_targets"] == 1
+    assert on.stats["xsec_targets"] == 1
+    assert on.etypes == [C.E_BRANCH_XSEC]
+
+
+def test_edge_kinds_are_labelled(tmp_path):
+    p = write_asm(tmp_path / "kinds.asm", [
+        "; section .text va=0x401000 size=32",
+        (0x1000, "cmp", "eax, ebx"),
+        (0x1001, "je", "0x1003"),
+        (0x1002, "call", "0x1004"),
+        (0x1003, "ret", ""),
+        (0x1004, "ret", ""),
+    ])
+    g = C.cfg_from_file(p)
+    kinds = set(g.etypes)
+    assert {C.E_BRANCH, C.E_FALL, C.E_CALL} <= kinds
+
+
+def test_node_attrs_align_with_labels(tmp_path):
+    g = C.cfg_from_file(_thunk_asm(tmp_path), extern_nodes=True)
+    for k in ("dom", "term", "szb", "flg", "blen", "seq"):
+        assert len(g.attrs[k]) == len(g.labels)
+    assert g.attrs["dom"][-1] == C.EXTERN_CLASS_ID
+
+
+def test_windowed_parse_covers_the_whole_file(tmp_path):
+    lines = ["; section .text va=0x401000 size=4096"]
+    lines += [(0x1000 + i, "nop", "") for i in range(4000)]
+    p = write_asm(tmp_path / "w.asm", lines)
+    head = C.parse_asm(p, max_insns=400, windows=1)
+    spread = C.parse_asm(p, max_insns=400, windows=4)
+    assert head.insns_read == 400 and spread.insns_read == 400
+    assert max(head.addr) < max(spread.addr)          # the head stops early
+    assert spread.n_windows == 4
+    # windows do not fall through into one another
+    assert sum(spread.gap_before) >= 3
+    assert len(set(spread.sec)) == 4
+
+
+# ---------------------------------------------------------------------------
+# vectorised WL (graph2vec_pipeline/wl.py)
+# ---------------------------------------------------------------------------
+def _batch_from(cfgs):
+    """A wl.Batch straight from CFG objects, without touching the disk cache."""
+    from graph2vec_pipeline import wl as W
+    n_nodes = 0
+    gid, dom, term, szb, flg, blen, seq, ext = [], [], [], [], [], [], [], []
+    src, dst, et = [], [], []
+    for gi, g in enumerate(cfgs):
+        off = n_nodes
+        for k, lst in (("dom", dom), ("term", term), ("szb", szb),
+                       ("flg", flg), ("blen", blen), ("seq", seq)):
+            lst.extend(g.attrs[k])
+        gid.extend([gi] * len(g.labels))
+        ext.extend([i >= g.n_blocks for i in range(len(g.labels))])
+        for (u, v), t in zip(g.edges, g.etypes):
+            src.append(off + u)
+            dst.append(off + v)
+            et.append(t)
+        n_nodes += len(g.labels)
+    a = np.asarray
+    s64, d64 = a(src, np.int64), a(dst, np.int64)
+    return W.Batch(
+        n_graphs=len(cfgs), n_nodes=n_nodes, gid=a(gid, np.int32),
+        dom=a(dom, np.uint8), term=a(term, np.uint8), szb=a(szb, np.uint8),
+        flg=a(flg, np.uint8), blen=a(blen, np.uint16), seq=a(seq, np.uint32),
+        is_extern=a(ext, bool), src=s64, dst=d64, etype=a(et, np.uint8),
+        outdeg=np.bincount(s64, minlength=n_nodes).astype(np.int32),
+        indeg=np.bincount(d64, minlength=n_nodes).astype(np.int32))
+
+
+def _graphset_from(cfgs):
+    """A `graph_cache.GraphSet` straight from CFG objects.
+
+    The cache is built once at the widest construction and every narrower one
+    is recovered by `wl.assemble` filtering it, so the filtering is what has to
+    be tested -- not just the parser options it is supposed to reproduce.
+    """
+    from graph2vec_pipeline.graph_cache import GraphSet
+    a = np.asarray
+    cols = {k: [] for k in ("dom", "term", "szb", "flg", "blen", "seq")}
+    esrc, edst, etype = [], [], []
+    node_ptr, edge_ptr, nblk = [0], [0], []
+    for g in cfgs:
+        for k, lst in cols.items():
+            lst.extend(g.attrs[k])
+        for (u, v), t in zip(g.edges, g.etypes):
+            esrc.append(u)
+            edst.append(v)
+            etype.append(t)
+        node_ptr.append(node_ptr[-1] + len(g.labels))
+        edge_ptr.append(edge_ptr[-1] + len(g.edges))
+        nblk.append(g.n_blocks)
+    shas = np.array([f"sha{i:02d}" for i in range(len(cfgs))], dtype="U64")
+    types = dict(dom=np.uint8, term=np.uint8, szb=np.uint8, flg=np.uint8,
+                 blen=np.uint16, seq=np.uint32)
+    return GraphSet(
+        shas=shas, index={str(s): i for i, s in enumerate(shas)},
+        node_ptr=a(node_ptr, np.int64), edge_ptr=a(edge_ptr, np.int64),
+        n_blocks=a(nblk, np.int64),
+        esrc=a(esrc, np.int32), edst=a(edst, np.int32),
+        etype=a(etype, np.uint8),
+        **{k: a(v, t) for (k, v), t in zip(cols.items(), types.values())})
+
+
+def _symmetric(tmp_path) -> Path:
+    """A hand-built graph whose WL histogram has known multiplicities.
+
+    Four blocks, and blocks 1 and 2 are identical in body *and* in context:
+
+        0  [cmp; je 0x1004]      ->  1, 2
+        1  [xor eax,eax; jmp]    ->  3
+        2  [xor eax,eax; jmp]    ->  3
+        3  [ret]
+
+    so WL must keep 1 and 2 in one class at every depth. That is what makes
+    the count vector non-trivial -- a graph with all-distinct labels would
+    match any implementation.
+    """
+    return write_asm(tmp_path / "sym.asm", [
+        "; section .text va=0x401000 size=64",
+        (0x1000, "cmp", "eax, ebx"),
+        (0x1001, "je", "0x1004"),
+        (0x1002, "xor", "eax, eax"),
+        (0x1003, "jmp", "0x1006"),
+        (0x1004, "xor", "eax, eax"),
+        (0x1005, "jmp", "0x1006"),
+        (0x1006, "ret", ""),
+    ])
+
+
+def test_symmetric_fixture_has_the_blocks_and_edges_claimed(tmp_path):
+    g = C.cfg_from_file(_symmetric(tmp_path))
+    assert g.n_blocks == 4
+    assert sorted(g.edges) == [(0, 1), (0, 2), (1, 3), (2, 3)]
+    assert g.labels == ["CMP.cond.2", "JMP.jmp.2", "JMP.jmp.2", "RET.stop.1"]
+
+
+def test_vectorised_wl_histogram_equals_cfg_wl_labels(tmp_path):
+    """The two WL implementations must agree as *documents*.
+
+    `cfg.wl_labels` hashes a sorted successor/predecessor tuple per node;
+    `wl.wl_layers` sums mixed neighbour hashes instead. The label integers
+    therefore differ, but the partition of nodes into WL classes -- and so the
+    multiset of counts, which is all the document is -- must not.
+    """
+    from graph2vec_pipeline import wl as W
+    g = C.cfg_from_file(_symmetric(tmp_path))
+    b = _batch_from([g])
+    for h in (0, 1, 2, 3):
+        ref = sorted(C.wl_labels(g, h).values())
+        _, cnt = np.unique(np.concatenate(W.wl_layers(b, h, "class", False)),
+                           return_counts=True)
+        assert sorted(cnt.tolist()) == ref, h
+    # and the symmetry is really there: the two identical blocks stay merged
+    assert sorted(C.wl_labels(g, 3).values()).count(2) == 4
+
+
+def test_vectorised_wl_histogram_matches_on_a_graph_with_extern_nodes(tmp_path):
+    from graph2vec_pipeline import wl as W
+    g = C.cfg_from_file(_thunk_asm(tmp_path), extern_nodes=True)
+    b = _batch_from([g])
+    for h in (0, 2):
+        ref = sorted(C.wl_labels(g, h).values())
+        _, cnt = np.unique(np.concatenate(W.wl_layers(b, h, "class", False)),
+                           return_counts=True)
+        assert sorted(cnt.tolist()) == ref, h
+
+
+# -- the construction options, as applied by wl.assemble to the cache -------
+def test_assemble_block_cap_is_a_prefix_of_the_cached_graph(tmp_path):
+    from graph2vec_pipeline import wl as W
+    lines = ["; section .text va=0x401000 size=4096"]
+    for i in range(40):
+        lines.append((0x1000 + 2 * i, "nop", ""))
+        lines.append((0x1001 + 2 * i, "ret", ""))
+    g = C.cfg_from_file(write_asm(tmp_path / "many.asm", lines), max_blocks=40)
+    gs = _graphset_from([g])
+    assert W.assemble(gs, [0]).n_nodes == 40
+    b = W.assemble(gs, [0], max_blocks=10)
+    assert b.n_nodes == 10
+    assert b.n_graphs == 1 and (b.gid == 0).all()
+
+
+def test_assemble_edge_filters_reproduce_the_construction_flags(tmp_path):
+    from graph2vec_pipeline import wl as W
+    # one .asm carrying every edge kind the search can switch off
+    p = write_asm(tmp_path / "all_kinds.asm", [
+        "; section .text va=0x401000 size=32",
+        (0x1000, "cmp", "eax, ebx"),
+        (0x1001, "je", "0x1004"),
+        (0x1002, "call", "0x1005"),
+        (0x1003, "call", "dword ptr [0x405128]"),
+        (0x1004, "jmp", "0x2000"),
+        (0x1005, "ret", ""),
+        "; section .itext va=0x402000 size=16",
+        (0x2000, "ret", ""),
+    ])
+    g = C.cfg_from_file(p, include_calls=True, cross_section=True,
+                        extern_nodes=True)
+    kinds = set(g.etypes)
+    assert {C.E_FALL, C.E_BRANCH, C.E_CALL, C.E_EXTERN,
+            C.E_BRANCH_XSEC} <= kinds
+    gs = _graphset_from([g])
+
+    def kept(keep):
+        return set(W.assemble(gs, [0], keep_edges=keep).etype.tolist())
+
+    assert kept(W.ALL_EDGES) == kinds
+    # calls off: no call and no extern edge survives
+    no_calls = (C.E_FALL, C.E_BRANCH, C.E_BRANCH_XSEC)
+    assert not ({C.E_CALL, C.E_CALL_XSEC, C.E_EXTERN} & kept(no_calls))
+    # cross-section off
+    same_sec = (C.E_FALL, C.E_BRANCH, C.E_CALL, C.E_EXTERN)
+    assert C.E_BRANCH_XSEC not in kept(same_sec)
+    # extern off drops the thunk nodes with their edges
+    on = W.assemble(gs, [0], keep_edges=W.ALL_EDGES)
+    off = W.assemble(gs, [0], keep_edges=tuple(
+        k for k in W.ALL_EDGES if k != C.E_EXTERN))
+    assert C.E_EXTERN not in set(off.etype.tolist())
+    assert off.is_extern.sum() == 0 and on.is_extern.sum() >= 1
+    assert off.n_nodes == on.n_nodes - int(on.is_extern.sum())
+
+
+def test_assemble_matches_a_directly_built_batch(tmp_path):
+    """Filtering the widest cache must give the same WL document as building
+    the narrow construction from source -- that equivalence is the whole
+    reason graph_cache stores one pass instead of one per option."""
+    from graph2vec_pipeline import wl as W
+    p = _thunk_asm(tmp_path)
+    wide = C.cfg_from_file(p, include_calls=True, extern_nodes=True)
+    narrow = C.cfg_from_file(p, include_calls=False, extern_nodes=False)
+    keep = (C.E_FALL, C.E_BRANCH, C.E_BRANCH_XSEC)
+    from_cache = W.assemble(_graphset_from([wide]), [0], keep_edges=keep)
+    direct = _batch_from([narrow])
+    assert from_cache.n_nodes == direct.n_nodes
+    for h in (0, 2):
+        a = np.unique(np.concatenate(W.wl_layers(from_cache, h, "class",
+                                                 False)), return_counts=True)
+        b = np.unique(np.concatenate(W.wl_layers(direct, h, "class", False)),
+                      return_counts=True)
+        assert a[0].tolist() == b[0].tolist()
+        assert a[1].tolist() == b[1].tolist()
+
+
+def test_node_labellings_are_ordered_by_granularity(tmp_path):
+    """Each labelling the search can choose has to actually change the depth-0
+    alphabet, and the coarser ones must not be finer than `class`."""
+    from graph2vec_pipeline import wl as W
+    b = _batch_from([C.cfg_from_file(_thunk_asm(tmp_path), extern_nodes=True),
+                     C.cfg_from_file(_diamond(tmp_path)),
+                     C.cfg_from_file(_symmetric(tmp_path))])
+    n = {lb: len(np.unique(W.base_labels(b, lb))) for lb in W.LABELLINGS}
+    assert set(n) == set(W.LABELLINGS)
+    assert n["class"] >= n["class_noflag"] >= n["dom_term"]
+    assert n["class"] >= n["lenbucket"]
+    with pytest.raises(ValueError):
+        W.base_labels(b, "not_a_labelling")
+
+
+def test_vectorised_wl_is_deterministic_across_processes(tmp_path):
+    p = _diamond(tmp_path)
+    code = textwrap.dedent(f"""
+        import sys, numpy as np
+        sys.path.insert(0, {str(REPO_ROOT)!r})
+        sys.path.insert(0, {str(REPO_ROOT / 'tests')!r})
+        from test_graph2vec_rules import _batch_from
+        from graph2vec_pipeline.cfg import cfg_from_file
+        from graph2vec_pipeline import wl as W
+        b = _batch_from([cfg_from_file({str(p)!r})])
+        L = W.wl_layers(b, 3, "class", True)
+        print([int(np.bitwise_xor.reduce(l) % (2**31)) for l in L])
+    """)
+    outs = [subprocess.run([sys.executable, "-c", code], capture_output=True,
+                           text=True, check=True).stdout.strip()
+            for _ in range(2)]
+    assert outs[0] == outs[1] and outs[0] != ""
+
+
+def test_vectorised_wl_depth_refines_and_separates_shapes(tmp_path):
+    from graph2vec_pipeline import wl as W
+    a = C.cfg_from_file(_diamond(tmp_path))
+    chain = write_asm(tmp_path / "chain2.asm", [
+        "; section .text va=0x401000 size=32",
+        (0x1000, "mov", "eax, 1"),
+        (0x1001, "jmp", "0x1002"),
+        (0x1002, "ret", ""),
+    ])
+    b = _batch_from([a, C.cfg_from_file(chain)])
+    L = W.wl_layers(b, 2, "class", False)
+    assert len(L) == 3
+    assert len(np.unique(L[1])) >= len(np.unique(L[0]))
+    M = W.wl_documents(b, 2, "class", False, np.array([True, True]), min_df=1)
+    assert M.shape[0] == 2
+    assert (M[0] != M[1]).nnz > 0        # the two graphs differ as documents
+
+
+def test_wl_edge_labels_change_the_document(tmp_path):
+    from graph2vec_pipeline import wl as W
+    b = _batch_from([C.cfg_from_file(_diamond(tmp_path))])
+    off = W.wl_layers(b, 2, "class", False)[2]
+    on = W.wl_layers(b, 2, "class", True)[2]
+    assert not np.array_equal(off, on)
+
+
+def test_layer_matrix_min_df_uses_train_rows_only():
+    from graph2vec_pipeline import wl as W
+    # graph 2 is the only one carrying label 0xAAAA and it is not in train
+    gid = np.array([0, 0, 1, 2, 2], dtype=np.int32)
+    lab = np.array([11, 22, 11, 11, 0xAAAA], dtype=np.uint64)
+    train = np.array([True, True, False])
+    M = W.layer_matrix(gid, lab, 3, train, min_df=2)
+    assert M.shape == (3, 1)          # only label 11 reaches df>=2 on train
+    assert M[2].sum() == 1.0
+
+
+# -- reconstructing a searched configuration from its recorded row ----------
+# final_eval.py scores the top-5 CV configurations post hoc, and those are
+# recorded in cv_search.csv only as rendered strings plus flat columns.
+def test_parse_model_key_round_trips_every_grid_shape():
+    from graph2vec_pipeline.tune import Model, parse_model_key
+    for m in (Model("LR", (("C", 1.0),)),
+              Model("LR", (("C", 0.1), ("class_weight", "balanced"))),
+              Model("LinearSVC", (("C", 0.01),)),
+              Model("SVM-RBF", (("C", 10.0), ("gamma", "scale"))),
+              Model("SVM-RBF", (("C", 100.0), ("gamma", 0.01),
+                                ("class_weight", "balanced"))),
+              Model("RF", (("n_estimators", 1000), ("max_depth", None),
+                           ("min_samples_leaf", 3))),
+              Model("MLP", (("hidden_layer_sizes", (256,)), ("alpha", 1e-4))),
+              # the comma inside the tuple is why the split tracks brackets
+              Model("MLP", (("hidden_layer_sizes", (256, 128)),
+                            ("alpha", 1e-2))),
+              Model("RF", (("n_estimators", 400),), True)):
+        assert parse_model_key(m.key()) == m, m.key()
+    with pytest.raises(ValueError):
+        parse_model_key("LR")
+
+
+def test_obj_from_row_round_trips_a_search_row():
+    from graph2vec_pipeline.tune import Construction, Model, Rep, obj_from_row
+    c = Construction(max_blocks=20_000, windows=4, calls=False,
+                     cross_section=False, extern=False)
+    r = Rep("wl_svd", "dom_term", h=1, edge_labels=False, norm="binary",
+            min_df=3, with_size=False, dim=100)
+    m = Model("MLP", (("hidden_layer_sizes", (256,)), ("alpha", 1e-4)))
+    row = {"construction": c.key(), "representation": r.key(),
+           "model": m.key(), "rep_kind": r.kind, "labelling": r.labelling,
+           "h": r.h, "edge_labels": "False", "norm": r.norm,
+           "min_df": r.min_df, "with_size": "False", "max_blocks": 20_000,
+           "windows": 4, "calls": "False", "cross_section": "False",
+           "extern": "False", "dim": 100}
+    assert obj_from_row(row) == (c, r, m)
+    # a row whose strings and columns disagree must not fit silently
+    with pytest.raises(ValueError):
+        obj_from_row({**row, "h": 3})
+
+
+def test_size_features_track_the_graph(tmp_path):
+    from graph2vec_pipeline import wl as W
+    b = _batch_from([C.cfg_from_file(_diamond(tmp_path)),
+                     C.cfg_from_file(_thunk_asm(tmp_path), extern_nodes=True)])
+    S = W.size_features(b)
+    assert S.shape == (2, len(W.SIZE_FEATURES))
+    i_nodes = W.SIZE_FEATURES.index("n_nodes")
+    i_ext = W.SIZE_FEATURES.index("n_extern")
+    assert S[0, i_nodes] == 4 and S[0, i_ext] == 0
+    assert S[1, i_ext] == 2
+
+
+# ---------------------------------------------------------------------------
 # embedding
 # ---------------------------------------------------------------------------
 def test_vocabulary_comes_from_train_only():

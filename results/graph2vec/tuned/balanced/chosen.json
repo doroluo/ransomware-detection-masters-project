@@ -1,0 +1,372 @@
+{
+  "dataset": "balanced",
+  "n_configurations": 103,
+  "selection": "pooled out-of-fold macro-F1, StratifiedGroupKFold(5) over family_or_group, TRAIN rows only",
+  "picks": [
+    {
+      "name": "baseline_h2_cap5000",
+      "cv_macro_f1": 0.6699428116004698,
+      "cv_balanced_acc": 0.6828724685733368,
+      "cv_auc": 0.9601481684675874,
+      "cv_macro_f1_at_oof_thr": 0.9278616603382193,
+      "construction": {
+        "max_blocks": 5000,
+        "windows": 1,
+        "calls": true,
+        "cross_section": false,
+        "extern": false,
+        "max_insns": 80000
+      },
+      "rep": {
+        "kind": "wl_tfidf",
+        "labelling": "class",
+        "h": 2,
+        "edge_labels": false,
+        "norm": "tfidf",
+        "min_df": 5,
+        "with_size": false,
+        "dim": 128,
+        "pv_epochs": 12,
+        "pv_min_count": 0
+      },
+      "model": {
+        "name": "LR",
+        "params": [
+          [
+            "C",
+            1.0
+          ]
+        ],
+        "arch_weight": false
+      }
+    },
+    {
+      "name": "tuned_best",
+      "cv_macro_f1": 0.9323433582454201,
+      "cv_balanced_acc": 0.9296239534384467,
+      "cv_auc": 0.9734881012014088,
+      "cv_macro_f1_at_oof_thr": 0.9336711509715994,
+      "construction": {
+        "max_blocks": 20000,
+        "windows": 4,
+        "calls": false,
+        "cross_section": false,
+        "extern": false,
+        "max_insns": 80000
+      },
+      "rep": {
+        "kind": "wl_tfidf",
+        "labelling": "dom_term",
+        "h": 1,
+        "edge_labels": false,
+        "norm": "binary",
+        "min_df": 3,
+        "with_size": false,
+        "dim": 128,
+        "pv_epochs": 12,
+        "pv_min_count": 0
+      },
+      "model": {
+        "name": "LR",
+        "params": [
+          [
+            "C",
+            0.1
+          ]
+        ],
+        "arch_weight": false
+      }
+    },
+    {
+      "name": "tuned_best_wl_svd",
+      "cv_macro_f1": 0.9311398109452537,
+      "cv_balanced_acc": 0.9275830093266226,
+      "cv_auc": 0.9785092113318862,
+      "cv_macro_f1_at_oof_thr": 0.9388827955643246,
+      "construction": {
+        "max_blocks": 20000,
+        "windows": 4,
+        "calls": false,
+        "cross_section": false,
+        "extern": false,
+        "max_insns": 80000
+      },
+      "rep": {
+        "kind": "wl_svd",
+        "labelling": "dom_term",
+        "h": 1,
+        "edge_labels": false,
+        "norm": "binary",
+        "min_df": 3,
+        "with_size": false,
+        "dim": 100,
+        "pv_epochs": 12,
+        "pv_min_count": 0
+      },
+      "model": {
+        "name": "MLP",
+        "params": [
+          [
+            "hidden_layer_sizes",
+            [
+              256
+            ]
+          ],
+          [
+            "alpha",
+            0.0001
+          ]
+        ],
+        "arch_weight": false
+      }
+    },
+    {
+      "name": "tuned_best_graph2vec",
+      "cv_macro_f1": 0.8432205905926493,
+      "cv_balanced_acc": 0.8382639998727826,
+      "cv_auc": 0.9353069913889749,
+      "cv_macro_f1_at_oof_thr": 0.8916794959006122,
+      "construction": {
+        "max_blocks": 20000,
+        "windows": 4,
+        "calls": false,
+        "cross_section": false,
+        "extern": false,
+        "max_insns": 80000
+      },
+      "rep": {
+        "kind": "graph2vec",
+        "labelling": "dom_term",
+        "h": 1,
+        "edge_labels": false,
+        "norm": "binary",
+        "min_df": 3,
+        "with_size": false,
+        "dim": 64,
+        "pv_epochs": 12,
+        "pv_min_count": 0
+      },
+      "model": {
+        "name": "MLP",
+        "params": [
+          [
+            "hidden_layer_sizes",
+            [
+              256
+            ]
+          ]
+        ],
+        "arch_weight": false
+      }
+    },
+    {
+      "name": "size_only_control",
+      "cv_macro_f1": 0.7734916757910104,
+      "cv_balanced_acc": 0.7717382661864212,
+      "cv_auc": 0.7956014598191924,
+      "cv_macro_f1_at_oof_thr": 0.7840963048555893,
+      "construction": {
+        "max_blocks": 5000,
+        "windows": 1,
+        "calls": true,
+        "cross_section": false,
+        "extern": false,
+        "max_insns": 80000
+      },
+      "rep": {
+        "kind": "size_only",
+        "labelling": "class",
+        "h": 2,
+        "edge_labels": false,
+        "norm": "tfidf",
+        "min_df": 5,
+        "with_size": false,
+        "dim": 128,
+        "pv_epochs": 12,
+        "pv_min_count": 0
+      },
+      "model": {
+        "name": "LR",
+        "params": [
+          [
+            "C",
+            1.0
+          ]
+        ],
+        "arch_weight": false
+      }
+    }
+  ],
+  "top5": [
+    {
+      "dataset": "balanced",
+      "construction": "b20000/w4/calls0/xs0/ext0",
+      "representation": "wl_tfidf/dom_term/h1/el0/binary/df3/size0",
+      "model": "LR(C=0.1)",
+      "rep_kind": "wl_tfidf",
+      "model_name": "LR",
+      "labelling": "dom_term",
+      "h": 1,
+      "edge_labels": false,
+      "norm": "binary",
+      "min_df": 3,
+      "with_size": false,
+      "max_blocks": 20000,
+      "windows": 4,
+      "calls": false,
+      "cross_section": false,
+      "extern": false,
+      "arch_weight": false,
+      "dim": 128,
+      "n_features": 120143,
+      "n_train": 2017,
+      "cv_macro_f1": 0.9323433582454201,
+      "cv_macro_f1_foldmean": 0.9322966924585003,
+      "cv_macro_f1_foldstd": 0.025857995789901944,
+      "cv_balanced_acc": 0.9296239534384467,
+      "cv_auc": 0.9734881012014088,
+      "cv_macro_f1_at_oof_thr": 0.9336711509715994,
+      "cv_balanced_acc_at_oof_thr": 0.9325996469718294,
+      "oof_threshold_f1": 0.2713401957308974,
+      "oof_threshold_ba": 0.2713401957308974,
+      "seconds": 20.5,
+      "stage": "5_clf_sparse"
+    },
+    {
+      "dataset": "balanced",
+      "construction": "b20000/w4/calls0/xs0/ext0",
+      "representation": "wl_tfidf/dom_term/h1/el0/binary/df3/size0",
+      "model": "LR(C=0.1,class_weight=balanced)",
+      "rep_kind": "wl_tfidf",
+      "model_name": "LR",
+      "labelling": "dom_term",
+      "h": 1,
+      "edge_labels": false,
+      "norm": "binary",
+      "min_df": 3,
+      "with_size": false,
+      "max_blocks": 20000,
+      "windows": 4,
+      "calls": false,
+      "cross_section": false,
+      "extern": false,
+      "arch_weight": false,
+      "dim": 128,
+      "n_features": 120143,
+      "n_train": 2017,
+      "cv_macro_f1": 0.9313521164545507,
+      "cv_macro_f1_foldmean": 0.9313039663252706,
+      "cv_macro_f1_foldstd": 0.026233646452156693,
+      "cv_balanced_acc": 0.9287254808418608,
+      "cv_auc": 0.973700792723167,
+      "cv_macro_f1_at_oof_thr": 0.9331608834410978,
+      "cv_balanced_acc_at_oof_thr": 0.9320465496266965,
+      "oof_threshold_f1": 0.2920452002777913,
+      "oof_threshold_ba": 0.2920452002777913,
+      "seconds": 19.5,
+      "stage": "5_clf_sparse"
+    },
+    {
+      "dataset": "balanced",
+      "construction": "b20000/w4/calls0/xs0/ext0",
+      "representation": "wl_svd/dom_term/h1/el0/binary/df3/size0/d100",
+      "model": "MLP(hidden_layer_sizes=(256,),alpha=0.0001)",
+      "rep_kind": "wl_svd",
+      "model_name": "MLP",
+      "labelling": "dom_term",
+      "h": 1,
+      "edge_labels": false,
+      "norm": "binary",
+      "min_df": 3,
+      "with_size": false,
+      "max_blocks": 20000,
+      "windows": 4,
+      "calls": false,
+      "cross_section": false,
+      "extern": false,
+      "arch_weight": false,
+      "dim": 100,
+      "n_features": 100,
+      "n_train": 2017,
+      "cv_macro_f1": 0.9311398109452537,
+      "cv_macro_f1_foldmean": 0.9308315337706891,
+      "cv_macro_f1_foldstd": 0.02614251312131476,
+      "cv_balanced_acc": 0.9275830093266226,
+      "cv_auc": 0.9785092113318862,
+      "cv_macro_f1_at_oof_thr": 0.9388827955643246,
+      "cv_balanced_acc_at_oof_thr": 0.939101646669688,
+      "oof_threshold_f1": 0.33416168093681353,
+      "oof_threshold_ba": 0.31258229970932044,
+      "seconds": 3.7,
+      "stage": "5_clf_dense"
+    },
+    {
+      "dataset": "balanced",
+      "construction": "b20000/w4/calls0/xs0/ext0",
+      "representation": "wl_svd/dom_term/h1/el0/binary/df3/size0/d100",
+      "model": "MLP(hidden_layer_sizes=(256,),alpha=0.01)",
+      "rep_kind": "wl_svd",
+      "model_name": "MLP",
+      "labelling": "dom_term",
+      "h": 1,
+      "edge_labels": false,
+      "norm": "binary",
+      "min_df": 3,
+      "with_size": false,
+      "max_blocks": 20000,
+      "windows": 4,
+      "calls": false,
+      "cross_section": false,
+      "extern": false,
+      "arch_weight": false,
+      "dim": 100,
+      "n_features": 100,
+      "n_train": 2017,
+      "cv_macro_f1": 0.9311398109452537,
+      "cv_macro_f1_foldmean": 0.9308315337706891,
+      "cv_macro_f1_foldstd": 0.02614251312131476,
+      "cv_balanced_acc": 0.9275830093266226,
+      "cv_auc": 0.978484364191494,
+      "cv_macro_f1_at_oof_thr": 0.9388827955643246,
+      "cv_balanced_acc_at_oof_thr": 0.939101646669688,
+      "oof_threshold_f1": 0.33465746045112627,
+      "oof_threshold_ba": 0.3125741314888004,
+      "seconds": 3.3,
+      "stage": "5_clf_dense"
+    },
+    {
+      "dataset": "balanced",
+      "construction": "b20000/w4/calls0/xs0/ext0",
+      "representation": "wl_tfidf/dom_term/h1/el0/binary/df3/size0",
+      "model": "LR(C=1.0)",
+      "rep_kind": "wl_tfidf",
+      "model_name": "LR",
+      "labelling": "dom_term",
+      "h": 1,
+      "edge_labels": false,
+      "norm": "binary",
+      "min_df": 3,
+      "with_size": false,
+      "max_blocks": 20000,
+      "windows": 4,
+      "calls": false,
+      "cross_section": false,
+      "extern": false,
+      "arch_weight": false,
+      "dim": 128,
+      "n_features": 120143,
+      "n_train": 2017,
+      "cv_macro_f1": 0.9302273465606238,
+      "cv_macro_f1_foldmean": 0.930229967806645,
+      "cv_macro_f1_foldstd": 0.022552012466403905,
+      "cv_balanced_acc": 0.9270999809173962,
+      "cv_auc": 0.9743706716281438,
+      "cv_macro_f1_at_oof_thr": 0.9319730695348927,
+      "cv_balanced_acc_at_oof_thr": 0.9299017444680326,
+      "oof_threshold_f1": 0.3193850322921017,
+      "oof_threshold_ba": 0.3193850322921017,
+      "seconds": 35.5,
+      "stage": "3_norm"
+    }
+  ]
+}

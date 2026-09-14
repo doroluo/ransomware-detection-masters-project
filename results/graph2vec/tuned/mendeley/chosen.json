@@ -1,0 +1,376 @@
+{
+  "dataset": "mendeley",
+  "n_configurations": 103,
+  "selection": "pooled out-of-fold macro-F1, StratifiedGroupKFold(5) over family_or_group, TRAIN rows only",
+  "picks": [
+    {
+      "name": "baseline_h2_cap5000",
+      "cv_macro_f1": 0.9199954344575729,
+      "cv_balanced_acc": 0.9148319457905022,
+      "cv_auc": 0.9872171954687723,
+      "cv_macro_f1_at_oof_thr": 0.9689529833087173,
+      "construction": {
+        "max_blocks": 5000,
+        "windows": 1,
+        "calls": true,
+        "cross_section": false,
+        "extern": false,
+        "max_insns": 80000
+      },
+      "rep": {
+        "kind": "wl_tfidf",
+        "labelling": "class",
+        "h": 2,
+        "edge_labels": false,
+        "norm": "tfidf",
+        "min_df": 5,
+        "with_size": false,
+        "dim": 128,
+        "pv_epochs": 12,
+        "pv_min_count": 0
+      },
+      "model": {
+        "name": "LR",
+        "params": [
+          [
+            "C",
+            1.0
+          ]
+        ],
+        "arch_weight": false
+      }
+    },
+    {
+      "name": "tuned_best",
+      "cv_macro_f1": 0.9784137996056104,
+      "cv_balanced_acc": 0.9774679858915492,
+      "cv_auc": 0.9969852719213231,
+      "cv_macro_f1_at_oof_thr": 0.9824926213946958,
+      "construction": {
+        "max_blocks": 5000,
+        "windows": 1,
+        "calls": true,
+        "cross_section": false,
+        "extern": true,
+        "max_insns": 80000
+      },
+      "rep": {
+        "kind": "wl_svd",
+        "labelling": "lenbucket",
+        "h": 4,
+        "edge_labels": false,
+        "norm": "tfidf",
+        "min_df": 3,
+        "with_size": false,
+        "dim": 300,
+        "pv_epochs": 12,
+        "pv_min_count": 0
+      },
+      "model": {
+        "name": "RF",
+        "params": [
+          [
+            "n_estimators",
+            1000
+          ],
+          [
+            "max_depth",
+            null
+          ],
+          [
+            "min_samples_leaf",
+            3
+          ]
+        ],
+        "arch_weight": false
+      }
+    },
+    {
+      "name": "tuned_best_sparse_histogram",
+      "cv_macro_f1": 0.9738684357319308,
+      "cv_balanced_acc": 0.9724901097853546,
+      "cv_auc": 0.9926339746746953,
+      "cv_macro_f1_at_oof_thr": 0.9779666333158639,
+      "construction": {
+        "max_blocks": 5000,
+        "windows": 1,
+        "calls": true,
+        "cross_section": false,
+        "extern": true,
+        "max_insns": 80000
+      },
+      "rep": {
+        "kind": "wl_tfidf",
+        "labelling": "lenbucket",
+        "h": 4,
+        "edge_labels": false,
+        "norm": "tfidf",
+        "min_df": 3,
+        "with_size": false,
+        "dim": 128,
+        "pv_epochs": 12,
+        "pv_min_count": 0
+      },
+      "model": {
+        "name": "LR",
+        "params": [
+          [
+            "C",
+            10.0
+          ],
+          [
+            "class_weight",
+            "balanced"
+          ]
+        ],
+        "arch_weight": false
+      }
+    },
+    {
+      "name": "tuned_best_graph2vec",
+      "cv_macro_f1": 0.9566641796038878,
+      "cv_balanced_acc": 0.9543103859169699,
+      "cv_auc": 0.9805532165043453,
+      "cv_macro_f1_at_oof_thr": 0.959355983627815,
+      "construction": {
+        "max_blocks": 5000,
+        "windows": 1,
+        "calls": true,
+        "cross_section": false,
+        "extern": true,
+        "max_insns": 80000
+      },
+      "rep": {
+        "kind": "graph2vec",
+        "labelling": "lenbucket",
+        "h": 4,
+        "edge_labels": false,
+        "norm": "tfidf",
+        "min_df": 3,
+        "with_size": false,
+        "dim": 256,
+        "pv_epochs": 12,
+        "pv_min_count": 0
+      },
+      "model": {
+        "name": "RF",
+        "params": [
+          [
+            "n_estimators",
+            400
+          ]
+        ],
+        "arch_weight": false
+      }
+    },
+    {
+      "name": "size_only_control",
+      "cv_macro_f1": 0.8099097640382045,
+      "cv_balanced_acc": 0.8057804134030282,
+      "cv_auc": 0.8277305333566355,
+      "cv_macro_f1_at_oof_thr": 0.8142336960968825,
+      "construction": {
+        "max_blocks": 5000,
+        "windows": 1,
+        "calls": true,
+        "cross_section": false,
+        "extern": true,
+        "max_insns": 80000
+      },
+      "rep": {
+        "kind": "size_only",
+        "labelling": "lenbucket",
+        "h": 4,
+        "edge_labels": false,
+        "norm": "tfidf",
+        "min_df": 3,
+        "with_size": false,
+        "dim": 128,
+        "pv_epochs": 12,
+        "pv_min_count": 0
+      },
+      "model": {
+        "name": "LR",
+        "params": [
+          [
+            "C",
+            1.0
+          ]
+        ],
+        "arch_weight": false
+      }
+    }
+  ],
+  "top5": [
+    {
+      "dataset": "mendeley",
+      "construction": "b5000/w1/calls1/xs0/ext1",
+      "representation": "wl_svd/lenbucket/h4/el0/tfidf/df3/size0/d300",
+      "model": "RF(n_estimators=1000,max_depth=None,min_samples_leaf=3)",
+      "rep_kind": "wl_svd",
+      "model_name": "RF",
+      "labelling": "lenbucket",
+      "h": 4,
+      "edge_labels": false,
+      "norm": "tfidf",
+      "min_df": 3,
+      "with_size": false,
+      "max_blocks": 5000,
+      "windows": 1,
+      "calls": true,
+      "cross_section": false,
+      "extern": true,
+      "arch_weight": false,
+      "dim": 300,
+      "n_features": 300,
+      "n_train": 2018,
+      "cv_macro_f1": 0.9784137996056104,
+      "cv_macro_f1_foldmean": 0.978411967407577,
+      "cv_macro_f1_foldstd": 0.016297324013794422,
+      "cv_balanced_acc": 0.9774679858915492,
+      "cv_auc": 0.9969852719213231,
+      "cv_macro_f1_at_oof_thr": 0.9824926213946958,
+      "cv_balanced_acc_at_oof_thr": 0.9832482006958898,
+      "oof_threshold_f1": 0.3534602434472829,
+      "oof_threshold_ba": 0.3534602434472829,
+      "seconds": 11.4,
+      "stage": "5_clf_dense"
+    },
+    {
+      "dataset": "mendeley",
+      "construction": "b5000/w1/calls1/xs0/ext1",
+      "representation": "wl_svd/lenbucket/h4/el0/tfidf/df3/size0/d300",
+      "model": "RF(n_estimators=1000,max_depth=20,min_samples_leaf=3)",
+      "rep_kind": "wl_svd",
+      "model_name": "RF",
+      "labelling": "lenbucket",
+      "h": 4,
+      "edge_labels": false,
+      "norm": "tfidf",
+      "min_df": 3,
+      "with_size": false,
+      "max_blocks": 5000,
+      "windows": 1,
+      "calls": true,
+      "cross_section": false,
+      "extern": true,
+      "arch_weight": false,
+      "dim": 300,
+      "n_features": 300,
+      "n_train": 2018,
+      "cv_macro_f1": 0.9784137996056104,
+      "cv_macro_f1_foldmean": 0.978411967407577,
+      "cv_macro_f1_foldstd": 0.016297324013794422,
+      "cv_balanced_acc": 0.9774679858915492,
+      "cv_auc": 0.9969852719213231,
+      "cv_macro_f1_at_oof_thr": 0.9824926213946958,
+      "cv_balanced_acc_at_oof_thr": 0.9832482006958898,
+      "oof_threshold_f1": 0.3534602434472829,
+      "oof_threshold_ba": 0.3534602434472829,
+      "seconds": 10.9,
+      "stage": "5_clf_dense"
+    },
+    {
+      "dataset": "mendeley",
+      "construction": "b5000/w1/calls1/xs0/ext1",
+      "representation": "wl_svd/lenbucket/h4/el0/tfidf/df3/size0/d300",
+      "model": "RF(n_estimators=300,max_depth=None,min_samples_leaf=3)",
+      "rep_kind": "wl_svd",
+      "model_name": "RF",
+      "labelling": "lenbucket",
+      "h": 4,
+      "edge_labels": false,
+      "norm": "tfidf",
+      "min_df": 3,
+      "with_size": false,
+      "max_blocks": 5000,
+      "windows": 1,
+      "calls": true,
+      "cross_section": false,
+      "extern": true,
+      "arch_weight": false,
+      "dim": 300,
+      "n_features": 300,
+      "n_train": 2018,
+      "cv_macro_f1": 0.9779092725723885,
+      "cv_macro_f1_foldmean": 0.9779174546978668,
+      "cv_macro_f1_foldstd": 0.014475639397605848,
+      "cv_balanced_acc": 0.9769148885464165,
+      "cv_auc": 0.9969733560000635,
+      "cv_macro_f1_at_oof_thr": 0.9809750545065532,
+      "cv_balanced_acc_at_oof_thr": 0.9812761157274272,
+      "oof_threshold_f1": 0.38767968138647957,
+      "oof_threshold_ba": 0.38767968138647957,
+      "seconds": 2.7,
+      "stage": "5_clf_dense"
+    },
+    {
+      "dataset": "mendeley",
+      "construction": "b5000/w1/calls1/xs0/ext1",
+      "representation": "wl_svd/lenbucket/h4/el0/tfidf/df3/size0/d300",
+      "model": "RF(n_estimators=300,max_depth=20,min_samples_leaf=3)",
+      "rep_kind": "wl_svd",
+      "model_name": "RF",
+      "labelling": "lenbucket",
+      "h": 4,
+      "edge_labels": false,
+      "norm": "tfidf",
+      "min_df": 3,
+      "with_size": false,
+      "max_blocks": 5000,
+      "windows": 1,
+      "calls": true,
+      "cross_section": false,
+      "extern": true,
+      "arch_weight": false,
+      "dim": 300,
+      "n_features": 300,
+      "n_train": 2018,
+      "cv_macro_f1": 0.9779092725723885,
+      "cv_macro_f1_foldmean": 0.9779174546978668,
+      "cv_macro_f1_foldstd": 0.014475639397605848,
+      "cv_balanced_acc": 0.9769148885464165,
+      "cv_auc": 0.9969733560000635,
+      "cv_macro_f1_at_oof_thr": 0.9809750545065532,
+      "cv_balanced_acc_at_oof_thr": 0.9812761157274272,
+      "oof_threshold_f1": 0.38767968138647957,
+      "oof_threshold_ba": 0.38767968138647957,
+      "seconds": 3.7,
+      "stage": "5_clf_dense"
+    },
+    {
+      "dataset": "mendeley",
+      "construction": "b5000/w1/calls1/xs0/ext1",
+      "representation": "wl_svd/lenbucket/h4/el0/tfidf/df3/size0/d300",
+      "model": "RF(n_estimators=1000,max_depth=None,min_samples_leaf=1)",
+      "rep_kind": "wl_svd",
+      "model_name": "RF",
+      "labelling": "lenbucket",
+      "h": 4,
+      "edge_labels": false,
+      "norm": "tfidf",
+      "min_df": 3,
+      "with_size": false,
+      "max_blocks": 5000,
+      "windows": 1,
+      "calls": true,
+      "cross_section": false,
+      "extern": true,
+      "arch_weight": false,
+      "dim": 300,
+      "n_features": 300,
+      "n_train": 2018,
+      "cv_macro_f1": 0.9779092725723885,
+      "cv_macro_f1_foldmean": 0.9779047853759415,
+      "cv_macro_f1_foldstd": 0.016048369574162336,
+      "cv_balanced_acc": 0.9769148885464165,
+      "cv_auc": 0.9968656162120081,
+      "cv_macro_f1_at_oof_thr": 0.9819906651316788,
+      "cv_balanced_acc_at_oof_thr": 0.982695103350757,
+      "oof_threshold_f1": 0.3400600000000004,
+      "oof_threshold_ba": 0.3400600000000004,
+      "seconds": 11.6,
+      "stage": "5_clf_dense"
+    }
+  ]
+}

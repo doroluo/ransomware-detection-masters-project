@@ -1,0 +1,183 @@
+dataset: balanced
+selection: "pooled out-of-fold macro-F1, StratifiedGroupKFold(5) over family_or_group, TRAIN rows only"
+n_configurations_searched: 103
+cv_folds: 5
+seed: 42
+graph_cache: "graph2vec_pipeline/graph_cache.py --max-blocks 20000 --windows {1,4}"
+reproduce:
+  - "python graph2vec_pipeline/graph_cache.py --max-blocks 20000"
+  - "python graph2vec_pipeline/graph_cache.py --max-blocks 20000 --windows 4"
+  - "python graph2vec_pipeline/tune.py --dataset balanced"
+  - "python graph2vec_pipeline/final_eval.py --dataset balanced"
+  - "python graph2vec_pipeline/final_eval.py --repro-check --dataset balanced"
+configurations:
+  -
+    name: baseline_h2_cap5000
+    cv_macro_f1: 0.669943
+    cv_balanced_acc: 0.682872
+    cv_auc: 0.960148
+    cv_macro_f1_at_oof_thr: 0.927862
+    construction:
+      max_blocks: 5000
+      windows: 1
+      calls: true
+      cross_section: false
+      extern: false
+      max_insns: 80000
+    rep:
+      kind: wl_tfidf
+      labelling: class
+      h: 2
+      edge_labels: false
+      norm: tfidf
+      min_df: 5
+      with_size: false
+      dim: 128
+      pv_epochs: 12
+      pv_min_count: 0
+    model:
+      name: LR
+      params:
+        -
+          - C
+          - 1
+      arch_weight: false
+    threshold: 0.35757
+    n_features: 344244
+  -
+    name: tuned_best
+    cv_macro_f1: 0.932343
+    cv_balanced_acc: 0.929624
+    cv_auc: 0.973488
+    cv_macro_f1_at_oof_thr: 0.933671
+    construction:
+      max_blocks: 20000
+      windows: 4
+      calls: false
+      cross_section: false
+      extern: false
+      max_insns: 80000
+    rep:
+      kind: wl_tfidf
+      labelling: dom_term
+      h: 1
+      edge_labels: false
+      norm: binary
+      min_df: 3
+      with_size: false
+      dim: 128
+      pv_epochs: 12
+      pv_min_count: 0
+    model:
+      name: LR
+      params:
+        -
+          - C
+          - 0.1
+      arch_weight: false
+    threshold: 0.27134
+    n_features: 120143
+  -
+    name: tuned_best_wl_svd
+    cv_macro_f1: 0.93114
+    cv_balanced_acc: 0.927583
+    cv_auc: 0.978509
+    cv_macro_f1_at_oof_thr: 0.938883
+    construction:
+      max_blocks: 20000
+      windows: 4
+      calls: false
+      cross_section: false
+      extern: false
+      max_insns: 80000
+    rep:
+      kind: wl_svd
+      labelling: dom_term
+      h: 1
+      edge_labels: false
+      norm: binary
+      min_df: 3
+      with_size: false
+      dim: 100
+      pv_epochs: 12
+      pv_min_count: 0
+    model:
+      name: MLP
+      params:
+        -
+          - hidden_layer_sizes
+          -
+            - 256
+        -
+          - alpha
+          - 0.0001
+      arch_weight: false
+    threshold: 0.334162
+    n_features: 100
+  -
+    name: tuned_best_graph2vec
+    cv_macro_f1: 0.843221
+    cv_balanced_acc: 0.838264
+    cv_auc: 0.935307
+    cv_macro_f1_at_oof_thr: 0.891679
+    construction:
+      max_blocks: 20000
+      windows: 4
+      calls: false
+      cross_section: false
+      extern: false
+      max_insns: 80000
+    rep:
+      kind: graph2vec
+      labelling: dom_term
+      h: 1
+      edge_labels: false
+      norm: binary
+      min_df: 3
+      with_size: false
+      dim: 64
+      pv_epochs: 12
+      pv_min_count: 0
+    model:
+      name: MLP
+      params:
+        -
+          - hidden_layer_sizes
+          -
+            - 256
+      arch_weight: false
+    threshold: 0.3111
+    n_features: 64
+  -
+    name: size_only_control
+    cv_macro_f1: 0.773492
+    cv_balanced_acc: 0.771738
+    cv_auc: 0.795601
+    cv_macro_f1_at_oof_thr: 0.784096
+    construction:
+      max_blocks: 5000
+      windows: 1
+      calls: true
+      cross_section: false
+      extern: false
+      max_insns: 80000
+    rep:
+      kind: size_only
+      labelling: class
+      h: 2
+      edge_labels: false
+      norm: tfidf
+      min_df: 5
+      with_size: false
+      dim: 128
+      pv_epochs: 12
+      pv_min_count: 0
+    model:
+      name: LR
+      params:
+        -
+          - C
+          - 1
+      arch_weight: false
+    threshold: 0.476513
+    n_features: 22

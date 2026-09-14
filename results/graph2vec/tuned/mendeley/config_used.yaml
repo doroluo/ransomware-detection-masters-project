@@ -1,0 +1,187 @@
+dataset: mendeley
+selection: "pooled out-of-fold macro-F1, StratifiedGroupKFold(5) over family_or_group, TRAIN rows only"
+n_configurations_searched: 103
+cv_folds: 5
+seed: 42
+graph_cache: "graph2vec_pipeline/graph_cache.py --max-blocks 20000 --windows {1,4}"
+reproduce:
+  - "python graph2vec_pipeline/graph_cache.py --max-blocks 20000"
+  - "python graph2vec_pipeline/graph_cache.py --max-blocks 20000 --windows 4"
+  - "python graph2vec_pipeline/tune.py --dataset mendeley"
+  - "python graph2vec_pipeline/final_eval.py --dataset mendeley"
+  - "python graph2vec_pipeline/final_eval.py --repro-check --dataset mendeley"
+configurations:
+  -
+    name: baseline_h2_cap5000
+    cv_macro_f1: 0.919995
+    cv_balanced_acc: 0.914832
+    cv_auc: 0.987217
+    cv_macro_f1_at_oof_thr: 0.968953
+    construction:
+      max_blocks: 5000
+      windows: 1
+      calls: true
+      cross_section: false
+      extern: false
+      max_insns: 80000
+    rep:
+      kind: wl_tfidf
+      labelling: class
+      h: 2
+      edge_labels: false
+      norm: tfidf
+      min_df: 5
+      with_size: false
+      dim: 128
+      pv_epochs: 12
+      pv_min_count: 0
+    model:
+      name: LR
+      params:
+        -
+          - C
+          - 1
+      arch_weight: false
+    threshold: 0.376842
+    n_features: 323403
+  -
+    name: tuned_best
+    cv_macro_f1: 0.978414
+    cv_balanced_acc: 0.977468
+    cv_auc: 0.996985
+    cv_macro_f1_at_oof_thr: 0.982493
+    construction:
+      max_blocks: 5000
+      windows: 1
+      calls: true
+      cross_section: false
+      extern: true
+      max_insns: 80000
+    rep:
+      kind: wl_svd
+      labelling: lenbucket
+      h: 4
+      edge_labels: false
+      norm: tfidf
+      min_df: 3
+      with_size: false
+      dim: 300
+      pv_epochs: 12
+      pv_min_count: 0
+    model:
+      name: RF
+      params:
+        -
+          - n_estimators
+          - 1000
+        -
+          - max_depth
+          - null
+        -
+          - min_samples_leaf
+          - 3
+      arch_weight: false
+    threshold: 0.35346
+    n_features: 300
+  -
+    name: tuned_best_sparse_histogram
+    cv_macro_f1: 0.973868
+    cv_balanced_acc: 0.97249
+    cv_auc: 0.992634
+    cv_macro_f1_at_oof_thr: 0.977967
+    construction:
+      max_blocks: 5000
+      windows: 1
+      calls: true
+      cross_section: false
+      extern: true
+      max_insns: 80000
+    rep:
+      kind: wl_tfidf
+      labelling: lenbucket
+      h: 4
+      edge_labels: false
+      norm: tfidf
+      min_df: 3
+      with_size: false
+      dim: 128
+      pv_epochs: 12
+      pv_min_count: 0
+    model:
+      name: LR
+      params:
+        -
+          - C
+          - 10
+        -
+          - class_weight
+          - balanced
+      arch_weight: false
+    threshold: 0.309552
+    n_features: 1052566
+  -
+    name: tuned_best_graph2vec
+    cv_macro_f1: 0.956664
+    cv_balanced_acc: 0.95431
+    cv_auc: 0.980553
+    cv_macro_f1_at_oof_thr: 0.959356
+    construction:
+      max_blocks: 5000
+      windows: 1
+      calls: true
+      cross_section: false
+      extern: true
+      max_insns: 80000
+    rep:
+      kind: graph2vec
+      labelling: lenbucket
+      h: 4
+      edge_labels: false
+      norm: tfidf
+      min_df: 3
+      with_size: false
+      dim: 256
+      pv_epochs: 12
+      pv_min_count: 0
+    model:
+      name: RF
+      params:
+        -
+          - n_estimators
+          - 400
+      arch_weight: false
+    threshold: 0.386513
+    n_features: 256
+  -
+    name: size_only_control
+    cv_macro_f1: 0.80991
+    cv_balanced_acc: 0.80578
+    cv_auc: 0.827731
+    cv_macro_f1_at_oof_thr: 0.814234
+    construction:
+      max_blocks: 5000
+      windows: 1
+      calls: true
+      cross_section: false
+      extern: true
+      max_insns: 80000
+    rep:
+      kind: size_only
+      labelling: lenbucket
+      h: 4
+      edge_labels: false
+      norm: tfidf
+      min_df: 3
+      with_size: false
+      dim: 128
+      pv_epochs: 12
+      pv_min_count: 0
+    model:
+      name: LR
+      params:
+        -
+          - C
+          - 1
+      arch_weight: false
+    threshold: 0.529682
+    n_features: 22
