@@ -29,9 +29,9 @@ R = REPO / "results"
 
 DATASET_OF = {
     "expA": "mendeley (traditional)", "expA_cohort": "mendeley, cohort (traditional)",
-    "expC": "mendeley, cohort (revised)",
+    "expC": "mendeley, cohort (revised)", "expC_tuned": "mendeley, cohort (revised, tuned)",
     "expB": "balanced (traditional)", "expB_cohort": "balanced, cohort (traditional)",
-    "expD": "balanced, cohort (revised)",
+    "expD": "balanced, cohort (revised)", "expD_tuned": "balanced, cohort (revised, tuned)",
 }
 
 
@@ -94,11 +94,31 @@ def main() -> int:
         _, res = results_of(p)
         for r in res:
             maj, mach = floors(r)
+            note = ""
+            if exp.endswith("_tuned"):
+                note = "chosen by CV (pre-registered)" if r.get("selected") else f"post-hoc, CV rank {r.get('cv_rank')}"
             rows.append(("tokenization " + exp, ds, label_of(r), r.get("accuracy"), r.get("balanced_accuracy"),
-                         r.get("macro_f1"), r.get("roc_auc"), maj, mach, *arch_cells(r), ""))
+                         r.get("macro_f1"), r.get("roc_auc"), maj, mach, *arch_cells(r), note))
 
-    # cnn-vit: seed-1337 run + seed sweep mean/sd
+    # cnn-vit: seed-1337 run + seed sweep mean/sd, then tuned (mean +/- sd over seeds)
     for ds in ("mendeley", "balanced"):
+        tp = R / "cnn_vit" / "tuned" / ds / "metrics.json"
+        if tp.is_file():
+            tm, tres = results_of(tp)
+            maj, mach = floors(tres[0])
+            def _mean(k):
+                v = [x[k] for x in tres if x.get(k) is not None]
+                return st.mean(v) if v else None
+            # per-arch cells averaged over seeds
+            cells = []
+            for a in ("x86", "x64"):
+                rr = [ (x.get("per_arch") or x.get("per_architecture") or {}).get(a, {}) for x in tres ]
+                rr = [b for b in rr if b]
+                cells.append("" if not rr else f"{st.mean(b['recall_ransomware'] for b in rr):.2f}/{st.mean(b['recall_goodware'] for b in rr):.2f}")
+            sd = tm.get("macro_f1_sd")
+            rows.append(("cnn_vit (tuned)", f"{ds}, cohort (unified asm)", f"{label_of(tres[0])} mean of {len(tres)} seeds",
+                         _mean("accuracy"), _mean("balanced_accuracy"), tm.get("macro_f1", _mean("macro_f1")), _mean("roc_auc"),
+                         maj, mach, *cells, "chosen by CV (pre-registered); sd macro-F1 " + (f"{sd:.3f}" if sd is not None else "")))
         p = R / "cnn_vit" / ds / "metrics.json"
         if p.is_file():
             _, res = results_of(p)
@@ -121,15 +141,21 @@ def main() -> int:
             rows.append((f"cnn_vit (mean of {len(rs)} seeds)", f"{ds}, cohort (unified asm)", "HierarchicalMalwareNet",
                          *cells, maj, mach, "", "", "sd macro-F1 " + fmt(ms("macro_f1")[1])))
 
-    # graph2vec, rules, ember
+    # graph2vec, rules, ember (+ their tuned/ subfolders)
     for pipe in ("graph2vec", "rules", "ember"):
-        for p in sorted((R / pipe).glob("*/metrics.json")):
+        for p in sorted((R / pipe).glob("*/metrics.json")) + sorted((R / pipe).glob("tuned/*/metrics.json")):
             ds = p.parent.name
+            tuned = p.parent.parent.name == "tuned"
             _, res = results_of(p)
             for r in res:
                 maj, mach = floors(r)
-                rows.append((pipe, f"{ds}, cohort", label_of(r), r.get("accuracy"), r.get("balanced_accuracy"),
-                             r.get("macro_f1"), r.get("roc_auc"), maj, mach, *arch_cells(r), ""))
+                note = ""
+                if tuned:
+                    cn = r.get("config_name", "")
+                    note = "chosen by CV (pre-registered)" if cn == "tuned_best" else f"post-hoc / control: {cn}"
+                rows.append((pipe + (" (tuned)" if tuned else ""), f"{ds}, cohort", label_of(r), r.get("accuracy"),
+                             r.get("balanced_accuracy"), r.get("macro_f1"), r.get("roc_auc"), maj, mach,
+                             *arch_cells(r), note))
 
     # write
     L = ["# Cross-pipeline comparison", "",
@@ -146,21 +172,38 @@ def main() -> int:
         pipe, ds, model, acc, bal, f1, auc, maj, mach, x86, x64, note = row
         L.append(f"| {pipe} | {ds} | {model} | {fmt(acc)} | {fmt(bal)} | {fmt(f1)} | {fmt(auc)} | {fmt(maj)} | {fmt(mach)} | {x86} | {x64} | {note} |")
 
-    # best per pipeline family, by macro-F1, per dataset family
-    L += ["", "## Best macro-F1 per pipeline and dataset", "", "| pipeline | mendeley-type dataset | balanced-type dataset |", "|---|---|---|"]
-    fam = {}
-    for row in rows:
-        pipe = row[0].split(" (")[0].split(" exp")[0]
-        dskey = "balanced" if row[1].startswith("balanced") else "mendeley"
-        f1 = row[5]
-        if f1 is None:
-            continue
-        cur = fam.setdefault(pipe, {}).get(dskey)
-        if cur is None or f1 > cur[0]:
-            fam[pipe][dskey] = (f1, f"{row[0]} · {row[2]}")
-    for pipe, d in fam.items():
-        m_ = d.get("mendeley"); b_ = d.get("balanced")
-        L.append(f"| {pipe} | {fmt(m_[0]) + ' (' + m_[1] + ')' if m_ else ''} | {fmt(b_[0]) + ' (' + b_[1] + ')' if b_ else ''} |")
+    # best per pipeline family, by macro-F1, per dataset family.
+    # Tuned pipelines count ONLY their pre-registered (chosen-by-CV) row; the
+    # post-hoc rows exist to measure the CV->test gap and are listed separately.
+    def _best_table(title, keep):
+        out = ["", f"## {title}", "", "| pipeline | mendeley-type dataset | balanced-type dataset |", "|---|---|---|"]
+        fam = {}
+        for row in rows:
+            if not keep(row):
+                continue
+            pipe = row[0].split(" exp")[0]
+            pipe = (pipe.split(" (")[0] + (" (tuned)" if "tuned" in row[0] or "tuned" in row[1] else ""))
+            dskey = "balanced" if row[1].startswith("balanced") else "mendeley"
+            f1 = row[5]
+            if f1 is None:
+                continue
+            cur = fam.setdefault(pipe, {}).get(dskey)
+            if cur is None or f1 > cur[0]:
+                fam[pipe][dskey] = (f1, f"{row[0]} · {row[2]}")
+        for pipe, d in fam.items():
+            m_ = d.get("mendeley"); b_ = d.get("balanced")
+            out.append(f"| {pipe} | {fmt(m_[0]) + ' (' + m_[1] + ')' if m_ else ''} | {fmt(b_[0]) + ' (' + b_[1] + ')' if b_ else ''} |")
+        return out
+
+    is_tuned = lambda row: "tuned" in row[0] or "tuned" in row[1]
+    L += _best_table("Best macro-F1 per pipeline and dataset (tuned pipelines: pre-registered choice only)",
+                     lambda row: (not is_tuned(row)) or row[11].startswith("chosen"))
+    L += _best_table("Post-hoc maxima among tuned rows (NOT results: selected after seeing the test set)",
+                     lambda row: is_tuned(row) and not row[11].startswith("chosen"))
+
+    reading = REPO / "tools" / "comparison_reading.md"
+    if reading.is_file():
+        L += ["", reading.read_text(encoding="utf-8").rstrip("\n")]
 
     out = R / "COMPARISON.md"
     out.write_text("\n".join(L) + "\n", encoding="utf-8", newline="\n")

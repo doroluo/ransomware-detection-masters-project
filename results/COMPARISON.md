@@ -20,6 +20,11 @@ iff the file is x86, from the cohort architecture. A score is only interesting r
 | tokenization expC | mendeley, cohort (revised) | RF/WPC/w2v | 0.790 | 0.823 | 0.766 | 0.948 | 0.737 | 0.615 | 0.89/0.88 | 0.22/1.00 |  |
 | tokenization expC | mendeley, cohort (revised) | MLP/WP/w2v | 0.943 | 0.924 | 0.926 | 0.952 | 0.737 | 0.615 | 0.97/0.88 | 0.94/0.92 |  |
 | tokenization expC | mendeley, cohort (revised) | SVM-RBF/SW/w2v | 0.900 | 0.900 | 0.878 | 0.959 | 0.737 | 0.615 | 0.88/0.91 | 0.99/0.83 |  |
+| tokenization expC_tuned | mendeley, cohort (revised, tuned) | LogReg/SW/tfidf/thr 0.50 | 0.902 | 0.821 | 0.858 | 0.976 | 0.737 | 0.615 | 1.00/0.62 | 0.96/1.00 | chosen by CV (pre-registered) |
+| tokenization expC_tuned | mendeley, cohort (revised, tuned) | LogReg/SW/tfidf/thr 0.50 | 0.965 | 0.942 | 0.954 | 0.987 | 0.737 | 0.615 | 1.00/0.88 | 0.96/1.00 | post-hoc, CV rank 2 |
+| tokenization expC_tuned | mendeley, cohort (revised, tuned) | LinearSVC/SW/tfidf/thr 0.00 | 0.965 | 0.942 | 0.954 | 0.989 | 0.737 | 0.615 | 1.00/0.88 | 0.96/1.00 | post-hoc, CV rank 3 |
+| tokenization expC_tuned | mendeley, cohort (revised, tuned) | LinearSVC/SW/tfidf/thr 0.00 | 0.902 | 0.821 | 0.858 | 0.975 | 0.737 | 0.615 | 1.00/0.62 | 0.96/1.00 | post-hoc, CV rank 4 |
+| tokenization expC_tuned | mendeley, cohort (revised, tuned) | LogReg/SW/tfidf/thr 0.50 | 0.976 | 0.961 | 0.968 | 0.987 | 0.737 | 0.615 | 1.00/0.92 | 0.96/1.00 | post-hoc, CV rank 5 |
 | tokenization expB | balanced (traditional) | RF/WPC/w2v | 0.684 | 0.738 | 0.663 | 0.778 | 0.745 | 0.731 | 0.80/0.59 | 0.09/0.99 |  |
 | tokenization expB | balanced (traditional) | MLP/WP/w2v | 0.704 | 0.736 | 0.676 | 0.747 | 0.745 | 0.731 | 0.83/0.43 | 0.18/1.00 |  |
 | tokenization expB | balanced (traditional) | SVM-RBF/SW/w2v | 0.595 | 0.690 | 0.586 | 0.821 | 0.745 | 0.731 | 0.64/0.70 | 0.02/0.99 |  |
@@ -29,8 +34,15 @@ iff the file is x86, from the cohort architecture. A score is only interesting r
 | tokenization expD | balanced, cohort (revised) | RF/WPC/w2v | 0.559 | 0.664 | 0.553 | 0.875 | 0.746 | 0.765 | 0.54/0.67 | 0.07/0.99 |  |
 | tokenization expD | balanced, cohort (revised) | MLP/WP/w2v | 0.621 | 0.663 | 0.597 | 0.753 | 0.746 | 0.765 | 0.72/0.38 | 0.00/0.94 |  |
 | tokenization expD | balanced, cohort (revised) | SVM-RBF/SW/w2v | 0.876 | 0.861 | 0.844 | 0.904 | 0.746 | 0.765 | 0.90/0.62 | 0.86/0.94 |  |
+| tokenization expD_tuned | balanced, cohort (revised, tuned) | LinearSVC/SW/tfidf/thr 0.00 | 0.711 | 0.745 | 0.683 | 0.878 | 0.746 | 0.765 | 0.80/0.45 | 0.17/1.00 | chosen by CV (pre-registered) |
+| tokenization expD_tuned | balanced, cohort (revised, tuned) | SVM-RBF/SW/w2v/thr 0.00 | 0.682 | 0.734 | 0.660 | 0.837 | 0.746 | 0.765 | 0.76/0.52 | 0.11/1.00 | post-hoc, CV rank 2 |
+| tokenization expD_tuned | balanced, cohort (revised, tuned) | MLP/SW/w2v/thr 0.50 | 0.676 | 0.713 | 0.650 | 0.817 | 0.746 | 0.765 | 0.79/0.45 | 0.01/0.96 | post-hoc, CV rank 3 |
+| tokenization expD_tuned | balanced, cohort (revised, tuned) | LinearSVC/SW/tfidf/thr 0.00 | 0.707 | 0.756 | 0.683 | 0.896 | 0.746 | 0.765 | 0.80/0.57 | 0.07/1.00 | post-hoc, CV rank 4 |
+| tokenization expD_tuned | balanced, cohort (revised, tuned) | LogReg/SW/tfidf/thr 0.50 | 0.697 | 0.749 | 0.674 | 0.884 | 0.746 | 0.765 | 0.80/0.57 | 0.00/1.00 | post-hoc, CV rank 5 |
+| cnn_vit (tuned) | mendeley, cohort (unified asm) | TunableMalwareNet (CNN-ViT, tuned)/thr 0.50 mean of 5 seeds | 0.670 | 0.744 | 0.655 | 0.865 | 0.737 | 0.615 | 0.68/0.89 | 0.21/0.97 | chosen by CV (pre-registered); sd macro-F1 0.049 |
 | cnn_vit (seed 1337) | mendeley, cohort (unified asm) | HierarchicalMalwareNet | 0.576 | 0.705 | 0.575 | 0.855 | 0.737 | 0.615 | 0.51/0.97 | 0.12/1.00 |  |
 | cnn_vit (mean of 5 seeds) | mendeley, cohort (unified asm) | HierarchicalMalwareNet | 0.679 | 0.686 | 0.628 | 0.802 | 0.737 | 0.615 |  |  | sd macro-F1 0.018 |
+| cnn_vit (tuned) | balanced, cohort (unified asm) | TunableMalwareNet (CNN-ViT, tuned)/thr 0.50 mean of 5 seeds | 0.530 | 0.620 | 0.518 | 0.665 | 0.740 | 0.759 | 0.52/0.53 | 0.07/0.97 | chosen by CV (pre-registered); sd macro-F1 0.106 |
 | cnn_vit (seed 1337) | balanced, cohort (unified asm) | HierarchicalMalwareNet | 0.573 | 0.584 | 0.542 | 0.622 | 0.740 | 0.759 | 0.69/0.20 | 0.03/0.84 |  |
 | cnn_vit (mean of 5 seeds) | balanced, cohort (unified asm) | HierarchicalMalwareNet | 0.516 | 0.593 | 0.502 | 0.645 | 0.740 | 0.759 |  |  | sd macro-F1 0.113 |
 | graph2vec | balanced, cohort | LR/wl_tfidf/argmax (default 0.5) | 0.489 | 0.627 | 0.489 | 0.840 | 0.740 | 0.759 | 0.42/0.78 | 0.00/0.99 |  |
@@ -69,6 +81,26 @@ iff the file is x86, from the cohort architecture. A score is only interesting r
 | graph2vec | mendeley, cohort | RF/size_only/threshold from train out-of-fold scores/thr 0.54 | 0.436 | 0.612 | 0.432 | 0.919 | 0.737 | 0.615 | 0.30/0.98 | 0.00/1.00 |  |
 | graph2vec | mendeley, cohort | LR/size_only/argmax (default 0.5) | 0.656 | 0.722 | 0.641 | 0.758 | 0.737 | 0.615 | 0.67/0.89 | 0.22/0.58 |  |
 | graph2vec | mendeley, cohort | LR/size_only/threshold from train out-of-fold scores/thr 0.41 | 0.640 | 0.671 | 0.615 | 0.758 | 0.737 | 0.615 | 0.70/0.76 | 0.22/0.50 |  |
+| graph2vec (tuned) | balanced, cohort | LR/wl_tfidf/argmax (default 0.5) | 0.472 | 0.608 | 0.472 | 0.823 | 0.740 | 0.759 | 0.41/0.70 | 0.00/1.00 | post-hoc / control: baseline_h2_cap5000 |
+| graph2vec (tuned) | balanced, cohort | LR/wl_tfidf/threshold from train out-of-fold scores/thr 0.36 | 0.581 | 0.648 | 0.568 | 0.823 | 0.740 | 0.759 | 0.63/0.41 | 0.00/1.00 | post-hoc / control: baseline_h2_cap5000 |
+| graph2vec (tuned) | balanced, cohort | LR/wl_tfidf/argmax (default 0.5) | 0.569 | 0.680 | 0.565 | 0.826 | 0.740 | 0.759 | 0.54/0.78 | 0.07/0.99 | chosen by CV (pre-registered) |
+| graph2vec (tuned) | balanced, cohort | LR/wl_tfidf/threshold from train out-of-fold scores/thr 0.27 | 0.587 | 0.670 | 0.577 | 0.826 | 0.740 | 0.759 | 0.60/0.61 | 0.07/0.98 | chosen by CV (pre-registered) |
+| graph2vec (tuned) | balanced, cohort | MLP/wl_svd/argmax (default 0.5) | 0.601 | 0.687 | 0.592 | 0.855 | 0.740 | 0.759 | 0.52/0.63 | 0.47/1.00 | post-hoc / control: tuned_best_wl_svd |
+| graph2vec (tuned) | balanced, cohort | MLP/wl_svd/threshold from train out-of-fold scores/thr 0.33 | 0.697 | 0.744 | 0.675 | 0.855 | 0.740 | 0.759 | 0.61/0.57 | 0.81/1.00 | post-hoc / control: tuned_best_wl_svd |
+| graph2vec (tuned) | balanced, cohort | MLP/graph2vec/argmax (default 0.5) | 0.587 | 0.690 | 0.581 | 0.882 | 0.740 | 0.759 | 0.58/0.74 | 0.07/1.00 | post-hoc / control: tuned_best_graph2vec |
+| graph2vec (tuned) | balanced, cohort | MLP/graph2vec/threshold from train out-of-fold scores/thr 0.31 | 0.603 | 0.691 | 0.594 | 0.882 | 0.740 | 0.759 | 0.62/0.67 | 0.07/0.99 | post-hoc / control: tuned_best_graph2vec |
+| graph2vec (tuned) | balanced, cohort | LR/size_only/argmax (default 0.5) | 0.605 | 0.672 | 0.591 | 0.675 | 0.740 | 0.759 | 0.67/0.80 | 0.00/0.81 | post-hoc / control: size_only_control |
+| graph2vec (tuned) | balanced, cohort | LR/size_only/threshold from train out-of-fold scores/thr 0.48 | 0.611 | 0.674 | 0.596 | 0.675 | 0.740 | 0.759 | 0.68/0.78 | 0.01/0.81 | post-hoc / control: size_only_control |
+| graph2vec (tuned) | mendeley, cohort | LR/wl_tfidf/argmax (default 0.5) | 0.739 | 0.811 | 0.724 | 0.966 | 0.737 | 0.615 | 0.82/0.96 | 0.01/1.00 | post-hoc / control: baseline_h2_cap5000 |
+| graph2vec (tuned) | mendeley, cohort | LR/wl_tfidf/threshold from train out-of-fold scores/thr 0.38 | 0.914 | 0.872 | 0.885 | 0.966 | 0.737 | 0.615 | 1.00/0.76 | 0.81/1.00 | post-hoc / control: baseline_h2_cap5000 |
+| graph2vec (tuned) | mendeley, cohort | RF/wl_svd/argmax (default 0.5) | 0.723 | 0.772 | 0.702 | 0.939 | 0.737 | 0.615 | 0.64/0.86 | 0.76/1.00 | chosen by CV (pre-registered) |
+| graph2vec (tuned) | mendeley, cohort | RF/wl_svd/threshold from train out-of-fold scores/thr 0.35 | 0.912 | 0.886 | 0.887 | 0.939 | 0.737 | 0.615 | 0.94/0.82 | 0.93/0.92 | chosen by CV (pre-registered) |
+| graph2vec (tuned) | mendeley, cohort | LR/wl_tfidf/argmax (default 0.5) | 0.790 | 0.848 | 0.772 | 0.982 | 0.737 | 0.615 | 0.74/0.97 | 0.65/1.00 | post-hoc / control: tuned_best_sparse_histogram |
+| graph2vec (tuned) | mendeley, cohort | LR/wl_tfidf/threshold from train out-of-fold scores/thr 0.31 | 0.959 | 0.947 | 0.947 | 0.982 | 0.737 | 0.615 | 0.98/0.92 | 0.93/0.92 | post-hoc / control: tuned_best_sparse_histogram |
+| graph2vec (tuned) | mendeley, cohort | RF/graph2vec/argmax (default 0.5) | 0.752 | 0.530 | 0.486 | 0.845 | 0.737 | 0.615 | 1.00/0.05 | 0.99/0.17 | post-hoc / control: tuned_best_graph2vec |
+| graph2vec (tuned) | mendeley, cohort | RF/graph2vec/threshold from train out-of-fold scores/thr 0.39 | 0.737 | 0.500 | 0.424 | 0.845 | 0.737 | 0.615 | 1.00/0.00 | 1.00/0.00 | post-hoc / control: tuned_best_graph2vec |
+| graph2vec (tuned) | mendeley, cohort | LR/size_only/argmax (default 0.5) | 0.825 | 0.846 | 0.799 | 0.939 | 0.737 | 0.615 | 0.92/0.89 | 0.31/0.92 | post-hoc / control: size_only_control |
+| graph2vec (tuned) | mendeley, cohort | LR/size_only/threshold from train out-of-fold scores/thr 0.53 | 0.835 | 0.868 | 0.813 | 0.939 | 0.737 | 0.615 | 0.92/0.94 | 0.31/0.92 | post-hoc / control: size_only_control |
 | rules | balanced, cohort | any_hit/ngram_rules/12 rules | 0.744 | 0.636 | 0.644 | 0.636 | 0.740 | 0.759 | 1.00/0.00 | 0.31/0.64 |  |
 | rules | balanced, cohort | rule_votes/ngram_rules/41 rules/thr 0.64 | 0.526 | 0.634 | 0.523 | 0.757 | 0.740 | 0.759 | 0.51/0.61 | 0.00/1.00 |  |
 | rules | balanced, cohort | weighted_logodds/ngram_rules/41 rules/thr 22.51 | 0.536 | 0.610 | 0.527 | 0.739 | 0.740 | 0.759 | 0.57/0.35 | 0.00/1.00 |  |
@@ -86,14 +118,24 @@ iff the file is x86, from the cohort architecture. A score is only interesting r
 | rules | mendeley, cohort | mnemonic_tfidf_1_3+LinearSVC/calibration_baseline | 0.969 | 0.957 | 0.960 | 0.978 | 0.737 | 0.615 | 1.00/0.92 | 0.92/1.00 |  |
 | rules | mendeley, cohort | mnemonic_tfidf_1_3+LogReg/calibration_baseline | 0.976 | 0.961 | 0.968 | 0.987 | 0.737 | 0.615 | 1.00/0.92 | 0.96/1.00 |  |
 
-## Best macro-F1 per pipeline and dataset
+## Best macro-F1 per pipeline and dataset (tuned pipelines: pre-registered choice only)
 
 | pipeline | mendeley-type dataset | balanced-type dataset |
 |---|---|---|
 | tokenization | 0.926 (tokenization expC · MLP/WP/w2v) | 0.844 (tokenization expD · SVM-RBF/SW/w2v) |
+| tokenization (tuned) | 0.858 (tokenization expC_tuned · LogReg/SW/tfidf/thr 0.50) | 0.683 (tokenization expD_tuned · LinearSVC/SW/tfidf/thr 0.00) |
+| cnn_vit (tuned) | 0.655 (cnn_vit (tuned) · TunableMalwareNet (CNN-ViT, tuned)/thr 0.50 mean of 5 seeds) | 0.518 (cnn_vit (tuned) · TunableMalwareNet (CNN-ViT, tuned)/thr 0.50 mean of 5 seeds) |
 | cnn_vit | 0.628 (cnn_vit (mean of 5 seeds) · HierarchicalMalwareNet) | 0.542 (cnn_vit (seed 1337) · HierarchicalMalwareNet) |
 | graph2vec | 0.895 (graph2vec · SVM-RBF/graph2vec/threshold from train out-of-fold scores/thr -0.25) | 0.602 (graph2vec · LR/size_only/threshold from train out-of-fold scores/thr 0.42) |
+| graph2vec (tuned) | 0.887 (graph2vec (tuned) · RF/wl_svd/threshold from train out-of-fold scores/thr 0.35) | 0.577 (graph2vec (tuned) · LR/wl_tfidf/threshold from train out-of-fold scores/thr 0.27) |
 | rules | 0.968 (rules · mnemonic_tfidf_1_3+LogReg/calibration_baseline) | 0.802 (rules · mnemonic_tfidf_1_3+LinearSVC/calibration_baseline) |
+
+## Post-hoc maxima among tuned rows (NOT results: selected after seeing the test set)
+
+| pipeline | mendeley-type dataset | balanced-type dataset |
+|---|---|---|
+| tokenization (tuned) | 0.968 (tokenization expC_tuned · LogReg/SW/tfidf/thr 0.50) | 0.683 (tokenization expD_tuned · LinearSVC/SW/tfidf/thr 0.00) |
+| graph2vec (tuned) | 0.947 (graph2vec (tuned) · LR/wl_tfidf/threshold from train out-of-fold scores/thr 0.31) | 0.675 (graph2vec (tuned) · MLP/wl_svd/threshold from train out-of-fold scores/thr 0.33) |
 
 ## Reading
 
@@ -112,8 +154,8 @@ because test goodware is 91% x86 while train goodware is 57%) and 0.68-0.71 on G
    expA's. Hive recall goes from 0.16 to 1.00. On Goodware_Balanced, eight of nine tokenization rows sit **below** the
    architecture-only floor; only expD's SVM (0.84) clears it.
 3. **graph2vec on approximate CFGs reaches 0.84-0.90 on Mendeley** (AUC 0.98 for the WL histogram), but a size-only
-   baseline of 10 scalars already gets AUC 0.92, and on Goodware_Balanced size-only is the best graph row (0.60). The
-   embeddings do not improve on the histogram they compress. 51% of files hit the 5,000-block cap.
+   baseline of 10 scalars already gets AUC 0.92, and on Goodware_Balanced size-only is the best untuned graph row (0.60).
+   The PV-DBOW embeddings never beat the histogram they compress. 51% of files hit the 5,000-block cap.
 4. **The CNN-ViT encoder is the weakest and the least stable.** Five seeds: 0.63 +/- 0.02 on Mendeley (AUC 0.71-0.88,
    so it ranks but the operating point is poor), **0.50 +/- 0.11 on Goodware_Balanced**, at chance within each architecture.
    Below the majority floor on accuracy in both. It was trained on the unified disassembly, so these numbers are comparable
@@ -122,5 +164,36 @@ because test goodware is 91% x86 while train goodware is 57%) and 0.68-0.71 on G
    reading bitness; the per-architecture columns show ransomware recall inside x64 collapsing to 0.00-0.25 in most rows.
    Per-architecture and family-holdout evaluation over all 40 families, not one fixed split, is the prerequisite for any
    further model comparison (`docs/RESEARCH_DIRECTIONS.md`, recommended order).
+
+## Tuning (pre-registered protocol: group cross-validation on the training families, one test evaluation per chosen configuration)
+
+Rows marked "chosen by CV (pre-registered)" are the results. Rows marked "post-hoc" were scored only to measure the
+CV-to-test gap and must not be quoted as results. Details per pipeline: `results/summary.md` (tokenization, 787
+configurations), `results/graph2vec/summary.md` section 7 (103), `results/cnn_vit/summary.md` section 9 (112).
+
+6. **Tuning by cross-validation inside the 24 training families does not transfer to the 14 test families.** The
+   tokenization search's CV winner (TF-IDF over tokenizer output, 50,000-token budget, LogReg) scores **0.858** on the
+   Mendeley test set against 0.926 for the original configuration; its CV-rank-2/3/5 siblings score 0.954-0.968 post hoc, so
+   the axis that won the search (sequence budget) lost the test set. On Goodware_Balanced the chosen configuration
+   (0.683) falls below the architecture-only floor and turns into a bitness detector (x64 ransomware recall 0.17).
+   Nothing that helped in CV (sequence budget, 1-3-grams, mean+max pooling, linear models) survived; subword tokenizers,
+   architecture reweighting and fitted thresholds did not help even in CV.
+7. **graph2vec is the one pipeline where tuning paid off on Mendeley, but not through the row the search chose.** The
+   pre-registered pick (`wl_svd`/RF, CV rank 1) scores 0.887 against the untuned 0.895. The sparse WL histogram with a
+   node labelling of length buckets at depth 4 (CV rank about 11) scores **0.947 post hoc**, AUC 0.982, and beats the
+   size-only control (0.81) by a wide margin. The CV-to-test gap of the top five is +0.22 to +0.32. On Goodware_Balanced
+   the best tuned row (0.675) still sits below the 0.705 architecture floor; the misclassified goodware is not explained
+   by graph size (rank AUC by size about 0.32) and concentrates on a few projects, Steam above all.
+8. **CNN-ViT tuning bought nothing.** Chosen configurations: Mendeley 0.655 +/- 0.049, Goodware_Balanced 0.518 +/- 0.106
+   (five seeds), within noise of the untuned recipe re-run through the same harness (0.660 / 0.440). Only ROC-AUC moves
+   consistently (0.80 to 0.87 on Mendeley). The search leader on Mendeley collapses when the cross-validation fold seed
+   changes, so nothing there survives a re-split; on Goodware_Balanced the encoding change (strided sampling across the
+   whole file) is the only axis where every level helped, and the gain vanishes inside each architecture. The sampler
+   that removes the architecture shortcut was the worst configuration in the whole Balanced search.
+9. **Consequence.** Ranking configurations by family-grouped CV on this training set is not reliable enough to pick
+   between close alternatives: the CV-to-test gap is 0.2-0.5 and not rank-preserving in two of three pipelines. The
+   defensible results remain the untuned ones plus the audited TF-IDF baseline. The next step that would actually
+   change the picture is evaluation by family-holdout over all 40 families with per-architecture reporting, not more
+   search (`docs/RESEARCH_DIRECTIONS.md`).
 
 EMBER is not in this table; that rerun is being done by a teammate (`ember_pipeline/`, `vm_package/README.md`).
