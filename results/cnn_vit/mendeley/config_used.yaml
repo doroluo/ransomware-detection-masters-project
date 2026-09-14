@@ -1,0 +1,42 @@
+pipeline: cnn_vit
+dataset: mendeley
+model:
+  class: HierarchicalMalwareNet
+  defined_in: model_train.py
+  num_classes: 2
+  dropout: 0.15
+  input: 256x256 uint8 token image + 16x16 ViT patch mask
+images:
+  renderer: asm_parser.py (unmodified)
+  square_resolution: 256
+  vit_patch_size: 16
+  asm_source: "asm_tool/unified_to_asm.py over the revised extractor (skipdata on, .skip markers removed)"
+training:
+  batch_size: 16
+  base_learning_rate: 0.0003
+  warmup_epochs: 5
+  weight_decay: 0.01
+  label_smoothing: 0.15
+  optimizer: AdamW
+  scheduler: "CosineAnnealingLR after warmup, eta_min 1e-6"
+  grad_clip_max_norm: 1.0
+  sampler: WeightedRandomSampler (inverse class frequency)
+  augmentation: "MaskAwareStructuralShift(p=0.4, max_shift_ratio=0.20), train fold only"
+  early_stopping:
+    monitor: val_loss
+    patience: 8
+    min_delta: 0.0001
+  max_epochs: 80
+  epoch_cap_reason: null
+  seed: 1337
+  device: cuda
+  device_name: "NVIDIA GeForce RTX 5080 (sm_120), torch 2.11.0+cu128"
+split:
+  source: cnn_vit_pipeline/cohort.py
+  val_fraction: 0.1
+  val_seed: 1337
+  val_is: "group-aware, carved out of train only"
+paths:
+  data_dir: "C:\\Users\\chaoa\\Downloads\\cnn_vit_data\\mendeley"
+  checkpoints: "C:\\Users\\chaoa\\Downloads\\cnn_vit_models\\mendeley"
+  results: "C:\\Users\\chaoa\\Downloads\\ransomware-detection-masters-project\\results\\cnn_vit\\mendeley"

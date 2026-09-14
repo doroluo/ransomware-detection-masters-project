@@ -1,0 +1,413 @@
+{
+  "experiment": "cnn_vit_balanced",
+  "description": "HierarchicalMalwareNet (CNN-ViT) from model_train.py on the shared cohort split; .NET / packed / UPX / Thanos excluded and the ransomware families kept disjoint, unlike the original stratified_split.py protocol. Images are rendered by the unmodified asm_parser.py from the revised extractor's full disassembly (skip-data on), not from asm_parse.py's linear sweep -- see asm_tool/README.md section 6.",
+  "task": "binary: 0=goodware, 1=ransomware",
+  "samples": {
+    "total": 2506,
+    "train": {
+      "n": 1798,
+      "goodware": 1002,
+      "ransomware": 796,
+      "sources": {
+        "balanced_goodware": 1002,
+        "mendeley_ransomware": 796
+      },
+      "groups": 256,
+      "arch": {
+        "x86": 939,
+        "x64": 859
+      }
+    },
+    "val": {
+      "n": 219,
+      "goodware": 111,
+      "ransomware": 108,
+      "sources": {
+        "balanced_goodware": 111,
+        "mendeley_ransomware": 108
+      },
+      "groups": 38,
+      "arch": {
+        "x86": 123,
+        "x64": 96
+      }
+    },
+    "test": {
+      "n": 489,
+      "goodware": 127,
+      "ransomware": 362,
+      "sources": {
+        "mendeley_ransomware": 362,
+        "balanced_goodware": 127
+      },
+      "groups": 56,
+      "arch": {
+        "x86": 336,
+        "x64": 153
+      }
+    },
+    "group_overlap": {
+      "train|val": [],
+      "train|test": [],
+      "val|test": []
+    },
+    "goodware_arch": {
+      "train": {
+        "x64": 838,
+        "x86": 164
+      },
+      "val": {
+        "x64": 75,
+        "x86": 36
+      },
+      "test": {
+        "x64": 81,
+        "x86": 46
+      }
+    },
+    "test_goodware_arch": {
+      "x64": 81,
+      "x86": 46
+    }
+  },
+  "results": [
+    {
+      "accuracy": 0.5725971370143149,
+      "balanced_accuracy": 0.5835363466307043,
+      "majority_class_accuracy": 0.7402862985685071,
+      "precision_goodware": 0.326271186440678,
+      "recall_goodware": 0.6062992125984252,
+      "f1_goodware": 0.42424242424242425,
+      "support_goodware": 127,
+      "precision_ransomware": 0.8023715415019763,
+      "recall_ransomware": 0.5607734806629834,
+      "f1_ransomware": 0.6601626016260163,
+      "support_ransomware": 362,
+      "macro_precision": 0.5643213639713272,
+      "macro_recall": 0.5835363466307043,
+      "macro_f1": 0.5422025129342203,
+      "false_positive_rate": 0.3937007874015748,
+      "confusion_matrix": {
+        "tn": 77,
+        "fp": 50,
+        "fn": 159,
+        "tp": 203
+      },
+      "roc_auc": 0.6221124983686431,
+      "per_architecture": {
+        "x64": {
+          "accuracy": 0.45751633986928103,
+          "balanced_accuracy": 0.43364197530864196,
+          "majority_class_accuracy": 0.5294117647058824,
+          "precision_goodware": 0.4927536231884058,
+          "recall_goodware": 0.8395061728395061,
+          "f1_goodware": 0.6210045662100457,
+          "support_goodware": 81,
+          "precision_ransomware": 0.13333333333333333,
+          "recall_ransomware": 0.027777777777777776,
+          "f1_ransomware": 0.04597701149425287,
+          "support_ransomware": 72,
+          "macro_precision": 0.3130434782608696,
+          "macro_recall": 0.43364197530864196,
+          "macro_f1": 0.33349078885214933,
+          "false_positive_rate": 0.16049382716049382,
+          "confusion_matrix": {
+            "tn": 68,
+            "fp": 13,
+            "fn": 70,
+            "tp": 2
+          },
+          "roc_auc": 0.27400548696844995,
+          "n": 153
+        },
+        "x86": {
+          "accuracy": 0.625,
+          "balanced_accuracy": 0.4443778110944528,
+          "majority_class_accuracy": 0.8630952380952381,
+          "precision_goodware": 0.09183673469387756,
+          "recall_goodware": 0.1956521739130435,
+          "f1_goodware": 0.125,
+          "support_goodware": 46,
+          "precision_ransomware": 0.8445378151260504,
+          "recall_ransomware": 0.6931034482758621,
+          "f1_ransomware": 0.7613636363636365,
+          "support_ransomware": 290,
+          "macro_precision": 0.468187274909964,
+          "macro_recall": 0.4443778110944528,
+          "macro_f1": 0.44318181818181823,
+          "false_positive_rate": 0.8043478260869565,
+          "confusion_matrix": {
+            "tn": 9,
+            "fp": 37,
+            "fn": 89,
+            "tp": 201
+          },
+          "roc_auc": 0.4047226386806597,
+          "n": 336
+        }
+      },
+      "goodware_recall_by_arch": {
+        "x64": {
+          "n": 81,
+          "recall_goodware": 0.8395061728395061
+        },
+        "x86": {
+          "n": 46,
+          "recall_goodware": 0.1956521739130435
+        }
+      },
+      "per_family_recall": {
+        "avoslocker": {
+          "recall": 0.14,
+          "correct": 7,
+          "support": 50
+        },
+        "bianlian": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 11
+        },
+        "blackbasta": {
+          "recall": 0.4666666666666667,
+          "correct": 14,
+          "support": 30
+        },
+        "blackbyte": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 7
+        },
+        "blackcat": {
+          "recall": 0.98,
+          "correct": 49,
+          "support": 50
+        },
+        "bluesky": {
+          "recall": 1.0,
+          "correct": 34,
+          "support": 34
+        },
+        "clop": {
+          "recall": 0.8666666666666667,
+          "correct": 39,
+          "support": 45
+        },
+        "hive": {
+          "recall": 0.18,
+          "correct": 9,
+          "support": 50
+        },
+        "holyghost": {
+          "recall": 0.25,
+          "correct": 1,
+          "support": 4
+        },
+        "karma": {
+          "recall": 0.23076923076923078,
+          "correct": 3,
+          "support": 13
+        },
+        "lorenz": {
+          "recall": 1.0,
+          "correct": 16,
+          "support": 16
+        },
+        "maui": {
+          "recall": 1.0,
+          "correct": 3,
+          "support": 3
+        },
+        "playcrypt": {
+          "recall": 0.627906976744186,
+          "correct": 27,
+          "support": 43
+        },
+        "quantum": {
+          "recall": 0.16666666666666666,
+          "correct": 1,
+          "support": 6
+        }
+      },
+      "model": "HierarchicalMalwareNet (CNN-ViT)",
+      "epochs_run": 13,
+      "epochs_requested": 80,
+      "epoch_cap_reason": null,
+      "seconds_per_epoch_mean": 4.34,
+      "seconds_per_epoch_median": 4.14,
+      "seconds_per_epoch_min": 3.78,
+      "seconds_per_epoch_max": 5.66,
+      "train_seconds_total": 56.37,
+      "device": "cuda",
+      "device_name": "NVIDIA GeForce RTX 5080 (sm_120), torch 2.11.0+cu128",
+      "batch_size": 16,
+      "seed": 1337,
+      "class_names": [
+        "Class_0_Goodware",
+        "Class_1_Ransomware"
+      ],
+      "n_train": 1798,
+      "n_val": 219,
+      "n_test": 489,
+      "torchvision_shim": true,
+      "history": [
+        {
+          "epoch": 1,
+          "lr": 5.9999999999999995e-05,
+          "train_loss": 0.6369613706071067,
+          "val_loss": 0.6786623859786551,
+          "val_acc": 68.0365296803653,
+          "seconds": 4.17
+        },
+        {
+          "epoch": 2,
+          "lr": 0.00011999999999999999,
+          "train_loss": 0.5281344337245911,
+          "val_loss": 0.6484728803917698,
+          "val_acc": 74.42922374429224,
+          "seconds": 3.78
+        },
+        {
+          "epoch": 3,
+          "lr": 0.00017999999999999998,
+          "train_loss": 0.4825166664744113,
+          "val_loss": 0.8368986439487162,
+          "val_acc": 63.926940639269404,
+          "seconds": 3.83
+        },
+        {
+          "epoch": 4,
+          "lr": 0.00023999999999999998,
+          "train_loss": 0.5036091970920032,
+          "val_loss": 0.6066888483691978,
+          "val_acc": 74.42922374429224,
+          "seconds": 3.81
+        },
+        {
+          "epoch": 5,
+          "lr": 0.0003,
+          "train_loss": 0.4397973383427727,
+          "val_loss": 0.790813843953555,
+          "val_acc": 70.77625570776256,
+          "seconds": 3.84
+        },
+        {
+          "epoch": 6,
+          "lr": 0.0003,
+          "train_loss": 0.40145905211451854,
+          "val_loss": 0.7149256889678571,
+          "val_acc": 76.25570776255708,
+          "seconds": 4.14
+        },
+        {
+          "epoch": 7,
+          "lr": 0.0002998688630997793,
+          "train_loss": 0.3656456043510734,
+          "val_loss": 0.648745336489046,
+          "val_acc": 79.45205479452055,
+          "seconds": 4.7
+        },
+        {
+          "epoch": 8,
+          "lr": 0.0002994756824578009,
+          "train_loss": 0.35721365018469076,
+          "val_loss": 0.649826384026166,
+          "val_acc": 77.1689497716895,
+          "seconds": 5.11
+        },
+        {
+          "epoch": 9,
+          "lr": 0.00029882114784651444,
+          "train_loss": 0.32781381568601053,
+          "val_loss": 0.6965726273789253,
+          "val_acc": 78.08219178082192,
+          "seconds": 5.52
+        },
+        {
+          "epoch": 10,
+          "lr": 0.0002979064075420405,
+          "train_loss": 0.3565554881387611,
+          "val_loss": 0.6838284722746235,
+          "val_acc": 78.08219178082192,
+          "seconds": 5.66
+        },
+        {
+          "epoch": 11,
+          "lr": 0.00029673306630970396,
+          "train_loss": 0.31900693948595094,
+          "val_loss": 0.695508565668646,
+          "val_acc": 76.25570776255708,
+          "seconds": 4.22
+        },
+        {
+          "epoch": 12,
+          "lr": 0.00029530318258873034,
+          "train_loss": 0.3251315463040111,
+          "val_loss": 0.666398305871171,
+          "val_acc": 79.45205479452055,
+          "seconds": 3.79
+        },
+        {
+          "epoch": 13,
+          "lr": 0.00029361926488104403,
+          "train_loss": 0.30130489550124817,
+          "val_loss": 0.6629657135706514,
+          "val_acc": 78.99543378995433,
+          "seconds": 3.78
+        }
+      ]
+    }
+  ],
+  "elapsed_seconds": 59.6,
+  "dataset": "balanced",
+  "data_dir": "C:\\Users\\chaoa\\Downloads\\cnn_vit_data\\balanced",
+  "config": {
+    "pipeline": "cnn_vit",
+    "dataset": "balanced",
+    "model": {
+      "class": "HierarchicalMalwareNet",
+      "defined_in": "model_train.py",
+      "num_classes": 2,
+      "dropout": 0.15,
+      "input": "256x256 uint8 token image + 16x16 ViT patch mask"
+    },
+    "images": {
+      "renderer": "asm_parser.py (unmodified)",
+      "square_resolution": 256,
+      "vit_patch_size": 16,
+      "asm_source": "asm_tool/unified_to_asm.py over the revised extractor (skipdata on, .skip markers removed)"
+    },
+    "training": {
+      "batch_size": 16,
+      "base_learning_rate": 0.0003,
+      "warmup_epochs": 5,
+      "weight_decay": 0.01,
+      "label_smoothing": 0.15,
+      "optimizer": "AdamW",
+      "scheduler": "CosineAnnealingLR after warmup, eta_min 1e-6",
+      "grad_clip_max_norm": 1.0,
+      "sampler": "WeightedRandomSampler (inverse class frequency)",
+      "augmentation": "MaskAwareStructuralShift(p=0.4, max_shift_ratio=0.20), train fold only",
+      "early_stopping": {
+        "monitor": "val_loss",
+        "patience": 8,
+        "min_delta": 0.0001
+      },
+      "max_epochs": 80,
+      "epoch_cap_reason": null,
+      "seed": 1337,
+      "device": "cuda",
+      "device_name": "NVIDIA GeForce RTX 5080 (sm_120), torch 2.11.0+cu128"
+    },
+    "split": {
+      "source": "cnn_vit_pipeline/cohort.py",
+      "val_fraction": 0.1,
+      "val_seed": 1337,
+      "val_is": "group-aware, carved out of train only"
+    },
+    "paths": {
+      "data_dir": "C:\\Users\\chaoa\\Downloads\\cnn_vit_data\\balanced",
+      "checkpoints": "C:\\Users\\chaoa\\Downloads\\cnn_vit_models\\balanced",
+      "results": "C:\\Users\\chaoa\\Downloads\\ransomware-detection-masters-project\\results\\cnn_vit\\balanced"
+    }
+  }
+}

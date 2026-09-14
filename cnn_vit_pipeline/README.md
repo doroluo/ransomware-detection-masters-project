@@ -12,9 +12,22 @@ changes.
 |---|---|
 | `cohort.py` | the one shared place where the cohort and the split are decided, plus the shared `metrics.json` writer. `ember_pipeline/train_eval.py` imports it too. |
 | `build_dataset.py` | maps PNGs back to sha256, applies the split, materialises `train/val/test` |
-| `train_eval.py` | trains, evaluates, writes `results/cnn_vit/<dataset>/metrics.json` |
+| `train_eval.py` | trains, evaluates, writes `results/cnn_vit/<dataset>/{metrics.json,splits.csv,training_log.csv,test_predictions.csv,config_used.yaml}` |
+| [`../asm_tool/unified_to_asm.py`](../asm_tool/unified_to_asm.py) | turns the revised extractor's disassembly into an `asm_parse.py`-shaped `.asm` tree that `asm_parser.py` can render unmodified |
 
 Tested by `tests/test_cohort_split.py`.
+
+Results and the narrative that goes with them:
+[`results/cnn_vit/summary.md`](../results/cnn_vit/summary.md).
+
+## Which Python
+
+Training used a dedicated venv at `C:/Users/chaoa/Downloads/cnn_vit_venv`
+(Python 3.12 + `torch 2.11.0+cu128`), because the RTX 5080 is Blackwell
+(`sm_120`) and needs a cu128-or-newer wheel, and the system Python 3.14 only
+has a CPU build. Everything except training — conversion, rendering,
+`build_dataset.py`, the tests — runs fine on the system Python. `--device cpu`
+remains the fallback and is the default.
 
 ## What differs from the original yanping protocol
 
@@ -35,7 +48,53 @@ a picture of the packer, and a .NET assembly's is mostly IL metadata, so
 neither tells you much about ransomware behaviour. The original numbers are
 not wrong, they answer a different and much easier question.
 
-## How a PNG finds its sha256
+## Two image sources
+
+`build_dataset.py --source` picks where the PNGs come from. `auto` (the
+default) uses `unified` when both of its trees are on disk and falls back to
+`asm_parse` otherwise.
+
+### `unified` — what the results in `results/cnn_vit/` were produced from
+
+The revised extractor (`Shared/extract_unified.py`) has full disassembly for
+**every** class and set on this host, keyed by sha256.
+[`asm_tool/unified_to_asm.py`](../asm_tool/unified_to_asm.py) re-shapes it
+into an `asm_parse.py`-shaped tree:
+
+```
+Shared/Extract/asm/<sha256>.asm          ->  OUT/<set>/<family>/<sha256>.asm
+Shared/Extract_Goodware_Balanced/asm/..  ->  OUT/goodware_balanced/<bucket>/<sha256>.asm
+```
+
+Only `;` section headers and `.skip<TAB>N bytes` markers are removed — the
+latter because `asm_parser.parse_asm_line` would otherwise turn each one into
+a bogus `UNKNOWN_OPCODE` triplet. Everything else is copied through byte for
+byte, and the stream is capped at 100,000 instructions to match
+`asm_parse.py`'s own cap. The same unmodified `asm_parser.py` then renders the
+images, one run per set so `--default-class` assigns the right class.
+
+Because the `.asm` basename is the sha256, the PNG -> sha256 join is exact.
+`build_dataset.py` still checks every stem against `asm_manifest.csv` (all
+three roots `asm_parser.py` could have been pointed at are accepted) rather
+than parsing hex out of a filename, and it reads each image's class from the
+`Class_<n>_*` folder, so the tree-label-vs-cohort-label cross-check keeps an
+independent source that could disagree.
+
+> **Caveat.** These images come from the *skip-data* extractor, while the
+> original yanping pipeline used `asm_parse.py`'s linear sweep, which stops at
+> the first undecodable byte. The two produce materially different stream
+> lengths — see [`asm_tool/README.md` §6](../asm_tool/README.md). Both classes
+> and both corpora go through the same extractor here, so comparisons *within*
+> these results are sound; comparing one of these numbers against an old
+> `asm_parse`-sourced number is not.
+
+### `asm_parse` — the original, kept working
+
+**This source cannot produce a cohort-faithful run on this host.** The
+ransomware `.asm` trees do not exist here (the binaries are VM-only), and the
+host Mendeley-goodware tree was built from a copy in which 67 UPX files are
+still packed, so their on-disk sha256s do not match the cohort CSVs. It is
+kept working because it is the right source once the VM delivers.
 
 `asm_parse.py` writes `<filename>.asm` mirroring the source tree and an
 `asm_manifest.csv` carrying `sha256` next to each `asm_path`. `asm_parser.py`
@@ -51,11 +110,14 @@ join is by hash, never by filename. Anything that fails to map is written to
 
 ```bash
 # 1. lay out the tree (hard links by default, so no extra disk)
+#    --source defaults to auto: unified when its trees exist, else asm_parse
 python cnn_vit_pipeline/build_dataset.py --dataset mendeley --out DIR --clean
 python cnn_vit_pipeline/build_dataset.py --dataset balanced --out DIR --clean
 
-# 2. train and score
-python cnn_vit_pipeline/train_eval.py --data DIR --epochs 80 --device cpu
+# 2. train and score (--device cuda if a CUDA torch is available)
+python cnn_vit_pipeline/train_eval.py --data DIR --dataset mendeley \
+    --epochs 80 --batch-size 16 --seed 1337 --device cuda \
+    --ckpt-dir ../cnn_vit_models/mendeley
 
 # plumbing + timing check: goodware images only, with a clearly FAKE second
 # class, capped sample count. Reports seconds/epoch. Never writes to results/.
@@ -101,41 +163,70 @@ would go stale. Installing torchvision makes the stand-in disappear on its own.
 Same schema as `results/expA/metrics.json`, plus `per_architecture` (the full
 metric block for x86 and for x64) and `per_family_recall` (recall, correct and
 support per ransomware test family). Also recorded: `epochs_run`,
-`seconds_per_epoch_mean` / `_median`, `device`, `seed`, and the full per-epoch
-`history`.
+`epochs_requested`, `epoch_cap_reason`, `seconds_per_epoch_mean` / `_median` /
+`_min` / `_max`, `train_seconds_total`, `device`, `device_name`, `seed`, the
+resolved `config`, and the full per-epoch `history`.
 
-## Inputs and what is still missing
+`train_eval.py` also writes, next to it: `splits.csv` (the five columns
+`results/exp*/splits.csv` uses, plus sha256, arch and family),
+`training_log.csv` (epoch, lr, train loss, val loss, val acc, seconds),
+`test_predictions.csv` (per-sample `y_true` / `y_pred` / `score_ransomware`)
+and `config_used.yaml`. Model weights go to `--ckpt-dir`, never into
+`results/` — they are binary.
+
+## Inputs
 
 Images live under `C:/Users/chaoa/Downloads/cnn_vit_images/<tree>/Class_*/`
 (override with `--images-root` / `RANSOM_CNN_VIT_IMAGES`), built from
 `C:/Users/chaoa/Downloads/asm_output/<tree>/` (`--asm-root` /
 `RANSOM_ASM_OUTPUT`).
 
-| image tree | dataset | status |
-|---|---|---|
-| `mendeley_goodware` | mendeley | present, 1,032 PNGs |
-| `goodware_balanced` | balanced | present, 1,343 PNGs |
-| `mendeley_goodware_test` | mendeley | **awaiting the VM** |
-| `mendeley_ransomware_train` | both | **awaiting the VM** |
-| `mendeley_ransomware_test` | both | **awaiting the VM** |
+| image tree | source | dataset | status |
+|---|---|---|---|
+| `unified_mendeley` | unified | mendeley (both classes), balanced (class 1) | present, 2,598 PNGs |
+| `unified_goodware_balanced` | unified | balanced (class 0) | present, 1,343 PNGs |
+| `mendeley_goodware` | asm_parse | mendeley | present, 1,032 PNGs |
+| `goodware_balanced` | asm_parse | balanced | present, 1,343 PNGs |
+| `mendeley_goodware_test` | asm_parse | mendeley | **awaiting the VM** |
+| `mendeley_ransomware_train` | asm_parse | both | **awaiting the VM** |
+| `mendeley_ransomware_test` | asm_parse | both | **awaiting the VM** |
 
-Generate the missing `.asm` trees per `vm_package/README.md` step 3, then turn
-them into images with the same settings the goodware used:
+Building the unified trees (this is what the current results used):
 
 ```bash
-python asm_parser.py --asm-dir  ~/asm_output/mendeley_ransomware_train \
-                     --out-dir  cnn_vit_images/mendeley_ransomware_train \
-                     --labels-csv cnn_vit_images/mendeley_ransomware_train_labels.csv \
-                     --default-class 1
+python asm_tool/unified_to_asm.py \
+    --extract "C:/Users/chaoa/Downloads/asm and mm/Shared/Extract" \
+    --out     "C:/Users/chaoa/Downloads/asm_output/unified_mendeley"
+python asm_tool/unified_to_asm.py \
+    --extract "C:/Users/chaoa/Downloads/asm and mm/Shared/Extract_Goodware_Balanced" \
+    --out     "C:/Users/chaoa/Downloads/asm_output/unified_goodware_balanced"
+
+# one asm_parser.py run per set, so --default-class assigns the right class
+for s in good_train:0 good_test:0 mal_train:1 mal_test:1; do
+  python asm_parser.py \
+      --asm-dir "…/asm_output/unified_mendeley/${s%%:*}" \
+      --out-dir "…/cnn_vit_images/unified_mendeley" \
+      --labels-csv "<scratch>/labels_${s%%:*}.csv" --default-class "${s##*:}"
+done
+python asm_parser.py --asm-dir "…/asm_output/unified_goodware_balanced" \
+    --out-dir "…/cnn_vit_images/unified_goodware_balanced" \
+    --labels-csv "<scratch>/labels_gb.csv" --default-class 0
 ```
 
-then re-run `build_dataset.py`.
+Coverage is complete: 2,509/2,509 mendeley and 2,506/2,506 balanced cohort rows
+have an image, nothing unmapped, nothing dropped.
 
-### Known join gap (Mendeley goodware)
+Once the VM delivers the `asm_parse.py` trees, generate them per
+`vm_package/README.md` step 3, render with `--default-class 1`, and re-run
+`build_dataset.py --source asm_parse`.
+
+### Known join gap on the `asm_parse` source (Mendeley goodware)
 
 67 Mendeley goodware-train binaries are UPX-packed on disk while the cohort
 CSV records their **unpacked** sha256, so they cannot be joined by hash; 19
-more cohort filenames are absent from the host tree. 1,023 of 1,114 in-cohort
-goodware-train rows therefore have an image today. `build_dataset.py` prints
-the breakdown and stores it in `build_report.json`. The fix belongs upstream,
-in extraction, not here.
+more cohort filenames are absent from the host tree. Only 1,023 of 1,114
+in-cohort goodware-train rows therefore have an `asm_parse` image.
+`build_dataset.py` prints the breakdown, stores it in `build_report.json`, and
+names every missing row in `missing_from_images.csv`. This is precisely why the
+results were produced from the `unified` source, where the join is by sha256 on
+both sides and nothing is lost. The fix belongs upstream, in extraction.

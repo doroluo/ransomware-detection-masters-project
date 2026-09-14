@@ -326,14 +326,20 @@ def do_run(a) -> int:
     arch = [by_id.loc[i, "arch"] if i in by_id.index else "unknown" for i in ids]
     family = [by_id.loc[i, "family"] if i in by_id.index else "unknown" for i in ids]
 
+    ckpt_dir = Path(a.ckpt_dir or (data_dir / "checkpoints"))
     result = C.build_result(
         y_true, y_pred, y_score, arch, family,
         model="HierarchicalMalwareNet (CNN-ViT)",
         epochs_run=len(epoch_times),
         epochs_requested=a.epochs,
+        epoch_cap_reason=a.epoch_cap_reason or None,
         seconds_per_epoch_mean=round(float(np.mean(epoch_times)), 2),
         seconds_per_epoch_median=round(float(np.median(epoch_times)), 2),
+        seconds_per_epoch_min=round(float(np.min(epoch_times)), 2),
+        seconds_per_epoch_max=round(float(np.max(epoch_times)), 2),
+        train_seconds_total=round(float(np.sum(epoch_times)), 2),
         device=a.device,
+        device_name=device_name(a.device),
         batch_size=a.batch_size,
         seed=a.seed,
         class_names=class_names,
@@ -350,21 +356,151 @@ def do_run(a) -> int:
 
     fold_df = manifest.assign(label=manifest["label"].astype(int))
     out = Path(a.out) if a.out else RESULTS_DIR / dataset_name
+    out.mkdir(parents=True, exist_ok=True)
+
+    # ---- the three companion files the coordinator asked for -------------
+    # splits.csv: the same five columns results/exp*/splits.csv uses, so the
+    # three pipelines' membership can be diffed directly, plus sha256/arch/
+    # family which the image pipeline needs and the text one does not have.
+    splits = fold_df[["sha256", "asm_id", "source", "label", "family_or_group",
+                      "fold", "split", "arch", "family", "image_tree"]].copy()
+    splits = splits.rename(columns={"asm_id": "file", "family_or_group": "group"})
+    splits.to_csv(out / "splits.csv", index=False)
+
+    # training_log.csv: one row per epoch.
+    log = pd.DataFrame(history)[["epoch", "lr", "train_loss", "val_loss",
+                                 "val_acc", "seconds"]]
+    log.to_csv(out / "training_log.csv", index=False)
+
+    # test_predictions.csv: per-sample, so the per-family block can be redone
+    # or checked without re-running training.
+    pd.DataFrame({"file": ids, "arch": arch, "family": family,
+                  "y_true": y_true, "y_pred": y_pred,
+                  "score_ransomware": y_score}).to_csv(
+        out / "test_predictions.csv", index=False)
+
+    cfg = build_config(a, dataset_name, data_dir, ckpt_dir, mt, device_name(a.device))
+    (out / "config_used.yaml").write_text(to_yaml(cfg), encoding="utf-8")
+
     path = C.write_metrics(
         out / "metrics.json",
         experiment=f"cnn_vit_{dataset_name}",
         description=("HierarchicalMalwareNet (CNN-ViT) from model_train.py on "
                      "the shared cohort split; .NET / packed / UPX / Thanos "
                      "excluded and the ransomware families kept disjoint, "
-                     "unlike the original stratified_split.py protocol."),
+                     "unlike the original stratified_split.py protocol. Images "
+                     "are rendered by the unmodified asm_parser.py from the "
+                     "revised extractor's full disassembly (skip-data on), not "
+                     "from asm_parse.py's linear sweep -- see asm_tool/README.md "
+                     "section 6."),
         samples=C.split_summary(fold_df, "fold"),
         results=[result],
         elapsed_seconds=time.time() - t_start,
         dataset=dataset_name,
         data_dir=str(data_dir),
+        config=cfg,
     )
     print(f"wrote {path}")
+    print(f"wrote {out/'splits.csv'}, {out/'training_log.csv'}, "
+          f"{out/'test_predictions.csv'}, {out/'config_used.yaml'}")
+    print(f"model weights stay out of results/: {ckpt_dir}")
     return 0
+
+
+# ------------------------------------------------------- run bookkeeping ----
+def device_name(device: str) -> str:
+    """A human-readable name for whatever we actually trained on."""
+    import torch
+    if device.startswith("cuda") and torch.cuda.is_available():
+        idx = int(device.split(":")[1]) if ":" in device else 0
+        cap = torch.cuda.get_device_capability(idx)
+        return (f"{torch.cuda.get_device_name(idx)} (sm_{cap[0]}{cap[1]}), "
+                f"torch {torch.__version__}")
+    import platform
+    return f"CPU {platform.processor() or platform.machine()}, torch {torch.__version__}"
+
+
+def build_config(a, dataset_name, data_dir, ckpt_dir, mt, dev_name) -> dict:
+    """Everything needed to reproduce the run, in config_used.yaml's shape."""
+    return {
+        "pipeline": "cnn_vit",
+        "dataset": dataset_name,
+        "model": {
+            "class": "HierarchicalMalwareNet",
+            "defined_in": "model_train.py",
+            "num_classes": NUM_CLASSES,
+            "dropout": DROPOUT,
+            "input": "256x256 uint8 token image + 16x16 ViT patch mask",
+        },
+        "images": {
+            "renderer": "asm_parser.py (unmodified)",
+            "square_resolution": 256,
+            "vit_patch_size": 16,
+            "asm_source": "asm_tool/unified_to_asm.py over the revised "
+                          "extractor (skipdata on, .skip markers removed)",
+        },
+        "training": {
+            "batch_size": a.batch_size,
+            "base_learning_rate": BASE_LEARNING_RATE,
+            "warmup_epochs": WARMUP_EPOCHS,
+            "weight_decay": WEIGHT_DECAY,
+            "label_smoothing": LABEL_SMOOTHING,
+            "optimizer": "AdamW",
+            "scheduler": "CosineAnnealingLR after warmup, eta_min 1e-6",
+            "grad_clip_max_norm": 1.0,
+            "sampler": "WeightedRandomSampler (inverse class frequency)",
+            "augmentation": "MaskAwareStructuralShift(p=0.4, "
+                            "max_shift_ratio=0.20), train fold only",
+            "early_stopping": {"monitor": "val_loss",
+                               "patience": int(mt.PATIENCE),
+                               "min_delta": float(mt.MIN_DELTA)},
+            "max_epochs": a.epochs,
+            "epoch_cap_reason": a.epoch_cap_reason or None,
+            "seed": a.seed,
+            "device": a.device,
+            "device_name": dev_name,
+        },
+        "split": {
+            "source": "cnn_vit_pipeline/cohort.py",
+            "val_fraction": C.VAL_FRACTION,
+            "val_seed": C.VAL_SEED,
+            "val_is": "group-aware, carved out of train only",
+        },
+        "paths": {
+            "data_dir": str(data_dir),
+            "checkpoints": str(ckpt_dir),
+            "results": str(Path(a.out) if a.out else RESULTS_DIR / dataset_name),
+        },
+    }
+
+
+def to_yaml(obj, indent: int = 0) -> str:
+    """Tiny YAML writer (PyYAML is not a dependency of this repo)."""
+    pad = "  " * indent
+    if isinstance(obj, dict):
+        out = []
+        for k, v in obj.items():
+            if isinstance(v, (dict, list)) and v:
+                out.append(f"{pad}{k}:\n{to_yaml(v, indent + 1)}")
+            else:
+                out.append(f"{pad}{k}: {_scalar(v)}")
+        return "\n".join(out) + ("\n" if indent == 0 else "")
+    if isinstance(obj, list):
+        return "\n".join(f"{pad}- {_scalar(v)}" for v in obj)
+    return f"{pad}{_scalar(obj)}"
+
+
+def _scalar(v):
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return repr(v)
+    s = str(v)
+    if s == "" or any(c in s for c in ":#{}[],&*?|<>=!%@`") or s != s.strip():
+        return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    return s
 
 
 # ------------------------------------------------------------ smoke test ----
@@ -446,6 +582,10 @@ def main() -> int:
     ap.add_argument("--max-samples", type=int, default=0,
                     help="cap each fold, stratified by label; for smoke runs")
     ap.add_argument("--seed", type=int, default=1337)
+    ap.add_argument("--epoch-cap-reason", default="",
+                    help="recorded verbatim in metrics.json and "
+                         "config_used.yaml when --epochs is below the "
+                         "protocol's 80 for reasons of wall clock")
     ap.add_argument("--out", default=None)
     ap.add_argument("--ckpt-dir", default=None)
     ap.add_argument("--quiet", action="store_true", default=True)

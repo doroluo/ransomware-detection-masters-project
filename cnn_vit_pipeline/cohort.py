@@ -346,6 +346,17 @@ def build_result(y_true, y_pred, y_score, arch, family, **extra) -> dict:
     res["per_architecture"] = per_arch
     # expA reports a goodware-only view of the same thing; keep the key so the
     # three pipelines' metrics.json stay directly diffable.
+    # Aliases in the exact shape llm_features_pipeline writes, so metrics.json
+    # files from every pipeline carry the same generic keys.
+    res["per_arch"] = {
+        a: {"n": per_arch[a]["n"],
+            "support_goodware": per_arch[a]["support_goodware"],
+            "support_ransomware": per_arch[a]["support_ransomware"],
+            "recall_goodware": per_arch[a]["recall_goodware"],
+            "recall_ransomware": per_arch[a]["recall_ransomware"],
+            "accuracy": per_arch[a]["accuracy"],
+            "macro_f1": per_arch[a]["macro_f1"]}
+        for a in per_arch}
     res["goodware_recall_by_arch"] = {
         a: {"n": int(((arch == a) & (y_true == 0)).sum()),
             "recall_goodware": per_arch[a]["recall_goodware"]}
@@ -358,6 +369,10 @@ def build_result(y_true, y_pred, y_score, arch, family, **extra) -> dict:
         per_family[f] = {"recall": _safe_div(correct, int(m.sum())),
                          "correct": correct, "support": int(m.sum())}
     res["per_family_recall"] = per_family
+
+    res["ransomware_recall_by_family"] = {
+        f: {"n": v["support"], "recall": v["recall"], "detected": v["correct"]}
+        for f, v in per_family.items()}
 
     res.update(extra)
     return res

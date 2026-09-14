@@ -51,6 +51,29 @@ VM_RUNBOOK = "vm_package/README.md"
 
 CLASS_DIRS = {0: "Class_0_Goodware", 1: "Class_1_Ransomware"}
 
+# --------------------------------------------------------------------------
+# Two image sources.
+#
+# `asm_parse`  the original: one image tree per asm_parse.py run, each paired
+#              with asm_output/<tree>/asm_manifest.csv, whose `asm_path`
+#              column becomes the PNG stem through asm_parser.asm_id().
+#
+# `unified`    the revised extractor's full disassembly, re-shaped by
+#              asm_tool/unified_to_asm.py and rendered by the *same*,
+#              unmodified asm_parser.py. This is the only source that covers
+#              every class and every set on this host: the ransomware binaries
+#              are VM-only, and the host Mendeley-goodware asm_parse tree was
+#              built from a copy in which 67 UPX files are still packed, so
+#              its sha256s do not match the cohort CSVs.
+#
+#              The only structural difference is that one unified image tree
+#              can hold both classes (asm_parser.py sorts into Class_0_* and
+#              Class_1_* folders), so a tree entry carries a label filter.
+#              The join back to sha256 is still exact: the .asm basename is
+#              the sha256, and every PNG stem is checked against
+#              asm_output/<tree>/asm_manifest.csv rather than parsed by hand.
+# --------------------------------------------------------------------------
+
 # (image tree, asm tree, label, produced on)
 TREES = {
     "mendeley": [
@@ -65,6 +88,21 @@ TREES = {
         ("mendeley_ransomware_test", "mendeley_ransomware_test", 1, "VM"),
     ],
 }
+
+# (image tree, asm tree, label filter or None = "take whatever class folders
+#  the tree holds", produced on)
+UNIFIED_TREES = {
+    "mendeley": [
+        ("unified_mendeley", "unified_mendeley", None, "host"),
+    ],
+    "balanced": [
+        ("unified_goodware_balanced", "unified_goodware_balanced", 0, "host"),
+        ("unified_mendeley", "unified_mendeley", 1, "host"),
+    ],
+}
+
+SOURCES = ("auto", "asm_parse", "unified")
+SOURCE = "auto"
 
 
 # ---------------------------------------------------------------- mapping ---
@@ -109,17 +147,136 @@ def index_tree(image_tree: str, asm_tree: str) -> tuple[pd.DataFrame, list[dict]
     return pd.DataFrame(rows), unmapped
 
 
-def index_dataset(dataset: str):
+# ------------------------------------------------------- unified mapping ---
+def _unified_stem_map(asm_dir: Path) -> tuple[dict[str, str], list[str]]:
+    """Every PNG stem asm_parser.py could have produced, mapped to a sha256.
+
+    unified_to_asm.py writes `<set>/<family>/<sha256>.asm`, and this pipeline
+    renders one asm_parser.py run per set (so that --default-class assigns the
+    right class), which makes the stem `asm_id()` produces depend on which
+    directory that run was rooted at:
+
+        --asm-dir OUT                ->  good_train__root__<sha256>
+        --asm-dir OUT/good_train     ->  root__<sha256>
+        --asm-dir OUT/good_train/root->  <sha256>
+
+    All three are accepted, and every one is checked against the manifest, so
+    nothing is inferred from the shape of the name.
+    """
+    man = pd.read_csv(asm_dir / "asm_manifest.csv", dtype=str,
+                      keep_default_na=False)
+    stem_to_sha: dict[str, str] = {}
+    collisions: list[str] = []
+    for _, r in man.iterrows():
+        rel = r["asm_path"]
+        if not rel:
+            continue
+        sha = r["sha256"].strip().lower()
+        parts = rel[:-4].split("/") if rel.lower().endswith(".asm") else rel.split("/")
+        for i in range(len(parts)):
+            stem = "__".join(parts[i:])
+            prev = stem_to_sha.setdefault(stem, sha)
+            if prev != sha:
+                collisions.append(stem)
+    return stem_to_sha, sorted(set(collisions))
+
+
+def index_unified_tree(image_tree: str, asm_tree: str,
+                       label_filter) -> tuple[pd.DataFrame, list[dict]]:
+    """Every PNG under a unified image tree, keyed by sha256.
+
+    The class comes from the `Class_<n>_*` folder asm_parser.py sorted the
+    image into, so the tree-vs-cohort label cross-check in build() still has
+    something independent to compare against.
+    """
+    img_dir = IMAGE_ROOT / image_tree
+    asm_dir = ASM_ROOT / asm_tree
+    if not img_dir.is_dir() or not (asm_dir / "asm_manifest.csv").exists():
+        return pd.DataFrame(), []
+
+    stem_to_sha, collisions = _unified_stem_map(asm_dir)
+    if collisions:
+        raise AssertionError(
+            f"{asm_tree}: {len(collisions)} PNG stems would map to more than "
+            f"one sha256, e.g. {collisions[:3]}")
+
+    rows, unmapped = [], []
+    for png in sorted(img_dir.rglob("*.png")):
+        cls_dir = png.parent.name
+        if not cls_dir.startswith("Class_"):
+            unmapped.append({"image_tree": image_tree, "png": str(png),
+                             "asm_id": png.stem,
+                             "reason": "not inside a Class_<n>_* folder"})
+            continue
+        try:
+            tree_label = int(cls_dir.split("_")[1])
+        except (IndexError, ValueError):
+            unmapped.append({"image_tree": image_tree, "png": str(png),
+                             "asm_id": png.stem,
+                             "reason": f"unreadable class folder {cls_dir!r}"})
+            continue
+        if label_filter is not None and tree_label != label_filter:
+            continue
+        sha = stem_to_sha.get(png.stem)
+        if sha is None:
+            unmapped.append({"image_tree": image_tree, "png": str(png),
+                             "asm_id": png.stem,
+                             "reason": "stem not in asm_manifest"})
+            continue
+        mask = png.with_name(png.stem + "_vit_mask.npy")
+        rows.append({
+            "sha256": sha,
+            "asm_id": png.stem,
+            "png": str(png),
+            "mask": str(mask) if mask.exists() else "",
+            "image_tree": image_tree,
+            "asm_status": "unified",
+            "tree_label": tree_label,
+        })
+    return pd.DataFrame(rows), unmapped
+
+
+# ------------------------------------------------------- source selection ---
+def resolve_source(dataset: str) -> str:
+    """Which image source to use. `auto` prefers unified when it is complete.
+
+    "Complete" means every tree the dataset needs exists on disk. The unified
+    source is preferred because on this host it is the only one that has both
+    classes; if it is absent the original asm_parse layout is used unchanged.
+    """
+    if SOURCE != "auto":
+        return SOURCE
+    for image_tree, asm_tree, _, _ in UNIFIED_TREES[dataset]:
+        if not (IMAGE_ROOT / image_tree).is_dir():
+            return "asm_parse"
+        if not (ASM_ROOT / asm_tree / "asm_manifest.csv").exists():
+            return "asm_parse"
+    return "unified"
+
+
+def index_dataset(dataset: str, source: str):
     frames, unmapped, present, missing = [], [], [], []
-    for image_tree, asm_tree, label, origin in TREES[dataset]:
-        df, un = index_tree(image_tree, asm_tree)
-        unmapped.extend(un)
-        if len(df):
-            df["tree_label"] = label
-            frames.append(df)
-            present.append((image_tree, len(df)))
-        else:
-            missing.append((image_tree, asm_tree, origin))
+    if source == "unified":
+        for image_tree, asm_tree, label_filter, origin in UNIFIED_TREES[dataset]:
+            df, un = index_unified_tree(image_tree, asm_tree, label_filter)
+            unmapped.extend(un)
+            tag = (f"{image_tree}[class {label_filter}]"
+                   if label_filter is not None else image_tree)
+            if len(df):
+                frames.append(df)
+                present.append((tag, len(df)))
+            else:
+                missing.append((tag, asm_tree, origin))
+    else:
+        for image_tree, asm_tree, label, origin in TREES[dataset]:
+            df, un = index_tree(image_tree, asm_tree)
+            unmapped.extend(un)
+            if len(df):
+                df["tree_label"] = label
+                frames.append(df)
+                present.append((image_tree, len(df)))
+            else:
+                missing.append((image_tree, asm_tree, origin))
     frame = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     return frame, unmapped, present, missing
 
@@ -158,9 +315,14 @@ def materialise(df: pd.DataFrame, out: Path, mode: str) -> dict:
 # ------------------------------------------------------------------- main ---
 def build(dataset: str, out: Path, mode: str, clean: bool) -> int:
     split = C.load_split(dataset)
-    frame, unmapped, present, missing = index_dataset(dataset)
+    source = resolve_source(dataset)
+    frame, unmapped, present, missing = index_dataset(dataset, source)
 
-    print(f"=== build_dataset --dataset {dataset} ===")
+    print(f"=== build_dataset --dataset {dataset} --source {source} ===")
+    if source == "unified":
+        print("images rendered by asm_parser.py from the revised extractor's "
+              "full disassembly (asm_tool/unified_to_asm.py), not from "
+              "asm_parse.py's linear sweep; see asm_tool/README.md section 6.")
     print(f"image trees under {IMAGE_ROOT}")
     for tree, n in present:
         print(f"  present  {tree:<28} {n:5d} PNGs")
@@ -193,7 +355,8 @@ def build(dataset: str, out: Path, mode: str, clean: bool) -> int:
           f"have an image")
 
     gap = C.explain_missing(split, set(frame["sha256"]),
-                            on_disk_names=set(_tree_filenames(dataset)))
+                            on_disk_names=set(_tree_filenames(dataset, source)))
+    missing_rows = split[~split["sha256"].isin(set(frame["sha256"]))].copy()
     print("\nfold counts:")
     print(joined.groupby(["fold", "label"]).size().to_string())
     print("\nper-arch:")
@@ -223,9 +386,15 @@ def build(dataset: str, out: Path, mode: str, clean: bool) -> int:
         pd.DataFrame(unmapped).to_csv(out / "unmapped.csv", index=False)
     if dup_rows:
         pd.DataFrame(dup_rows).to_csv(out / "duplicate_sha_pngs.csv", index=False)
+    if len(missing_rows):
+        # every cohort row that has no image, listed by name rather than
+        # summarised, so the gap can never be waved through as a round number
+        missing_rows.to_csv(out / "missing_from_images.csv", index=False)
+        print(f"  listed in {out/'missing_from_images.csv'}")
 
     report = {
         "dataset": dataset,
+        "source": source,
         "out": str(out),
         "image_root": str(IMAGE_ROOT),
         "asm_root": str(ASM_ROOT),
@@ -251,13 +420,23 @@ def build(dataset: str, out: Path, mode: str, clean: bool) -> int:
     return 0
 
 
-def _tree_filenames(dataset: str) -> set[str]:
+def _tree_filenames(dataset: str, source: str = "asm_parse") -> set[str]:
+    """Original PE filenames the extractor actually saw, for explain_missing.
+
+    asm_parse manifests carry `rel_path` (a path inside the PE tree); unified
+    manifests carry `filename` directly.
+    """
     names: set[str] = set()
-    for _, asm_tree, _, _ in TREES[dataset]:
+    trees = UNIFIED_TREES[dataset] if source == "unified" else TREES[dataset]
+    for _, asm_tree, _, _ in trees:
         man = ASM_ROOT / asm_tree / "asm_manifest.csv"
-        if man.exists():
-            df = pd.read_csv(man, dtype=str, keep_default_na=False)
+        if not man.exists():
+            continue
+        df = pd.read_csv(man, dtype=str, keep_default_na=False)
+        if "rel_path" in df.columns:
             names |= set(df["rel_path"].str.rsplit("/", n=1).str[-1])
+        elif "filename" in df.columns:
+            names |= set(df["filename"])
     return names
 
 
@@ -272,13 +451,19 @@ def main() -> int:
                     help="remove --out first")
     ap.add_argument("--images-root", default=None)
     ap.add_argument("--asm-root", default=None)
+    ap.add_argument("--source", choices=SOURCES, default="auto",
+                    help="which image trees to read: `unified` (rendered from "
+                         "the revised extractor via asm_tool/unified_to_asm.py), "
+                         "`asm_parse` (the original per-corpus trees), or "
+                         "`auto` (default: unified when it is complete)")
     a = ap.parse_args()
 
-    global IMAGE_ROOT, ASM_ROOT
+    global IMAGE_ROOT, ASM_ROOT, SOURCE
     if a.images_root:
         IMAGE_ROOT = Path(a.images_root)
     if a.asm_root:
         ASM_ROOT = Path(a.asm_root)
+    SOURCE = a.source
     return build(a.dataset, Path(a.out), a.mode, a.clean)
 
 
