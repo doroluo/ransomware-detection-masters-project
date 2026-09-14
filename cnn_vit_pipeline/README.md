@@ -13,9 +13,19 @@ changes.
 | `cohort.py` | the one shared place where the cohort and the split are decided, plus the shared `metrics.json` writer. `ember_pipeline/train_eval.py` imports it too. |
 | `build_dataset.py` | maps PNGs back to sha256, applies the split, materialises `train/val/test` |
 | `train_eval.py` | trains, evaluates, writes `results/cnn_vit/<dataset>/{metrics.json,splits.csv,training_log.csv,test_predictions.csv,config_used.yaml}` |
+| `encode.py` | **tuning only** — parses `.asm` once into a token cache, then renders it under one of five input encodings (`head3` is the current pipeline, byte for byte) |
+| `tuned_model.py` | **tuning only** — `model_train.HierarchicalMalwareNet` with its hard-coded sizes turned into arguments; asserted shape-identical at its defaults |
+| `tuned_train.py` | **tuning only** — group-CV hyper-parameter search on train, then one final 5-seed test run, into `results/cnn_vit/tuned/<dataset>/` |
+| `tuned_report.py` | **tuning only** — reads those artefacts and prints the markdown tables that go in `summary.md` (top-N CV, per-axis effect, CV→test gap, before/after). Trains nothing. |
 | [`../asm_tool/unified_to_asm.py`](../asm_tool/unified_to_asm.py) | turns the revised extractor's disassembly into an `asm_parse.py`-shaped `.asm` tree that `asm_parser.py` can render unmodified |
 
-Tested by `tests/test_cohort_split.py`.
+Tested by `tests/test_cohort_split.py` and `tests/test_cnn_vit_encoding.py`.
+
+`CNN-ViT/model_train.py` and `CNN-ViT/asm_parser.py` are **not** modified by any
+of this: `train_eval.py` still imports the original model, and the tuning
+harness carries its own parameterised copy whose default configuration is
+checked against the original at runtime
+(`python -m cnn_vit_pipeline.tuned_model`).
 
 Results and the narrative that goes with them:
 [`results/cnn_vit/summary.md`](../results/cnn_vit/summary.md).
@@ -230,3 +240,139 @@ in-cohort goodware-train rows therefore have an `asm_parse` image.
 names every missing row in `missing_from_images.csv`. This is precisely why the
 results were produced from the `unified` source, where the join is by sha256 on
 both sides and nothing is lost. The fix belongs upstream, in extraction.
+
+## Tuning: `encode.py` + `tuned_train.py`
+
+The three files above reproduce the *original* protocol. The tuning harness
+answers a different question — how much of the CNN-ViT's weak showing is the
+protocol and how much is the configuration — and it is kept strictly separate
+so the baseline cannot drift.
+
+### Protocol
+
+Selection never touches the test fold. `tuned_train.py search` runs
+**3-fold group cross-validation over the train split only**
+(`StratifiedGroupKFold` on `family_or_group`, so whole ransomware families and
+whole goodware projects are held out together), and inside each CV-train part
+it carves a *further* group-aware inner val fold for early stopping — so the
+fold being scored never chose the checkpoint that scores it. Every
+configuration tried is appended to `results/cnn_vit/tuned/<dataset>/cv_search.csv`.
+Only after that does `tuned_train.py final` train on the full train split
+(early stopping on the fixed `cohort.add_val_fold` val fold, the same one
+`train_eval.py` uses) and score the test fold once per seed.
+
+Where the decision threshold is fitted rather than fixed at 0.5, the reported
+CV number is **nested**: each fold's threshold comes from the out-of-fold
+scores of the other folds only. `threshold_refit_all_oof` — the one the final
+model deploys — is refitted on all out-of-fold train scores and still never
+sees test.
+
+### Input encodings
+
+`encode.py` parses each `.asm` exactly once into a token cache
+(`cnn_vit_cache/<tree>/{tokens.u8,index.csv}`) and renders canvases from it.
+`--variant` picks what lands on the 256x256 canvas:
+
+| variant | what the canvas holds |
+|---|---|
+| `head3` | **the current pipeline, byte for byte.** Instruction triplets (opcode/API id, operand-1 class, operand-2 class) in file order, truncated at 65,536 tokens — the first 21,845 whole instructions plus the opcode of the 21,846th |
+| `stride3` | the same triplets, but for files longer than that window the instructions kept are sampled on an even stride across the **whole** file instead of taking the first ones (50% of Mendeley and 61% of balanced-goodware files exceed the window) |
+| `mnem1` | mnemonic-only: one token per instruction, operand classes dropped, so three times as much code fits — the representation the mnemonic TF-IDF baseline wins with |
+| `mnem1s` | mnemonic-only plus the even-stride subsampling |
+| `crop3` | K=4 fixed windows of 21,846 consecutive instructions with evenly spaced starts (crop 0 == `head3`); one is drawn at random per sample per epoch and `--tta` averages all K at eval time |
+
+`--row-align` additionally pads each canvas row out to a whole number of
+instructions (85 instructions = 255 tokens + one `END_PAD`), so every row
+starts on an opcode instead of drifting through three phases.
+
+`tests/test_cnn_vit_encoding.py` pins all of this against a hand-written eight
+-instruction `.asm` and asserts that `head3` equals the unmodified
+`asm_parser.py` output byte for byte.
+
+### Commands
+
+```bash
+PY="C:/Users/chaoa/Downloads/cnn_vit_venv/Scripts/python.exe"   # 3.12 + cu128
+
+# 0. the model copy really is the original
+$PY -m cnn_vit_pipeline.tuned_model
+$PY cnn_vit_pipeline/encode.py selftest
+python -m pytest tests/test_cnn_vit_encoding.py -q                  # system Python is fine
+
+# 1. parse every .asm once (~4 min on 16 cores; variant-agnostic)
+$PY cnn_vit_pipeline/encode.py cache --asm-tree unified_mendeley
+$PY cnn_vit_pipeline/encode.py cache --asm-tree unified_goodware_balanced
+
+# 2. search: group CV on TRAIN only, appends to cv_search.csv.
+#    --resume skips configurations already in the file, so an interrupted
+#    search is picked up exactly where it stopped.
+for D in mendeley balanced; do
+  $PY cnn_vit_pipeline/tuned_train.py search --dataset $D --resume \
+      --grid encoding,optim,loss,decision,capacity
+done
+#   --grid file:<path.json> takes an explicit list of override dicts; the
+#   stage column in cv_search.csv is the file's stem. That is how the
+#   `combine` stage (per-axis winners crossed) was run:
+#       $PY cnn_vit_pipeline/tuned_train.py search --dataset balanced \
+#           --grid file:grids/balanced/combine.json --resume
+#   and how the top-3 were re-cross-validated at a second fold-split seed:
+#       $PY cnn_vit_pipeline/tuned_train.py search --dataset balanced \
+#           --grid file:grids/balanced/cvseed.json --seed 7 --resume
+
+# 3. the BASE configuration, 5 seeds - the "before" the tuned run is compared
+#    against, measured through this harness rather than train_eval.py
+for D in mendeley balanced; do
+  $PY cnn_vit_pipeline/tuned_train.py final --dataset $D --seeds 1,2,3,4,5 \
+      --ckpt-tag base --out results/cnn_vit/tuned/$D/baseline
+done
+
+# 4. post hoc, AFTER selection closed: the top-3 CV configurations on test,
+#    one seed each, for the CV->test gap table. --ckpt-tag keeps their weights
+#    out of the chosen configuration's checkpoint directory.
+$PY cnn_vit_pipeline/tuned_train.py final --dataset balanced --seeds 1 \
+    --variant stride3 --ckpt-tag ph1 --out results/cnn_vit/tuned/balanced/posthoc/rank1
+
+# 5. final: the chosen configuration, 5 seeds -> results/cnn_vit/tuned/<dataset>/
+$PY cnn_vit_pipeline/tuned_train.py final --dataset mendeley --seeds 1,2,3,4,5 \
+    --weight-decay 0.1 --width 16 --depth 3 --dropout 0.3
+$PY cnn_vit_pipeline/tuned_train.py final --dataset balanced --seeds 1,2,3,4,5 \
+    --variant stride3
+
+# 6. the tables in summary.md section 9 (reads the files above, trains nothing)
+python cnn_vit_pipeline/tuned_report.py all
+
+# 7. (reproducibility) re-run one seed of the chosen configuration into a
+#    scratch directory and diff it. Both datasets come back bit-identical:
+#    same y_pred, max score delta 0.0, same epochs_run.
+$PY cnn_vit_pipeline/tuned_train.py final --dataset balanced --seeds 1 \
+    --variant stride3 --ckpt-tag repro --out /tmp/repro_balanced
+
+# 8. (optional) render the chosen encoding to PNG trees and rebuild the
+#    hard-linked dataset, so the tuned images can be inspected like any other
+$PY cnn_vit_pipeline/encode.py render --asm-tree unified_mendeley \
+    --variant <v> --out-root "C:/Users/chaoa/Downloads/cnn_vit_images/tuned_<v>"
+$PY cnn_vit_pipeline/encode.py render --asm-tree unified_goodware_balanced \
+    --variant <v> --out-root "C:/Users/chaoa/Downloads/cnn_vit_images/tuned_<v>"
+$PY cnn_vit_pipeline/build_dataset.py --dataset mendeley --source unified \
+    --images-root "C:/Users/chaoa/Downloads/cnn_vit_images/tuned_<v>" \
+    --out "C:/Users/chaoa/Downloads/cnn_vit_data/tuned_<v>_mendeley" --clean
+```
+
+**Chosen by CV, and what it is worth.** `mendeley` takes `head3` with
+`weight_decay=0.1`, width 16, depth 3, dropout 0.3; `balanced` takes `stride3`
+at otherwise stock settings. Both decide at plain `argmax`. Re-cross-validating
+the top three at a *second* fold-split seed showed that on `mendeley` nothing
+in 56 configurations survives changing the fold split, and the tuned run scores
+0.655 ± 0.049 macro-F1 against the same recipe's 0.660 ± 0.096 — tuning bought
+nothing there. `balanced` gains +0.078 over that baseline on the strength of
+the encoding change alone, but is still at chance *within* each architecture.
+Read [`results/cnn_vit/summary.md` §9](../results/cnn_vit/summary.md) before
+quoting any of it.
+
+Model weights go to `C:/Users/chaoa/Downloads/cnn_vit_models/tuned/<dataset>/seed<N>/`
+and never into `results/`. The token cache and the per-variant canvas arrays
+live under `C:/Users/chaoa/Downloads/cnn_vit_cache/` (override with
+`RANSOM_CNN_VIT_CACHE`).
+
+Results: [`results/cnn_vit/summary.md`](../results/cnn_vit/summary.md), section
+"Tuned".

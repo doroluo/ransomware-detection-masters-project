@@ -19,6 +19,24 @@ results/cnn_vit/<dataset>/config_used.yaml      # the configuration the run used
 
 `<dataset>` is `mendeley` or `balanced`.
 
+Written by `cnn_vit_pipeline/tuned_train.py` (the tuning harness, selection by
+group CV on the train split only):
+
+```
+results/cnn_vit/tuned/<dataset>/cv_search.csv        # every configuration tried, its CV metrics and its cost
+results/cnn_vit/tuned/<dataset>/metrics.json         # chosen config, 5 seeds; shared schema + macro_f1_sd + n_seeds
+results/cnn_vit/tuned/<dataset>/predictions.csv      # all 5 seeds stacked, `seed` column
+results/cnn_vit/tuned/<dataset>/config_used.yaml     # the configuration and the paths it used
+results/cnn_vit/tuned/<dataset>/seeds/seed<N>/       # per-seed metrics.json, predictions.csv, training_log.csv
+results/cnn_vit/tuned/<dataset>/baseline/            # the BASE configuration, 5 seeds - the "before"
+results/cnn_vit/tuned/<dataset>/posthoc/rank<N>/     # top-3 CV configs, test-scored AFTER selection closed
+```
+
+`posthoc/` chose nothing; it exists to measure the CV -> test gap. See
+[`summary.md` section 9](summary.md) - the short version is that tuning bought
+nothing on `mendeley` and did not lift `balanced` above chance within each
+architecture.
+
 No model weights live here - they are binary. Checkpoints go to
 `C:/Users/chaoa/Downloads/cnn_vit_models/<dataset>/best_model.pth`.
 

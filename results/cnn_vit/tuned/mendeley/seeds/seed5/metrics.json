@@ -1,0 +1,262 @@
+{
+  "accuracy": 0.6354378818737271,
+  "balanced_accuracy": 0.7278148957128785,
+  "majority_class_accuracy": 0.7372708757637475,
+  "precision_goodware": 0.4131944444444444,
+  "recall_goodware": 0.9224806201550387,
+  "f1_goodware": 0.5707434052757793,
+  "support_goodware": 129,
+  "precision_ransomware": 0.9507389162561576,
+  "recall_ransomware": 0.5331491712707183,
+  "f1_ransomware": 0.6831858407079646,
+  "support_ransomware": 362,
+  "macro_precision": 0.6819666803503011,
+  "macro_recall": 0.7278148957128785,
+  "macro_f1": 0.626964622991872,
+  "false_positive_rate": 0.07751937984496124,
+  "confusion_matrix": {
+    "tn": 119,
+    "fp": 10,
+    "fn": 169,
+    "tp": 193
+  },
+  "roc_auc": 0.8837316373292218,
+  "per_architecture": {
+    "x64": {
+      "accuracy": 0.14285714285714285,
+      "balanced_accuracy": 0.5,
+      "majority_class_accuracy": 0.8571428571428571,
+      "precision_goodware": 0.14285714285714285,
+      "recall_goodware": 1.0,
+      "f1_goodware": 0.25,
+      "support_goodware": 12,
+      "precision_ransomware": 0.0,
+      "recall_ransomware": 0.0,
+      "f1_ransomware": 0.0,
+      "support_ransomware": 72,
+      "macro_precision": 0.07142857142857142,
+      "macro_recall": 0.5,
+      "macro_f1": 0.125,
+      "false_positive_rate": 0.0,
+      "confusion_matrix": {
+        "tn": 12,
+        "fp": 0,
+        "fn": 72,
+        "tp": 0
+      },
+      "roc_auc": 0.9270833333333333,
+      "n": 84
+    },
+    "x86": {
+      "accuracy": 0.7371007371007371,
+      "balanced_accuracy": 0.7900235779546124,
+      "majority_class_accuracy": 0.7125307125307125,
+      "precision_goodware": 0.5245098039215687,
+      "recall_goodware": 0.9145299145299145,
+      "f1_goodware": 0.6666666666666666,
+      "support_goodware": 117,
+      "precision_ransomware": 0.9507389162561576,
+      "recall_ransomware": 0.6655172413793103,
+      "f1_ransomware": 0.7829614604462475,
+      "support_ransomware": 290,
+      "macro_precision": 0.7376243600888631,
+      "macro_recall": 0.7900235779546124,
+      "macro_f1": 0.7248140635564571,
+      "false_positive_rate": 0.08547008547008547,
+      "confusion_matrix": {
+        "tn": 107,
+        "fp": 10,
+        "fn": 97,
+        "tp": 193
+      },
+      "roc_auc": 0.9158414382552313,
+      "n": 407
+    }
+  },
+  "per_arch": {
+    "x64": {
+      "n": 84,
+      "support_goodware": 12,
+      "support_ransomware": 72,
+      "recall_goodware": 1.0,
+      "recall_ransomware": 0.0,
+      "accuracy": 0.14285714285714285,
+      "macro_f1": 0.125
+    },
+    "x86": {
+      "n": 407,
+      "support_goodware": 117,
+      "support_ransomware": 290,
+      "recall_goodware": 0.9145299145299145,
+      "recall_ransomware": 0.6655172413793103,
+      "accuracy": 0.7371007371007371,
+      "macro_f1": 0.7248140635564571
+    }
+  },
+  "goodware_recall_by_arch": {
+    "x64": {
+      "n": 12,
+      "recall_goodware": 1.0
+    },
+    "x86": {
+      "n": 117,
+      "recall_goodware": 0.9145299145299145
+    }
+  },
+  "per_family_recall": {
+    "avoslocker": {
+      "recall": 0.02,
+      "correct": 1,
+      "support": 50
+    },
+    "bianlian": {
+      "recall": 0.0,
+      "correct": 0,
+      "support": 11
+    },
+    "blackbasta": {
+      "recall": 0.6,
+      "correct": 18,
+      "support": 30
+    },
+    "blackbyte": {
+      "recall": 0.0,
+      "correct": 0,
+      "support": 7
+    },
+    "blackcat": {
+      "recall": 1.0,
+      "correct": 50,
+      "support": 50
+    },
+    "bluesky": {
+      "recall": 1.0,
+      "correct": 34,
+      "support": 34
+    },
+    "clop": {
+      "recall": 0.6444444444444445,
+      "correct": 29,
+      "support": 45
+    },
+    "hive": {
+      "recall": 0.14,
+      "correct": 7,
+      "support": 50
+    },
+    "holyghost": {
+      "recall": 0.0,
+      "correct": 0,
+      "support": 4
+    },
+    "karma": {
+      "recall": 0.15384615384615385,
+      "correct": 2,
+      "support": 13
+    },
+    "lorenz": {
+      "recall": 0.75,
+      "correct": 12,
+      "support": 16
+    },
+    "maui": {
+      "recall": 1.0,
+      "correct": 3,
+      "support": 3
+    },
+    "playcrypt": {
+      "recall": 0.8604651162790697,
+      "correct": 37,
+      "support": 43
+    },
+    "quantum": {
+      "recall": 0.0,
+      "correct": 0,
+      "support": 6
+    }
+  },
+  "ransomware_recall_by_family": {
+    "avoslocker": {
+      "n": 50,
+      "recall": 0.02,
+      "detected": 1
+    },
+    "bianlian": {
+      "n": 11,
+      "recall": 0.0,
+      "detected": 0
+    },
+    "blackbasta": {
+      "n": 30,
+      "recall": 0.6,
+      "detected": 18
+    },
+    "blackbyte": {
+      "n": 7,
+      "recall": 0.0,
+      "detected": 0
+    },
+    "blackcat": {
+      "n": 50,
+      "recall": 1.0,
+      "detected": 50
+    },
+    "bluesky": {
+      "n": 34,
+      "recall": 1.0,
+      "detected": 34
+    },
+    "clop": {
+      "n": 45,
+      "recall": 0.6444444444444445,
+      "detected": 29
+    },
+    "hive": {
+      "n": 50,
+      "recall": 0.14,
+      "detected": 7
+    },
+    "holyghost": {
+      "n": 4,
+      "recall": 0.0,
+      "detected": 0
+    },
+    "karma": {
+      "n": 13,
+      "recall": 0.15384615384615385,
+      "detected": 2
+    },
+    "lorenz": {
+      "n": 16,
+      "recall": 0.75,
+      "detected": 12
+    },
+    "maui": {
+      "n": 3,
+      "recall": 1.0,
+      "detected": 3
+    },
+    "playcrypt": {
+      "n": 43,
+      "recall": 0.8604651162790697,
+      "detected": 37
+    },
+    "quantum": {
+      "n": 6,
+      "recall": 0.0,
+      "detected": 0
+    }
+  },
+  "model": "TunableMalwareNet (CNN-ViT, tuned)",
+  "seed": 5,
+  "threshold": 0.5,
+  "threshold_rule": "argmax",
+  "epochs_run": 19,
+  "epochs_requested": 80,
+  "seconds_per_epoch_mean": 2.265,
+  "seconds_per_epoch_median": 2.202,
+  "train_seconds_total": 43.04,
+  "device": "cuda",
+  "device_name": "NVIDIA GeForce RTX 5080 (sm_120), torch 2.11.0+cu128",
+  "cv_oof": null
+}

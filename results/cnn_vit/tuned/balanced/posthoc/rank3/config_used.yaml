@@ -1,0 +1,50 @@
+pipeline: cnn_vit_tuned
+dataset: balanced
+seeds:
+  - 1
+device_name: "NVIDIA GeForce RTX 5080 (sm_120), torch 2.11.0+cu128"
+model:
+  class: TunableMalwareNet (cnn_vit_pipeline/tuned_model.py)
+  identical_to_original_at_defaults: true
+  width: 32
+  depth: 6
+  heads: 8
+  mlp_ratio: 2.0
+  dropout: 0.15
+  drop_path: 0.0
+  token_dim: 256
+encoding:
+  variant: mnem1s
+  row_align: false
+  crops: 1
+  test_time_augmentation: false
+  described_in: cnn_vit_pipeline/encode.py
+training:
+  lr: 0.0003
+  weight_decay: 0.01
+  batch_size: 16
+  epochs: 80
+  patience: 8
+  warmup_epochs: 5
+  schedule: cosine
+  grad_clip: 1.0
+  label_smoothing: 0.15
+  loss: ce
+  focal_gamma: 2.0
+  sampler: class
+  amp: bf16
+  monitor: val_loss
+  aug_p: 0.4
+  aug_max_shift: 0.2
+decision_rule:
+  threshold: argmax
+  fitted_on: "out-of-fold TRAIN scores from the same group CV, never on test"
+split:
+  source: cnn_vit_pipeline/cohort.py
+  val_fraction: 0.1
+  val_seed: 1337
+  cv_folds: 3
+  cv: StratifiedGroupKFold over the train split
+paths:
+  checkpoints: "C:\\Users\\chaoa\\Downloads\\cnn_vit_models\\tuned\\balanced-ph3"
+  token_cache: "C:\\Users\\chaoa\\Downloads\\cnn_vit_cache"
