@@ -24,6 +24,16 @@ ember_pipeline/wheels/
 !cnn_vit_pipeline/
 !cnn_vit_pipeline/**
 
+# research prototypes: CFG + graph2vec / WL, mnemonic rules + TF-IDF calibration baseline
+!graph2vec_pipeline/
+!graph2vec_pipeline/**
+!rules_pipeline/
+!rules_pipeline/**
+
+# cross-pipeline comparison generator
+!tools/
+!tools/**
+
 # offline VM runbook + packager (wheels themselves stay ignored)
 !vm_package/
 !vm_package/**

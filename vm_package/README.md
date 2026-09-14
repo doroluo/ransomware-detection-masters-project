@@ -4,16 +4,20 @@ The ransomware binaries never leave the VM. Everything below runs there,
 offline, and produces **text and feature files only**, which are then copied
 back to the host. Nothing executes a sample; every tool parses bytes.
 
-Four pipelines need ransomware-side inputs. The revised-extractor output
-(`Shared/Extract`) already exists. The other three are produced by this
-package:
+Status (13 September 2026): the Tokenization and CNN-ViT pipelines no longer
+need anything from the VM — both classes come from the revised extractor's
+`Shared/Extract` output (CNN-ViT via `asm_tool/unified_to_asm.py`). Only the
+EMBER rerun still needs VM-side extraction, and that is being handled by a
+teammate. Steps 3 and 5's `.asm` items are kept for a future
+`asm_parse.py`-sourced CNN-ViT comparison; they are optional.
 
 | pipeline | needs from the VM | produced by |
 |---|---|---|
 | Tokenization, revised features | `Shared/Extract/{mn,manifest.csv}` | already done (`extract_unified.py`) |
 | Tokenization, traditional features | `LLM_Features` | already done (`extract.py`) |
-| CNN-ViT (Yanping) | `.asm` trees in `asm_parse.py` format | step 3 |
-| EMBER (LightGBM) | 537-dim feature vectors keyed by SHA-256 | step 4 |
+| CNN-ViT (Yanping), unified source | `Shared/Extract/asm` | already done (`extract_unified.py`) |
+| CNN-ViT, `asm_parse.py` source (optional) | `.asm` trees in `asm_parse.py` format | step 3 |
+| EMBER (LightGBM) | 537-dim feature vectors keyed by SHA-256 | step 4 (teammate) |
 
 `Goodware_Test` is VM-only, and `Goodware_Training` on the VM is the complete,
 already-`upx -d`'d copy (1,134 files; the host copy has 1,115 with 67 still
