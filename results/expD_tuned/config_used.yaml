@@ -1,0 +1,80 @@
+paths:
+  tokenization_repo: C:/Users/chaoa/Downloads/Tokenization-Testing-for-Malware-Data
+  llm_features: C:/Users/chaoa/Downloads/LLM_Features/Features_Extraction
+  balanced_goodware: C:/Users/chaoa/Downloads/LLM_Features_Balanced/good_all
+  balanced_manifest: C:/Users/chaoa/Downloads/LLM_Features_Balanced/opcode_manifest.csv
+  llm_features_revised: C:/Users/chaoa/Downloads/LLM_Features_Revised/Features_Extraction
+  revised_manifest: C:/Users/chaoa/Downloads/LLM_Features_Revised/Features_Extraction/revised_manifest.csv
+  balanced_goodware_revised: C:/Users/chaoa/Downloads/LLM_Features_Revised_Balanced/good_all
+  balanced_revised_manifest: C:/Users/chaoa/Downloads/LLM_Features_Revised_Balanced/revised_manifest.csv
+  cohort_mendeley: C:/Users/chaoa/Downloads/asm and mm/Shared/cohort_mendeley.csv
+  cohort_balanced: C:/Users/chaoa/Downloads/asm and mm/Shared/cohort_balanced.csv
+  mendeley_goodware_sha256: C:/Users/chaoa/Downloads/LLM_Features_Balanced/mendeley_goodware_sha256.json
+  results: results
+tokenization:
+  max_instructions: 5000
+  vocab_size: 1000
+  methods:
+  - WPC
+  - SW
+  - WP
+  tokenizer_cache: results/tokenizers
+embedding:
+  methods:
+  - w2v
+  w2v:
+    vector_size: 100
+    window: 30
+    epochs: 5
+    seed: 42
+    workers: 1
+  mask_rates:
+  - 0.0
+classification:
+  models:
+  - RF
+  - SVM-RBF
+  - MLP
+  cv: 2
+  seed: 42
+split:
+  ransomware: preserve_mendeley
+  goodware_group_field: entry_id
+  goodware_ungrouped_entries:
+  - system_local
+  dedup_goodware_sources: true
+  seed: 42
+  match_counts_to: expA
+experiments:
+  expA:
+    description: Mendeley ransomware + Mendeley goodware (the LLM_Features baseline)
+    ransomware: mendeley
+    goodware: mendeley
+  expB:
+    description: Mendeley ransomware + Goodware_Balanced (hard-negative-rich goodware)
+    ransomware: mendeley
+    goodware: balanced
+  expA_cohort:
+    description: Exp A restricted to the cohort (traditional features, same folders
+      as the split)
+    ransomware: mendeley
+    goodware: mendeley
+    cohort_filter: true
+  expB_cohort:
+    description: Exp B restricted to the cohort (traditional features, Exp B's own
+      goodware split membership)
+    ransomware: mendeley
+    goodware: balanced
+    cohort_filter: true
+    reuse_goodware_split: expB
+  expC:
+    description: REVISED Mendeley ransomware + REVISED Mendeley goodware (mnemonic-only
+      features)
+    ransomware: mendeley_revised
+    goodware: mendeley_revised
+  expD:
+    description: REVISED Mendeley ransomware + REVISED Goodware_Balanced, Exp B's
+      goodware split membership
+    ransomware: mendeley_revised
+    goodware: balanced_revised
+    reuse_goodware_split: expB

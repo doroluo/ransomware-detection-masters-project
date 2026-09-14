@@ -39,6 +39,16 @@ experiments were re-run end to end** into a scratch directory with
 `elapsed_seconds` alone (plus, in `expB_cohort`, the recorded path of the
 `splits.csv` it reused, which pointed at the scratch copy).
 
+A fourth pass, also on 14 September 2026, added §6 — a 787-configuration
+grouped-cross-validation search over `expC` and `expD`, with the test set held
+out until one final evaluation each. It found that the committed
+`max_instructions = 5000` truncation is the largest CV-measurable limitation of
+the representation, that subword tokenization buys nothing on mnemonic-only
+input (§2.7 reached from the other end), and that **neither tuned run beats the
+fixed configuration on the test set**: `expD`'s does not even clear the
+architecture-only floor, and its x64 ransomware recall of 0.1667 is §5's open
+architecture item reproducing itself under a better search.
+
 ---
 
 ## 0. Binary, not multi-class
@@ -871,6 +881,16 @@ form in which any of these scores should be read.
   *remedy* — matching the architecture mixes, or scoring on a bitness-balanced
   test set — not the measurement.
 
+* **The 5,000-instruction cap is a modelling limitation, and now a measured
+  one.** §6.2: lifting it to 20,000 tokens is worth +0.031 CV macro-F1 on
+  `expC`, more than any other single axis in the search — the median `expC`
+  ransomware test file is 144,236 mnemonics, so the committed runs read the
+  first 3.5% of it. What is *not* settled is whether that CV gain is real
+  signal: the two 50,000-token configurations in `expC`'s top five lose 0.09 to
+  0.11 macro-F1 on test relative to the 20,000-token ones (§6.3). Reading more
+  of the file helps in cross-validation and hurts on the held-out split, and
+  which of those two the deployment resembles is not answerable from this
+  corpus.
 * **WPC results are not reproducible on a new corpus.** §1.10. The cached
   tokenizer makes the committed numbers reproducible, but the first run on any
   new corpus draws one vocabulary out of several the trainer might have picked,
@@ -891,8 +911,256 @@ form in which any of these scores should be read.
   three experiments is quoted. Either the goodware architecture mix gets matched
   to the ransomware's, or those rows are reported with the floor printed beside
   them — which `results/summary.md` now does, in every table.
+  **[reinforced 14 September 2026]** §6 searched 787 configurations on `expD`
+  under grouped cross-validation and the selected one scores **0.6830** on test,
+  *below* the 0.7113 architecture floor, with x64 ransomware recall of 0.1667
+  against 0.8034 on x86. Tuning does not get around this; it walks further into
+  it, because reading the bitness is what the train split rewards.
 * **Half the goodware test set is still a copy of training data in the revised
   corpus too.** §2.7: 62 of 129, against 64 of 131 traditional. The revised
   extractor was never meant to fix this and did not. `expA` ↔ `expC` is a fair
   comparison *to each other* because both carry it at the same rate; neither is
   a field estimate.
+
+---
+
+## 6. The tuned runs (`tune.py`, `results/exp*_tuned/`)
+
+Everything in §6 was measured on 14 September 2026 with
+`llm_features_pipeline/tune.py` against the two revised-feature experiments.
+The tables it refers to are generated, not typed: the **Tuned** section of
+`results/summary.md` is rebuilt from `results/exp*_tuned/metrics.json` and
+`cv_search.csv` by `run_pipeline.py --summary-only`, so the prose here and the
+numbers there cannot drift apart.
+
+```bash
+python llm_features_pipeline/tune.py --experiment expC --stage cache
+python llm_features_pipeline/tune.py --experiment expC --stage search
+python llm_features_pipeline/tune.py --experiment expC --stage final
+python llm_features_pipeline/tune.py --experiment expC --stage check-pooling
+python llm_features_pipeline/run_pipeline.py --summary-only
+python -m pytest tests/test_tokenization_tuning.py -q
+```
+
+### 6.1 What the search was, and what it was allowed to see
+
+**787 configurations per experiment**, cross-validated in 8,457 s (`expC`) and
+8,331 s (`expD`). Three tracks, and the split of effort between them is a
+deliberate one — a Word2Vec fit per fold at `workers=1` (§1.7) is the single
+most expensive thing in the search, so the compute went where the CV score was
+already higher:
+
+| track | configurations | what varies |
+|---|---|---|
+| `tfidf` | 252 | sequence budget (5,000 / 20,000 / 50,000), sampler (`head` / `strided`), n-gram order (1-1 / 1-2 / 1-3), 14 linear classifier settings |
+| `w2v` | 507 | 13 Word2Vec settings (dim, window, epochs, min_count) × 3 poolings × 13 dense classifier settings |
+| `tokenizer` | 28 | SW / WP / WPC / BPE, WPC vocabulary 500–4,000, BPE 1,000 and 4,000, at 5,000 and 20,000 tokens |
+
+**The protocol, and the evidence it held.** `run_search()` reads the `split`
+column exactly once, to take `split == "train"`; the strings `test` and
+`te_rows` do not occur anywhere else in it, and it computes no test metric of
+any kind. Inside that train split the folds are
+`StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)` over the
+`group` column of `splits.csv` — ransomware family for a positive, source
+project (or the file itself) for a negative. What that buys is recorded per
+fold in `search_records.json`:
+
+| | fold 0 | fold 1 | fold 2 | fold 3 | fold 4 |
+|---|---|---|---|---|---|
+| `expC` rows held out | 396 | 401 | 407 | 407 | 407 |
+| `expC` families held out | 4 | 5 | 5 | 5 | 5 |
+| `expD` rows held out | 401 | 396 | 407 | 406 | 406 |
+| `expD` groups held out | 59 | 57 | 60 | 59 | 59 |
+
+Whole families go out together — fold 0 of `expC` holds out all of `dharma`,
+`netwalker`, `ragnarok` and `stop` — which is the shape of the real Mendeley
+test split (§2.3). A random-fold search would have been selecting for a task
+the test set does not ask.
+
+Everything fitted is fitted inside the fold:
+
+| object | fitted on |
+|---|---|
+| TF-IDF vocabulary, document frequencies and IDF | `fold_tfidf(counts, train_rows)` — the fold's training rows only |
+| Word2Vec | `_w2v_matrix([seqs[i] for i in tr], ...)` — the fold's training documents only |
+| the IDF used by `tfidf_mean` pooling | `_unigram_idf(counts, tr)` — the fold's training rows only |
+| WordPiece / BPE vocabulary | the train SPLIT (`text.iloc[train_rows]`), not the fold; recorded as a control rather than a contender, because §2.7 already measured WPC as whole-word tokenization to within 0.0015% of token occurrences |
+| decision threshold | out-of-fold scores of the OTHER folds (`nested_threshold_scores`) |
+
+**The one operation that sees a test row, and why it is not a leak.** In
+`--stage final`, `_features_for` counts n-grams over train and test documents
+together and prunes at global document frequency 5 before the vectoriser is
+fitted, because the unpruned trigram space at a 50,000-token budget does not fit
+in memory. A column's *training* document frequency can never exceed its global
+one, so every column a train-only fit would have kept survives the global prune,
+and the kept set, the IDF and the `max_features` cut come out identical either
+way. That is asserted rather than argued:
+`tests/test_tokenization_tuning.py::test_global_min_df_prune_cannot_change_what_the_train_fit_keeps`
+puts the same documents through both routes for three n-gram orders and two
+`min_df` values and requires the same columns and the same numbers.
+
+**The identity the whole search rests on** is that mean pooling over 50,000
+token vectors is one sparse product against a ~1,300-column count vector.
+Checked against the repo's own `build_word2vec_embeddings` on a real corpus
+slice rather than asserted:
+
+```
+max |matmul mean - float64 token-by-token mean| = 0.000e+00
+max |matmul mean - repo float32 mean|: train 4.504e-05 test 4.127e-05
+  (values up to 2.317; float32 eps x that is 2.8e-07 per term)
+POOLING EQUIVALENCE: PASS
+```
+
+The first line is exact — it is the same arithmetic. The second is float32
+rounding in the repo's accumulator, which is what it can be and no better.
+
+### 6.2 What the search found
+
+Per-axis best and median CV macro-F1 are tabulated in `results/summary.md`
+("what moved the number, axis by axis"). The short version, best CV macro-F1 at
+each setting:
+
+| axis | `expC` | `expD` |
+|---|---|---|
+| sequence budget 5,000 → 20,000 → 50,000 | 0.9168 → 0.9436 → 0.9474 | 0.9232 → 0.9174 → 0.9237 |
+| n-gram 1-1 → 1-3 | 0.9271 → 0.9474 | 0.9237 → 0.9206 |
+| TF-IDF over tokens vs Word2Vec | 0.9474 vs 0.9271 | 0.9237 vs 0.9232 |
+| sampler `head` vs `strided` | 0.9474 vs 0.9293 | 0.9206 vs 0.9237 |
+| tokenizer SW / WP / WPC / BPE | 0.9474 / 0.9267 / 0.9057 / 0.9052 | 0.9237 / 0.9081 / 0.8949 / 0.8934 |
+| pooling mean / tfidf_mean / mean_max | 0.9102 / 0.9119 / 0.9271 | 0.9152 / 0.9008 / 0.9232 |
+| weighting `none` vs `class_arch` | 0.9474 vs 0.9297 | 0.9237 vs 0.8600 |
+| best of each classifier | LogReg 0.9474, LinearSVC 0.9420, MLP 0.9271, SVM-RBF 0.9097, RF 0.8671 | LinearSVC 0.9237, SVM-RBF 0.9232, MLP 0.9222, LogReg 0.9202, RF 0.8566 |
+
+Read as a marginal, not an ablation — the axes are unevenly sampled on purpose,
+so the BEST column is the load-bearing one, and the medians in `summary.md` say
+whether a winner is a lone spike or the whole band moving.
+
+**What helped, in cross-validation.**
+
+* **The sequence budget, on `expC`, by more than anything else.** +0.031 CV
+  macro-F1 from 5,000 to 20,000 tokens. The committed pipeline's
+  `max_instructions = 5000` is a severe truncation on this corpus: the median
+  `expC` ransomware TEST file holds 144,236 mnemonics, so 5,000 lines is the
+  first 3.5% of it, and 66% of those files are over 50,000 lines. What lives in
+  that first 3.5% is CRT startup and compiler prologue — the part most alike
+  across everything built with the same toolchain.
+* **n-gram order.** 1-3 over 1-1 is +0.020 on `expC`. With one mnemonic per
+  line the unigram bag is a 728-symbol histogram; bigrams and trigrams are the
+  only thing left in the representation that carries order.
+* **TF-IDF over the token stream, over Word2Vec + pooling.** +0.020 CV on
+  `expC`, +0.0005 on `expD`. It is also two orders of magnitude cheaper.
+* **`mean_max` pooling, if Word2Vec is used at all.** +0.017 (`expC`) and
+  +0.008 (`expD`) over the plain mean the committed pipeline uses. The max half
+  is a presence feature over token TYPES, which is what the mean averages away.
+* **Tuning the committed representation's own hyper-parameters.** The committed
+  setting (head / 5,000 / dim 100 / window 30 / 5 epochs / mean pooling) is in
+  the table by construction: its best row is CV **0.8760** on `expC` (rank 222
+  of 787) and **0.8501** on `expD` (rank 406), against a best Word2Vec row
+  anywhere in the search of 0.9271 / 0.9232. So roughly half the search's CV
+  gain is Word2Vec settings and pooling and half is the budget and the n-gram
+  order.
+
+**What did not help.**
+
+* **Subword tokenization, at any vocabulary size.** WPC and BPE are *below* SW
+  and WP on both experiments, and the vocabulary size does not matter — 500,
+  1,000, 2,000 and 4,000 land within 0.0005 of each other on `expC`. This is
+  §2.7 measured a second way and from the other end: on mnemonic-only input
+  there is nothing for a subword model to do but reproduce the whole word, and
+  what it does learn costs a little by splitting the 12 mnemonics it never saw
+  in training.
+* **The architecture reweighting.** `class_arch` — making the 42 x64 training
+  positives weigh as much in aggregate as the 862 x86 ones — is worth −0.018 CV
+  on `expC` and **−0.064** on `expD`. It was put in the search precisely because
+  §2.7 says bitness is most of the measured signal on the Goodware_Balanced
+  side; cross-validation rejected it.
+* **Fitting the decision threshold.** Both fitted rules were scored nested for
+  all 787 configurations. On the best rows they are worth +0.001 to +0.010 in CV
+  and give it back on test. The reported rows therefore use the untuned cut,
+  which is also what the committed runs use, so the before/after comparison
+  moves the representation and the classifier and nothing else.
+* **Random forests.** The worst classifier family on both experiments, at the
+  top of the table and at the median.
+
+### 6.3 The final evaluation, and the result
+
+One configuration per experiment was selected **by cross-validation alone** —
+highest out-of-fold macro-F1, `cv_rank == 1` — then fitted on the whole train
+split and scored on the test set once. Both selected configurations are
+deterministic end to end (a linear model on a TF-IDF matrix; no Word2Vec, no
+MLP, no bagging), so one run is the whole story and a seed sweep would produce
+five identical rows. The four runners-up were scored afterwards **for the
+CV-to-test gap table only**; they are marked `"selected": false` in
+`metrics.json` and are not the result.
+
+| | `expC` | `expD` |
+|---|---|---|
+| chosen configuration | SW TF-IDF 1-3, head, 50,000 tokens, 87,269 features, LogReg C=0.1 balanced | SW TF-IDF 1-1, strided, 50,000 tokens, 859 features, LinearSVC C=0.1 balanced |
+| CV macro-F1 | 0.9474 | 0.9237 |
+| **test macro-F1** | **0.8576** | **0.6830** |
+| CV − test | +0.0898 | +0.2407 |
+| best committed row | 0.9260 (MLP/WP) | 0.8439 (SVM-RBF/SW) |
+| majority-class floor | 0.4244 | 0.4274 |
+| `x86 → ransomware` floor | 0.4335 | **0.7113** |
+| mnemonic TF-IDF calibration | 0.9680 (0.955 dedup-clean) | 0.8023 |
+
+**The search did not beat the fixed configuration on either experiment** — by
+−0.068 on `expC` and −0.161 on `expD` — and the `expD` result does not clear the
+architecture-only floor. That is the measurement; three things follow from it,
+and all three are checkable in the files.
+
+1. **The CV ranking does not transfer, and the top five show it.** On `expC` the
+   five differ by 0.0079 in cross-validation and by **0.1104** on test, and the
+   gap runs from −0.029 to +0.090. The two 50,000-token rows (CV ranks 1 and 4)
+   both land on 0.8576 and the three 20,000-token rows on 0.9540–0.9680: the
+   axis that won the search is the axis that lost the test set. Selecting the
+   best of those five *after* seeing the test scores would report 0.9680 —
+   +0.11 over the honest number, and exactly the error the protocol exists to
+   prevent.
+2. **Where `expC` lost it is goodware, not ransomware.** The tuned row raises
+   ransomware recall to 0.9917 (committed: 0.9641) and drops x86 goodware recall
+   to 0.6154 (committed: 0.8803). Reading more of each file makes the model more
+   willing to call a file ransomware, and 62 of the 129 test goodware files are
+   verbatim copies of training files (§2.7), so in cross-validation that
+   willingness is not punished the way the test split punishes it.
+3. **`expD`'s tuned row is an architecture detector.** Its x64 ransomware recall
+   is **0.1667** against 0.8034 on x86, and its x64 goodware recall is 1.0000;
+   the committed SVM-RBF/SW row scores 0.9011 macro-F1 on the x64 slice where
+   the tuned row scores 0.5077. Per family, `blackcat` goes 1.0000 → 0.0000,
+   `hive` 0.8400 → 0.0200 and `blackbyte` 1.0000 → 0.0000 — and `hive`,
+   `bianlian` and `blackbyte` are 43-of-50, 11-of-11 and 7-of-7 x64. This is the
+   §5 open item reproducing itself under a better search: with train goodware
+   82% x64 and train ransomware 95% x86, about the best thing a model can do in
+   grouped cross-validation on that train split is read the bitness, and the
+   test split does not reward it.
+
+The honest summary is that on these two experiments the ceiling is set by the
+corpus, not by the configuration. `expC`'s audited mnemonic TF-IDF calibration
+row (0.9680 raw, 0.955 with the duplicated test goodware removed) is still the
+number to beat, and nothing in 787 configurations beat it; `expD` cannot be read
+as a statement about opcodes at all until its architecture mixes are matched.
+
+### 6.4 Reproducibility
+
+`--stage final --results-dir <scratch>` refits the recorded configurations
+somewhere else, reading the committed `search_records.json` so it checks the
+final fit rather than demanding the 2.3-hour search be repeated. Both
+experiments were re-run that way at `--top-k 5`, so the check covers the
+stochastic runners-up as well as the deterministic selected rows:
+`predictions.csv`, `splits.csv`, `sample_counts.json` and `config_used.yaml`
+came back **byte-identical** and `metrics.json` differed in `elapsed_seconds`
+alone — the same standard §2.7 held the six committed experiments to. The
+Word2Vec rows reproduce because `workers=1` (§1.7) and the seed is fixed; the
+`expD` MLP row (CV rank 3) reproduces for the same reason.
+
+Two operational notes, because both cost time here:
+
+* The token cache is a scratch artifact in the system temp directory and is
+  *not* preserved between sessions. `--stage cache` rebuilds it from the corpus
+  in 252 s (`expC`, 2,509 files) and 350 s (`expD`, 2,501 files); `--stage
+  search` and `--stage final` both refuse to run without it.
+* `--stage final` on `expD` at `--top-k 5` was killed once, with no traceback,
+  while two other pipelines held ~6 GB on the same machine. That is a memory
+  ceiling rather than a defect — the trigram count matrix at a 50,000-token
+  budget over 2,501 documents is the largest object the pipeline ever builds —
+  and re-run alone it completed and produced the numbers above.

@@ -570,3 +570,213 @@ The plan asked for "the same stratified 80/20 split procedure" in both experimen
 3. **Exp B_cohort and Exp D do not re-split at all.** They take Exp B's committed goodware membership out of `results/expB/splits.csv` and intersect it with the pool in front of them (`data.reuse_split`). Re-running `group_split` on a pool the cohort filter has changed would move whole source projects across the train/test line, and the result would then differ from Exp B for two reasons at once - which is the one thing these four experiments exist to avoid.
 
 Net effect: A is the baseline on its own terms, B is the same ransomware task with a harder, properly grouped goodware half, and the four new experiments move one variable at a time off those two.
+
+---
+
+# Tuned
+
+Everything above is the committed six-experiment sweep: one tiny `GridSearchCV` (`cv=2`, four candidate settings per classifier) on top of a fixed representation - the first 5,000 lines of each file, Word2Vec 100d/window 30/5 epochs, mean-pooled. This section is what a real search finds on the same two revised-feature experiments.
+
+**Protocol, stated before any number below.** Every choice - sequence budget, positional sampler, tokenizer, vocabulary size, n-gram order, embedding, pooling, classifier and its hyperparameters, and the architecture reweighting - was made by grouped cross-validation on the TRAIN SPLIT ONLY, with the ransomware family / goodware project as the group so whole families are held out, and ranked by out-of-fold macro-F1. The test set was scored once per reported configuration, after the ranking was fixed. `results/expC/` and `results/expD/` are untouched. The search is in `llm_features_pipeline/tune.py`; every configuration it tried, with its CV scores, is in `results/exp*_tuned/cv_search.csv`. Only `cv_rank == 1` is the selected result; the four rows below it were scored on test afterwards, for the CV-to-test gap table alone, and reading the best of the five would be selection on the test set. The protocol audit - what the search was allowed to see, and the one operation that touches a test row and why it is not a leak - is [docs/tokenization_audit.md](../docs/tokenization_audit.md) §6.
+
+## Before and after
+
+| experiment | row | sequence budget | representation | classifier | macro-F1 | bal-acc | AUC | recall(ran) | FPR |
+|---|---|---|---|---|---|---|---|---|---|
+| expC | committed best (MLP/WP) | 5,000 head | w2v 100d mean | MLP | 0.9260 | 0.9239 | 0.9520 | 0.9641 | 0.1163 |
+| expC | committed SVM-RBF/SW | 5,000 head | w2v 100d mean | SVM-RBF | 0.8779 | 0.8999 | 0.9594 | 0.9006 | 0.1008 |
+| expC | committed RF/WPC | 5,000 head | w2v 100d mean | RF | 0.7660 | 0.8228 | 0.9482 | 0.7541 | 0.1085 |
+| expC | **tuned (CV rank 1)** | 50,000 head | SW TF-IDF 1-3, 87269 features | LogReg | **0.8576** | 0.8214 | 0.9759 | 0.9917 | 0.3488 |
+| expC | *calibration* - mnemonic_tfidf_1_3+LinearSVC | 30,000 head | mnemonic TF-IDF 1-3 | LinearSVC | 0.9603 | 0.9568 | 0.9778 | 0.9834 | 0.0698 |
+| expC | *calibration* - mnemonic_tfidf_1_3+LogReg | 30,000 head | mnemonic TF-IDF 1-3 | LogReg | 0.9680 | 0.9610 | 0.9871 | 0.9917 | 0.0698 |
+| expC | *floor* - majority class | - | - | - | 0.4244 | 0.5000 | - | 1.0000 | 1.0000 |
+| expC | *floor* - x86 means ransomware | - | - | - | 0.4335 | 0.4471 | - | 0.8011 | 0.9070 |
+| expD | committed best (SVM-RBF/SW) | 5,000 head | w2v 100d mean | SVM-RBF | 0.8439 | 0.8608 | 0.9044 | 0.8923 | 0.1707 |
+| expD | committed MLP/WP | 5,000 head | w2v 100d mean | MLP | 0.5972 | 0.6627 | 0.7526 | 0.5773 | 0.2520 |
+| expD | committed RF/WPC | 5,000 head | w2v 100d mean | RF | 0.5530 | 0.6642 | 0.8754 | 0.4503 | 0.1220 |
+| expD | **tuned (CV rank 1)** | 50,000 strided | SW TF-IDF 1-1, 859 features | LinearSVC | **0.6830** | 0.7449 | 0.8783 | 0.6768 | 0.1870 |
+| expD | *calibration* - mnemonic_tfidf_1_3+LinearSVC | 30,000 head | mnemonic TF-IDF 1-3 | LinearSVC | 0.8023 | 0.8508 | 0.9285 | 0.8039 | 0.1024 |
+| expD | *calibration* - mnemonic_tfidf_1_3+LogReg | 30,000 head | mnemonic TF-IDF 1-3 | LogReg | 0.7956 | 0.8441 | 0.9226 | 0.7983 | 0.1102 |
+| expD | *floor* - majority class | - | - | - | 0.4274 | 0.5000 | - | 1.0000 | 1.0000 |
+| expD | *floor* - x86 means ransomware | - | - | - | 0.7113 | 0.7298 | - | 0.8011 | 0.3415 |
+
+The *calibration* rows are `rules_pipeline`'s audited mnemonic TF-IDF 1-3 + linear model on the SAME cohort rows (`results/rules/summary.md` §5). They read raw mnemonics, not the tokenizer's output, and they are the number this pipeline has to reach before subword tokenization can be said to have earned anything. On the Mendeley split that headline 0.968 falls to **0.955** once the 62-of-129 duplicated test goodware files are removed (§5.4), which is the figure to compare against.
+
+### Did it help?
+
+* **expC: -0.0685 macro-F1** against the best committed row (MLP/WP, 0.9260 -> 0.8576), so the search did not beat the fixed configuration it was meant to improve on; clears 2 of 2 floors; below the mnemonic TF-IDF calibration row (0.9680); ransomware recall 0.9917, goodware recall 0.6512.
+  A lower-ranked configuration reaches 0.9680 on test, but it was not selected and is not the result - picking it after the fact is choosing on the test set. The gap (0.1104) is the price of the protocol, and it is reported rather than spent.
+* **expD: -0.1609 macro-F1** against the best committed row (SVM-RBF/SW, 0.8439 -> 0.6830), so the search did not beat the fixed configuration it was meant to improve on; clears 1 of 2 floors; below the mnemonic TF-IDF calibration row (0.8023); ransomware recall 0.6768, goodware recall 0.8130.
+  A lower-ranked configuration reaches 0.6834 on test, but it was not selected and is not the result - picking it after the fact is choosing on the test set. The gap (0.0004) is the price of the protocol, and it is reported rather than spent.
+
+## expC_tuned - top five by CV, with their test scores
+
+787 configurations were cross-validated; 5 were scored on the test set. CV is `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42) on the train split`, grouped by ransomware family / goodware source project (splits.csv `group`).
+
+| CV rank | track | budget | sampler | features | classifier | CV macro-F1 | test macro-F1 | CV - test | test bal-acc | test AUC |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 **(selected)** | tfidf | 50,000 | head | SW TF-IDF 1-3, 87269 features | LogReg {'C': '0.1', 'class_weight': 'balanced'} | 0.9474 | 0.8576 | +0.0898 | 0.8214 | 0.9759 |
+| 2 | tfidf | 20,000 | head | SW TF-IDF 1-3, 65244 features | LogReg {'C': '1.0', 'class_weight': 'balanced'} | 0.9436 | 0.9540 | -0.0104 | 0.9416 | 0.9873 |
+| 3 | tfidf | 20,000 | head | SW TF-IDF 1-3, 65244 features | LinearSVC {'C': '0.1', 'class_weight': 'balanced'} | 0.9420 | 0.9540 | -0.0120 | 0.9416 | 0.9894 |
+| 4 | tfidf | 50,000 | head | SW TF-IDF 1-3, 87269 features | LinearSVC {'C': '0.01', 'class_weight': 'balanced'} | 0.9418 | 0.8576 | +0.0842 | 0.8214 | 0.9753 |
+| 5 | tfidf | 20,000 | head | SW TF-IDF 1-3, 65244 features | LogReg {'C': '1.0', 'class_weight': 'None'} | 0.9395 | 0.9680 | -0.0285 | 0.9610 | 0.9873 |
+
+CV minus test runs from -0.0285 to +0.0898. The five differ by 0.0079 in CV and by 0.1104 on test, so the CV ordering inside the top five is not informative at this resolution - which is the honest reading of a 787-configuration search and the reason all five are printed rather than only the winner.
+
+#### What the operating point is worth
+
+The reported rows use the untuned decision cut, the same rule the committed runs use. Two fitted alternatives were scored for every configuration - the threshold that maximises out-of-fold balanced accuracy, and the one that maximises out-of-fold macro-F1 - each chosen nested (fold k's cut comes from the other folds' out-of-fold scores).
+
+| CV rank | CV: untuned | CV: bal-acc thr | CV: macro-F1 thr | test: untuned | test: bal-acc thr | test: macro-F1 thr | test recall(good), untuned -> macro-F1 thr |
+|---|---|---|---|---|---|---|---|
+| 1 | 0.9474 | 0.9439 | 0.9464 | 0.8576 | 0.8576 | 0.8576 | 0.6512 -> 0.6512 |
+| 2 | 0.9436 | 0.9369 | 0.9457 | 0.9540 | 0.9483 | 0.9483 | 0.8915 -> 0.8760 |
+| 3 | 0.9420 | 0.9399 | 0.9482 | 0.9540 | 0.9512 | 0.9512 | 0.8915 -> 0.8837 |
+| 4 | 0.9418 | 0.9489 | 0.9489 | 0.8576 | 0.8506 | 0.8506 | 0.6512 -> 0.6357 |
+| 5 | 0.9395 | 0.9379 | 0.9462 | 0.9680 | 0.9483 | 0.9483 | 0.9302 -> 0.8760 |
+
+Over these five rows, fitting the cut on out-of-fold scores moves CV macro-F1 by +0.0042 on average and test macro-F1 by -0.0070, with test goodware recall moving -0.0186. The sign of that second number is a property of the split, not of the fitting: the train half is 45% ransomware and the test half 74%, macro-F1's optimal threshold moves with the class prior, and a cut fitted on training folds carries the TRAINING prior onto a test set that does not have it. Goodware recall is where it shows, and it is why the reported rows leave the cut alone.
+
+#### expC: what moved the number, axis by axis
+
+| axis | setting | configs | best CV macro-F1 | median |
+|---|---|---|---|---|
+| sequence budget | `50000` | 84 | 0.9474 | 0.8939 |
+|  | `20000` | 254 | 0.9436 | 0.8660 |
+|  | `5000` | 449 | 0.9168 | 0.8333 |
+| positional sampler | `head` | 466 | 0.9474 | 0.8394 |
+|  | `strided` | 321 | 0.9293 | 0.8603 |
+| n-gram order | `1-3` | 84 | 0.9474 | 0.9032 |
+|  | `1-2` | 108 | 0.9312 | 0.8935 |
+|  | `1-1` | 595 | 0.9271 | 0.8419 |
+| tokenizer | `SW` | 759 | 0.9474 | 0.8511 |
+|  | `WP` | 4 | 0.9267 | 0.9060 |
+|  | `WPC` | 16 | 0.9057 | 0.8688 |
+|  | `BPE` | 8 | 0.9052 | 0.8672 |
+| subword vocabulary | `500` | 4 | 0.9057 | 0.8688 |
+|  | `1000` | 8 | 0.9052 | 0.8672 |
+|  | `2000` | 4 | 0.9052 | 0.8672 |
+|  | `4000` | 8 | 0.9052 | 0.8672 |
+| representation | `tfidf` | 280 | 0.9474 | 0.8905 |
+|  | `w2v` | 507 | 0.9271 | 0.8405 |
+| pooling (w2v rows only) | `mean_max` | 169 | 0.9271 | 0.8223 |
+|  | `tfidf_mean` | 169 | 0.9119 | 0.8483 |
+|  | `mean` | 169 | 0.9102 | 0.8428 |
+| classifier | `LogReg` | 179 | 0.9474 | 0.8847 |
+|  | `LinearSVC` | 140 | 0.9420 | 0.8902 |
+|  | `MLP` | 156 | 0.9271 | 0.8490 |
+|  | `SVM-RBF` | 195 | 0.9097 | 0.8429 |
+|  | `RF` | 117 | 0.8671 | 0.8241 |
+| sample weighting | `none` | 673 | 0.9474 | 0.8540 |
+|  | `class_arch` | 114 | 0.9297 | 0.8445 |
+
+## expD_tuned - top five by CV, with their test scores
+
+787 configurations were cross-validated; 5 were scored on the test set. CV is `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42) on the train split`, grouped by ransomware family / goodware source project (splits.csv `group`).
+
+| CV rank | track | budget | sampler | features | classifier | CV macro-F1 | test macro-F1 | CV - test | test bal-acc | test AUC |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 **(selected)** | tfidf | 50,000 | strided | SW TF-IDF 1-1, 859 features | LinearSVC {'C': '0.1', 'class_weight': 'balanced'} | 0.9237 | 0.6830 | +0.2407 | 0.7449 | 0.8783 |
+| 2 | w2v/mean_max | 5,000 | strided | w2v dim=300,window=10,epochs=20,min_count=1, mean_max pooling | SVM-RBF {'C': '10.0', 'class_weight': 'balanced', 'gamma': 'scale'} | 0.9232 | 0.6599 | +0.2633 | 0.7336 | 0.8371 |
+| 3 | w2v/mean_max | 5,000 | strided | w2v dim=300,window=10,epochs=20,min_count=1, mean_max pooling | MLP {'alpha': '0.001', 'early_stopping': 'True', 'hidden_layer_sizes': '(256, 128)', 'learning_rate_init': '0.001'} | 0.9222 | 0.6495 | +0.2727 | 0.7134 | 0.8174 |
+| 4 | tfidf | 50,000 | head | SW TF-IDF 1-3, 105872 features | LinearSVC {'C': '0.1', 'class_weight': 'None'} | 0.9206 | 0.6834 | +0.2372 | 0.7556 | 0.8962 |
+| 5 | tfidf | 50,000 | head | SW TF-IDF 1-3, 105872 features | LogReg {'C': '1.0', 'class_weight': 'None'} | 0.9202 | 0.6742 | +0.2459 | 0.7487 | 0.8843 |
+
+CV minus test runs from +0.2372 to +0.2727. The five differ by 0.0036 in CV and by 0.0339 on test, so the CV ordering inside the top five is not informative at this resolution - which is the honest reading of a 787-configuration search and the reason all five are printed rather than only the winner.
+
+#### What the operating point is worth
+
+The reported rows use the untuned decision cut, the same rule the committed runs use. Two fitted alternatives were scored for every configuration - the threshold that maximises out-of-fold balanced accuracy, and the one that maximises out-of-fold macro-F1 - each chosen nested (fold k's cut comes from the other folds' out-of-fold scores).
+
+| CV rank | CV: untuned | CV: bal-acc thr | CV: macro-F1 thr | test: untuned | test: bal-acc thr | test: macro-F1 thr | test recall(good), untuned -> macro-F1 thr |
+|---|---|---|---|---|---|---|---|
+| 1 | 0.9237 | 0.9217 | 0.9217 | 0.6830 | 0.6848 | 0.6848 | 0.8130 -> 0.8130 |
+| 2 | 0.9232 | 0.9294 | 0.9294 | 0.6599 | 0.6720 | 0.6720 | 0.8374 -> 0.8130 |
+| 3 | 0.9222 | 0.9193 | 0.9193 | 0.6495 | 0.6514 | 0.6514 | 0.7886 -> 0.7724 |
+| 4 | 0.9206 | 0.8995 | 0.9015 | 0.6834 | 0.7677 | 0.7706 | 0.8537 -> 0.8130 |
+| 5 | 0.9202 | 0.8976 | 0.8955 | 0.6742 | 0.7648 | 0.7648 | 0.8537 -> 0.7967 |
+
+Over these five rows, fitting the cut on out-of-fold scores moves CV macro-F1 by -0.0085 on average and test macro-F1 by +0.0387, with test goodware recall moving -0.0276. The sign of that second number is a property of the split, not of the fitting: the train half is 45% ransomware and the test half 74%, macro-F1's optimal threshold moves with the class prior, and a cut fitted on training folds carries the TRAINING prior onto a test set that does not have it. Goodware recall is where it shows, and it is why the reported rows leave the cut alone.
+
+#### expD: what moved the number, axis by axis
+
+| axis | setting | configs | best CV macro-F1 | median |
+|---|---|---|---|---|
+| sequence budget | `50000` | 84 | 0.9237 | 0.8847 |
+|  | `5000` | 449 | 0.9232 | 0.8358 |
+|  | `20000` | 254 | 0.9174 | 0.8672 |
+| positional sampler | `strided` | 321 | 0.9237 | 0.8740 |
+|  | `head` | 466 | 0.9206 | 0.8348 |
+| n-gram order | `1-1` | 595 | 0.9237 | 0.8387 |
+|  | `1-3` | 84 | 0.9206 | 0.8847 |
+|  | `1-2` | 108 | 0.9164 | 0.8804 |
+| tokenizer | `SW` | 759 | 0.9237 | 0.8498 |
+|  | `WP` | 4 | 0.9081 | 0.9000 |
+|  | `WPC` | 16 | 0.8949 | 0.8849 |
+|  | `BPE` | 8 | 0.8934 | 0.8841 |
+| subword vocabulary | `500` | 4 | 0.8949 | 0.8867 |
+|  | `2000` | 4 | 0.8934 | 0.8841 |
+|  | `4000` | 8 | 0.8934 | 0.8841 |
+|  | `1000` | 8 | 0.8934 | 0.8834 |
+| representation | `tfidf` | 280 | 0.9237 | 0.8794 |
+|  | `w2v` | 507 | 0.9232 | 0.8319 |
+| pooling (w2v rows only) | `mean_max` | 169 | 0.9232 | 0.8324 |
+|  | `mean` | 169 | 0.9152 | 0.8291 |
+|  | `tfidf_mean` | 169 | 0.9008 | 0.8325 |
+| classifier | `LinearSVC` | 140 | 0.9237 | 0.8790 |
+|  | `SVM-RBF` | 195 | 0.9232 | 0.8432 |
+|  | `MLP` | 156 | 0.9222 | 0.8325 |
+|  | `LogReg` | 179 | 0.9202 | 0.8769 |
+|  | `RF` | 117 | 0.8566 | 0.7998 |
+| sample weighting | `none` | 673 | 0.9237 | 0.8630 |
+|  | `class_arch` | 114 | 0.8600 | 0.7751 |
+
+## Tuned rows inside each architecture
+
+The pooled score of a tuned row means what the committed rows' pooled scores meant: it is partly bitness. Same treatment - score each slice on its own.
+
+| experiment | row | pooled macro-F1 | x86 n | x86 macro-F1 | x64 n | x64 macro-F1 | x86 rec(ran) | x64 rec(ran) | x86 rec(good) | x64 rec(good) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| expC | committed MLP/WP | 0.9260 | 407 | 0.9301 | 84 | 0.8897 | 0.9690 | 0.9444 | 0.8803 | 0.9167 |
+| expC | **tuned rank 1** | 0.8576 | 407 | 0.8450 | 84 | 0.9338 | 1.0000 | 0.9583 | 0.6154 | 1.0000 |
+| expD | committed SVM-RBF/SW | 0.8439 | 332 | 0.7284 | 153 | 0.9011 | 0.9000 | 0.8611 | 0.6190 | 0.9383 |
+| expD | **tuned rank 1** | 0.6830 | 332 | 0.5878 | 153 | 0.5077 | 0.8034 | 0.1667 | 0.4524 | 1.0000 |
+
+### expC: ransomware test recall by family, before and after
+
+| family | n | committed best | tuned rank 1 | delta |
+|---|---|---|---|---|
+| avoslocker | 50 | 1.0000 | 1.0000 | +0.0000 |
+| blackcat | 50 | 1.0000 | 1.0000 | +0.0000 |
+| hive | 50 | 1.0000 | 1.0000 | +0.0000 |
+| clop | 45 | 0.8000 | 1.0000 | +0.2000 |
+| playcrypt | 43 | 1.0000 | 1.0000 | +0.0000 |
+| bluesky | 34 | 1.0000 | 1.0000 | +0.0000 |
+| blackbasta | 30 | 0.9333 | 0.9000 | -0.0333 |
+| lorenz | 16 | 1.0000 | 1.0000 | +0.0000 |
+| karma | 13 | 1.0000 | 1.0000 | +0.0000 |
+| bianlian | 11 | 1.0000 | 1.0000 | +0.0000 |
+| blackbyte | 7 | 0.7143 | 1.0000 | +0.2857 |
+| quantum | 6 | 1.0000 | 1.0000 | +0.0000 |
+| holyghost | 4 | 1.0000 | 1.0000 | +0.0000 |
+| maui | 3 | 1.0000 | 1.0000 | +0.0000 |
+
+### expD: ransomware test recall by family, before and after
+
+| family | n | committed best | tuned rank 1 | delta |
+|---|---|---|---|---|
+| avoslocker | 50 | 0.9800 | 1.0000 | +0.0200 |
+| blackcat | 50 | 1.0000 | 0.0000 | -1.0000 |
+| hive | 50 | 0.8400 | 0.0200 | -0.8200 |
+| clop | 45 | 0.9111 | 1.0000 | +0.0889 |
+| playcrypt | 43 | 0.9535 | 1.0000 | +0.0465 |
+| bluesky | 34 | 1.0000 | 1.0000 | +0.0000 |
+| blackbasta | 30 | 0.8667 | 0.9000 | +0.0333 |
+| lorenz | 16 | 0.1250 | 1.0000 | +0.8750 |
+| karma | 13 | 0.7692 | 1.0000 | +0.2308 |
+| bianlian | 11 | 1.0000 | 0.5455 | -0.4545 |
+| blackbyte | 7 | 1.0000 | 0.0000 | -1.0000 |
+| quantum | 6 | 1.0000 | 1.0000 | +0.0000 |
+| holyghost | 4 | 1.0000 | 0.2500 | -0.7500 |
+| maui | 3 | 0.0000 | 1.0000 | +1.0000 |
+

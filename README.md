@@ -167,6 +167,77 @@ a full sweep. A single-experiment run leaves `summary.md` alone rather than
 replacing a six-experiment file with a sixth of one; rebuild it with
 `--summary-only`.
 
+### Tuning (`tune.py`)
+
+`run_pipeline.py` runs one fixed configuration. `tune.py` searches for a better
+one, on `expC` and `expD`, **without touching the test set until the end**.
+
+**It did not find one.** 787 configurations were cross-validated per experiment;
+the configuration cross-validation picked scores **0.8576** macro-F1 on `expC`'s
+test set against the committed run's 0.9260, and **0.6830** on `expD` against
+0.8439 — below `expD`'s 0.7113 architecture-only floor. That is the result, and
+the CV-to-test gap table, the per-architecture split and the reasons are in
+[docs/tokenization_audit.md](docs/tokenization_audit.md) §6. The search is still
+worth running and reading: it is what turned "the 5,000-line cap might matter"
+and "subword tokenization might be doing something on mnemonics" into measured
+answers.
+
+```bash
+# 1. read each file once, at the largest budget, both samplers -> token cache
+python llm_features_pipeline/tune.py --experiment expC --stage cache
+# 2. cross-validate every configuration on the TRAIN SPLIT ONLY
+python llm_features_pipeline/tune.py --experiment expC --stage search
+# 3. fit the chosen ones on the whole train split and score the test set ONCE
+python llm_features_pipeline/tune.py --experiment expC --stage final
+python llm_features_pipeline/tune.py --experiment expD --stage all   # all three
+
+# reproducibility: re-run the SAME chosen configurations somewhere else and
+# diff. `--stage final` falls back to the committed search_records.json when the
+# scratch directory has none, so this checks the final fit, not the search.
+python llm_features_pipeline/tune.py --experiment expC --stage final \
+  --results-dir /tmp/repro
+diff results/expC_tuned/predictions.csv /tmp/repro/expC_tuned/predictions.csv
+
+# the identity the search rests on: mean pooling as a sparse matmul equals
+# the repo's own token-by-token mean
+python llm_features_pipeline/tune.py --experiment expC --stage check-pooling
+
+# rebuild summary.md, tuned section included, from the metrics.json on disk
+python llm_features_pipeline/run_pipeline.py --summary-only
+
+# the pieces tune.py/tuning.py added, under both interpreters
+python -m pytest tests/test_tokenization_tuning.py \
+  tests/test_tokenization_pipeline.py tests/test_tokenization_cohort.py -q
+```
+
+The token cache (a few tens of MB of int16 per experiment) goes to the system
+temp directory; set `RDMP_TUNE_CACHE` to put it somewhere else. It is a scratch
+artifact — delete it and `--stage cache` rebuilds it in three to six minutes.
+
+Writes `results/expC_tuned/` and `results/expD_tuned/`: the same file set as the
+committed experiments, plus **`cv_search.csv`** — every configuration the search
+tried with its cross-validation scores, so the multiple-comparison exposure is
+on the record — and `search_records.json`. `results/expC/` and `results/expD/`
+are never modified.
+
+Model selection is by `StratifiedGroupKFold(n_splits=5)` on the train split,
+grouped by ransomware family / goodware source project, so every fold holds out
+whole families; the ranking metric is out-of-fold macro-F1 at the untuned
+decision cut. `--stage search` computes no test metric at all.
+
+`--stage final` scores the top `--top-k` (default 5) configurations on the test
+set, and **only `cv_rank == 1` is the result**: it is the one the protocol
+selected, marked `"selected": true` in `metrics.json` and `**(selected)**` in
+the summary table. The other four exist for one purpose — to show how much of
+the CV ordering survives the transfer to test — and are *post-hoc*. Reading the
+best test score out of those five would be exactly the multiple-comparison error
+the protocol is built to avoid, and on `expC` it would flatter the result by
+0.11 macro-F1. What the search covers, what it found and what it deliberately
+did not try is in
+[docs/tokenization_audit.md](docs/tokenization_audit.md) §6; the before/after
+tables are in the **Tuned** section of
+[results/summary.md](results/summary.md).
+
 Needs gensim/transformers, i.e. Python 3.12 — the repo's own scripts run on
 3.14 but gensim has no 3.14 wheel. Point it at a 3.12 interpreter:
 

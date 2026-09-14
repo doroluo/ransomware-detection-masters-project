@@ -1334,6 +1334,380 @@ def _deviation_note(cfg) -> list:
             "two."]
 
 
+# The two audited calibration numbers the tuned rows have to be read against:
+# rules_pipeline's mnemonic TF-IDF 1-3 + LogReg / LinearSVC on the SAME cohort
+# rows (results/rules/*/metrics.json, audited in results/rules/summary.md §5).
+# `mendeley` is the expA/expC split and `balanced` the expB/expD one. They are
+# read from disk rather than quoted, so this table cannot drift away from them.
+CALIBRATION = {"expC": "mendeley", "expD": "balanced"}
+
+
+def _calibration(outroot: Path, exp: str):
+    ds = CALIBRATION.get(exp)
+    if not ds:
+        return []
+    f = outroot / "rules" / ds / "metrics.json"
+    if not f.is_file():
+        return []
+    p = json.loads(f.read_text(encoding="utf-8"))
+    return [r for r in p.get("results", [])
+            if r.get("track") == "calibration_baseline"]
+
+
+def _best_committed(p) -> dict:
+    return max(p["results"], key=lambda r: r["macro_f1"])
+
+
+# The axes the search moved, in the order they are worth reading: what the
+# model is fed before what reads it. `label` is what the column is called in
+# `cv_search.csv`; `blank` names the value that column takes when the axis does
+# not apply to a row (a TF-IDF row has no pooling, an SW row no vocabulary).
+CV_DIMENSIONS = [
+    ("budget", "sequence budget", None),
+    ("sampling", "positional sampler", None),
+    ("ngram", "n-gram order", None),
+    ("tokenizer", "tokenizer", None),
+    ("vocab_size", "subword vocabulary", ""),
+    ("embedding", "representation", None),
+    ("pooling", "pooling (w2v rows only)", ""),
+    ("classifier", "classifier", None),
+    ("weighting", "sample weighting", None),
+]
+
+
+def _cv_dimension_table(outroot: Path, name: str) -> list:
+    """Per-axis best and median CV macro-F1, read off `cv_search.csv`.
+
+    A marginal, not an ablation: the rows behind "budget 50,000" are not the
+    same rows as those behind "budget 5,000" in anything but the budget, and
+    the axes are unevenly sampled on purpose (13 Word2Vec settings against 252
+    TF-IDF rows, because a Word2Vec fit per fold is the search's dominant cost).
+    So the BEST column is the honest one - "did the best configuration anyone
+    found at this setting beat the best found at that one" - and the median is
+    printed beside it only to show whether the winner is a lone spike or the
+    whole band moving.
+    """
+    f = outroot / f"{name}_tuned" / "cv_search.csv"
+    if not f.is_file():
+        return []
+    with f.open(encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    if not rows:
+        return []
+    lines = [f"#### {name}: what moved the number, axis by axis", "",
+             "| axis | setting | configs | best CV macro-F1 | median |",
+             "|---|---|---|---|---|"]
+    for col, label, blank in CV_DIMENSIONS:
+        groups = collections.defaultdict(list)
+        for r in rows:
+            v = r.get(col, "")
+            if blank is not None and v == blank:
+                continue
+            groups[v].append(float(r["cv_macro_f1"]))
+        if len(groups) < 2:
+            continue
+        for i, (v, vals) in enumerate(
+                sorted(groups.items(), key=lambda kv: -max(kv[1]))):
+            vals.sort()
+            med = vals[len(vals) // 2] if len(vals) % 2 else (
+                vals[len(vals) // 2 - 1] + vals[len(vals) // 2]) / 2
+            lines.append(f"| {label if i == 0 else ''} | `{v}` | {len(vals)} | "
+                         f"{max(vals):.4f} | {med:.4f} |")
+    lines.append("")
+    return lines
+
+
+def _tuned_verdict(tuned: dict, payloads: dict, outroot: Path) -> list:
+    """Did the search actually buy anything? Answered from the numbers.
+
+    Written as a computation rather than as prose because the two experiments
+    came out on opposite sides of it, and a sentence typed once would be wrong
+    for one of them the next time either is re-run.
+    """
+    lines = ["### Did it help?", ""]
+    for name, p in tuned.items():
+        sel = p["results"][0]
+        base = payloads.get(name)
+        b = _best_committed(base) if base else None
+        fl = _floors(p)
+        cal = _calibration(outroot, name)
+        best_cal = max((r["macro_f1"] for r in cal), default=None)
+        best_post = max(r["macro_f1"] for r in p["results"])
+        bits = []
+        if b:
+            d = sel["macro_f1"] - b["macro_f1"]
+            bits.append(
+                f"**{name}: {'+' if d >= 0 else ''}{d:.4f} macro-F1** against "
+                f"the best committed row ({b['model']}/{b['tokenizer']}, "
+                f"{b['macro_f1']:.4f} -> {sel['macro_f1']:.4f})"
+                + (", so the search did not beat the fixed configuration it "
+                   "was meant to improve on" if d < 0 else ""))
+        above = [lab for key, lab in FLOOR_ROWS
+                 if sel["macro_f1"] > fl[key]["macro_f1"]]
+        bits.append(f"clears {len(above)} of {len(FLOOR_ROWS)} floors")
+        if best_cal is not None:
+            bits.append(f"{'above' if sel['macro_f1'] >= best_cal else 'below'} "
+                        f"the mnemonic TF-IDF calibration row ({best_cal:.4f})")
+        bits.append(f"ransomware recall {sel['recall_ransomware']:.4f}, "
+                    f"goodware recall {sel['recall_goodware']:.4f}")
+        lines.append("* " + "; ".join(bits) + ".")
+        if best_post > sel["macro_f1"] + 1e-9:
+            lines.append(
+                f"  A lower-ranked configuration reaches {best_post:.4f} on "
+                f"test, but it was not selected and is not the result - picking "
+                f"it after the fact is choosing on the test set. The gap "
+                f"({best_post - sel['macro_f1']:.4f}) is the price of the "
+                f"protocol, and it is reported rather than spent.")
+    lines.append("")
+    return lines
+
+
+def _tuned_section(cfg, payloads, outroot: Path) -> list:
+    """The `*_tuned` runs, beside the rows they are meant to improve on.
+
+    Rebuilt from `results/exp*_tuned/metrics.json` whenever summary.md is
+    regenerated, so the tuned tables and the committed tables can never be out
+    of step with each other. Absent tuned directories simply drop out.
+    """
+    tuned = {}
+    for name in ("expC", "expD"):
+        f = outroot / f"{name}_tuned" / "metrics.json"
+        if f.is_file():
+            tuned[name] = json.loads(f.read_text(encoding="utf-8"))
+    if not tuned:
+        return []
+
+    lines = [
+        "", "---", "", "# Tuned", "",
+        "Everything above is the committed six-experiment sweep: one tiny "
+        "`GridSearchCV` (`cv=2`, four candidate settings per classifier) on top "
+        "of a fixed representation - the first 5,000 lines of each file, "
+        "Word2Vec 100d/window 30/5 epochs, mean-pooled. This section is what a "
+        "real search finds on the same two revised-feature experiments.", "",
+        "**Protocol, stated before any number below.** Every choice - sequence "
+        "budget, positional sampler, tokenizer, vocabulary size, n-gram order, "
+        "embedding, pooling, classifier and its hyperparameters, and the "
+        "architecture reweighting - was made by grouped cross-validation on the "
+        "TRAIN SPLIT ONLY, with the ransomware family / goodware project as the "
+        "group so whole families are held out, and ranked by out-of-fold "
+        "macro-F1. The test set was scored once per reported configuration, "
+        "after the ranking was fixed. `results/expC/` and `results/expD/` are "
+        "untouched. The search is in `llm_features_pipeline/tune.py`; every "
+        "configuration it tried, with its CV scores, is in "
+        "`results/exp*_tuned/cv_search.csv`. Only `cv_rank == 1` is the "
+        "selected result; the four rows below it were scored on test "
+        "afterwards, for the CV-to-test gap table alone, and reading the best "
+        "of the five would be selection on the test set. The protocol audit - "
+        "what the search was allowed to see, and the one operation that touches "
+        "a test row and why it is not a leak - is "
+        "[docs/tokenization_audit.md](../docs/tokenization_audit.md) §6.", "",
+    ]
+
+    # ---- headline before/after -------------------------------------------
+    lines += ["## Before and after", "",
+              "| experiment | row | sequence budget | representation | "
+              "classifier | macro-F1 | bal-acc | AUC | recall(ran) | FPR |",
+              "|---|---|---|---|---|---|---|---|---|---|"]
+    for name, p in tuned.items():
+        base = payloads.get(name)
+        if base:
+            b = _best_committed(base)
+            lines.append(
+                f"| {name} | committed best ({b['model']}/{b['tokenizer']}) | "
+                f"5,000 head | w2v 100d mean | {b['model']} | "
+                f"{b['macro_f1']:.4f} | {b['balanced_accuracy']:.4f} | "
+                + ("-" if b["roc_auc"] is None else f"{b['roc_auc']:.4f}")
+                + f" | {b['recall_ransomware']:.4f} | "
+                + ("-" if b["false_positive_rate"] is None
+                   else f"{b['false_positive_rate']:.4f}") + " |")
+            for other in sorted(base["results"], key=lambda r: -r["macro_f1"])[1:]:
+                lines.append(
+                    f"| {name} | committed {other['model']}/{other['tokenizer']} "
+                    f"| 5,000 head | w2v 100d mean | {other['model']} | "
+                    f"{other['macro_f1']:.4f} | {other['balanced_accuracy']:.4f} | "
+                    + ("-" if other["roc_auc"] is None else f"{other['roc_auc']:.4f}")
+                    + f" | {other['recall_ransomware']:.4f} | "
+                    + ("-" if other["false_positive_rate"] is None
+                       else f"{other['false_positive_rate']:.4f}") + " |")
+        sel = p["results"][0]
+        lines.append(
+            f"| {name} | **tuned (CV rank 1)** | "
+            f"{int(sel['budget']):,} {sel['sampling']} | {_repr_of(sel)} | "
+            f"{sel['model']} | **{sel['macro_f1']:.4f}** | "
+            f"{sel['balanced_accuracy']:.4f} | "
+            + ("-" if sel["roc_auc"] is None else f"{sel['roc_auc']:.4f}")
+            + f" | {sel['recall_ransomware']:.4f} | "
+            + ("-" if sel["false_positive_rate"] is None
+               else f"{sel['false_positive_rate']:.4f}") + " |")
+        for r in _calibration(outroot, name):
+            lines.append(
+                f"| {name} | *calibration* - {r['model']} | 30,000 head | "
+                f"mnemonic TF-IDF 1-3 | {r['model'].split('+')[-1]} | "
+                f"{r['macro_f1']:.4f} | {r['balanced_accuracy']:.4f} | "
+                f"{r['roc_auc']:.4f} | {r['recall_ransomware']:.4f} | "
+                f"{r['false_positive_rate']:.4f} |")
+        fl = _floors(p)
+        for key, label in FLOOR_ROWS:
+            b = fl[key]
+            lines.append(f"| {name} | {label} | - | - | - | "
+                         f"{b['macro_f1']:.4f} | {b['balanced_accuracy']:.4f} | "
+                         f"- | {b['recall_ransomware']:.4f} | "
+                         f"{1 - b['recall_goodware']:.4f} |")
+    lines += ["",
+              "The *calibration* rows are `rules_pipeline`'s audited mnemonic "
+              "TF-IDF 1-3 + linear model on the SAME cohort rows "
+              "(`results/rules/summary.md` §5). They read raw mnemonics, not the "
+              "tokenizer's output, and they are the number this pipeline has to "
+              "reach before subword tokenization can be said to have earned "
+              "anything. On the Mendeley split that headline 0.968 falls to "
+              "**0.955** once the 62-of-129 duplicated test goodware files are "
+              "removed (§5.4), which is the figure to compare against.", ""]
+
+    lines += _tuned_verdict(tuned, payloads, outroot)
+
+    # ---- top five ---------------------------------------------------------
+    for name, p in tuned.items():
+        t = p["tuning"]
+        lines += [f"## {name}_tuned - top five by CV, with their test scores", "",
+                  f"{t['configurations_cross_validated']} configurations were "
+                  f"cross-validated; {t['configurations_evaluated_on_test']} were "
+                  f"scored on the test set. CV is "
+                  f"`{t['cv']}`, grouped by {t['groups']}.", "",
+                  "| CV rank | track | budget | sampler | features | classifier "
+                  "| CV macro-F1 | test macro-F1 | CV - test | test bal-acc | "
+                  "test AUC |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|"]
+        for r in p["results"]:
+            lines.append(
+                f"| {r['cv_rank']}{' **(selected)**' if r.get('selected') else ''} "
+                f"| {r['embedding']}{'/' + r['pooling'] if r.get('pooling') else ''} "
+                f"| {int(r['budget']):,} | {r['sampling']} | {_repr_of(r)} | "
+                f"{r['model']} {r['best_params']} | {r['cv_macro_f1']:.4f} | "
+                f"{r['macro_f1']:.4f} | {r['cv_macro_f1'] - r['macro_f1']:+.4f} | "
+                f"{r['balanced_accuracy']:.4f} | "
+                + ("-" if r["roc_auc"] is None else f"{r['roc_auc']:.4f}") + " |")
+        gaps = [r["cv_macro_f1"] - r["macro_f1"] for r in p["results"]]
+        spread = max(r["macro_f1"] for r in p["results"]) - min(
+            r["macro_f1"] for r in p["results"])
+        lines += ["",
+                  f"CV minus test runs from {min(gaps):+.4f} to {max(gaps):+.4f}. "
+                  f"The five differ by {max(r['cv_macro_f1'] for r in p['results']) - min(r['cv_macro_f1'] for r in p['results']):.4f} "
+                  f"in CV and by {spread:.4f} on test, so the CV ordering "
+                  f"inside the top five is not informative at this resolution - "
+                  f"which is the honest reading of a "
+                  f"{t['configurations_cross_validated']}-configuration search "
+                  f"and the reason all five are printed rather than only the "
+                  f"winner.", ""]
+
+        # threshold rules
+        lines += ["#### What the operating point is worth", "",
+                  "The reported rows use the untuned decision cut, the same "
+                  "rule the committed runs use. Two fitted alternatives were "
+                  "scored for every configuration - the threshold that "
+                  "maximises out-of-fold balanced accuracy, and the one that "
+                  "maximises out-of-fold macro-F1 - each chosen nested (fold "
+                  "k's cut comes from the other folds' out-of-fold scores).", "",
+                  "| CV rank | CV: untuned | CV: bal-acc thr | CV: macro-F1 thr "
+                  "| test: untuned | test: bal-acc thr | test: macro-F1 thr | "
+                  "test recall(good), untuned -> macro-F1 thr |",
+                  "|---|---|---|---|---|---|---|---|"]
+        for r in p["results"]:
+            lines.append(
+                f"| {r['cv_rank']} | {r['cv_macro_f1']:.4f} | "
+                f"{r['cv_macro_f1_at_bal_threshold']:.4f} | "
+                f"{r['cv_macro_f1_at_f1_threshold']:.4f} | "
+                f"{r['macro_f1']:.4f} | {r['macro_f1_at_bal_threshold']:.4f} | "
+                f"{r['macro_f1_at_f1_threshold']:.4f} | "
+                f"{r['recall_goodware']:.4f} -> "
+                f"{r['recall_goodware_at_f1_threshold']:.4f} |")
+        d_cv = [r["cv_macro_f1_at_f1_threshold"] - r["cv_macro_f1"]
+                for r in p["results"]]
+        d_te = [r["macro_f1_at_f1_threshold"] - r["macro_f1"]
+                for r in p["results"]]
+        d_gw = [r["recall_goodware_at_f1_threshold"] - r["recall_goodware"]
+                for r in p["results"]]
+        lines += ["",
+                  f"Over these five rows, fitting the cut on out-of-fold scores "
+                  f"moves CV macro-F1 by {sum(d_cv)/len(d_cv):+.4f} on average "
+                  f"and test macro-F1 by {sum(d_te)/len(d_te):+.4f}, with test "
+                  f"goodware recall moving {sum(d_gw)/len(d_gw):+.4f}. The sign "
+                  "of that second number is a property of the split, not of the "
+                  "fitting: the train half is 45% ransomware and the test half "
+                  "74%, macro-F1's optimal threshold moves with the class prior, "
+                  "and a cut fitted on training folds carries the TRAINING prior "
+                  "onto a test set that does not have it. Goodware recall is "
+                  "where it shows, and it is why the reported rows leave the cut "
+                  "alone.", ""]
+
+        lines += _cv_dimension_table(outroot, name)
+
+    # ---- per-architecture and per-family ---------------------------------
+    lines += ["## Tuned rows inside each architecture", "",
+              "The pooled score of a tuned row means what the committed rows' "
+              "pooled scores meant: it is partly bitness. Same treatment - "
+              "score each slice on its own.", "",
+              "| experiment | row | pooled macro-F1 | x86 n | x86 macro-F1 | "
+              "x64 n | x64 macro-F1 | x86 rec(ran) | x64 rec(ran) | "
+              "x86 rec(good) | x64 rec(good) |",
+              "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for name, p in tuned.items():
+        rows = []
+        base = payloads.get(name)
+        if base:
+            b = _best_committed(base)
+            rows.append((f"committed {b['model']}/{b['tokenizer']}", b))
+        rows.append(("**tuned rank 1**", p["results"][0]))
+        for label, r in rows:
+            pa = r.get("per_arch", {})
+
+            def cell(a, f):
+                st = pa.get(a)
+                return "-" if not st or st.get(f) is None else f"{st[f]:.4f}"
+
+            def nn(a):
+                return str(pa.get(a, {}).get("n", "-"))
+            lines.append(
+                f"| {name} | {label} | {r['macro_f1']:.4f} | {nn('x86')} | "
+                f"{cell('x86', 'macro_f1')} | {nn('x64')} | "
+                f"{cell('x64', 'macro_f1')} | {cell('x86', 'recall_ransomware')} | "
+                f"{cell('x64', 'recall_ransomware')} | "
+                f"{cell('x86', 'recall_goodware')} | "
+                f"{cell('x64', 'recall_goodware')} |")
+    lines.append("")
+
+    for name, p in tuned.items():
+        base = payloads.get(name)
+        sel = p["results"][0]
+        fams = sel.get("ransomware_recall_by_family", {})
+        if not fams:
+            continue
+        b = _best_committed(base) if base else None
+        lines += [f"### {name}: ransomware test recall by family, before and after",
+                  "",
+                  "| family | n | committed best | tuned rank 1 | delta |",
+                  "|---|---|---|---|---|"]
+        for f in sorted(fams, key=lambda f: (-fams[f]["n"], f)):
+            v = fams[f]
+            old = (b or {}).get("ransomware_recall_by_family", {}).get(f)
+            d = (f"{v['recall'] - old['recall']:+.4f}" if old else "-")
+            lines.append(f"| {f} | {v['n']} | "
+                         + (f"{old['recall']:.4f}" if old else "-")
+                         + f" | {v['recall']:.4f} | {d} |")
+        lines.append("")
+    return lines
+
+
+def _repr_of(r) -> str:
+    """One-line description of a tuned row's feature representation."""
+    if r.get("embedding") == "tfidf":
+        tok = r.get("tokenizer", "SW")
+        return (f"{tok} TF-IDF {r.get('ngram', '?')}"
+                + (f" (vocab {r['vocab_size']})" if r.get("vocab_size") else "")
+                + f", {r.get('n_features', '?')} features")
+    return (f"w2v {r.get('w2v', '')} , {r.get('pooling', 'mean')} pooling"
+            .replace(" ,", ","))
+
+
 def write_summary(cfg, payloads, outroot: Path):
     order = _ordered(payloads)
     lines = ["# Experiment summary: six variants of one binary task", "",
@@ -1375,6 +1749,8 @@ def write_summary(cfg, payloads, outroot: Path):
         lines += _architecture_note(payloads)
         lines += _mnemonic_note(payloads)
         lines += _deviation_note(cfg)
+
+    lines += _tuned_section(cfg, payloads, outroot)
 
     out = outroot / "summary.md"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")

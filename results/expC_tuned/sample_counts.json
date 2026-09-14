@@ -1,0 +1,168 @@
+{
+  "total": 2509,
+  "train": {
+    "n": 2018,
+    "goodware": 1114,
+    "ransomware": 904,
+    "sources": {
+      "mendeley_ransomware": 904,
+      "mendeley_goodware": 1114
+    },
+    "groups": 1138
+  },
+  "test": {
+    "n": 491,
+    "goodware": 129,
+    "ransomware": 362,
+    "sources": {
+      "mendeley_ransomware": 362,
+      "mendeley_goodware": 129
+    },
+    "groups": 143
+  },
+  "group_overlap": [],
+  "cohort_annotation": {
+    "mendeley": {
+      "cohort_csv": "C:\\Users\\chaoa\\Downloads\\asm and mm\\Shared\\cohort_mendeley.csv",
+      "cohort_rows": 2675,
+      "annotated": 2509,
+      "unmatched_examples": [],
+      "in_cohort": 2509,
+      "unmatched": 0
+    },
+    "balanced": {
+      "cohort_csv": "C:\\Users\\chaoa\\Downloads\\asm and mm\\Shared\\cohort_balanced.csv",
+      "cohort_rows": 1500,
+      "annotated": 0,
+      "unmatched_examples": [],
+      "in_cohort": 0,
+      "unmatched": 0
+    }
+  },
+  "cohort_filter": {
+    "applied": false,
+    "in": 2509,
+    "out": 2509,
+    "would_keep_if_applied": 2509,
+    "already_cohort_only": true
+  },
+  "content_leak": {
+    "test_goodware_duplicated_in_train": 62,
+    "test_goodware_n": 129,
+    "test_goodware_leak_rate": 0.4806,
+    "test_ransomware_duplicated_in_train": 0,
+    "test_ransomware_n": 362,
+    "test_ransomware_leak_rate": 0.0,
+    "unique_streams": 1655,
+    "total_files": 2509,
+    "streams_labelled_both_classes": 2
+  },
+  "arch": {
+    "train_goodware": {
+      "x64": 482,
+      "x86": 632
+    },
+    "train_ransomware": {
+      "x64": 42,
+      "x86": 862
+    },
+    "test_goodware": {
+      "x64": 12,
+      "x86": 117
+    },
+    "test_ransomware": {
+      "x64": 72,
+      "x86": 290
+    }
+  },
+  "baselines": {
+    "majority_class": {
+      "predicts": "ransomware",
+      "accuracy": 0.737271,
+      "balanced_accuracy": 0.5,
+      "macro_f1": 0.424385,
+      "recall_goodware": 0.0,
+      "recall_ransomware": 1.0,
+      "confusion_matrix": {
+        "tn": 0,
+        "fp": 129,
+        "fn": 0,
+        "tp": 362
+      }
+    },
+    "x86_is_ransomware": {
+      "rule": "predict ransomware iff arch == x86, from the cohort CSV",
+      "test_x86": 407,
+      "test_unknown_arch": 0,
+      "accuracy": 0.615071,
+      "balanced_accuracy": 0.447064,
+      "macro_f1": 0.433451,
+      "recall_goodware": 0.093023,
+      "recall_ransomware": 0.801105,
+      "confusion_matrix": {
+        "tn": 12,
+        "fp": 117,
+        "fn": 72,
+        "tp": 290
+      }
+    }
+  },
+  "ransomware_families": {
+    "train": {
+      "avaddon": 49,
+      "babuk": 42,
+      "blackmatter": 43,
+      "conti": 48,
+      "darkside": 38,
+      "dharma": 46,
+      "doppelpaymer": 22,
+      "exorcist": 17,
+      "gandcrab": 49,
+      "lockbit": 47,
+      "makop": 30,
+      "maze": 47,
+      "mountlocker": 14,
+      "nefilim": 37,
+      "netwalker": 50,
+      "phobos": 49,
+      "pysa": 38,
+      "ragnarok": 42,
+      "ransomexx": 13,
+      "revil": 47,
+      "ryuk": 47,
+      "stop": 35,
+      "wastedlocker": 36,
+      "zeppelin": 18
+    },
+    "test": {
+      "avoslocker": 50,
+      "bianlian": 11,
+      "blackbasta": 30,
+      "blackbyte": 7,
+      "blackcat": 50,
+      "bluesky": 34,
+      "clop": 45,
+      "hive": 50,
+      "holyghost": 4,
+      "karma": 13,
+      "lorenz": 16,
+      "maui": 3,
+      "playcrypt": 43,
+      "quantum": 6
+    }
+  },
+  "goodware_arch": {
+    "train": {
+      "x64": 482,
+      "x86": 632
+    },
+    "test": {
+      "x64": 12,
+      "x86": 117
+    }
+  },
+  "test_goodware_arch": {
+    "x64": 12,
+    "x86": 117
+  }
+}
