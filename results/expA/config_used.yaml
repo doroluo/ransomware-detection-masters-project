@@ -1,0 +1,50 @@
+paths:
+  tokenization_repo: C:/Users/chaoa/Downloads/Tokenization-Testing-for-Malware-Data
+  llm_features: C:/Users/chaoa/Downloads/LLM_Features/Features_Extraction
+  balanced_goodware: C:/Users/chaoa/Downloads/LLM_Features_Balanced/good_all
+  balanced_manifest: C:/Users/chaoa/Downloads/LLM_Features_Balanced/opcode_manifest.csv
+  mendeley_goodware_sha256: C:/Users/chaoa/Downloads/LLM_Features_Balanced/mendeley_goodware_sha256.json
+  results: results
+tokenization:
+  max_instructions: 5000
+  vocab_size: 1000
+  methods:
+  - WPC
+  - SW
+  - WP
+  tokenizer_cache: results/tokenizers
+embedding:
+  methods:
+  - w2v
+  w2v:
+    vector_size: 100
+    window: 30
+    epochs: 5
+    seed: 42
+    workers: 1
+  mask_rates:
+  - 0.0
+classification:
+  models:
+  - RF
+  - SVM-RBF
+  - MLP
+  cv: 2
+  seed: 42
+split:
+  ransomware: preserve_mendeley
+  goodware_group_field: entry_id
+  goodware_ungrouped_entries:
+  - system_local
+  dedup_goodware_sources: true
+  seed: 42
+  match_counts_to: expA
+experiments:
+  expA:
+    description: Mendeley ransomware + Mendeley goodware (the LLM_Features baseline)
+    ransomware: mendeley
+    goodware: mendeley
+  expB:
+    description: Mendeley ransomware + Goodware_Balanced (hard-negative-rich goodware)
+    ransomware: mendeley
+    goodware: balanced

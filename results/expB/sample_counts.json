@@ -1,0 +1,59 @@
+{
+  "total": 2604,
+  "train": {
+    "n": 2091,
+    "goodware": 1116,
+    "ransomware": 975,
+    "sources": {
+      "mendeley_ransomware": 975,
+      "balanced_goodware": 1116
+    },
+    "groups": 295
+  },
+  "test": {
+    "n": 513,
+    "goodware": 131,
+    "ransomware": 382,
+    "sources": {
+      "mendeley_ransomware": 382,
+      "balanced_goodware": 131
+    },
+    "groups": 59
+  },
+  "group_overlap": [],
+  "cross_source_dedup": {
+    "pool_in": 1343,
+    "removed_by_source_sha256": [],
+    "removed_by_content_hash": [],
+    "manifest_rows_without_sha256": 0,
+    "mendeley_binary_sha256_known": 1112,
+    "mendeley_goodware_feature_files": 1247,
+    "pool_out": 1343,
+    "removed_total": 0
+  },
+  "content_leak": {
+    "test_goodware_duplicated_in_train": 1,
+    "test_goodware_n": 131,
+    "test_goodware_leak_rate": 0.0076,
+    "test_ransomware_duplicated_in_train": 1,
+    "test_ransomware_n": 382,
+    "test_ransomware_leak_rate": 0.0026,
+    "unique_streams": 1980,
+    "total_files": 2604,
+    "streams_labelled_both_classes": 0
+  },
+  "goodware_arch": {
+    "train": {
+      "x64": 915,
+      "x86": 201
+    },
+    "test": {
+      "x64": 85,
+      "x86": 46
+    }
+  },
+  "test_goodware_arch": {
+    "x64": 85,
+    "x86": 46
+  }
+}

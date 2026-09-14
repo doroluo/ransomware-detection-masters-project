@@ -1,0 +1,46 @@
+{
+  "total": 2604,
+  "train": {
+    "n": 2091,
+    "goodware": 1116,
+    "ransomware": 975,
+    "sources": {
+      "mendeley_ransomware": 975,
+      "mendeley_goodware": 1116
+    },
+    "groups": 1141
+  },
+  "test": {
+    "n": 513,
+    "goodware": 131,
+    "ransomware": 382,
+    "sources": {
+      "mendeley_ransomware": 382,
+      "mendeley_goodware": 131
+    },
+    "groups": 146
+  },
+  "group_overlap": [],
+  "content_leak": {
+    "test_goodware_duplicated_in_train": 64,
+    "test_goodware_n": 131,
+    "test_goodware_leak_rate": 0.4885,
+    "test_ransomware_duplicated_in_train": 1,
+    "test_ransomware_n": 382,
+    "test_ransomware_leak_rate": 0.0026,
+    "unique_streams": 1765,
+    "total_files": 2604,
+    "streams_labelled_both_classes": 2
+  },
+  "goodware_arch": {
+    "train": {
+      "unknown": 1116
+    },
+    "test": {
+      "unknown": 131
+    }
+  },
+  "test_goodware_arch": {
+    "unknown": 131
+  }
+}

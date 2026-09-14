@@ -1,0 +1,240 @@
+{
+  "experiment": "expA",
+  "description": "Mendeley ransomware + Mendeley goodware (the LLM_Features baseline)",
+  "task": "binary: 0=goodware, 1=ransomware",
+  "samples": {
+    "total": 2604,
+    "train": {
+      "n": 2091,
+      "goodware": 1116,
+      "ransomware": 975,
+      "sources": {
+        "mendeley_ransomware": 975,
+        "mendeley_goodware": 1116
+      },
+      "groups": 1141
+    },
+    "test": {
+      "n": 513,
+      "goodware": 131,
+      "ransomware": 382,
+      "sources": {
+        "mendeley_ransomware": 382,
+        "mendeley_goodware": 131
+      },
+      "groups": 146
+    },
+    "group_overlap": [],
+    "content_leak": {
+      "test_goodware_duplicated_in_train": 64,
+      "test_goodware_n": 131,
+      "test_goodware_leak_rate": 0.4885,
+      "test_ransomware_duplicated_in_train": 1,
+      "test_ransomware_n": 382,
+      "test_ransomware_leak_rate": 0.0026,
+      "unique_streams": 1765,
+      "total_files": 2604,
+      "streams_labelled_both_classes": 2
+    },
+    "goodware_arch": {
+      "train": {
+        "unknown": 1116
+      },
+      "test": {
+        "unknown": 131
+      }
+    },
+    "test_goodware_arch": {
+      "unknown": 131
+    }
+  },
+  "results": [
+    {
+      "accuracy": 0.7797270955165692,
+      "balanced_accuracy": 0.8019363734463051,
+      "majority_class_accuracy": 0.7446393762183235,
+      "precision_goodware": 0.5441176470588235,
+      "recall_goodware": 0.8473282442748091,
+      "f1_goodware": 0.6626865671641791,
+      "support_goodware": 131,
+      "precision_ransomware": 0.9352750809061489,
+      "recall_ransomware": 0.756544502617801,
+      "f1_ransomware": 0.8364688856729378,
+      "support_ransomware": 382,
+      "macro_precision": 0.7396963639824862,
+      "macro_recall": 0.8019363734463051,
+      "macro_f1": 0.7495777264185584,
+      "false_positive_rate": 0.15267175572519084,
+      "confusion_matrix": {
+        "tn": 111,
+        "fp": 20,
+        "fn": 93,
+        "tp": 289
+      },
+      "roc_auc": 0.8825986171615843,
+      "best_params": {
+        "max_depth": "None",
+        "n_estimators": "400"
+      },
+      "model": "RF",
+      "tokenizer": "WPC",
+      "embedding": "w2v",
+      "mask_rate": 0.0,
+      "n_train": 2091,
+      "n_test": 513,
+      "goodware_recall_by_arch": {
+        "unknown": {
+          "n": 131,
+          "recall_goodware": 0.8473282442748091
+        }
+      }
+    },
+    {
+      "accuracy": 0.834307992202729,
+      "balanced_accuracy": 0.8661724151712562,
+      "majority_class_accuracy": 0.7446393762183235,
+      "precision_goodware": 0.6161616161616161,
+      "recall_goodware": 0.9312977099236641,
+      "f1_goodware": 0.7416413373860182,
+      "support_goodware": 131,
+      "precision_ransomware": 0.9714285714285714,
+      "recall_ransomware": 0.8010471204188482,
+      "f1_ransomware": 0.8780487804878049,
+      "support_ransomware": 382,
+      "macro_precision": 0.7937950937950937,
+      "macro_recall": 0.8661724151712562,
+      "macro_f1": 0.8098450589369115,
+      "false_positive_rate": 0.06870229007633588,
+      "confusion_matrix": {
+        "tn": 122,
+        "fp": 9,
+        "fn": 76,
+        "tp": 306
+      },
+      "roc_auc": 0.8154750009991606,
+      "best_params": {
+        "hidden_layer_sizes": "(500,)",
+        "learning_rate_init": "0.001"
+      },
+      "model": "MLP",
+      "tokenizer": "WP",
+      "embedding": "w2v",
+      "mask_rate": 0.0,
+      "n_train": 2091,
+      "n_test": 513,
+      "goodware_recall_by_arch": {
+        "unknown": {
+          "n": 131,
+          "recall_goodware": 0.9312977099236641
+        }
+      }
+    },
+    {
+      "accuracy": 0.7660818713450293,
+      "balanced_accuracy": 0.802805643259662,
+      "majority_class_accuracy": 0.7446393762183235,
+      "precision_goodware": 0.5251141552511416,
+      "recall_goodware": 0.8778625954198473,
+      "f1_goodware": 0.6571428571428571,
+      "support_goodware": 131,
+      "precision_ransomware": 0.9455782312925171,
+      "recall_ransomware": 0.7277486910994765,
+      "f1_ransomware": 0.8224852071005917,
+      "support_ransomware": 382,
+      "macro_precision": 0.7353461932718293,
+      "macro_recall": 0.802805643259662,
+      "macro_f1": 0.7398140321217244,
+      "false_positive_rate": 0.12213740458015267,
+      "confusion_matrix": {
+        "tn": 115,
+        "fp": 16,
+        "fn": 104,
+        "tp": 278
+      },
+      "roc_auc": 0.9151712561448383,
+      "best_params": {
+        "C": "10",
+        "gamma": "0.1"
+      },
+      "model": "SVM-RBF",
+      "tokenizer": "SW",
+      "embedding": "w2v",
+      "mask_rate": 0.0,
+      "n_train": 2091,
+      "n_test": 513,
+      "goodware_recall_by_arch": {
+        "unknown": {
+          "n": 131,
+          "recall_goodware": 0.8778625954198473
+        }
+      }
+    }
+  ],
+  "config": {
+    "paths": {
+      "tokenization_repo": "C:/Users/chaoa/Downloads/Tokenization-Testing-for-Malware-Data",
+      "llm_features": "C:/Users/chaoa/Downloads/LLM_Features/Features_Extraction",
+      "balanced_goodware": "C:/Users/chaoa/Downloads/LLM_Features_Balanced/good_all",
+      "balanced_manifest": "C:/Users/chaoa/Downloads/LLM_Features_Balanced/opcode_manifest.csv",
+      "mendeley_goodware_sha256": "C:/Users/chaoa/Downloads/LLM_Features_Balanced/mendeley_goodware_sha256.json",
+      "results": "results"
+    },
+    "tokenization": {
+      "max_instructions": 5000,
+      "vocab_size": 1000,
+      "methods": [
+        "WPC",
+        "SW",
+        "WP"
+      ],
+      "tokenizer_cache": "results/tokenizers"
+    },
+    "embedding": {
+      "methods": [
+        "w2v"
+      ],
+      "w2v": {
+        "vector_size": 100,
+        "window": 30,
+        "epochs": 5,
+        "seed": 42,
+        "workers": 1
+      },
+      "mask_rates": [
+        0.0
+      ]
+    },
+    "classification": {
+      "models": [
+        "RF",
+        "SVM-RBF",
+        "MLP"
+      ],
+      "cv": 2,
+      "seed": 42
+    },
+    "split": {
+      "ransomware": "preserve_mendeley",
+      "goodware_group_field": "entry_id",
+      "goodware_ungrouped_entries": [
+        "system_local"
+      ],
+      "dedup_goodware_sources": true,
+      "seed": 42,
+      "match_counts_to": "expA"
+    },
+    "experiments": {
+      "expA": {
+        "description": "Mendeley ransomware + Mendeley goodware (the LLM_Features baseline)",
+        "ransomware": "mendeley",
+        "goodware": "mendeley"
+      },
+      "expB": {
+        "description": "Mendeley ransomware + Goodware_Balanced (hard-negative-rich goodware)",
+        "ransomware": "mendeley",
+        "goodware": "balanced"
+      }
+    }
+  },
+  "elapsed_seconds": 278.3
+}
