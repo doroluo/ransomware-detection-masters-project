@@ -1,0 +1,4051 @@
+{
+  "experiment": "rules/balanced",
+  "description": "mined mnemonic n-gram rules + hand-written behaviour signatures, learned on train only, on the shared cohort split",
+  "task": "binary: 0=goodware, 1=ransomware",
+  "samples": {
+    "total": 2506,
+    "train": {
+      "n": 1798,
+      "goodware": 1002,
+      "ransomware": 796,
+      "sources": {
+        "balanced_goodware": 1002,
+        "mendeley_ransomware": 796
+      },
+      "groups": 256,
+      "arch": {
+        "x86": 939,
+        "x64": 859
+      }
+    },
+    "val": {
+      "n": 219,
+      "goodware": 111,
+      "ransomware": 108,
+      "sources": {
+        "balanced_goodware": 111,
+        "mendeley_ransomware": 108
+      },
+      "groups": 38,
+      "arch": {
+        "x86": 123,
+        "x64": 96
+      }
+    },
+    "test": {
+      "n": 489,
+      "goodware": 127,
+      "ransomware": 362,
+      "sources": {
+        "mendeley_ransomware": 362,
+        "balanced_goodware": 127
+      },
+      "groups": 56,
+      "arch": {
+        "x86": 336,
+        "x64": 153
+      }
+    },
+    "group_overlap": {
+      "train|val": [],
+      "train|test": [],
+      "val|test": []
+    },
+    "goodware_arch": {
+      "train": {
+        "x64": 838,
+        "x86": 164
+      },
+      "val": {
+        "x64": 75,
+        "x86": 36
+      },
+      "test": {
+        "x64": 81,
+        "x86": 46
+      }
+    },
+    "test_goodware_arch": {
+      "x64": 81,
+      "x86": 46
+    }
+  },
+  "results": [
+    {
+      "accuracy": 0.7443762781186094,
+      "balanced_accuracy": 0.6356636359681559,
+      "majority_class_accuracy": 0.7402862985685071,
+      "precision_goodware": 0.5098039215686274,
+      "recall_goodware": 0.4094488188976378,
+      "f1_goodware": 0.45414847161572053,
+      "support_goodware": 127,
+      "precision_ransomware": 0.8062015503875969,
+      "recall_ransomware": 0.861878453038674,
+      "f1_ransomware": 0.8331108144192256,
+      "support_ransomware": 362,
+      "macro_precision": 0.6580027359781122,
+      "macro_recall": 0.6356636359681559,
+      "macro_f1": 0.643629643017473,
+      "false_positive_rate": 0.5905511811023622,
+      "confusion_matrix": {
+        "tn": 52,
+        "fp": 75,
+        "fn": 50,
+        "tp": 312
+      },
+      "roc_auc": 0.635663635968156,
+      "per_architecture": {
+        "x64": {
+          "accuracy": 0.48366013071895425,
+          "balanced_accuracy": 0.4737654320987654,
+          "majority_class_accuracy": 0.5294117647058824,
+          "precision_goodware": 0.5098039215686274,
+          "recall_goodware": 0.6419753086419753,
+          "f1_goodware": 0.5683060109289617,
+          "support_goodware": 81,
+          "precision_ransomware": 0.43137254901960786,
+          "recall_ransomware": 0.3055555555555556,
+          "f1_ransomware": 0.3577235772357724,
+          "support_ransomware": 72,
+          "macro_precision": 0.47058823529411764,
+          "macro_recall": 0.4737654320987654,
+          "macro_f1": 0.46301479408236706,
+          "false_positive_rate": 0.35802469135802467,
+          "confusion_matrix": {
+            "tn": 52,
+            "fp": 29,
+            "fn": 50,
+            "tp": 22
+          },
+          "roc_auc": 0.4737654320987654,
+          "n": 153
+        },
+        "x86": {
+          "accuracy": 0.8630952380952381,
+          "balanced_accuracy": 0.5,
+          "majority_class_accuracy": 0.8630952380952381,
+          "precision_goodware": 0.0,
+          "recall_goodware": 0.0,
+          "f1_goodware": 0.0,
+          "support_goodware": 46,
+          "precision_ransomware": 0.8630952380952381,
+          "recall_ransomware": 1.0,
+          "f1_ransomware": 0.9265175718849841,
+          "support_ransomware": 290,
+          "macro_precision": 0.43154761904761907,
+          "macro_recall": 0.5,
+          "macro_f1": 0.46325878594249204,
+          "false_positive_rate": 1.0,
+          "confusion_matrix": {
+            "tn": 0,
+            "fp": 46,
+            "fn": 0,
+            "tp": 290
+          },
+          "roc_auc": 0.5,
+          "n": 336
+        }
+      },
+      "per_arch": {
+        "x64": {
+          "n": 153,
+          "support_goodware": 81,
+          "support_ransomware": 72,
+          "recall_goodware": 0.6419753086419753,
+          "recall_ransomware": 0.3055555555555556,
+          "accuracy": 0.48366013071895425,
+          "macro_f1": 0.46301479408236706
+        },
+        "x86": {
+          "n": 336,
+          "support_goodware": 46,
+          "support_ransomware": 290,
+          "recall_goodware": 0.0,
+          "recall_ransomware": 1.0,
+          "accuracy": 0.8630952380952381,
+          "macro_f1": 0.46325878594249204
+        }
+      },
+      "goodware_recall_by_arch": {
+        "x64": {
+          "n": 81,
+          "recall_goodware": 0.6419753086419753
+        },
+        "x86": {
+          "n": 46,
+          "recall_goodware": 0.0
+        }
+      },
+      "per_family_recall": {
+        "avoslocker": {
+          "recall": 1.0,
+          "correct": 50,
+          "support": 50
+        },
+        "bianlian": {
+          "recall": 0.9090909090909091,
+          "correct": 10,
+          "support": 11
+        },
+        "blackbasta": {
+          "recall": 0.9,
+          "correct": 27,
+          "support": 30
+        },
+        "blackbyte": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 7
+        },
+        "blackcat": {
+          "recall": 1.0,
+          "correct": 50,
+          "support": 50
+        },
+        "bluesky": {
+          "recall": 1.0,
+          "correct": 34,
+          "support": 34
+        },
+        "clop": {
+          "recall": 1.0,
+          "correct": 45,
+          "support": 45
+        },
+        "hive": {
+          "recall": 0.22,
+          "correct": 11,
+          "support": 50
+        },
+        "holyghost": {
+          "recall": 1.0,
+          "correct": 4,
+          "support": 4
+        },
+        "karma": {
+          "recall": 1.0,
+          "correct": 13,
+          "support": 13
+        },
+        "lorenz": {
+          "recall": 1.0,
+          "correct": 16,
+          "support": 16
+        },
+        "maui": {
+          "recall": 1.0,
+          "correct": 3,
+          "support": 3
+        },
+        "playcrypt": {
+          "recall": 1.0,
+          "correct": 43,
+          "support": 43
+        },
+        "quantum": {
+          "recall": 1.0,
+          "correct": 6,
+          "support": 6
+        }
+      },
+      "ransomware_recall_by_family": {
+        "avoslocker": {
+          "n": 50,
+          "recall": 1.0,
+          "detected": 50
+        },
+        "bianlian": {
+          "n": 11,
+          "recall": 0.9090909090909091,
+          "detected": 10
+        },
+        "blackbasta": {
+          "n": 30,
+          "recall": 0.9,
+          "detected": 27
+        },
+        "blackbyte": {
+          "n": 7,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackcat": {
+          "n": 50,
+          "recall": 1.0,
+          "detected": 50
+        },
+        "bluesky": {
+          "n": 34,
+          "recall": 1.0,
+          "detected": 34
+        },
+        "clop": {
+          "n": 45,
+          "recall": 1.0,
+          "detected": 45
+        },
+        "hive": {
+          "n": 50,
+          "recall": 0.22,
+          "detected": 11
+        },
+        "holyghost": {
+          "n": 4,
+          "recall": 1.0,
+          "detected": 4
+        },
+        "karma": {
+          "n": 13,
+          "recall": 1.0,
+          "detected": 13
+        },
+        "lorenz": {
+          "n": 16,
+          "recall": 1.0,
+          "detected": 16
+        },
+        "maui": {
+          "n": 3,
+          "recall": 1.0,
+          "detected": 3
+        },
+        "playcrypt": {
+          "n": 43,
+          "recall": 1.0,
+          "detected": 43
+        },
+        "quantum": {
+          "n": 6,
+          "recall": 1.0,
+          "detected": 6
+        }
+      },
+      "track": "ngram_rules",
+      "model": "any_hit",
+      "n_rules": 12,
+      "train_metrics": {
+        "precision": 0.7056,
+        "recall": 0.9937,
+        "f1": 0.8252,
+        "fired": 1121,
+        "tp": 791,
+        "fp": 330
+      }
+    },
+    {
+      "accuracy": 0.5255623721881391,
+      "balanced_accuracy": 0.633553747770479,
+      "majority_class_accuracy": 0.7402862985685071,
+      "precision_goodware": 0.33746130030959753,
+      "recall_goodware": 0.8582677165354331,
+      "f1_goodware": 0.4844444444444444,
+      "support_goodware": 127,
+      "precision_ransomware": 0.891566265060241,
+      "recall_ransomware": 0.4088397790055249,
+      "f1_ransomware": 0.5606060606060606,
+      "support_ransomware": 362,
+      "macro_precision": 0.6145137826849192,
+      "macro_recall": 0.633553747770479,
+      "macro_f1": 0.5225252525252525,
+      "false_positive_rate": 0.14173228346456693,
+      "confusion_matrix": {
+        "tn": 109,
+        "fp": 18,
+        "fn": 214,
+        "tp": 148
+      },
+      "roc_auc": 0.7569495801975029,
+      "per_architecture": {
+        "x64": {
+          "accuracy": 0.5294117647058824,
+          "balanced_accuracy": 0.5,
+          "majority_class_accuracy": 0.5294117647058824,
+          "precision_goodware": 0.5294117647058824,
+          "recall_goodware": 1.0,
+          "f1_goodware": 0.6923076923076924,
+          "support_goodware": 81,
+          "precision_ransomware": 0.0,
+          "recall_ransomware": 0.0,
+          "f1_ransomware": 0.0,
+          "support_ransomware": 72,
+          "macro_precision": 0.2647058823529412,
+          "macro_recall": 0.5,
+          "macro_f1": 0.3461538461538462,
+          "false_positive_rate": 0.0,
+          "confusion_matrix": {
+            "tn": 81,
+            "fp": 0,
+            "fn": 72,
+            "tp": 0
+          },
+          "roc_auc": 0.7277091906721537,
+          "n": 153
+        },
+        "x86": {
+          "accuracy": 0.5238095238095238,
+          "balanced_accuracy": 0.55952023988006,
+          "majority_class_accuracy": 0.8630952380952381,
+          "precision_goodware": 0.16470588235294117,
+          "recall_goodware": 0.6086956521739131,
+          "f1_goodware": 0.25925925925925924,
+          "support_goodware": 46,
+          "precision_ransomware": 0.891566265060241,
+          "recall_ransomware": 0.5103448275862069,
+          "f1_ransomware": 0.6491228070175439,
+          "support_ransomware": 290,
+          "macro_precision": 0.5281360737065911,
+          "macro_recall": 0.55952023988006,
+          "macro_f1": 0.4541910331384016,
+          "false_positive_rate": 0.391304347826087,
+          "confusion_matrix": {
+            "tn": 28,
+            "fp": 18,
+            "fn": 142,
+            "tp": 148
+          },
+          "roc_auc": 0.5288605697151425,
+          "n": 336
+        }
+      },
+      "per_arch": {
+        "x64": {
+          "n": 153,
+          "support_goodware": 81,
+          "support_ransomware": 72,
+          "recall_goodware": 1.0,
+          "recall_ransomware": 0.0,
+          "accuracy": 0.5294117647058824,
+          "macro_f1": 0.3461538461538462
+        },
+        "x86": {
+          "n": 336,
+          "support_goodware": 46,
+          "support_ransomware": 290,
+          "recall_goodware": 0.6086956521739131,
+          "recall_ransomware": 0.5103448275862069,
+          "accuracy": 0.5238095238095238,
+          "macro_f1": 0.4541910331384016
+        }
+      },
+      "goodware_recall_by_arch": {
+        "x64": {
+          "n": 81,
+          "recall_goodware": 1.0
+        },
+        "x86": {
+          "n": 46,
+          "recall_goodware": 0.6086956521739131
+        }
+      },
+      "per_family_recall": {
+        "avoslocker": {
+          "recall": 0.86,
+          "correct": 43,
+          "support": 50
+        },
+        "bianlian": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 11
+        },
+        "blackbasta": {
+          "recall": 0.16666666666666666,
+          "correct": 5,
+          "support": 30
+        },
+        "blackbyte": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 7
+        },
+        "blackcat": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 50
+        },
+        "bluesky": {
+          "recall": 1.0,
+          "correct": 34,
+          "support": 34
+        },
+        "clop": {
+          "recall": 0.8888888888888888,
+          "correct": 40,
+          "support": 45
+        },
+        "hive": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 50
+        },
+        "holyghost": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 4
+        },
+        "karma": {
+          "recall": 0.23076923076923078,
+          "correct": 3,
+          "support": 13
+        },
+        "lorenz": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 16
+        },
+        "maui": {
+          "recall": 1.0,
+          "correct": 3,
+          "support": 3
+        },
+        "playcrypt": {
+          "recall": 0.4418604651162791,
+          "correct": 19,
+          "support": 43
+        },
+        "quantum": {
+          "recall": 0.16666666666666666,
+          "correct": 1,
+          "support": 6
+        }
+      },
+      "ransomware_recall_by_family": {
+        "avoslocker": {
+          "n": 50,
+          "recall": 0.86,
+          "detected": 43
+        },
+        "bianlian": {
+          "n": 11,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackbasta": {
+          "n": 30,
+          "recall": 0.16666666666666666,
+          "detected": 5
+        },
+        "blackbyte": {
+          "n": 7,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackcat": {
+          "n": 50,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "bluesky": {
+          "n": 34,
+          "recall": 1.0,
+          "detected": 34
+        },
+        "clop": {
+          "n": 45,
+          "recall": 0.8888888888888888,
+          "detected": 40
+        },
+        "hive": {
+          "n": 50,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "holyghost": {
+          "n": 4,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "karma": {
+          "n": 13,
+          "recall": 0.23076923076923078,
+          "detected": 3
+        },
+        "lorenz": {
+          "n": 16,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "maui": {
+          "n": 3,
+          "recall": 1.0,
+          "detected": 3
+        },
+        "playcrypt": {
+          "n": 43,
+          "recall": 0.4418604651162791,
+          "detected": 19
+        },
+        "quantum": {
+          "n": 6,
+          "recall": 0.16666666666666666,
+          "detected": 1
+        }
+      },
+      "track": "ngram_rules",
+      "model": "rule_votes",
+      "n_rules": 41,
+      "threshold": 0.6408,
+      "threshold_source": "val fold",
+      "val_macro_f1": 0.8105
+    },
+    {
+      "accuracy": 0.5357873210633947,
+      "balanced_accuracy": 0.6097903162657154,
+      "majority_class_accuracy": 0.7402862985685071,
+      "precision_goodware": 0.3299319727891156,
+      "recall_goodware": 0.7637795275590551,
+      "f1_goodware": 0.46080760095011875,
+      "support_goodware": 127,
+      "precision_ransomware": 0.8461538461538461,
+      "recall_ransomware": 0.4558011049723757,
+      "f1_ransomware": 0.59245960502693,
+      "support_ransomware": 362,
+      "macro_precision": 0.5880429094714809,
+      "macro_recall": 0.6097903162657154,
+      "macro_f1": 0.5266336029885244,
+      "false_positive_rate": 0.23622047244094488,
+      "confusion_matrix": {
+        "tn": 97,
+        "fp": 30,
+        "fn": 197,
+        "tp": 165
+      },
+      "roc_auc": 0.7392439204767912,
+      "per_architecture": {
+        "x64": {
+          "accuracy": 0.5294117647058824,
+          "balanced_accuracy": 0.5,
+          "majority_class_accuracy": 0.5294117647058824,
+          "precision_goodware": 0.5294117647058824,
+          "recall_goodware": 1.0,
+          "f1_goodware": 0.6923076923076924,
+          "support_goodware": 81,
+          "precision_ransomware": 0.0,
+          "recall_ransomware": 0.0,
+          "f1_ransomware": 0.0,
+          "support_ransomware": 72,
+          "macro_precision": 0.2647058823529412,
+          "macro_recall": 0.5,
+          "macro_f1": 0.3461538461538462,
+          "false_positive_rate": 0.0,
+          "confusion_matrix": {
+            "tn": 81,
+            "fp": 0,
+            "fn": 72,
+            "tp": 0
+          },
+          "roc_auc": 0.7554869684499315,
+          "n": 153
+        },
+        "x86": {
+          "accuracy": 0.5386904761904762,
+          "balanced_accuracy": 0.45839580209895053,
+          "majority_class_accuracy": 0.8630952380952381,
+          "precision_goodware": 0.11347517730496454,
+          "recall_goodware": 0.34782608695652173,
+          "f1_goodware": 0.1711229946524064,
+          "support_goodware": 46,
+          "precision_ransomware": 0.8461538461538461,
+          "recall_ransomware": 0.5689655172413793,
+          "f1_ransomware": 0.6804123711340206,
+          "support_ransomware": 290,
+          "macro_precision": 0.47981451172940537,
+          "macro_recall": 0.45839580209895053,
+          "macro_f1": 0.42576768289321354,
+          "false_positive_rate": 0.6521739130434783,
+          "confusion_matrix": {
+            "tn": 16,
+            "fp": 30,
+            "fn": 125,
+            "tp": 165
+          },
+          "roc_auc": 0.45584707646176903,
+          "n": 336
+        }
+      },
+      "per_arch": {
+        "x64": {
+          "n": 153,
+          "support_goodware": 81,
+          "support_ransomware": 72,
+          "recall_goodware": 1.0,
+          "recall_ransomware": 0.0,
+          "accuracy": 0.5294117647058824,
+          "macro_f1": 0.3461538461538462
+        },
+        "x86": {
+          "n": 336,
+          "support_goodware": 46,
+          "support_ransomware": 290,
+          "recall_goodware": 0.34782608695652173,
+          "recall_ransomware": 0.5689655172413793,
+          "accuracy": 0.5386904761904762,
+          "macro_f1": 0.42576768289321354
+        }
+      },
+      "goodware_recall_by_arch": {
+        "x64": {
+          "n": 81,
+          "recall_goodware": 1.0
+        },
+        "x86": {
+          "n": 46,
+          "recall_goodware": 0.34782608695652173
+        }
+      },
+      "per_family_recall": {
+        "avoslocker": {
+          "recall": 0.86,
+          "correct": 43,
+          "support": 50
+        },
+        "bianlian": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 11
+        },
+        "blackbasta": {
+          "recall": 0.26666666666666666,
+          "correct": 8,
+          "support": 30
+        },
+        "blackbyte": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 7
+        },
+        "blackcat": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 50
+        },
+        "bluesky": {
+          "recall": 1.0,
+          "correct": 34,
+          "support": 34
+        },
+        "clop": {
+          "recall": 0.9777777777777777,
+          "correct": 44,
+          "support": 45
+        },
+        "hive": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 50
+        },
+        "holyghost": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 4
+        },
+        "karma": {
+          "recall": 1.0,
+          "correct": 13,
+          "support": 13
+        },
+        "lorenz": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 16
+        },
+        "maui": {
+          "recall": 1.0,
+          "correct": 3,
+          "support": 3
+        },
+        "playcrypt": {
+          "recall": 0.4418604651162791,
+          "correct": 19,
+          "support": 43
+        },
+        "quantum": {
+          "recall": 0.16666666666666666,
+          "correct": 1,
+          "support": 6
+        }
+      },
+      "ransomware_recall_by_family": {
+        "avoslocker": {
+          "n": 50,
+          "recall": 0.86,
+          "detected": 43
+        },
+        "bianlian": {
+          "n": 11,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackbasta": {
+          "n": 30,
+          "recall": 0.26666666666666666,
+          "detected": 8
+        },
+        "blackbyte": {
+          "n": 7,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackcat": {
+          "n": 50,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "bluesky": {
+          "n": 34,
+          "recall": 1.0,
+          "detected": 34
+        },
+        "clop": {
+          "n": 45,
+          "recall": 0.9777777777777777,
+          "detected": 44
+        },
+        "hive": {
+          "n": 50,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "holyghost": {
+          "n": 4,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "karma": {
+          "n": 13,
+          "recall": 1.0,
+          "detected": 13
+        },
+        "lorenz": {
+          "n": 16,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "maui": {
+          "n": 3,
+          "recall": 1.0,
+          "detected": 3
+        },
+        "playcrypt": {
+          "n": 43,
+          "recall": 0.4418604651162791,
+          "detected": 19
+        },
+        "quantum": {
+          "n": 6,
+          "recall": 0.16666666666666666,
+          "detected": 1
+        }
+      },
+      "track": "ngram_rules",
+      "model": "weighted_logodds",
+      "n_rules": 41,
+      "threshold": 22.5133,
+      "threshold_source": "val fold",
+      "val_macro_f1": 0.8305
+    },
+    {
+      "accuracy": 0.5051124744376279,
+      "balanced_accuracy": 0.606962631052334,
+      "majority_class_accuracy": 0.7402862985685071,
+      "precision_goodware": 0.3219814241486068,
+      "recall_goodware": 0.8188976377952756,
+      "f1_goodware": 0.46222222222222226,
+      "support_goodware": 127,
+      "precision_ransomware": 0.8614457831325302,
+      "recall_ransomware": 0.39502762430939226,
+      "f1_ransomware": 0.5416666666666666,
+      "support_ransomware": 362,
+      "macro_precision": 0.5917136036405685,
+      "macro_recall": 0.606962631052334,
+      "macro_f1": 0.5019444444444444,
+      "false_positive_rate": 0.18110236220472442,
+      "confusion_matrix": {
+        "tn": 104,
+        "fp": 23,
+        "fn": 219,
+        "tp": 143
+      },
+      "roc_auc": 0.606962631052334,
+      "per_architecture": {
+        "x64": {
+          "accuracy": 0.48366013071895425,
+          "balanced_accuracy": 0.4567901234567901,
+          "majority_class_accuracy": 0.5294117647058824,
+          "precision_goodware": 0.5068493150684932,
+          "recall_goodware": 0.9135802469135802,
+          "f1_goodware": 0.6519823788546256,
+          "support_goodware": 81,
+          "precision_ransomware": 0.0,
+          "recall_ransomware": 0.0,
+          "f1_ransomware": 0.0,
+          "support_ransomware": 72,
+          "macro_precision": 0.2534246575342466,
+          "macro_recall": 0.4567901234567901,
+          "macro_f1": 0.3259911894273128,
+          "false_positive_rate": 0.08641975308641975,
+          "confusion_matrix": {
+            "tn": 74,
+            "fp": 7,
+            "fn": 72,
+            "tp": 0
+          },
+          "roc_auc": 0.45679012345679015,
+          "n": 153
+        },
+        "x86": {
+          "accuracy": 0.5148809523809523,
+          "balanced_accuracy": 0.5726386806596702,
+          "majority_class_accuracy": 0.8630952380952381,
+          "precision_goodware": 0.1694915254237288,
+          "recall_goodware": 0.6521739130434783,
+          "f1_goodware": 0.26905829596412556,
+          "support_goodware": 46,
+          "precision_ransomware": 0.89937106918239,
+          "recall_ransomware": 0.49310344827586206,
+          "f1_ransomware": 0.6369710467706013,
+          "support_ransomware": 290,
+          "macro_precision": 0.5344312973030594,
+          "macro_recall": 0.5726386806596702,
+          "macro_f1": 0.45301467136736345,
+          "false_positive_rate": 0.34782608695652173,
+          "confusion_matrix": {
+            "tn": 30,
+            "fp": 16,
+            "fn": 147,
+            "tp": 143
+          },
+          "roc_auc": 0.5726386806596702,
+          "n": 336
+        }
+      },
+      "per_arch": {
+        "x64": {
+          "n": 153,
+          "support_goodware": 81,
+          "support_ransomware": 72,
+          "recall_goodware": 0.9135802469135802,
+          "recall_ransomware": 0.0,
+          "accuracy": 0.48366013071895425,
+          "macro_f1": 0.3259911894273128
+        },
+        "x86": {
+          "n": 336,
+          "support_goodware": 46,
+          "support_ransomware": 290,
+          "recall_goodware": 0.6521739130434783,
+          "recall_ransomware": 0.49310344827586206,
+          "accuracy": 0.5148809523809523,
+          "macro_f1": 0.45301467136736345
+        }
+      },
+      "goodware_recall_by_arch": {
+        "x64": {
+          "n": 81,
+          "recall_goodware": 0.9135802469135802
+        },
+        "x86": {
+          "n": 46,
+          "recall_goodware": 0.6521739130434783
+        }
+      },
+      "per_family_recall": {
+        "avoslocker": {
+          "recall": 0.98,
+          "correct": 49,
+          "support": 50
+        },
+        "bianlian": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 11
+        },
+        "blackbasta": {
+          "recall": 0.4666666666666667,
+          "correct": 14,
+          "support": 30
+        },
+        "blackbyte": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 7
+        },
+        "blackcat": {
+          "recall": 1.0,
+          "correct": 50,
+          "support": 50
+        },
+        "bluesky": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 34
+        },
+        "clop": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 45
+        },
+        "hive": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 50
+        },
+        "holyghost": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 4
+        },
+        "karma": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 13
+        },
+        "lorenz": {
+          "recall": 1.0,
+          "correct": 16,
+          "support": 16
+        },
+        "maui": {
+          "recall": 1.0,
+          "correct": 3,
+          "support": 3
+        },
+        "playcrypt": {
+          "recall": 0.2558139534883721,
+          "correct": 11,
+          "support": 43
+        },
+        "quantum": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 6
+        }
+      },
+      "ransomware_recall_by_family": {
+        "avoslocker": {
+          "n": 50,
+          "recall": 0.98,
+          "detected": 49
+        },
+        "bianlian": {
+          "n": 11,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackbasta": {
+          "n": 30,
+          "recall": 0.4666666666666667,
+          "detected": 14
+        },
+        "blackbyte": {
+          "n": 7,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackcat": {
+          "n": 50,
+          "recall": 1.0,
+          "detected": 50
+        },
+        "bluesky": {
+          "n": 34,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "clop": {
+          "n": 45,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "hive": {
+          "n": 50,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "holyghost": {
+          "n": 4,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "karma": {
+          "n": 13,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "lorenz": {
+          "n": 16,
+          "recall": 1.0,
+          "detected": 16
+        },
+        "maui": {
+          "n": 3,
+          "recall": 1.0,
+          "detected": 3
+        },
+        "playcrypt": {
+          "n": 43,
+          "recall": 0.2558139534883721,
+          "detected": 11
+        },
+        "quantum": {
+          "n": 6,
+          "recall": 0.0,
+          "detected": 0
+        }
+      },
+      "track": "behaviour_rules",
+      "model": "crypto_signature_any_hit",
+      "n_rules": 5,
+      "rules": [
+        "R01",
+        "R02",
+        "R03",
+        "R05",
+        "R06"
+      ],
+      "train_metrics": {
+        "precision": 0.8624,
+        "recall": 0.7085,
+        "f1": 0.7779,
+        "fired": 654,
+        "tp": 564,
+        "fp": 90
+      }
+    },
+    {
+      "accuracy": 0.5807770961145194,
+      "balanced_accuracy": 0.6580676034280245,
+      "majority_class_accuracy": 0.7402862985685071,
+      "precision_goodware": 0.36363636363636365,
+      "recall_goodware": 0.8188976377952756,
+      "f1_goodware": 0.5036319612590798,
+      "support_goodware": 127,
+      "precision_ransomware": 0.8866995073891626,
+      "recall_ransomware": 0.4972375690607735,
+      "f1_ransomware": 0.6371681415929203,
+      "support_ransomware": 362,
+      "macro_precision": 0.6251679355127631,
+      "macro_recall": 0.6580676034280245,
+      "macro_f1": 0.5704000514260001,
+      "false_positive_rate": 0.18110236220472442,
+      "confusion_matrix": {
+        "tn": 104,
+        "fp": 23,
+        "fn": 182,
+        "tp": 180
+      },
+      "roc_auc": 0.780745638839344,
+      "per_architecture": {
+        "x64": {
+          "accuracy": 0.49019607843137253,
+          "balanced_accuracy": 0.46296296296296297,
+          "majority_class_accuracy": 0.5294117647058824,
+          "precision_goodware": 0.5102040816326531,
+          "recall_goodware": 0.9259259259259259,
+          "f1_goodware": 0.6578947368421053,
+          "support_goodware": 81,
+          "precision_ransomware": 0.0,
+          "recall_ransomware": 0.0,
+          "f1_ransomware": 0.0,
+          "support_ransomware": 72,
+          "macro_precision": 0.25510204081632654,
+          "macro_recall": 0.46296296296296297,
+          "macro_f1": 0.32894736842105265,
+          "false_positive_rate": 0.07407407407407407,
+          "confusion_matrix": {
+            "tn": 75,
+            "fp": 6,
+            "fn": 72,
+            "tp": 0
+          },
+          "roc_auc": 0.7450274348422496,
+          "n": 153
+        },
+        "x86": {
+          "accuracy": 0.6220238095238095,
+          "balanced_accuracy": 0.6255622188905547,
+          "majority_class_accuracy": 0.8630952380952381,
+          "precision_goodware": 0.20863309352517986,
+          "recall_goodware": 0.6304347826086957,
+          "f1_goodware": 0.3135135135135135,
+          "support_goodware": 46,
+          "precision_ransomware": 0.9137055837563451,
+          "recall_ransomware": 0.6206896551724138,
+          "f1_ransomware": 0.7392197125256673,
+          "support_ransomware": 290,
+          "macro_precision": 0.5611693386407625,
+          "macro_recall": 0.6255622188905547,
+          "macro_f1": 0.5263666130195904,
+          "false_positive_rate": 0.3695652173913043,
+          "confusion_matrix": {
+            "tn": 29,
+            "fp": 17,
+            "fn": 110,
+            "tp": 180
+          },
+          "roc_auc": 0.7001499250374813,
+          "n": 336
+        }
+      },
+      "per_arch": {
+        "x64": {
+          "n": 153,
+          "support_goodware": 81,
+          "support_ransomware": 72,
+          "recall_goodware": 0.9259259259259259,
+          "recall_ransomware": 0.0,
+          "accuracy": 0.49019607843137253,
+          "macro_f1": 0.32894736842105265
+        },
+        "x86": {
+          "n": 336,
+          "support_goodware": 46,
+          "support_ransomware": 290,
+          "recall_goodware": 0.6304347826086957,
+          "recall_ransomware": 0.6206896551724138,
+          "accuracy": 0.6220238095238095,
+          "macro_f1": 0.5263666130195904
+        }
+      },
+      "goodware_recall_by_arch": {
+        "x64": {
+          "n": 81,
+          "recall_goodware": 0.9259259259259259
+        },
+        "x86": {
+          "n": 46,
+          "recall_goodware": 0.6304347826086957
+        }
+      },
+      "per_family_recall": {
+        "avoslocker": {
+          "recall": 0.82,
+          "correct": 41,
+          "support": 50
+        },
+        "bianlian": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 11
+        },
+        "blackbasta": {
+          "recall": 0.13333333333333333,
+          "correct": 4,
+          "support": 30
+        },
+        "blackbyte": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 7
+        },
+        "blackcat": {
+          "recall": 1.0,
+          "correct": 50,
+          "support": 50
+        },
+        "bluesky": {
+          "recall": 0.029411764705882353,
+          "correct": 1,
+          "support": 34
+        },
+        "clop": {
+          "recall": 0.7777777777777778,
+          "correct": 35,
+          "support": 45
+        },
+        "hive": {
+          "recall": 0.14,
+          "correct": 7,
+          "support": 50
+        },
+        "holyghost": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 4
+        },
+        "karma": {
+          "recall": 0.23076923076923078,
+          "correct": 3,
+          "support": 13
+        },
+        "lorenz": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 16
+        },
+        "maui": {
+          "recall": 1.0,
+          "correct": 3,
+          "support": 3
+        },
+        "playcrypt": {
+          "recall": 0.8372093023255814,
+          "correct": 36,
+          "support": 43
+        },
+        "quantum": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 6
+        }
+      },
+      "ransomware_recall_by_family": {
+        "avoslocker": {
+          "n": 50,
+          "recall": 0.82,
+          "detected": 41
+        },
+        "bianlian": {
+          "n": 11,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackbasta": {
+          "n": 30,
+          "recall": 0.13333333333333333,
+          "detected": 4
+        },
+        "blackbyte": {
+          "n": 7,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackcat": {
+          "n": 50,
+          "recall": 1.0,
+          "detected": 50
+        },
+        "bluesky": {
+          "n": 34,
+          "recall": 0.029411764705882353,
+          "detected": 1
+        },
+        "clop": {
+          "n": 45,
+          "recall": 0.7777777777777778,
+          "detected": 35
+        },
+        "hive": {
+          "n": 50,
+          "recall": 0.14,
+          "detected": 7
+        },
+        "holyghost": {
+          "n": 4,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "karma": {
+          "n": 13,
+          "recall": 0.23076923076923078,
+          "detected": 3
+        },
+        "lorenz": {
+          "n": 16,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "maui": {
+          "n": 3,
+          "recall": 1.0,
+          "detected": 3
+        },
+        "playcrypt": {
+          "n": 43,
+          "recall": 0.8372093023255814,
+          "detected": 36
+        },
+        "quantum": {
+          "n": 6,
+          "recall": 0.0,
+          "detected": 0
+        }
+      },
+      "track": "behaviour_rules",
+      "model": "weighted_logodds",
+      "n_rules": 23,
+      "threshold": 11.1286,
+      "threshold_source": "val fold",
+      "val_macro_f1": 0.7668
+    },
+    {
+      "accuracy": 0.6952965235173824,
+      "balanced_accuracy": 0.7303040849175622,
+      "majority_class_accuracy": 0.7402862985685071,
+      "precision_goodware": 0.45132743362831856,
+      "recall_goodware": 0.8031496062992126,
+      "f1_goodware": 0.5779036827195467,
+      "support_goodware": 127,
+      "precision_ransomware": 0.9049429657794676,
+      "recall_ransomware": 0.6574585635359116,
+      "f1_ransomware": 0.7615999999999999,
+      "support_ransomware": 362,
+      "macro_precision": 0.6781351997038931,
+      "macro_recall": 0.7303040849175622,
+      "macro_f1": 0.6697518413597734,
+      "false_positive_rate": 0.1968503937007874,
+      "confusion_matrix": {
+        "tn": 102,
+        "fp": 25,
+        "fn": 124,
+        "tp": 238
+      },
+      "roc_auc": 0.8302301300735198,
+      "per_architecture": {
+        "x64": {
+          "accuracy": 0.5555555555555556,
+          "balanced_accuracy": 0.5285493827160493,
+          "majority_class_accuracy": 0.5294117647058824,
+          "precision_goodware": 0.54421768707483,
+          "recall_goodware": 0.9876543209876543,
+          "f1_goodware": 0.7017543859649122,
+          "support_goodware": 81,
+          "precision_ransomware": 0.8333333333333334,
+          "recall_ransomware": 0.06944444444444445,
+          "f1_ransomware": 0.12820512820512822,
+          "support_ransomware": 72,
+          "macro_precision": 0.6887755102040817,
+          "macro_recall": 0.5285493827160493,
+          "macro_f1": 0.4149797570850202,
+          "false_positive_rate": 0.012345679012345678,
+          "confusion_matrix": {
+            "tn": 80,
+            "fp": 1,
+            "fn": 67,
+            "tp": 5
+          },
+          "roc_auc": 0.8211591220850479,
+          "n": 153
+        },
+        "x86": {
+          "accuracy": 0.7589285714285714,
+          "balanced_accuracy": 0.6408545727136432,
+          "majority_class_accuracy": 0.8630952380952381,
+          "precision_goodware": 0.27848101265822783,
+          "recall_goodware": 0.4782608695652174,
+          "f1_goodware": 0.352,
+          "support_goodware": 46,
+          "precision_ransomware": 0.9066147859922179,
+          "recall_ransomware": 0.803448275862069,
+          "f1_ransomware": 0.8519195612431445,
+          "support_ransomware": 290,
+          "macro_precision": 0.5925478993252229,
+          "macro_recall": 0.6408545727136432,
+          "macro_f1": 0.6019597806215722,
+          "false_positive_rate": 0.5217391304347826,
+          "confusion_matrix": {
+            "tn": 22,
+            "fp": 24,
+            "fn": 57,
+            "tp": 233
+          },
+          "roc_auc": 0.6976011994002997,
+          "n": 336
+        }
+      },
+      "per_arch": {
+        "x64": {
+          "n": 153,
+          "support_goodware": 81,
+          "support_ransomware": 72,
+          "recall_goodware": 0.9876543209876543,
+          "recall_ransomware": 0.06944444444444445,
+          "accuracy": 0.5555555555555556,
+          "macro_f1": 0.4149797570850202
+        },
+        "x86": {
+          "n": 336,
+          "support_goodware": 46,
+          "support_ransomware": 290,
+          "recall_goodware": 0.4782608695652174,
+          "recall_ransomware": 0.803448275862069,
+          "accuracy": 0.7589285714285714,
+          "macro_f1": 0.6019597806215722
+        }
+      },
+      "goodware_recall_by_arch": {
+        "x64": {
+          "n": 81,
+          "recall_goodware": 0.9876543209876543
+        },
+        "x86": {
+          "n": 46,
+          "recall_goodware": 0.4782608695652174
+        }
+      },
+      "per_family_recall": {
+        "avoslocker": {
+          "recall": 0.86,
+          "correct": 43,
+          "support": 50
+        },
+        "bianlian": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 11
+        },
+        "blackbasta": {
+          "recall": 0.6,
+          "correct": 18,
+          "support": 30
+        },
+        "blackbyte": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 7
+        },
+        "blackcat": {
+          "recall": 0.8,
+          "correct": 40,
+          "support": 50
+        },
+        "bluesky": {
+          "recall": 1.0,
+          "correct": 34,
+          "support": 34
+        },
+        "clop": {
+          "recall": 0.9555555555555556,
+          "correct": 43,
+          "support": 45
+        },
+        "hive": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 50
+        },
+        "holyghost": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 4
+        },
+        "karma": {
+          "recall": 0.6153846153846154,
+          "correct": 8,
+          "support": 13
+        },
+        "lorenz": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 16
+        },
+        "maui": {
+          "recall": 1.0,
+          "correct": 3,
+          "support": 3
+        },
+        "playcrypt": {
+          "recall": 1.0,
+          "correct": 43,
+          "support": 43
+        },
+        "quantum": {
+          "recall": 1.0,
+          "correct": 6,
+          "support": 6
+        }
+      },
+      "ransomware_recall_by_family": {
+        "avoslocker": {
+          "n": 50,
+          "recall": 0.86,
+          "detected": 43
+        },
+        "bianlian": {
+          "n": 11,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackbasta": {
+          "n": 30,
+          "recall": 0.6,
+          "detected": 18
+        },
+        "blackbyte": {
+          "n": 7,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "blackcat": {
+          "n": 50,
+          "recall": 0.8,
+          "detected": 40
+        },
+        "bluesky": {
+          "n": 34,
+          "recall": 1.0,
+          "detected": 34
+        },
+        "clop": {
+          "n": 45,
+          "recall": 0.9555555555555556,
+          "detected": 43
+        },
+        "hive": {
+          "n": 50,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "holyghost": {
+          "n": 4,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "karma": {
+          "n": 13,
+          "recall": 0.6153846153846154,
+          "detected": 8
+        },
+        "lorenz": {
+          "n": 16,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "maui": {
+          "n": 3,
+          "recall": 1.0,
+          "detected": 3
+        },
+        "playcrypt": {
+          "n": 43,
+          "recall": 1.0,
+          "detected": 43
+        },
+        "quantum": {
+          "n": 6,
+          "recall": 1.0,
+          "detected": 6
+        }
+      },
+      "track": "combined",
+      "model": "behaviour+ngram_rules_logreg",
+      "n_features": 64
+    },
+    {
+      "accuracy": 0.8282208588957055,
+      "balanced_accuracy": 0.8507525992952538,
+      "majority_class_accuracy": 0.7402862985685071,
+      "precision_goodware": 0.6162162162162163,
+      "recall_goodware": 0.8976377952755905,
+      "f1_goodware": 0.7307692307692307,
+      "support_goodware": 127,
+      "precision_ransomware": 0.9572368421052632,
+      "recall_ransomware": 0.8038674033149171,
+      "f1_ransomware": 0.8738738738738739,
+      "support_ransomware": 362,
+      "macro_precision": 0.7867265291607397,
+      "macro_recall": 0.8507525992952538,
+      "macro_f1": 0.8023215523215523,
+      "false_positive_rate": 0.10236220472440945,
+      "confusion_matrix": {
+        "tn": 114,
+        "fp": 13,
+        "fn": 71,
+        "tp": 291
+      },
+      "roc_auc": 0.9285248183756036,
+      "per_architecture": {
+        "x64": {
+          "accuracy": 0.9084967320261438,
+          "balanced_accuracy": 0.9027777777777778,
+          "majority_class_accuracy": 0.5294117647058824,
+          "precision_goodware": 0.8526315789473684,
+          "recall_goodware": 1.0,
+          "f1_goodware": 0.9204545454545454,
+          "support_goodware": 81,
+          "precision_ransomware": 1.0,
+          "recall_ransomware": 0.8055555555555556,
+          "f1_ransomware": 0.8923076923076924,
+          "support_ransomware": 72,
+          "macro_precision": 0.9263157894736842,
+          "macro_recall": 0.9027777777777778,
+          "macro_f1": 0.9063811188811188,
+          "false_positive_rate": 0.0,
+          "confusion_matrix": {
+            "tn": 81,
+            "fp": 0,
+            "fn": 14,
+            "tp": 58
+          },
+          "roc_auc": 0.9814814814814815,
+          "n": 153
+        },
+        "x86": {
+          "accuracy": 0.7916666666666666,
+          "balanced_accuracy": 0.7604197901049475,
+          "majority_class_accuracy": 0.8630952380952381,
+          "precision_goodware": 0.36666666666666664,
+          "recall_goodware": 0.717391304347826,
+          "f1_goodware": 0.4852941176470588,
+          "support_goodware": 46,
+          "precision_ransomware": 0.9471544715447154,
+          "recall_ransomware": 0.803448275862069,
+          "f1_ransomware": 0.8694029850746269,
+          "support_ransomware": 290,
+          "macro_precision": 0.656910569105691,
+          "macro_recall": 0.7604197901049475,
+          "macro_f1": 0.6773485513608428,
+          "false_positive_rate": 0.2826086956521739,
+          "confusion_matrix": {
+            "tn": 33,
+            "fp": 13,
+            "fn": 57,
+            "tp": 233
+          },
+          "roc_auc": 0.8463268365817092,
+          "n": 336
+        }
+      },
+      "per_arch": {
+        "x64": {
+          "n": 153,
+          "support_goodware": 81,
+          "support_ransomware": 72,
+          "recall_goodware": 1.0,
+          "recall_ransomware": 0.8055555555555556,
+          "accuracy": 0.9084967320261438,
+          "macro_f1": 0.9063811188811188
+        },
+        "x86": {
+          "n": 336,
+          "support_goodware": 46,
+          "support_ransomware": 290,
+          "recall_goodware": 0.717391304347826,
+          "recall_ransomware": 0.803448275862069,
+          "accuracy": 0.7916666666666666,
+          "macro_f1": 0.6773485513608428
+        }
+      },
+      "goodware_recall_by_arch": {
+        "x64": {
+          "n": 81,
+          "recall_goodware": 1.0
+        },
+        "x86": {
+          "n": 46,
+          "recall_goodware": 0.717391304347826
+        }
+      },
+      "per_family_recall": {
+        "avoslocker": {
+          "recall": 1.0,
+          "correct": 50,
+          "support": 50
+        },
+        "bianlian": {
+          "recall": 1.0,
+          "correct": 11,
+          "support": 11
+        },
+        "blackbasta": {
+          "recall": 0.9,
+          "correct": 27,
+          "support": 30
+        },
+        "blackbyte": {
+          "recall": 1.0,
+          "correct": 7,
+          "support": 7
+        },
+        "blackcat": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 50
+        },
+        "bluesky": {
+          "recall": 1.0,
+          "correct": 34,
+          "support": 34
+        },
+        "clop": {
+          "recall": 1.0,
+          "correct": 45,
+          "support": 45
+        },
+        "hive": {
+          "recall": 0.64,
+          "correct": 32,
+          "support": 50
+        },
+        "holyghost": {
+          "recall": 1.0,
+          "correct": 4,
+          "support": 4
+        },
+        "karma": {
+          "recall": 1.0,
+          "correct": 13,
+          "support": 13
+        },
+        "lorenz": {
+          "recall": 1.0,
+          "correct": 16,
+          "support": 16
+        },
+        "maui": {
+          "recall": 1.0,
+          "correct": 3,
+          "support": 3
+        },
+        "playcrypt": {
+          "recall": 1.0,
+          "correct": 43,
+          "support": 43
+        },
+        "quantum": {
+          "recall": 1.0,
+          "correct": 6,
+          "support": 6
+        }
+      },
+      "ransomware_recall_by_family": {
+        "avoslocker": {
+          "n": 50,
+          "recall": 1.0,
+          "detected": 50
+        },
+        "bianlian": {
+          "n": 11,
+          "recall": 1.0,
+          "detected": 11
+        },
+        "blackbasta": {
+          "n": 30,
+          "recall": 0.9,
+          "detected": 27
+        },
+        "blackbyte": {
+          "n": 7,
+          "recall": 1.0,
+          "detected": 7
+        },
+        "blackcat": {
+          "n": 50,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "bluesky": {
+          "n": 34,
+          "recall": 1.0,
+          "detected": 34
+        },
+        "clop": {
+          "n": 45,
+          "recall": 1.0,
+          "detected": 45
+        },
+        "hive": {
+          "n": 50,
+          "recall": 0.64,
+          "detected": 32
+        },
+        "holyghost": {
+          "n": 4,
+          "recall": 1.0,
+          "detected": 4
+        },
+        "karma": {
+          "n": 13,
+          "recall": 1.0,
+          "detected": 13
+        },
+        "lorenz": {
+          "n": 16,
+          "recall": 1.0,
+          "detected": 16
+        },
+        "maui": {
+          "n": 3,
+          "recall": 1.0,
+          "detected": 3
+        },
+        "playcrypt": {
+          "n": 43,
+          "recall": 1.0,
+          "detected": 43
+        },
+        "quantum": {
+          "n": 6,
+          "recall": 1.0,
+          "detected": 6
+        }
+      },
+      "track": "calibration_baseline",
+      "model": "mnemonic_tfidf_1_3+LinearSVC",
+      "n_features": 86677,
+      "best_params": {
+        "C": "1"
+      },
+      "cv_best_f1_macro": 0.985
+    },
+    {
+      "accuracy": 0.8220858895705522,
+      "balanced_accuracy": 0.8440531604820116,
+      "majority_class_accuracy": 0.7402862985685071,
+      "precision_goodware": 0.6075268817204301,
+      "recall_goodware": 0.889763779527559,
+      "f1_goodware": 0.7220447284345047,
+      "support_goodware": 127,
+      "precision_ransomware": 0.9537953795379538,
+      "recall_ransomware": 0.7983425414364641,
+      "f1_ransomware": 0.869172932330827,
+      "support_ransomware": 362,
+      "macro_precision": 0.780661130629192,
+      "macro_recall": 0.8440531604820116,
+      "macro_f1": 0.7956088303826658,
+      "false_positive_rate": 0.11023622047244094,
+      "confusion_matrix": {
+        "tn": 113,
+        "fp": 14,
+        "fn": 73,
+        "tp": 289
+      },
+      "roc_auc": 0.9226084308522209,
+      "per_architecture": {
+        "x64": {
+          "accuracy": 0.8954248366013072,
+          "balanced_accuracy": 0.8888888888888888,
+          "majority_class_accuracy": 0.5294117647058824,
+          "precision_goodware": 0.8350515463917526,
+          "recall_goodware": 1.0,
+          "f1_goodware": 0.9101123595505618,
+          "support_goodware": 81,
+          "precision_ransomware": 1.0,
+          "recall_ransomware": 0.7777777777777778,
+          "f1_ransomware": 0.8750000000000001,
+          "support_ransomware": 72,
+          "macro_precision": 0.9175257731958764,
+          "macro_recall": 0.8888888888888888,
+          "macro_f1": 0.892556179775281,
+          "false_positive_rate": 0.0,
+          "confusion_matrix": {
+            "tn": 81,
+            "fp": 0,
+            "fn": 16,
+            "tp": 56
+          },
+          "roc_auc": 0.9698216735253772,
+          "n": 153
+        },
+        "x86": {
+          "accuracy": 0.7886904761904762,
+          "balanced_accuracy": 0.7495502248875563,
+          "majority_class_accuracy": 0.8630952380952381,
+          "precision_goodware": 0.3595505617977528,
+          "recall_goodware": 0.6956521739130435,
+          "f1_goodware": 0.4740740740740741,
+          "support_goodware": 46,
+          "precision_ransomware": 0.9433198380566802,
+          "recall_ransomware": 0.803448275862069,
+          "f1_ransomware": 0.8677839851024208,
+          "support_ransomware": 290,
+          "macro_precision": 0.6514351999272165,
+          "macro_recall": 0.7495502248875563,
+          "macro_f1": 0.6709290295882475,
+          "false_positive_rate": 0.30434782608695654,
+          "confusion_matrix": {
+            "tn": 32,
+            "fp": 14,
+            "fn": 57,
+            "tp": 233
+          },
+          "roc_auc": 0.841904047976012,
+          "n": 336
+        }
+      },
+      "per_arch": {
+        "x64": {
+          "n": 153,
+          "support_goodware": 81,
+          "support_ransomware": 72,
+          "recall_goodware": 1.0,
+          "recall_ransomware": 0.7777777777777778,
+          "accuracy": 0.8954248366013072,
+          "macro_f1": 0.892556179775281
+        },
+        "x86": {
+          "n": 336,
+          "support_goodware": 46,
+          "support_ransomware": 290,
+          "recall_goodware": 0.6956521739130435,
+          "recall_ransomware": 0.803448275862069,
+          "accuracy": 0.7886904761904762,
+          "macro_f1": 0.6709290295882475
+        }
+      },
+      "goodware_recall_by_arch": {
+        "x64": {
+          "n": 81,
+          "recall_goodware": 1.0
+        },
+        "x86": {
+          "n": 46,
+          "recall_goodware": 0.6956521739130435
+        }
+      },
+      "per_family_recall": {
+        "avoslocker": {
+          "recall": 1.0,
+          "correct": 50,
+          "support": 50
+        },
+        "bianlian": {
+          "recall": 1.0,
+          "correct": 11,
+          "support": 11
+        },
+        "blackbasta": {
+          "recall": 0.9,
+          "correct": 27,
+          "support": 30
+        },
+        "blackbyte": {
+          "recall": 0.7142857142857143,
+          "correct": 5,
+          "support": 7
+        },
+        "blackcat": {
+          "recall": 0.0,
+          "correct": 0,
+          "support": 50
+        },
+        "bluesky": {
+          "recall": 1.0,
+          "correct": 34,
+          "support": 34
+        },
+        "clop": {
+          "recall": 1.0,
+          "correct": 45,
+          "support": 45
+        },
+        "hive": {
+          "recall": 0.64,
+          "correct": 32,
+          "support": 50
+        },
+        "holyghost": {
+          "recall": 1.0,
+          "correct": 4,
+          "support": 4
+        },
+        "karma": {
+          "recall": 1.0,
+          "correct": 13,
+          "support": 13
+        },
+        "lorenz": {
+          "recall": 1.0,
+          "correct": 16,
+          "support": 16
+        },
+        "maui": {
+          "recall": 1.0,
+          "correct": 3,
+          "support": 3
+        },
+        "playcrypt": {
+          "recall": 1.0,
+          "correct": 43,
+          "support": 43
+        },
+        "quantum": {
+          "recall": 1.0,
+          "correct": 6,
+          "support": 6
+        }
+      },
+      "ransomware_recall_by_family": {
+        "avoslocker": {
+          "n": 50,
+          "recall": 1.0,
+          "detected": 50
+        },
+        "bianlian": {
+          "n": 11,
+          "recall": 1.0,
+          "detected": 11
+        },
+        "blackbasta": {
+          "n": 30,
+          "recall": 0.9,
+          "detected": 27
+        },
+        "blackbyte": {
+          "n": 7,
+          "recall": 0.7142857142857143,
+          "detected": 5
+        },
+        "blackcat": {
+          "n": 50,
+          "recall": 0.0,
+          "detected": 0
+        },
+        "bluesky": {
+          "n": 34,
+          "recall": 1.0,
+          "detected": 34
+        },
+        "clop": {
+          "n": 45,
+          "recall": 1.0,
+          "detected": 45
+        },
+        "hive": {
+          "n": 50,
+          "recall": 0.64,
+          "detected": 32
+        },
+        "holyghost": {
+          "n": 4,
+          "recall": 1.0,
+          "detected": 4
+        },
+        "karma": {
+          "n": 13,
+          "recall": 1.0,
+          "detected": 13
+        },
+        "lorenz": {
+          "n": 16,
+          "recall": 1.0,
+          "detected": 16
+        },
+        "maui": {
+          "n": 3,
+          "recall": 1.0,
+          "detected": 3
+        },
+        "playcrypt": {
+          "n": 43,
+          "recall": 1.0,
+          "detected": 43
+        },
+        "quantum": {
+          "n": 6,
+          "recall": 1.0,
+          "detected": 6
+        }
+      },
+      "track": "calibration_baseline",
+      "model": "mnemonic_tfidf_1_3+LogReg",
+      "n_features": 86677,
+      "best_params": {
+        "C": "10"
+      },
+      "cv_best_f1_macro": 0.983
+    }
+  ],
+  "elapsed_seconds": 235.57,
+  "config": {
+    "min_support": 40,
+    "top_k": 40,
+    "max_n": 4,
+    "pool_per_side": 2000,
+    "max_mnemonics": 30000,
+    "max_insns": 80000,
+    "seed": 42
+  },
+  "rule_report": {
+    "dataset": "balanced",
+    "ngram": {
+      "candidates": 81584,
+      "pooled": 3449,
+      "min_support": 40,
+      "max_n": 4,
+      "max_mnemonics": 30000,
+      "vocabulary": 1004,
+      "per_level": {
+        "2": 7429,
+        "3": 26008,
+        "4": 48147
+      },
+      "selected_ransomware": [
+        {
+          "rule": "add push call",
+          "n": 3,
+          "direction": "ransomware",
+          "train_ransomware": 746,
+          "train_goodware": 112,
+          "lift": 8.35,
+          "odds": 117.01,
+          "train_precision": 0.869,
+          "train_recall": 0.937,
+          "test": {
+            "precision": 0.8784,
+            "recall": 0.7182,
+            "f1": 0.7903,
+            "fired": 296,
+            "tp": 260,
+            "fp": 36
+          }
+        },
+        {
+          "rule": "mov push call",
+          "n": 3,
+          "direction": "ransomware",
+          "train_ransomware": 759,
+          "train_goodware": 133,
+          "lift": 7.16,
+          "odds": 131.91,
+          "train_precision": 0.851,
+          "train_recall": 0.954,
+          "test": {
+            "precision": 0.8693,
+            "recall": 0.7901,
+            "f1": 0.8278,
+            "fired": 329,
+            "tp": 286,
+            "fp": 43
+          }
+        },
+        {
+          "rule": "push call add",
+          "n": 3,
+          "direction": "ransomware",
+          "train_ransomware": 757,
+          "train_goodware": 132,
+          "lift": 7.19,
+          "odds": 125.99,
+          "train_precision": 0.852,
+          "train_recall": 0.951,
+          "test": {
+            "precision": 0.8648,
+            "recall": 0.7597,
+            "f1": 0.8088,
+            "fired": 318,
+            "tp": 275,
+            "fp": 43
+          }
+        },
+        {
+          "rule": "call pop",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 763,
+          "train_goodware": 146,
+          "lift": 6.56,
+          "odds": 133.25,
+          "train_precision": 0.839,
+          "train_recall": 0.959,
+          "test": {
+            "precision": 0.8545,
+            "recall": 0.779,
+            "f1": 0.815,
+            "fired": 330,
+            "tp": 282,
+            "fp": 48
+          }
+        },
+        {
+          "rule": "sub push",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 763,
+          "train_goodware": 147,
+          "lift": 6.51,
+          "odds": 132.19,
+          "train_precision": 0.838,
+          "train_recall": 0.959,
+          "test": {
+            "precision": 0.8631,
+            "recall": 0.8011,
+            "f1": 0.8309,
+            "fired": 336,
+            "tp": 290,
+            "fp": 46
+          }
+        },
+        {
+          "rule": "lea push",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 767,
+          "train_goodware": 153,
+          "lift": 6.29,
+          "odds": 143.98,
+          "train_precision": 0.834,
+          "train_recall": 0.964,
+          "test": {
+            "precision": 0.8504,
+            "recall": 0.8011,
+            "f1": 0.825,
+            "fired": 341,
+            "tp": 290,
+            "fp": 51
+          }
+        },
+        {
+          "rule": "jne push",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 753,
+          "train_goodware": 167,
+          "lift": 5.66,
+          "odds": 86.4,
+          "train_precision": 0.818,
+          "train_recall": 0.946,
+          "test": {
+            "precision": 0.8675,
+            "recall": 0.7956,
+            "f1": 0.83,
+            "fired": 332,
+            "tp": 288,
+            "fp": 44
+          }
+        },
+        {
+          "rule": "adc mov",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 672,
+          "train_goodware": 127,
+          "lift": 6.64,
+          "odds": 37.09,
+          "train_precision": 0.841,
+          "train_recall": 0.844,
+          "test": {
+            "precision": 0.8831,
+            "recall": 0.7514,
+            "f1": 0.8119,
+            "fired": 308,
+            "tp": 272,
+            "fp": 36
+          }
+        },
+        {
+          "rule": "xor push",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 691,
+          "train_goodware": 157,
+          "lift": 5.53,
+          "odds": 35.19,
+          "train_precision": 0.815,
+          "train_recall": 0.868,
+          "test": {
+            "precision": 0.8683,
+            "recall": 0.8011,
+            "f1": 0.8333,
+            "fired": 334,
+            "tp": 290,
+            "fp": 44
+          }
+        },
+        {
+          "rule": "jb push",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 646,
+          "train_goodware": 103,
+          "lift": 7.86,
+          "odds": 37.33,
+          "train_precision": 0.862,
+          "train_recall": 0.812,
+          "test": {
+            "precision": 0.9034,
+            "recall": 0.7238,
+            "f1": 0.8037,
+            "fired": 290,
+            "tp": 262,
+            "fp": 28
+          }
+        },
+        {
+          "rule": "pop push",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 634,
+          "train_goodware": 157,
+          "lift": 5.07,
+          "odds": 20.96,
+          "train_precision": 0.802,
+          "train_recall": 0.796,
+          "test": {
+            "precision": 0.8243,
+            "recall": 0.5442,
+            "f1": 0.6556,
+            "fired": 239,
+            "tp": 197,
+            "fp": 42
+          }
+        },
+        {
+          "rule": "rep stosb",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 451,
+          "train_goodware": 85,
+          "lift": 6.65,
+          "odds": 14.02,
+          "train_precision": 0.841,
+          "train_recall": 0.567,
+          "test": {
+            "precision": 0.8736,
+            "recall": 0.4199,
+            "f1": 0.5672,
+            "fired": 174,
+            "tp": 152,
+            "fp": 22
+          }
+        }
+      ],
+      "selected_goodware": [
+        {
+          "rule": "mov add pop jmp",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 10,
+          "train_goodware": 776,
+          "lift": 0.02,
+          "odds": 0.0,
+          "train_precision": 0.987,
+          "train_recall": 0.774,
+          "test": {
+            "precision": 0.7879,
+            "recall": 0.6142,
+            "f1": 0.6903,
+            "fired": 99,
+            "tp": 78,
+            "fp": 21
+          }
+        },
+        {
+          "rule": "movsxd mov",
+          "n": 2,
+          "direction": "goodware",
+          "train_ransomware": 20,
+          "train_goodware": 755,
+          "lift": 0.03,
+          "odds": 0.01,
+          "train_precision": 0.974,
+          "train_recall": 0.753,
+          "test": {
+            "precision": 0.5221,
+            "recall": 0.5591,
+            "f1": 0.5399,
+            "fired": 136,
+            "tp": 71,
+            "fp": 65
+          }
+        },
+        {
+          "rule": "mov movabs",
+          "n": 2,
+          "direction": "goodware",
+          "train_ransomware": 17,
+          "train_goodware": 752,
+          "lift": 0.03,
+          "odds": 0.01,
+          "train_precision": 0.978,
+          "train_recall": 0.75,
+          "test": {
+            "precision": 0.5,
+            "recall": 0.5512,
+            "f1": 0.5243,
+            "fired": 140,
+            "tp": 70,
+            "fp": 70
+          }
+        },
+        {
+          "rule": "call nop",
+          "n": 2,
+          "direction": "goodware",
+          "train_ransomware": 72,
+          "train_goodware": 792,
+          "lift": 0.12,
+          "odds": 0.03,
+          "train_precision": 0.917,
+          "train_recall": 0.79,
+          "test": {
+            "precision": 0.3662,
+            "recall": 0.6142,
+            "f1": 0.4588,
+            "fired": 213,
+            "tp": 78,
+            "fp": 135
+          }
+        },
+        {
+          "rule": "mov movsxd",
+          "n": 2,
+          "direction": "goodware",
+          "train_ransomware": 20,
+          "train_goodware": 748,
+          "lift": 0.03,
+          "odds": 0.01,
+          "train_precision": 0.974,
+          "train_recall": 0.747,
+          "test": {
+            "precision": 0.5357,
+            "recall": 0.5906,
+            "f1": 0.5618,
+            "fired": 140,
+            "tp": 75,
+            "fp": 65
+          }
+        },
+        {
+          "rule": "lea mov call test",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 203,
+          "train_goodware": 842,
+          "lift": 0.3,
+          "odds": 0.07,
+          "train_precision": 0.806,
+          "train_recall": 0.84,
+          "test": {
+            "precision": 0.3421,
+            "recall": 0.7165,
+            "f1": 0.4631,
+            "fired": 266,
+            "tp": 91,
+            "fp": 175
+          }
+        },
+        {
+          "rule": "mov add pop ret",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 169,
+          "train_goodware": 818,
+          "lift": 0.26,
+          "odds": 0.06,
+          "train_precision": 0.829,
+          "train_recall": 0.816,
+          "test": {
+            "precision": 0.5959,
+            "recall": 0.685,
+            "f1": 0.6374,
+            "fired": 146,
+            "tp": 87,
+            "fp": 59
+          }
+        },
+        {
+          "rule": "sub mov mov call",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 192,
+          "train_goodware": 815,
+          "lift": 0.3,
+          "odds": 0.07,
+          "train_precision": 0.809,
+          "train_recall": 0.813,
+          "test": {
+            "precision": 0.308,
+            "recall": 0.6063,
+            "f1": 0.4085,
+            "fired": 250,
+            "tp": 77,
+            "fp": 173
+          }
+        },
+        {
+          "rule": "xor add pop",
+          "n": 3,
+          "direction": "goodware",
+          "train_ransomware": 86,
+          "train_goodware": 738,
+          "lift": 0.15,
+          "odds": 0.04,
+          "train_precision": 0.896,
+          "train_recall": 0.737,
+          "test": {
+            "precision": 0.4211,
+            "recall": 0.5669,
+            "f1": 0.4832,
+            "fired": 171,
+            "tp": 72,
+            "fp": 99
+          }
+        },
+        {
+          "rule": "add pop jmp",
+          "n": 3,
+          "direction": "goodware",
+          "train_ransomware": 184,
+          "train_goodware": 787,
+          "lift": 0.29,
+          "odds": 0.08,
+          "train_precision": 0.811,
+          "train_recall": 0.785,
+          "test": {
+            "precision": 0.6439,
+            "recall": 0.6693,
+            "f1": 0.6564,
+            "fired": 132,
+            "tp": 85,
+            "fp": 47
+          }
+        },
+        {
+          "rule": "lea call jmp",
+          "n": 3,
+          "direction": "goodware",
+          "train_ransomware": 183,
+          "train_goodware": 781,
+          "lift": 0.3,
+          "odds": 0.08,
+          "train_precision": 0.81,
+          "train_recall": 0.779,
+          "test": {
+            "precision": 0.2202,
+            "recall": 0.6535,
+            "f1": 0.3294,
+            "fired": 377,
+            "tp": 83,
+            "fp": 294
+          }
+        },
+        {
+          "rule": "lea lea mov call",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 97,
+          "train_goodware": 718,
+          "lift": 0.17,
+          "odds": 0.06,
+          "train_precision": 0.881,
+          "train_recall": 0.717,
+          "test": {
+            "precision": 0.3709,
+            "recall": 0.622,
+            "f1": 0.4647,
+            "fired": 213,
+            "tp": 79,
+            "fp": 134
+          }
+        },
+        {
+          "rule": "sub lea mov mov",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 139,
+          "train_goodware": 743,
+          "lift": 0.24,
+          "odds": 0.07,
+          "train_precision": 0.842,
+          "train_recall": 0.742,
+          "test": {
+            "precision": 0.271,
+            "recall": 0.5591,
+            "f1": 0.365,
+            "fired": 262,
+            "tp": 71,
+            "fp": 191
+          }
+        },
+        {
+          "rule": "mov call lea call",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 186,
+          "train_goodware": 769,
+          "lift": 0.31,
+          "odds": 0.09,
+          "train_precision": 0.805,
+          "train_recall": 0.767,
+          "test": {
+            "precision": 0.4187,
+            "recall": 0.6693,
+            "f1": 0.5152,
+            "fired": 203,
+            "tp": 85,
+            "fp": 118
+          }
+        },
+        {
+          "rule": "lea call test jne",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 189,
+          "train_goodware": 768,
+          "lift": 0.31,
+          "odds": 0.1,
+          "train_precision": 0.803,
+          "train_recall": 0.766,
+          "test": {
+            "precision": 0.2857,
+            "recall": 0.6299,
+            "f1": 0.3931,
+            "fired": 280,
+            "tp": 80,
+            "fp": 200
+          }
+        },
+        {
+          "rule": "push sub mov call",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 127,
+          "train_goodware": 728,
+          "lift": 0.22,
+          "odds": 0.07,
+          "train_precision": 0.851,
+          "train_recall": 0.727,
+          "test": {
+            "precision": 0.422,
+            "recall": 0.5748,
+            "f1": 0.4867,
+            "fired": 173,
+            "tp": 73,
+            "fp": 100
+          }
+        },
+        {
+          "rule": "push sub lea",
+          "n": 3,
+          "direction": "goodware",
+          "train_ransomware": 190,
+          "train_goodware": 760,
+          "lift": 0.32,
+          "odds": 0.1,
+          "train_precision": 0.8,
+          "train_recall": 0.758,
+          "test": {
+            "precision": 0.4221,
+            "recall": 0.6614,
+            "f1": 0.5153,
+            "fired": 199,
+            "tp": 84,
+            "fp": 115
+          }
+        },
+        {
+          "rule": "add pop ret mov",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 156,
+          "train_goodware": 737,
+          "lift": 0.27,
+          "odds": 0.09,
+          "train_precision": 0.825,
+          "train_recall": 0.736,
+          "test": {
+            "precision": 0.4055,
+            "recall": 0.6929,
+            "f1": 0.5116,
+            "fired": 217,
+            "tp": 88,
+            "fp": 129
+          }
+        },
+        {
+          "rule": "lea ret",
+          "n": 2,
+          "direction": "goodware",
+          "train_ransomware": 131,
+          "train_goodware": 719,
+          "lift": 0.23,
+          "odds": 0.08,
+          "train_precision": 0.846,
+          "train_recall": 0.718,
+          "test": {
+            "precision": 0.2655,
+            "recall": 0.6063,
+            "f1": 0.3693,
+            "fired": 290,
+            "tp": 77,
+            "fp": 213
+          }
+        },
+        {
+          "rule": "call mov lea call",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 141,
+          "train_goodware": 721,
+          "lift": 0.25,
+          "odds": 0.08,
+          "train_precision": 0.836,
+          "train_recall": 0.72,
+          "test": {
+            "precision": 0.3187,
+            "recall": 0.6299,
+            "f1": 0.4233,
+            "fired": 251,
+            "tp": 80,
+            "fp": 171
+          }
+        },
+        {
+          "rule": "lea mov lea lea",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 149,
+          "train_goodware": 724,
+          "lift": 0.26,
+          "odds": 0.09,
+          "train_precision": 0.829,
+          "train_recall": 0.723,
+          "test": {
+            "precision": 0.314,
+            "recall": 0.5984,
+            "f1": 0.4119,
+            "fired": 242,
+            "tp": 76,
+            "fp": 166
+          }
+        },
+        {
+          "rule": "test cmove",
+          "n": 2,
+          "direction": "goodware",
+          "train_ransomware": 152,
+          "train_goodware": 725,
+          "lift": 0.26,
+          "odds": 0.09,
+          "train_precision": 0.827,
+          "train_recall": 0.724,
+          "test": {
+            "precision": 0.3739,
+            "recall": 0.6772,
+            "f1": 0.4818,
+            "fired": 230,
+            "tp": 86,
+            "fp": 144
+          }
+        },
+        {
+          "rule": "lock cmpxchg",
+          "n": 2,
+          "direction": "goodware",
+          "train_ransomware": 53,
+          "train_goodware": 657,
+          "lift": 0.1,
+          "odds": 0.04,
+          "train_precision": 0.925,
+          "train_recall": 0.656,
+          "test": {
+            "precision": 0.2595,
+            "recall": 0.5354,
+            "f1": 0.3496,
+            "fired": 262,
+            "tp": 68,
+            "fp": 194
+          }
+        },
+        {
+          "rule": "int3 mov mov mov",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 158,
+          "train_goodware": 711,
+          "lift": 0.28,
+          "odds": 0.1,
+          "train_precision": 0.818,
+          "train_recall": 0.71,
+          "test": {
+            "precision": 0.3022,
+            "recall": 0.6614,
+            "f1": 0.4148,
+            "fired": 278,
+            "tp": 84,
+            "fp": 194
+          }
+        },
+        {
+          "rule": "mov call jmp lea",
+          "n": 4,
+          "direction": "goodware",
+          "train_ransomware": 61,
+          "train_goodware": 604,
+          "lift": 0.13,
+          "odds": 0.06,
+          "train_precision": 0.908,
+          "train_recall": 0.603,
+          "test": {
+            "precision": 0.4641,
+            "recall": 0.5591,
+            "f1": 0.5071,
+            "fired": 153,
+            "tp": 71,
+            "fp": 82
+          }
+        },
+        {
+          "rule": "je call jmp",
+          "n": 3,
+          "direction": "goodware",
+          "train_ransomware": 149,
+          "train_goodware": 642,
+          "lift": 0.29,
+          "odds": 0.13,
+          "train_precision": 0.812,
+          "train_recall": 0.641,
+          "test": {
+            "precision": 0.79,
+            "recall": 0.622,
+            "f1": 0.696,
+            "fired": 100,
+            "tp": 79,
+            "fp": 21
+          }
+        },
+        {
+          "rule": "je add pop",
+          "n": 3,
+          "direction": "goodware",
+          "train_ransomware": 81,
+          "train_goodware": 485,
+          "lift": 0.21,
+          "odds": 0.12,
+          "train_precision": 0.857,
+          "train_recall": 0.484,
+          "test": {
+            "precision": 0.6,
+            "recall": 0.3307,
+            "f1": 0.4264,
+            "fired": 70,
+            "tp": 42,
+            "fp": 28
+          }
+        },
+        {
+          "rule": "lea shl add",
+          "n": 3,
+          "direction": "goodware",
+          "train_ransomware": 31,
+          "train_goodware": 426,
+          "lift": 0.09,
+          "odds": 0.06,
+          "train_precision": 0.932,
+          "train_recall": 0.425,
+          "test": {
+            "precision": 0.1837,
+            "recall": 0.2835,
+            "f1": 0.2229,
+            "fired": 196,
+            "tp": 36,
+            "fp": 160
+          }
+        },
+        {
+          "rule": "jg lea",
+          "n": 2,
+          "direction": "goodware",
+          "train_ransomware": 96,
+          "train_goodware": 438,
+          "lift": 0.28,
+          "odds": 0.18,
+          "train_precision": 0.82,
+          "train_recall": 0.437,
+          "test": {
+            "precision": 0.2249,
+            "recall": 0.3701,
+            "f1": 0.2798,
+            "fired": 209,
+            "tp": 47,
+            "fp": 162
+          }
+        }
+      ],
+      "top_by_lift": [
+        {
+          "rule": "xor sub sbb",
+          "n": 3,
+          "direction": "ransomware",
+          "train_ransomware": 374,
+          "train_goodware": 11,
+          "lift": 40.98,
+          "odds": 76.42,
+          "train_precision": 0.971,
+          "train_recall": 0.47,
+          "test": {
+            "precision": 0.9394,
+            "recall": 0.1713,
+            "f1": 0.2897,
+            "fired": 66,
+            "tp": 62,
+            "fp": 4
+          }
+        },
+        {
+          "rule": "shr rcr",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 327,
+          "train_goodware": 13,
+          "lift": 30.53,
+          "odds": 51.13,
+          "train_precision": 0.962,
+          "train_recall": 0.411,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "div mov mov div",
+          "n": 4,
+          "direction": "ransomware",
+          "train_ransomware": 282,
+          "train_goodware": 12,
+          "lift": 28.44,
+          "odds": 43.51,
+          "train_precision": 0.959,
+          "train_recall": 0.354,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "add lea push mov",
+          "n": 4,
+          "direction": "ransomware",
+          "train_ransomware": 327,
+          "train_goodware": 14,
+          "lift": 28.42,
+          "odds": 47.55,
+          "train_precision": 0.959,
+          "train_recall": 0.411,
+          "test": {
+            "precision": 0.9346,
+            "recall": 0.2762,
+            "f1": 0.4264,
+            "fired": 107,
+            "tp": 100,
+            "fp": 7
+          }
+        },
+        {
+          "rule": "mov mul add jb",
+          "n": 4,
+          "direction": "ransomware",
+          "train_ransomware": 281,
+          "train_goodware": 12,
+          "lift": 28.34,
+          "odds": 43.27,
+          "train_precision": 0.959,
+          "train_recall": 0.353,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "jb cmp jbe dec",
+          "n": 4,
+          "direction": "ransomware",
+          "train_ransomware": 281,
+          "train_goodware": 12,
+          "lift": 28.34,
+          "odds": 43.27,
+          "train_precision": 0.959,
+          "train_recall": 0.353,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "div mov mul mov",
+          "n": 4,
+          "direction": "ransomware",
+          "train_ransomware": 281,
+          "train_goodware": 12,
+          "lift": 28.34,
+          "odds": 43.27,
+          "train_precision": 0.959,
+          "train_recall": 0.353,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "call add push lea",
+          "n": 4,
+          "direction": "ransomware",
+          "train_ransomware": 550,
+          "train_goodware": 24,
+          "lift": 28.28,
+          "odds": 89.19,
+          "train_precision": 0.958,
+          "train_recall": 0.691,
+          "test": {
+            "precision": 0.8649,
+            "recall": 0.1768,
+            "f1": 0.2936,
+            "fired": 74,
+            "tp": 64,
+            "fp": 10
+          }
+        },
+        {
+          "rule": "sub mov lea push",
+          "n": 4,
+          "direction": "ransomware",
+          "train_ransomware": 360,
+          "train_goodware": 16,
+          "lift": 27.5,
+          "odds": 49.38,
+          "train_precision": 0.957,
+          "train_recall": 0.452,
+          "test": {
+            "precision": 0.8519,
+            "recall": 0.1271,
+            "f1": 0.2212,
+            "fired": 54,
+            "tp": 46,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "mov shr rcr",
+          "n": 3,
+          "direction": "ransomware",
+          "train_ransomware": 287,
+          "train_goodware": 13,
+          "lift": 26.8,
+          "odds": 41.36,
+          "train_precision": 0.957,
+          "train_recall": 0.361,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "mov mov shr rcr",
+          "n": 4,
+          "direction": "ransomware",
+          "train_ransomware": 286,
+          "train_goodware": 13,
+          "lift": 26.71,
+          "odds": 41.13,
+          "train_precision": 0.957,
+          "train_recall": 0.359,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "rcr shr",
+          "n": 2,
+          "direction": "ransomware",
+          "train_ransomware": 285,
+          "train_goodware": 13,
+          "lift": 26.61,
+          "odds": 40.91,
+          "train_precision": 0.956,
+          "train_recall": 0.358,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "shr rcr shr rcr",
+          "n": 4,
+          "direction": "ransomware",
+          "train_ransomware": 283,
+          "train_goodware": 13,
+          "lift": 26.43,
+          "odds": 40.47,
+          "train_precision": 0.956,
+          "train_recall": 0.356,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "rcr shr rcr",
+          "n": 3,
+          "direction": "ransomware",
+          "train_ransomware": 283,
+          "train_goodware": 13,
+          "lift": 26.43,
+          "odds": 40.47,
+          "train_precision": 0.956,
+          "train_recall": 0.356,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        },
+        {
+          "rule": "shr rcr shr",
+          "n": 3,
+          "direction": "ransomware",
+          "train_ransomware": 283,
+          "train_goodware": 13,
+          "lift": 26.43,
+          "odds": 40.47,
+          "train_precision": 0.956,
+          "train_recall": 0.356,
+          "test": {
+            "precision": 0.9111,
+            "recall": 0.2265,
+            "f1": 0.3628,
+            "fired": 90,
+            "tp": 82,
+            "fp": 8
+          }
+        }
+      ],
+      "train_coverage": {
+        "covered": 791,
+        "positives": 796
+      }
+    },
+    "behaviour": {
+      "max_insns": 80000,
+      "rules": [
+        {
+          "id": "R01",
+          "name": "aesni_any",
+          "kind": "presence",
+          "description": "AES-NI round instruction (aesenc/aesdec/aeskeygenassist) present",
+          "threshold": null,
+          "train": {
+            "precision": 0.8547,
+            "recall": 0.1256,
+            "f1": 0.2191,
+            "fired": 117,
+            "tp": 100,
+            "fp": 17
+          },
+          "test": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "fired": 2,
+            "tp": 0,
+            "fp": 2
+          },
+          "goodware_fire_rate_train": 0.017,
+          "goodware_fire_rate_test": 0.0157,
+          "ransomware_fire_rate_test": 0.0,
+          "goodware_false_positives_test": [
+            "Steam.exe",
+            "SteamService.exe"
+          ]
+        },
+        {
+          "id": "R02",
+          "name": "pclmulqdq_any",
+          "kind": "presence",
+          "description": "carry-less multiply present (AES-GCM / CRC / GF(2^n) math)",
+          "threshold": null,
+          "train": {
+            "precision": 0.05,
+            "recall": 0.0013,
+            "f1": 0.0025,
+            "fired": 20,
+            "tp": 1,
+            "fp": 19
+          },
+          "test": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "fired": 2,
+            "tp": 0,
+            "fp": 2
+          },
+          "goodware_fire_rate_train": 0.019,
+          "goodware_fire_rate_test": 0.0157,
+          "ransomware_fire_rate_test": 0.0,
+          "goodware_false_positives_test": [
+            "Steam.exe",
+            "SteamService.exe"
+          ]
+        },
+        {
+          "id": "R03",
+          "name": "sha_ni_any",
+          "kind": "presence",
+          "description": "SHA extension instruction (sha1rnds4/sha256rnds2/...) present",
+          "threshold": null,
+          "train": {
+            "precision": 0.76,
+            "recall": 0.0477,
+            "f1": 0.0898,
+            "fired": 50,
+            "tp": 38,
+            "fp": 12
+          },
+          "test": {
+            "precision": 0.8462,
+            "recall": 0.0304,
+            "f1": 0.0587,
+            "fired": 13,
+            "tp": 11,
+            "fp": 2
+          },
+          "goodware_fire_rate_train": 0.012,
+          "goodware_fire_rate_test": 0.0157,
+          "ransomware_fire_rate_test": 0.0304,
+          "goodware_false_positives_test": [
+            "Steam.exe",
+            "SteamService.exe"
+          ]
+        },
+        {
+          "id": "R04",
+          "name": "crc32_any",
+          "kind": "presence",
+          "description": "SSE4.2 crc32 instruction present",
+          "threshold": null,
+          "train": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "fired": 1,
+            "tp": 0,
+            "fp": 1
+          },
+          "test": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "fired": 0,
+            "tp": 0,
+            "fp": 0
+          },
+          "goodware_fire_rate_train": 0.001,
+          "goodware_fire_rate_test": 0.0,
+          "ransomware_fire_rate_test": 0.0,
+          "goodware_false_positives_test": []
+        },
+        {
+          "id": "R05",
+          "name": "rdrand_any",
+          "kind": "presence",
+          "description": "hardware RNG (rdrand/rdseed) present -- key generation",
+          "threshold": null,
+          "train": {
+            "precision": 0.9385,
+            "recall": 0.0766,
+            "f1": 0.1417,
+            "fired": 65,
+            "tp": 61,
+            "fp": 4
+          },
+          "test": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "fired": 2,
+            "tp": 0,
+            "fp": 2
+          },
+          "goodware_fire_rate_train": 0.004,
+          "goodware_fire_rate_test": 0.0157,
+          "ransomware_fire_rate_test": 0.0,
+          "goodware_false_positives_test": [
+            "Steam.exe",
+            "SteamService.exe"
+          ]
+        },
+        {
+          "id": "R06",
+          "name": "crypto_const_any",
+          "kind": "presence",
+          "description": "MD5/SHA-1/SHA-256 IV, SHA-1 K, CRC-32 polynomial, FNV or TEA delta appears as an immediate",
+          "threshold": null,
+          "train": {
+            "precision": 0.8644,
+            "recall": 0.6407,
+            "f1": 0.7359,
+            "fired": 590,
+            "tp": 510,
+            "fp": 80
+          },
+          "test": {
+            "precision": 0.8516,
+            "recall": 0.3646,
+            "f1": 0.5106,
+            "fired": 155,
+            "tp": 132,
+            "fp": 23
+          },
+          "goodware_fire_rate_train": 0.0798,
+          "goodware_fire_rate_test": 0.1811,
+          "ransomware_fire_rate_test": 0.3646,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "eraser.exe",
+            "mozavutil.dll",
+            "Steam.exe",
+            "RegionCapture.dll",
+            "PostgreSQL 17_17.11-3_Machine_X64_exe_en-US.exe",
+            "setup.exe",
+            "CryptSync.EXE"
+          ]
+        },
+        {
+          "id": "R07",
+          "name": "loop_instr_any",
+          "kind": "presence",
+          "description": "x86 `loop`/`loope`/`loopne` present (rare in modern compiler output)",
+          "threshold": null,
+          "train": {
+            "precision": 0.6176,
+            "recall": 0.4849,
+            "f1": 0.5433,
+            "fired": 625,
+            "tp": 386,
+            "fp": 239
+          },
+          "test": {
+            "precision": 0.8191,
+            "recall": 0.4254,
+            "f1": 0.56,
+            "fired": 188,
+            "tp": 154,
+            "fp": 34
+          },
+          "goodware_fire_rate_train": 0.2385,
+          "goodware_fire_rate_test": 0.2677,
+          "ransomware_fire_rate_test": 0.4254,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "Steam.exe",
+            "Stub_Plugin.exe",
+            "wscript_2447bbda.exe",
+            "Video.dll",
+            "i_view64.exe",
+            "Microsoft .NET Runtime 10.0_10.0.11_Machine_X64_burn_en-US.exe",
+            "Microsoft .NET Windows Desktop Runtime 9.0_9.0.19_Machine_X64_burn_en-US.exe"
+          ]
+        },
+        {
+          "id": "R08",
+          "name": "cpuid_any",
+          "kind": "presence",
+          "description": "cpuid present -- feature probe or VM/sandbox detection",
+          "threshold": null,
+          "train": {
+            "precision": 0.4586,
+            "recall": 0.4799,
+            "f1": 0.469,
+            "fired": 833,
+            "tp": 382,
+            "fp": 451
+          },
+          "test": {
+            "precision": 0.8197,
+            "recall": 0.8039,
+            "f1": 0.8117,
+            "fired": 355,
+            "tp": 291,
+            "fp": 64
+          },
+          "goodware_fire_rate_train": 0.4501,
+          "goodware_fire_rate_test": 0.5039,
+          "ransomware_fire_rate_test": 0.8039,
+          "goodware_false_positives_test": [
+            "sdelete.exe",
+            "javaw.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "Steam.exe",
+            "SystemSettingsAdminFlows.exe",
+            "Stub_Plugin.exe"
+          ]
+        },
+        {
+          "id": "R09",
+          "name": "rdtsc_any",
+          "kind": "presence",
+          "description": "rdtsc/rdtscp present -- timing-based anti-analysis or seeding",
+          "threshold": null,
+          "train": {
+            "precision": 0.9344,
+            "recall": 0.2148,
+            "f1": 0.3493,
+            "fired": 183,
+            "tp": 171,
+            "fp": 12
+          },
+          "test": {
+            "precision": 0.8333,
+            "recall": 0.0276,
+            "f1": 0.0535,
+            "fired": 12,
+            "tp": 10,
+            "fp": 2
+          },
+          "goodware_fire_rate_train": 0.012,
+          "goodware_fire_rate_test": 0.0157,
+          "ransomware_fire_rate_test": 0.0276,
+          "goodware_false_positives_test": [
+            "Steam.exe",
+            "SteamService.exe"
+          ]
+        },
+        {
+          "id": "R10",
+          "name": "peb_teb_any",
+          "kind": "presence",
+          "description": "direct PEB/TEB access (fs:[0x30], fs:[0x18], gs:[0x60])",
+          "threshold": null,
+          "train": {
+            "precision": 0.7206,
+            "recall": 0.4535,
+            "f1": 0.5567,
+            "fired": 501,
+            "tp": 361,
+            "fp": 140
+          },
+          "test": {
+            "precision": 0.9094,
+            "recall": 0.6657,
+            "f1": 0.7687,
+            "fired": 265,
+            "tp": 241,
+            "fp": 24
+          },
+          "goodware_fire_rate_train": 0.1397,
+          "goodware_fire_rate_test": 0.189,
+          "ransomware_fire_rate_test": 0.6657,
+          "goodware_false_positives_test": [
+            "sdelete.exe",
+            "subst.exe",
+            "PostgreSQL 17_17.11-3_Machine_X64_exe_en-US.exe",
+            "ConEmuHk64.dll",
+            "Microsoft .NET Windows Desktop Runtime 9.0_9.0.19_Machine_X64_burn_en-US.exe",
+            "lsass.exe",
+            "PsHost.dll",
+            "GPG.EXE"
+          ]
+        },
+        {
+          "id": "R11",
+          "name": "syscall_any",
+          "kind": "presence",
+          "description": "syscall/sysenter in user code -- ntdll bypass",
+          "threshold": null,
+          "train": {
+            "precision": 0.7759,
+            "recall": 0.0565,
+            "f1": 0.1054,
+            "fired": 58,
+            "tp": 45,
+            "fp": 13
+          },
+          "test": {
+            "precision": 0.875,
+            "recall": 0.0193,
+            "f1": 0.0378,
+            "fired": 8,
+            "tp": 7,
+            "fp": 1
+          },
+          "goodware_fire_rate_train": 0.013,
+          "goodware_fire_rate_test": 0.0079,
+          "ransomware_fire_rate_test": 0.0193,
+          "goodware_false_positives_test": [
+            "Metadata.dll"
+          ]
+        },
+        {
+          "id": "R12",
+          "name": "int_other_any",
+          "kind": "presence",
+          "description": "software interrupt other than int3 (int 0x2d/0x2e anti-debug)",
+          "threshold": null,
+          "train": {
+            "precision": 0.4189,
+            "recall": 0.5289,
+            "f1": 0.4675,
+            "fired": 1005,
+            "tp": 421,
+            "fp": 584
+          },
+          "test": {
+            "precision": 0.7656,
+            "recall": 0.7127,
+            "f1": 0.7382,
+            "fired": 337,
+            "tp": 258,
+            "fp": 79
+          },
+          "goodware_fire_rate_train": 0.5828,
+          "goodware_fire_rate_test": 0.622,
+          "ransomware_fire_rate_test": 0.7127,
+          "goodware_false_positives_test": [
+            "sdelete.exe",
+            "CM_FP_bin.ctest.exe",
+            "javaw.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "Steam.exe",
+            "SystemSettingsAdminFlows.exe"
+          ]
+        },
+        {
+          "id": "R13",
+          "name": "xor_dense",
+          "kind": "density",
+          "description": "xor instructions per 1k decoded instructions",
+          "threshold": 8.8981,
+          "train": {
+            "precision": 0.4479,
+            "recall": 0.9611,
+            "f1": 0.611,
+            "fired": 1708,
+            "tp": 765,
+            "fp": 943
+          },
+          "test": {
+            "precision": 0.7236,
+            "recall": 0.8895,
+            "f1": 0.798,
+            "fired": 445,
+            "tp": 322,
+            "fp": 123
+          },
+          "goodware_fire_rate_train": 0.9411,
+          "goodware_fire_rate_test": 0.9685,
+          "ransomware_fire_rate_test": 0.8895,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "sdelete.exe",
+            "CM_FP_bin.ctest.exe",
+            "javaw.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "Steam.exe"
+          ]
+        },
+        {
+          "id": "R14",
+          "name": "rotshift_dense",
+          "kind": "density",
+          "description": "rol/ror/shl/shr/sar/shld/shrd per 1k -- bit-mixing chains",
+          "threshold": 6.4125,
+          "train": {
+            "precision": 0.6166,
+            "recall": 0.8405,
+            "f1": 0.7113,
+            "fired": 1085,
+            "tp": 669,
+            "fp": 416
+          },
+          "test": {
+            "precision": 0.8273,
+            "recall": 0.7541,
+            "f1": 0.789,
+            "fired": 330,
+            "tp": 273,
+            "fp": 57
+          },
+          "goodware_fire_rate_train": 0.4152,
+          "goodware_fire_rate_test": 0.4488,
+          "ransomware_fire_rate_test": 0.7541,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "sdelete.exe",
+            "CM_FP_bin.ctest.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "Steam.exe",
+            "libGLESv2.dll"
+          ]
+        },
+        {
+          "id": "R15",
+          "name": "tight_crypto_loop",
+          "kind": "density",
+          "description": "backward branches spanning <=40 instructions over a logic/shift heavy body, per 1k -- the crypto inner-loop shape",
+          "threshold": 0.5704,
+          "train": {
+            "precision": 0.4764,
+            "recall": 0.9146,
+            "f1": 0.6265,
+            "fired": 1528,
+            "tp": 728,
+            "fp": 800
+          },
+          "test": {
+            "precision": 0.7552,
+            "recall": 0.9033,
+            "f1": 0.8226,
+            "fired": 433,
+            "tp": 327,
+            "fp": 106
+          },
+          "goodware_fire_rate_train": 0.7984,
+          "goodware_fire_rate_test": 0.8346,
+          "ransomware_fire_rate_test": 0.9033,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "sdelete.exe",
+            "CM_FP_bin.ctest.exe",
+            "javaw.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "Steam.exe"
+          ]
+        },
+        {
+          "id": "R16",
+          "name": "arx_window",
+          "kind": "density",
+          "description": "16-instruction windows that are both logic-heavy and arith- or rotate-heavy (ARX round shape), per 1k",
+          "threshold": 0.0883,
+          "train": {
+            "precision": 0.546,
+            "recall": 0.9246,
+            "f1": 0.6866,
+            "fired": 1348,
+            "tp": 736,
+            "fp": 612
+          },
+          "test": {
+            "precision": 0.8034,
+            "recall": 0.9254,
+            "f1": 0.8601,
+            "fired": 417,
+            "tp": 335,
+            "fp": 82
+          },
+          "goodware_fire_rate_train": 0.6108,
+          "goodware_fire_rate_test": 0.6457,
+          "ransomware_fire_rate_test": 0.9254,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "sdelete.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "Steam.exe",
+            "SystemSettingsAdminFlows.exe",
+            "libGLESv2.dll"
+          ]
+        },
+        {
+          "id": "R17",
+          "name": "rep_string_dense",
+          "kind": "density",
+          "description": "rep movs/stos per 1k -- bulk buffer copy/fill",
+          "threshold": 0.65,
+          "train": {
+            "precision": 0.544,
+            "recall": 0.8003,
+            "f1": 0.6477,
+            "fired": 1171,
+            "tp": 637,
+            "fp": 534
+          },
+          "test": {
+            "precision": 0.7971,
+            "recall": 0.7597,
+            "f1": 0.7779,
+            "fired": 345,
+            "tp": 275,
+            "fp": 70
+          },
+          "goodware_fire_rate_train": 0.5329,
+          "goodware_fire_rate_test": 0.5512,
+          "ransomware_fire_rate_test": 0.7597,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "sdelete.exe",
+            "CM_FP_bin.ctest.exe",
+            "eraser.exe",
+            "mozavutil.dll",
+            "Steam.exe",
+            "SystemSettingsAdminFlows.exe",
+            "msvcp140_1e57a6df.dll"
+          ]
+        },
+        {
+          "id": "R18",
+          "name": "scan_string_dense",
+          "kind": "density",
+          "description": "scas/cmps per 1k -- string scanning, path/extension enumeration",
+          "threshold": 0.025,
+          "train": {
+            "precision": 0.6826,
+            "recall": 0.5754,
+            "f1": 0.6244,
+            "fired": 671,
+            "tp": 458,
+            "fp": 213
+          },
+          "test": {
+            "precision": 0.8672,
+            "recall": 0.5773,
+            "f1": 0.6932,
+            "fired": 241,
+            "tp": 209,
+            "fp": 32
+          },
+          "goodware_fire_rate_train": 0.2126,
+          "goodware_fire_rate_test": 0.252,
+          "ransomware_fire_rate_test": 0.5773,
+          "goodware_false_positives_test": [
+            "sdelete.exe",
+            "eraser.exe",
+            "Steam.exe",
+            "Stub_Plugin.exe",
+            "wscript_2447bbda.exe",
+            "Video.dll",
+            "i_view64.exe",
+            "PostgreSQL 17_17.11-3_Machine_X64_exe_en-US.exe"
+          ]
+        },
+        {
+          "id": "R19",
+          "name": "int3_dense",
+          "kind": "density",
+          "description": "int3 per 1k -- alignment padding density, a linker/packer artefact",
+          "threshold": 0.0,
+          "train": {
+            "precision": 0.4427,
+            "recall": 1.0,
+            "f1": 0.6137,
+            "fired": 1798,
+            "tp": 796,
+            "fp": 1002
+          },
+          "test": {
+            "precision": 0.7403,
+            "recall": 1.0,
+            "f1": 0.8508,
+            "fired": 489,
+            "tp": 362,
+            "fp": 127
+          },
+          "goodware_fire_rate_train": 1.0,
+          "goodware_fire_rate_test": 1.0,
+          "ransomware_fire_rate_test": 1.0,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "sdelete.exe",
+            "CM_FP_bin.ctest.exe",
+            "javaw.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "Steam.exe"
+          ]
+        },
+        {
+          "id": "R20",
+          "name": "call_dense",
+          "kind": "density",
+          "description": "call instructions per 1k",
+          "threshold": 19.0282,
+          "train": {
+            "precision": 0.4508,
+            "recall": 0.9673,
+            "f1": 0.615,
+            "fired": 1708,
+            "tp": 770,
+            "fp": 938
+          },
+          "test": {
+            "precision": 0.7412,
+            "recall": 0.9337,
+            "f1": 0.8264,
+            "fired": 456,
+            "tp": 338,
+            "fp": 118
+          },
+          "goodware_fire_rate_train": 0.9361,
+          "goodware_fire_rate_test": 0.9291,
+          "ransomware_fire_rate_test": 0.9337,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "sdelete.exe",
+            "CM_FP_bin.ctest.exe",
+            "javaw.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "SystemSettingsAdminFlows.exe"
+          ]
+        },
+        {
+          "id": "R21",
+          "name": "indirect_call_ratio",
+          "kind": "density",
+          "description": "fraction of calls with a non-immediate target (IAT/vtable/dynamic)",
+          "threshold": 0.0208,
+          "train": {
+            "precision": 0.4472,
+            "recall": 0.9736,
+            "f1": 0.6129,
+            "fired": 1733,
+            "tp": 775,
+            "fp": 958
+          },
+          "test": {
+            "precision": 0.7053,
+            "recall": 0.8398,
+            "f1": 0.7667,
+            "fired": 431,
+            "tp": 304,
+            "fp": 127
+          },
+          "goodware_fire_rate_train": 0.9561,
+          "goodware_fire_rate_test": 1.0,
+          "ransomware_fire_rate_test": 0.8398,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "sdelete.exe",
+            "CM_FP_bin.ctest.exe",
+            "javaw.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "Steam.exe"
+          ]
+        },
+        {
+          "id": "R22",
+          "name": "simd_dense",
+          "kind": "density",
+          "description": "SSE/AVX instructions per 1k",
+          "threshold": 0.0,
+          "train": {
+            "precision": 0.4427,
+            "recall": 1.0,
+            "f1": 0.6137,
+            "fired": 1798,
+            "tp": 796,
+            "fp": 1002
+          },
+          "test": {
+            "precision": 0.7403,
+            "recall": 1.0,
+            "f1": 0.8508,
+            "fired": 489,
+            "tp": 362,
+            "fp": 127
+          },
+          "goodware_fire_rate_train": 1.0,
+          "goodware_fire_rate_test": 1.0,
+          "ransomware_fire_rate_test": 1.0,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "sdelete.exe",
+            "CM_FP_bin.ctest.exe",
+            "javaw.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "Steam.exe"
+          ]
+        },
+        {
+          "id": "R23",
+          "name": "backedge_dense",
+          "kind": "density",
+          "description": "resolved backward branches per 1k -- loop density",
+          "threshold": 4.3454,
+          "train": {
+            "precision": 0.4537,
+            "recall": 0.9736,
+            "f1": 0.619,
+            "fired": 1708,
+            "tp": 775,
+            "fp": 933
+          },
+          "test": {
+            "precision": 0.7422,
+            "recall": 0.9227,
+            "f1": 0.8227,
+            "fired": 450,
+            "tp": 334,
+            "fp": 116
+          },
+          "goodware_fire_rate_train": 0.9311,
+          "goodware_fire_rate_test": 0.9134,
+          "ransomware_fire_rate_test": 0.9227,
+          "goodware_false_positives_test": [
+            "Bitwarden-Installer-2026.8.0.exe",
+            "sdelete.exe",
+            "CM_FP_bin.ctest.exe",
+            "javaw.exe",
+            "eraser.exe",
+            "Jpg_transform.dll",
+            "mozavutil.dll",
+            "Steam.exe"
+          ]
+        }
+      ],
+      "weights": {
+        "R01": 2.095,
+        "R02": -2.353,
+        "R03": 1.392,
+        "R04": -0.87,
+        "R05": 2.921,
+        "R06": 3.016,
+        "R07": 1.099,
+        "R08": 0.12,
+        "R09": 3.079,
+        "R10": 1.628,
+        "R11": 1.49,
+        "R12": -0.219,
+        "R13": 0.427,
+        "R14": 2.001,
+        "R15": 0.99,
+        "R16": 2.049,
+        "R17": 1.254,
+        "R18": 1.611,
+        "R19": -0.23,
+        "R20": 0.692,
+        "R21": 0.516,
+        "R22": -0.23,
+        "R23": 0.988
+      }
+    }
+  }
+}
