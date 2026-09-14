@@ -1,0 +1,13 @@
+# Host / development set.
+#
+#   python -m pip install -r asm_tool/requirements.txt
+#
+# For the offline VM use asm_tool/requirements-vm.txt instead. It is only
+# pefile and capstone - exactly the third-party imports of the three scripts
+# that run there (asm_parse.py, check_arch.py, asm_to_opcodes.py) - and its
+# wheels are downloaded for manylinux2014_x86_64, not for this host.
+pefile>=2023.2.7        # asm_parse.py, check_arch.py, consistency_check.py
+capstone>=5.0.1         # asm_parse.py, consistency_check.py
+pandas>=2.0             # extract.py and llm_features_pipeline/ only; not
+                        # imported by asm_parse.py or anything in asm_tool/
+pytest>=7.4             # tests/ only

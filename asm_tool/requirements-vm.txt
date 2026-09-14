@@ -1,0 +1,24 @@
+# Offline VM (Ubuntu / SEED, python3, x86-64) requirements.
+#
+# EXACTLY the third-party imports of the three scripts that run on the VM:
+#
+#   asm_parse.py            import pefile ; from capstone import ...
+#   check_arch.py           import pefile
+#   asm_tool/asm_to_opcodes.py   stdlib only (argparse csv hashlib re sys pathlib)
+#
+# Nothing else. pandas is not imported by any of them, and pytest is a host-side
+# development dependency - see requirements.txt for the host set.
+#
+# Versions are the ones verified on the host (pefile 2024.8.26, capstone 5.0.7).
+# Lower bounds, not pins, because the wheels are vendored: whatever is in
+# wheels/cpXY is what gets installed, and --no-index means pip cannot reach out
+# for anything newer.
+#
+#   host:  python -m pip download --only-binary=:all: \
+#              --platform manylinux2014_x86_64 --python-version 3.10 \
+#              -d asm_tool/wheels/cp310 -r asm_tool/requirements-vm.txt
+#   VM:    python3 --version                      # pick the matching cpXY
+#          python3 -m pip install --no-index \
+#              --find-links asm_tool/wheels/cp310 -r asm_tool/requirements-vm.txt
+pefile>=2023.2.7
+capstone>=5.0.1

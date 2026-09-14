@@ -1,0 +1,66 @@
+# Whitelist. Everything is ignored unless listed below.
+*
+!.gitignore
+!README.md
+
+# PE -> .asm disassembly and the .asm -> opcode-text bridge
+!asm_parse.py
+!check_arch.py
+!extract.py
+!asm_tool/
+!asm_tool/**
+asm_tool/wheels/
+
+# config-driven binary (ransomware vs goodware) classification pipeline
+!llm_features_pipeline/
+!llm_features_pipeline/**
+
+# EMBER-branch features keyed by sha256, cohort-filtered LightGBM rerun
+!ember_pipeline/
+!ember_pipeline/**
+ember_pipeline/wheels/
+
+# CNN-ViT (yanping) rerun harness
+!cnn_vit_pipeline/
+!cnn_vit_pipeline/**
+
+# offline VM runbook + packager (wheels themselves stay ignored)
+!vm_package/
+!vm_package/**
+
+# in-repo tokenizer copy (see docs/tokenization_audit.md 4.1)
+!Tokenization/
+!Tokenization/**
+
+# tests. Fixtures are binaries: rebuilt by tests/make_fixtures.py, never committed.
+!tests/
+!tests/**
+tests/fixtures/
+
+!docs/
+!docs/**
+
+# experiment outputs are text (metrics, split manifests) and part of the record
+!results/
+!results/**
+
+# per-sample manifests for the shared asm_output/ and feature corpora (text only)
+!manifests/
+!manifests/**
+
+!meetings/
+!meetings/**
+
+# never
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+*.asm
+*.txt.gz
+*.png
+*.npy
+*.pkl
+*.exe
+*.dll
+*.bin
+asm_output/
