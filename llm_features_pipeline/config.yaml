@@ -1,0 +1,84 @@
+# llm_features_pipeline - binary ransomware vs goodware from opcode text.
+#
+# Everything downstream is BINARY: label 0 = goodware / benign,
+# label 1 = ransomware. Both upstream repos were built for multi-class work
+# (Adversarial_Evaluation_CNN-ViT on BIG 2015's 9 families; the Tokenization
+# repo's `New/` tree on the same) and the family name in a ransomware filename
+# is kept ONLY as a split group, never as a target. See README.md.
+
+paths:
+  # Tokenization-Testing-for-Malware-Data checkout. Its Tokenization/,
+  # Embedding/ and Classification/ modules are imported, not copied, so a fix
+  # there reaches this pipeline without a second code path.
+  tokenization_repo: "C:/Users/chaoa/Downloads/Tokenization-Testing-for-Malware-Data"
+  # extract.py output for the Mendeley corpora (ransomware + Mendeley goodware).
+  llm_features: "C:/Users/chaoa/Downloads/LLM_Features/Features_Extraction"
+  # asm_to_opcodes.py output for Goodware_Balanced.
+  balanced_goodware: "C:/Users/chaoa/Downloads/LLM_Features_Balanced/good_all"
+  balanced_manifest: "C:/Users/chaoa/Downloads/LLM_Features_Balanced/opcode_manifest.csv"
+  # sha256 of every Mendeley goodware binary, for the cross-source dedup guard.
+  mendeley_goodware_sha256: "C:/Users/chaoa/Downloads/LLM_Features_Balanced/mendeley_goodware_sha256.json"
+  results: "results"
+
+tokenization:
+  max_instructions: 5000      # matches Tokenization/tokenization.py
+  vocab_size: 1000
+  methods: ["WPC", "SW", "WP"]
+  # Trained WordPiece tokenizers are cached here and reused whenever the
+  # training corpus is byte-identical. This is the only way to make a WPC run
+  # reproducible: the `tokenizers` trainer picks a different vocabulary at the
+  # size cutoff in every process (Rust HashMap iteration order), which moved
+  # RF/WPC macro-F1 by 0.06 between two runs of the identical command.
+  # See run_pipeline.get_tokenizer() and docs/tokenization_audit.md §1.10.
+  # Delete the directory to force a retrain.
+  tokenizer_cache: "results/tokenizers"
+
+embedding:
+  methods: ["w2v"]            # add "bert" for the DistilBERT/SW combo (slow on CPU)
+  w2v:
+    vector_size: 100
+    window: 30
+    epochs: 5
+    seed: 42
+    # MUST stay 1. gensim's default (workers=4) races its worker threads over
+    # the corpus, so a fixed seed does NOT give a fixed model and results/
+    # cannot be reproduced. Measured: identical at workers=1, differing by up
+    # to 3.8e-2 per component at workers=4.
+    workers: 1
+  mask_rates: [0.0]           # [0.0, 0.15, 0.40, 0.80] reproduces the original sweep
+
+classification:
+  models: ["RF", "SVM-RBF", "MLP"]
+  cv: 2
+  seed: 42
+
+split:
+  # The ransomware train/test boundary is FAMILY-DISJOINT in the Mendeley
+  # release (25 families in mal_train, 15 different ones in mal_test, zero
+  # overlap). It is reused verbatim and identically in every experiment.
+  # Re-splitting at random would put avaddon in both sides and turn the task
+  # into near-duplicate retrieval.
+  ransomware: "preserve_mendeley"
+  # Goodware_Balanced has no such boundary, so one is built: whole source
+  # projects go to one side only, never split across train and test.
+  goodware_group_field: "entry_id"
+  goodware_ungrouped_entries: ["system_local"]   # per-file groups; see data.py
+  # Enforced at load time, not assumed: any Goodware_Balanced file whose source
+  # binary sha256 is in the Mendeley goodware set, or whose opcode stream is
+  # byte-identical to a Mendeley goodware feature file, is dropped from the
+  # Exp B pool and named in the run log.
+  dedup_goodware_sources: true
+  seed: 42
+  # Match Exp A's goodware counts exactly so A vs B measures the goodware
+  # SOURCE and not the goodware VOLUME. null = use everything available.
+  match_counts_to: "expA"
+
+experiments:
+  expA:
+    description: "Mendeley ransomware + Mendeley goodware (the LLM_Features baseline)"
+    ransomware: mendeley
+    goodware: mendeley
+  expB:
+    description: "Mendeley ransomware + Goodware_Balanced (hard-negative-rich goodware)"
+    ransomware: mendeley
+    goodware: balanced
