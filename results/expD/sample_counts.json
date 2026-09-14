@@ -1,0 +1,218 @@
+{
+  "total": 2501,
+  "train": {
+    "n": 2016,
+    "goodware": 1112,
+    "ransomware": 904,
+    "sources": {
+      "mendeley_ransomware": 904,
+      "balanced_goodware": 1112
+    },
+    "groups": 294
+  },
+  "test": {
+    "n": 485,
+    "goodware": 123,
+    "ransomware": 362,
+    "sources": {
+      "mendeley_ransomware": 362,
+      "balanced_goodware": 123
+    },
+    "groups": 56
+  },
+  "group_overlap": [],
+  "cross_source_dedup": {
+    "pool_in": 1337,
+    "removed_by_source_sha256": [],
+    "removed_by_content_hash": [
+      "everyday_CrystalDiskInfo_9.9.2_Machine_X64_inno_en-US.exe.txt",
+      "everyday_Greenshot_1.3.315_User_X86_inno_en-US.exe.txt",
+      "everyday_helper.exe.txt",
+      "everyday_R for Windows_4.6.1_Machine_X64_inno_en-US.exe.txt",
+      "everyday_setup.exe.txt",
+      "everyday_SteamSetup.exe.txt",
+      "everyday_Stellarium_26.2_User_X64_inno_en-US.exe.txt",
+      "everyday_Sublime Text 4_4.0.0.420000_Machine_X64_inno_en-US.exe.txt",
+      "everyday_uninstall.exe.txt",
+      "everyday_WizTree_4.32_Machine_X64_inno_en-US.exe.txt",
+      "hard_negative_Bulk Rename Utility_4.1.0.1_Machine_X64_inno_en-US.exe.txt",
+      "hard_negative_ImageMagick-7.1.2-30-Q16-HDRI-x64-dll.exe.txt",
+      "hard_negative_peazip-11.2.0.WIN64.exe.txt"
+    ],
+    "manifest_rows_without_sha256": 0,
+    "mendeley_binary_sha256_known": 1112,
+    "mendeley_goodware_feature_files": 1243,
+    "pool_out": 1324,
+    "removed_total": 13
+  },
+  "reused_goodware_split": {
+    "splits_csv": "C:\\Users\\chaoa\\Downloads\\ransomware-detection-masters-project\\results\\expB\\splits.csv",
+    "source": "balanced_goodware",
+    "named_by_split": 1247,
+    "pool": 1324,
+    "selected": 1235,
+    "selected_train": 1112,
+    "selected_test": 123,
+    "groups_taken_from_splits_csv": 971,
+    "named_but_absent_from_pool": 12,
+    "named_but_absent_examples": [
+      "everyday_R for Windows_4.6.1_Machine_X64_inno_en-US.exe.txt",
+      "everyday_SteamSetup.exe.txt",
+      "everyday_cli_uno.dll.txt",
+      "everyday_helper.exe.txt",
+      "everyday_libiconv2.dll.txt",
+      "everyday_setup.exe.txt",
+      "everyday_uninstall.exe.txt",
+      "hard_negative_ffmpeg.exe.txt",
+      "hard_negative_ffplay.exe.txt",
+      "hard_negative_ffprobe.exe.txt"
+    ],
+    "would_select_train_without_dedup": 1113,
+    "would_select_test_without_dedup": 127,
+    "removed_from_membership_by_dedup": 5
+  },
+  "cohort_annotation": {
+    "mendeley": {
+      "cohort_csv": "C:\\Users\\chaoa\\Downloads\\asm and mm\\Shared\\cohort_mendeley.csv",
+      "cohort_rows": 2675,
+      "annotated": 1266,
+      "unmatched_examples": [],
+      "in_cohort": 1266,
+      "unmatched": 0
+    },
+    "balanced": {
+      "cohort_csv": "C:\\Users\\chaoa\\Downloads\\asm and mm\\Shared\\cohort_balanced.csv",
+      "cohort_rows": 1500,
+      "annotated": 1235,
+      "unmatched_examples": [],
+      "in_cohort": 1235,
+      "unmatched": 0
+    }
+  },
+  "cohort_filter": {
+    "applied": false,
+    "in": 2501,
+    "out": 2501,
+    "would_keep_if_applied": 2501,
+    "already_cohort_only": true
+  },
+  "content_leak": {
+    "test_goodware_duplicated_in_train": 3,
+    "test_goodware_n": 123,
+    "test_goodware_leak_rate": 0.0244,
+    "test_ransomware_duplicated_in_train": 0,
+    "test_ransomware_n": 362,
+    "test_ransomware_leak_rate": 0.0,
+    "unique_streams": 1845,
+    "total_files": 2501,
+    "streams_labelled_both_classes": 0
+  },
+  "goodware_arch": {
+    "train": {
+      "x64": 913,
+      "x86": 199
+    },
+    "test": {
+      "x64": 81,
+      "x86": 42
+    }
+  },
+  "test_goodware_arch": {
+    "x64": 81,
+    "x86": 42
+  },
+  "arch": {
+    "train_goodware": {
+      "x64": 913,
+      "x86": 199
+    },
+    "train_ransomware": {
+      "x64": 42,
+      "x86": 862
+    },
+    "test_goodware": {
+      "x64": 81,
+      "x86": 42
+    },
+    "test_ransomware": {
+      "x64": 72,
+      "x86": 290
+    }
+  },
+  "baselines": {
+    "majority_class": {
+      "predicts": "ransomware",
+      "accuracy": 0.746392,
+      "balanced_accuracy": 0.5,
+      "macro_f1": 0.427391,
+      "recall_goodware": 0.0,
+      "recall_ransomware": 1.0,
+      "confusion_matrix": {
+        "tn": 0,
+        "fp": 123,
+        "fn": 0,
+        "tp": 362
+      }
+    },
+    "x86_is_ransomware": {
+      "rule": "predict ransomware iff arch == x86, from the cohort CSV",
+      "test_x86": 332,
+      "test_unknown_arch": 0,
+      "accuracy": 0.764948,
+      "balanced_accuracy": 0.729821,
+      "macro_f1": 0.711346,
+      "recall_goodware": 0.658537,
+      "recall_ransomware": 0.801105,
+      "confusion_matrix": {
+        "tn": 81,
+        "fp": 42,
+        "fn": 72,
+        "tp": 290
+      }
+    }
+  },
+  "ransomware_families": {
+    "train": {
+      "avaddon": 49,
+      "babuk": 42,
+      "blackmatter": 43,
+      "conti": 48,
+      "darkside": 38,
+      "dharma": 46,
+      "doppelpaymer": 22,
+      "exorcist": 17,
+      "gandcrab": 49,
+      "lockbit": 47,
+      "makop": 30,
+      "maze": 47,
+      "mountlocker": 14,
+      "nefilim": 37,
+      "netwalker": 50,
+      "phobos": 49,
+      "pysa": 38,
+      "ragnarok": 42,
+      "ransomexx": 13,
+      "revil": 47,
+      "ryuk": 47,
+      "stop": 35,
+      "wastedlocker": 36,
+      "zeppelin": 18
+    },
+    "test": {
+      "avoslocker": 50,
+      "bianlian": 11,
+      "blackbasta": 30,
+      "blackbyte": 7,
+      "blackcat": 50,
+      "bluesky": 34,
+      "clop": 45,
+      "hive": 50,
+      "holyghost": 4,
+      "karma": 13,
+      "lorenz": 16,
+      "maui": 3,
+      "playcrypt": 43,
+      "quantum": 6
+    }
+  }
+}

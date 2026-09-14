@@ -61,7 +61,11 @@ def load_mendeley(root: Path, which: str) -> list[Sample]:
         for p in sorted(d.glob("*.txt")):
             group = _family_of(p.name) if label == 1 else f"file:{p.name}"
             out.append(Sample(p, label, source, group, split,
-                              {"family": _family_of(p.name) if label == 1 else ""}))
+                              {"family": _family_of(p.name) if label == 1 else "",
+                               # the release folder this file came out of; the
+                               # cohort CSV's `set` column uses the same names,
+                               # so the join can be scoped to one folder.
+                               "cohort_set": folder}))
     return out
 
 
@@ -289,4 +293,270 @@ def content_leak(samples: list[Sample]) -> dict:
     out["total_files"] = len(samples)
     contradictions = [h for h, labels in by_hash.items() if len(labels) > 1]
     out["streams_labelled_both_classes"] = len(contradictions)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Cohort metadata (architecture, packing tag, family) and the cohort filter
+# ---------------------------------------------------------------------------
+#
+# `cohort_mendeley.csv` / `cohort_balanced.csv` are produced by the unified
+# extractor's profiling pass. One row per input binary, whether it survived or
+# not, with columns:
+#
+#     corpus sha256 set label family filename arch tag in_cohort exclude_reason
+#
+# They are the first source in this project that carries ARCHITECTURE for every
+# file of every set - including `good_test` and the whole ransomware side, which
+# the earlier audit could not obtain (the architecture note in
+# results/summary.md said so explicitly; that limitation is now lifted).
+#
+# JOIN KEY. Both feature writers (`extract.py` and `asm_tool/mn_to_features.py`)
+# name their output `<family>_<filename>.txt`, so a row's own `family` +
+# `filename` reconstructs the feature filename exactly. That is the key used
+# here.
+#
+# Joining ransomware on sha256 instead looks natural - the Mendeley ransomware
+# filenames ARE sha256 strings - but it is wrong for 25 of 1,408 rows whose
+# recorded sha256 differs from the sha256 in their filename. Two of those
+# collide: `darkside_4d9432e8....txt` and `darkside_ec368752....txt` are two
+# different samples, and a sha256-first join maps BOTH onto the single row whose
+# filename is 4d9432e8 and whose sha256 is ec368752. Measured, that mis-join
+# inflates the traditional cohort by 2 files in mal_train and 3 in mal_test and
+# silently double-counts one row. The filename join is a clean bijection:
+# 0 unmatched files and 0 rows claimed twice across all six folders.
+#
+# `tag == "dup"` rows share a sha256 with a kept row and are always
+# `in_cohort == 0`; where a lookup is ambiguous the in-cohort row wins.
+
+
+class Cohort:
+    """Index over one cohort CSV, keyed by the feature filename it implies."""
+
+    def __init__(self, rows, path=None):
+        self.path = path
+        self.rows = rows
+        self._by_set_name = {}
+        self._by_name = {}
+        for r in rows:
+            name = f"{r['family']}_{r['filename']}.txt".lower()
+            for key, idx in (((r["set"], name), self._by_set_name),
+                             (name, self._by_name)):
+                prev = idx.get(key)
+                # An in-cohort row always beats a `dup`/excluded one.
+                if prev is None or (prev.get("in_cohort") != "1"
+                                    and r.get("in_cohort") == "1"):
+                    idx[key] = r
+
+    def __len__(self):
+        return len(self.rows)
+
+    def lookup(self, name, set_=""):
+        n = name.lower()
+        if set_:
+            hit = self._by_set_name.get((set_, n))
+            if hit is not None:
+                return hit
+        return self._by_name.get(n)
+
+
+def load_cohort(path):
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"cohort csv not found: {path}")
+    with path.open(encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    need = {"set", "label", "family", "filename", "arch", "tag", "in_cohort"}
+    missing = need - set(rows[0] if rows else {})
+    if missing:
+        raise ValueError(f"{path} is missing columns: {sorted(missing)}")
+    return Cohort(rows, path)
+
+
+def annotate_cohort(samples, cohort, set_field="cohort_set"):
+    """Attach `arch`, `cohort_tag`, `in_cohort` and the cohort's `family` to
+    every sample's meta. Never drops anything - see `filter_cohort` for that.
+
+    Annotation is deliberately separate from filtering so the *unfiltered*
+    experiments (Exp A, Exp B) can be reported per architecture as well, which
+    is what closes the open question in results/summary.md.
+    """
+    report = {"cohort_csv": str(cohort.path), "cohort_rows": len(cohort),
+              "annotated": 0, "unmatched_examples": [], "in_cohort": 0}
+    unmatched = 0
+    for s in samples:
+        row = cohort.lookup(s.name, s.meta.get(set_field, ""))
+        if row is None:
+            unmatched += 1
+            if len(report["unmatched_examples"]) < 10:
+                report["unmatched_examples"].append(s.name)
+            s.meta.setdefault("arch", "")
+            s.meta["cohort_tag"] = ""
+            s.meta["in_cohort"] = False
+            continue
+        report["annotated"] += 1
+        # The cohort CSV's arch is authoritative: it is read from the PE header
+        # by the profiling pass, and it exists for every row, while
+        # `opcode_manifest.csv` only covers Goodware_Balanced.
+        s.meta["arch"] = row["arch"] or ""
+        s.meta["cohort_tag"] = row["tag"]
+        s.meta["cohort_sha256"] = row.get("sha256", "")
+        s.meta["exclude_reason"] = row.get("exclude_reason", "")
+        s.meta["in_cohort"] = row["in_cohort"] == "1"
+        if s.label == 1 and row["family"]:
+            s.meta["family"] = row["family"]
+        if s.meta["in_cohort"]:
+            report["in_cohort"] += 1
+    report["unmatched"] = unmatched
+    return report
+
+
+def filter_cohort(samples):
+    """Keep only samples the cohort marks `in_cohort == 1`.
+
+    A sample with no cohort row at all is DROPPED, not kept: an unmatched file
+    is a file whose packing status and architecture are unknown, and the point
+    of the cohort variant is that every member has been profiled.
+    """
+    kept, dropped = [], collections.Counter()
+    for s in samples:
+        if s.meta.get("in_cohort"):
+            kept.append(s)
+        else:
+            dropped[s.meta.get("exclude_reason") or "no_cohort_row"] += 1
+    return kept, {"in": len(samples), "out": len(kept),
+                  "dropped": len(samples) - len(kept),
+                  "dropped_by_reason": dict(sorted(dropped.items()))}
+
+
+def reuse_split(pool, splits_csv, source):
+    """Assign `split` from an already-committed splits.csv instead of re-splitting.
+
+    Exp B's goodware split was drawn once, with a seed, by `group_split`, and
+    committed. Exp B_cohort and Exp D must use *that* membership rather than
+    re-drawing it: re-running `group_split` on a pool the cohort filter has
+    changed would move whole projects between train and test, and the resulting
+    numbers would then differ from Exp B for two reasons at once instead of one.
+
+    Files in the pool that the committed split never selected are excluded, and
+    files the split names but the pool no longer contains are reported.
+    """
+    splits_csv = Path(splits_csv)
+    if not splits_csv.is_file():
+        raise FileNotFoundError(f"cannot reuse split, missing {splits_csv}")
+    want = {}
+    with splits_csv.open(encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            if row["source"] == source:
+                want[row["file"]] = (row["split"], row.get("group", ""))
+
+    chosen, regrouped = [], 0
+    for s in pool:
+        hit = want.get(s.name)
+        if not hit:
+            continue
+        s.split, group = hit
+        # The committed splits.csv is the authoritative record of the split
+        # being reused, groups included. Taking the group from it matters for
+        # the REVISED Goodware_Balanced pool, whose manifest carries no
+        # `entry_id`: without this the group would fall back to `file:<name>`
+        # and the train/test group-overlap assertion would become vacuous
+        # exactly where the project-disjointness has to be proven.
+        if group and group != s.group:
+            regrouped += 1
+            s.group = group
+        chosen.append(s)
+    got = collections.Counter(s.split for s in chosen)
+    absent = sorted(set(want) - {s.name for s in pool})
+    return chosen, {
+        "splits_csv": str(splits_csv), "source": source,
+        "named_by_split": len(want), "pool": len(pool), "selected": len(chosen),
+        "selected_train": got.get("train", 0), "selected_test": got.get("test", 0),
+        "groups_taken_from_splits_csv": regrouped,
+        "named_but_absent_from_pool": len(absent),
+        "named_but_absent_examples": absent[:10],
+    }
+
+
+def arch_breakdown(samples):
+    """x86/x64 counts per split and class - the confound, made countable."""
+    out = {}
+    for split in ("train", "test"):
+        for label, tag in ((0, "goodware"), (1, "ransomware")):
+            c = collections.Counter(
+                s.meta.get("arch") or "unknown"
+                for s in samples if s.split == split and s.label == label)
+            if c:
+                out[f"{split}_{tag}"] = dict(sorted(c.items()))
+    return out
+
+
+def _floor(tn, fp, fn, tp):
+    """Metrics for one fixed rule, in the same shape the classifiers report."""
+    def prf(hit, over, miss):
+        p = hit / (hit + over) if hit + over else 0.0
+        r = hit / (hit + miss) if hit + miss else 0.0
+        return (2 * p * r / (p + r)) if p + r else 0.0, r
+
+    f_good, r_good = prf(tn, fn, fp)
+    f_ran, r_ran = prf(tp, fp, fn)
+    n = tn + fp + fn + tp
+    return {"accuracy": round((tn + tp) / n, 6) if n else 0.0,
+            "balanced_accuracy": round((r_good + r_ran) / 2, 6),
+            "macro_f1": round((f_good + f_ran) / 2, 6),
+            "recall_goodware": round(r_good, 6),
+            "recall_ransomware": round(r_ran, 6),
+            "confusion_matrix": {"tn": tn, "fp": fp, "fn": fn, "tp": tp}}
+
+
+def baselines(arch_block: dict) -> dict:
+    """Two label-free floors for the test set, so no score is read on its own.
+
+    Both are computed from `arch_breakdown`'s test counts alone, which is why
+    they can also be recovered from an already-committed `metrics.json` without
+    re-running anything.
+
+    `majority_class` predicts the larger TEST class for every file. That is the
+    floor `majority_class_accuracy` already reports per result, restated as
+    macro-F1 and balanced accuracy so it sits in the same units as the tables.
+    It peeks at the test label distribution - deliberately, because a floor
+    should be the most generous trivial rule, not the fairest one.
+
+    `x86_is_ransomware` predicts ransomware for every x86 file and goodware for
+    everything else, reading ONLY the architecture recorded in
+    cohort_mendeley.csv / cohort_balanced.csv - never an opcode. Ransomware here
+    is ~80% x86 on the test side and Goodware_Balanced is ~18-35% x86, so this
+    rule is not weak, and any model that does not clear it has not been shown to
+    use the code at all. Files whose architecture is `unknown` count as not-x86,
+    i.e. predicted goodware.
+    """
+    good = dict(arch_block.get("test_goodware", {}))
+    ran = dict(arch_block.get("test_ransomware", {}))
+    n_good, n_ran = sum(good.values()), sum(ran.values())
+    out = {}
+
+    if n_ran >= n_good:
+        out["majority_class"] = dict(predicts="ransomware",
+                                     **_floor(0, n_good, 0, n_ran))
+    else:
+        out["majority_class"] = dict(predicts="goodware",
+                                     **_floor(n_good, 0, n_ran, 0))
+
+    out["x86_is_ransomware"] = dict(
+        rule="predict ransomware iff arch == x86, from the cohort CSV",
+        test_x86=good.get("x86", 0) + ran.get("x86", 0),
+        test_unknown_arch=good.get("unknown", 0) + ran.get("unknown", 0),
+        **_floor(tn=n_good - good.get("x86", 0), fp=good.get("x86", 0),
+                 fn=n_ran - ran.get("x86", 0), tp=ran.get("x86", 0)))
+    return out
+
+
+def family_breakdown(samples):
+    """Ransomware family sizes per split. Families are split groups, not
+    labels; the counts exist so a per-family recall table has denominators."""
+    out = {}
+    for split in ("train", "test"):
+        c = collections.Counter(s.meta.get("family") or "unknown"
+                                for s in samples if s.split == split and s.label == 1)
+        out[split] = dict(sorted(c.items()))
     return out

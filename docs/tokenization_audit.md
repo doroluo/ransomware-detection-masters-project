@@ -26,6 +26,19 @@ pass missed — §1.7, §1.8 and §1.10 — which is why the numbers in `results
 regenerated. §1.10 was found only by re-running the pipeline and diffing, not by
 reading code.
 
+A third pass on 14 September 2026 added §2.7 — the cohort CSVs and the `REVISED`
+mnemonic-only corpus, and the four experiments built on them — and re-measured
+what those made measurable for the first time. It closed the architecture gap
+§4.2 and §5 had to leave open, and it found that eight of the nine
+Goodware_Balanced model rows score below a rule that reads only the
+architecture. Every `results/*/metrics.json` was re-derived from its own
+`predictions.csv` and `splits.csv` and reproduced exactly, and **all six
+experiments were re-run end to end** into a scratch directory with
+`--results-dir`: `splits.csv`, `predictions.csv`, `sample_counts.json` and
+`config_used.yaml` came back byte-identical and `metrics.json` differed in
+`elapsed_seconds` alone (plus, in `expB_cohort`, the recorded path of the
+`splits.csv` it reused, which pointed at the scratch copy).
+
 ---
 
 ## 0. Binary, not multi-class
@@ -429,6 +442,211 @@ first, packed ransomware is silently absent from `mal_train`/`mal_test`** — an
 packed samples are exactly the ones a detector most needs to see. The manifest
 makes this visible; the original pipeline does not.
 
+### 2.7 The cohort and the `REVISED` corpus
+
+Everything in §2.7 was measured on 14 September 2026 against the trees on disk —
+file contents hashed with SHA-256 and counted, the cohort CSVs and
+`revised_manifest.csv` read directly, the cached tokenizer loaded from
+`results/tokenizers/`. It covers the two artefacts that arrived after the first
+pass and the four experiments built on them (`expA_cohort`, `expB_cohort`,
+`expC`, `expD`). The counts it quotes out of `results/` are reproducible with:
+
+```bash
+python llm_features_pipeline/run_pipeline.py --experiment expC --results-dir /tmp/repro
+python llm_features_pipeline/run_pipeline.py --summary-only
+python -m pytest tests/test_tokenization_cohort.py -q
+```
+
+**What the two artefacts are.**
+
+* `../asm and mm/Shared/cohort_mendeley.csv` (2,675 rows) and
+  `cohort_balanced.csv` (1,500 rows): one row per *input binary*, kept or not,
+  carrying `arch`, `tag`, `in_cohort` and `exclude_reason`. This is the first
+  source in the project with an architecture for `good_test` and for the
+  ransomware side, so §4.2 and the last three bullets of §5 are answerable for
+  the first time.
+* `LLM_Features_Revised/Features_Extraction` and
+  `LLM_Features_Revised_Balanced/good_all`: `asm_tool/mn_to_features.py` output
+  from `extract_unified.py` (capstone skip-data sweep, uncapped). Lines are
+  **mnemonics only** — `mov`, not `mov eax, ebx` — and the cohort filter is
+  already applied as they are written.
+
+**What changed in the loader** (`llm_features_pipeline/data.py`,
+`run_pipeline.py`):
+
+| change | why |
+|---|---|
+| `data.Cohort` joins on `<family>_<filename>.txt`, never on sha256 | measured on the 1,357 ransomware feature files: a sha256-first join leaves **25 unmatched** (their filename stem appears nowhere in the `sha256` column) and is **ambiguous for 9 more**, each matching 2-3 rows. The extra rows in all 9 are `tag:dup, in_cohort=0` against a `tag:plain, in_cohort=1` row, so a sha256-first join would drop files the cohort keeps. The filename join matches all 1,357 and claims no row twice (`tests/test_tokenization_cohort.py::test_filename_join_separates_what_a_sha256_join_collides`, `::test_real_filename_join_claims_no_cohort_row_twice`) |
+| annotate first, filter second; an unmatched file is **dropped**, not kept | an unmatched file is one whose packing status is unknown, and the whole point of the cohort is to know it |
+| `cohort_filter: true` on the traditional corpora only | the revised trees are pre-filtered; the run asserts it rather than assuming it — all 2,509 files of `expC` and all 2,501 of `expD` carry `in_cohort == 1` |
+| `reuse_goodware_split: expB` for `expB_cohort` and `expD` | re-splitting a pool the filter has changed would move whole source projects across the train/test line, so those runs would differ from `expB` for two reasons at once |
+| `predictions.csv` written per run | a new question about an old run (per architecture, per family, per source) is answerable without a re-run, and a re-run is only trustworthy with a warm tokenizer cache |
+
+**Leakage in the revised Mendeley tree**, measured exactly as §2.1 measured the
+traditional one — SHA-256 of the file contents, no normalization:
+
+| | files | unique opcode streams | traditional, files / unique (§2.1) |
+|---|---|---|---|
+| `good_train` | 1,114 | 972 | 1,116 / 970 |
+| `good_test` | 129 | **65** | 131 / 61 |
+| `mal_train` | 904 | **422** | 975 / 543 |
+| `mal_test` | 362 | 211 | 382 / 208 |
+
+Test files whose exact stream also appears in train:
+
+| | leaked | of | rate | traditional |
+|---|---|---|---|---|
+| `good_test` | 62 | 129 | **48.1%** | 64 / 131 = 48.9% |
+| `mal_test` | **0** | 362 | **0.0%** | 1 / 382 = 0.3% |
+
+Of the 62, **60** duplicate a `good_train` file and **2** duplicate a
+`mal_train` file — the same two makop installer streams as §2.2, which survive
+the new extractor unchanged. The four largest goodware duplicate groups are
+60 (44 train / 16 test), 47 (31/16), 35 (31/4) and 13 (8/5).
+
+So the revised extractor changes the goodware leak by −0.8 points and takes the
+ransomware leak to zero. **§2.1 is inherited, not repaired**: half of the
+goodware test set is still a verbatim copy of training data, in `expC` exactly
+as in `expA`, which is why that pair can be compared to each other but neither
+can be read as a field estimate.
+
+**Train/test disjointness, on three identities.** The traditional audit could
+only check two, because `good_test`'s binaries are not on this machine (§2.5).
+`revised_manifest.csv` records the sha256 of every input binary of every set, so
+the third is now checkable:
+
+| identity | overlap between train and test |
+|---|---|
+| feature filename | **0** |
+| source-binary sha256 (2,509 kept manifest rows, every row carries one, all distinct inside each set) | **0** |
+| opcode-stream sha256 | `good_test` 62/129, `mal_test` **0/362** |
+
+Nothing fitted sees the test rows either, which is a separate question from the
+corpus and was re-checked in the code:
+
+| step | fitted on |
+|---|---|
+| WordPiece vocabulary (`build_sequence_frame`) | `text[df["split"] == "train"]` only |
+| Word2Vec (`build_word2vec_embeddings`) | `sentences=train_m[seq_col]`; test rows are only *projected* through the fitted model |
+| hyper-parameter selection (`fit_and_score`) | `StratifiedKFold` over `X_train` only; no scaler, nothing else fitted |
+
+That closes the leakage question for `expC` on the ransomware side completely:
+its test families are unseen (§2.3), no test binary is a training binary, no
+test file's opcode stream appears in training, and no fitted object has seen a
+test row. `expC`'s MLP/WP macro-F1 of 0.9260 against `expA`'s 0.8098 is
+therefore **not** a leakage artefact — and the goodware-side leak it does carry
+is *smaller* than `expA`'s (48.1% against 48.9%), so it cannot account for the
+gap either. Where the gain actually sits is per-family: `hive` keeps all 50 test
+samples through the cohort filter, and `expC`'s MLP/WP recalls it at **1.0000**
+where `expA`'s manages **0.1600**. That one family is 50 of `expC`'s 362
+ransomware test files, and it is the single largest contributor to the
+difference.
+
+**The revised `Goodware_Balanced` tree, and a new cross-source collision.**
+
+| | files | unique streams | files in duplicate groups |
+|---|---|---|---|
+| revised `good_all` | 1,337 | 1,283 | 89 (6.7%), 35 groups |
+| traditional `good_all` (§2.4) | 1,343 | 1,298 | 73 (5.4%), 28 groups |
+
+Byte-identical, as an opcode stream, to a Mendeley goodware file:
+**13 of 1,337** revised against **0 of 1,343** traditional. They are Inno Setup
+and NSIS installer stubs — **six** distinct streams covering all 13, each shared
+with between one and five Mendeley goodware files, and one of the six is the
+`root_CairoSetup_64bit.exe` stream that §2.2 already found under both labels.
+**[corrected]** An earlier draft of `results/summary.md` said five distinct
+stubs; re-measured it is six, and the summary now says so. Dropping the operands
+makes the §2.1 installer-stub problem strictly *more* visible, which is the
+honest reading: the collisions were always there, the full-instruction form
+merely hid them behind a differing register allocation.
+
+`data.dedup_goodware_sources()` removes all 13 at load time (§2.5), and that,
+plus the cohort, is the whole of `expD`'s goodware arithmetic:
+
+```
+131  expB test goodware
+ -4  no revised feature file: hard_negative_ffmpeg / ffplay / ffprobe.exe,
+     system_sppsvc.exe - exactly the four the cohort filter drops in expB_cohort
+ -4  cross-source dedup: everyday_SteamSetup.exe, everyday_helper.exe,
+     everyday_setup.exe, everyday_uninstall.exe
+123  expD test goodware
+```
+
+The intermediate 127 is `expB_cohort`'s test goodware count, which is why the
+two lines of the subtraction can be read off two different experiments.
+
+**What the tokenizers do on mnemonic-only input.** Measured on the `expC`
+training corpus under the pipeline's own 5,000-instruction cap, and on the
+cached tokenizer in `results/tokenizers/expC_WPC.json` that produced the
+committed `expC` numbers:
+
+* The distinct-normalized-line vocabulary collapses from **36,802** (Exp A's
+  training rows, same cap, same `normalize_instruction`) to **466**. SW's token
+  is now a bare mnemonic; WP's adjacent-line bigram (`mov_push`) is the only
+  view left that carries order. **[corrected]** An earlier draft of
+  `results/summary.md` put the traditional figure at 22,451; re-measured over
+  the committed `expA` training split it is 36,802 capped (88,277 uncapped), and
+  the summary now says so.
+* WordPiece trained at `vocab_size: 1000` stops **below the cap** — the cached
+  `expC_WPC.json` holds 941 entries, 667 word-initial and 274 `##` — so the
+  tie-break that makes the trainer nondeterministic (§1.10) is never reached.
+* The pieces it does learn are almost never used. The Exp C corpus holds **478**
+  distinct mnemonics and **466 encode as a single whole-word token**. The 12
+  that fragment (`cvtpd2ps` → `cvt ##pd ##2ps`, `cvtsd2ss` → 4 pieces,
+  `xacquire` → 6) are *exactly* the 12 that occur only in the test split — the
+  tokenizer is fit on train rows only, as it must be, so those are the only
+  words it has never seen. Between them they account for **176 of 11,952,897**
+  mnemonic occurrences — 0.0015%. There are no `<UNK>` tokens at all: the `##`
+  machinery earns its place only by keeping those 12 out of `<UNK>`.
+  **On mnemonic-only input WPC is whole-word
+  tokenization to within a rounding error**, so an RF/WPC row and an SW row in
+  the revised columns are reading all but the same stream. A WPC number there
+  is evidence about whole-word mnemonic tokenization wearing a WordPiece label.
+* **§1.10 does not bite here, and that was tested rather than argued.** `expC`
+  was re-run twice with `tokenization.tokenizer_cache` pointed at an empty
+  directory that was deleted between the runs, so each trained its own
+  vocabulary from scratch in its own process. The vocabularies are *not*
+  identical — 12 of 941 entries differ, and 102 shared entries get different
+  ids — but every difference is an unused fragment of a mnemonic that is a
+  whole word anyway, and both encode all 478 distinct mnemonics to the same
+  token strings. Both runs produced a `predictions.csv` **byte-identical** to
+  the committed one, and a `metrics.json` differing only in `elapsed_seconds`
+  and in the cache path embedded in the config. The cache is still required for
+  the four traditional-feature experiments, where the cutoff *is* reached and
+  the tie-break is worth 0.06 macro-F1 (§1.10).
+
+**Floors.** `data.baselines()` scores two rules that read no opcode at all on
+each test set, and `results/summary.md` prints them under every table:
+
+| experiment | majority-class macro-F1 | `x86 → ransomware` macro-F1 | model rows that clear the second |
+|---|---|---|---|
+| expA | 0.4268 | 0.4266 | 3 of 3 |
+| expA_cohort | 0.4244 | 0.4335 | 3 of 3 |
+| expC | 0.4244 | 0.4335 | 3 of 3 |
+| expB | 0.4268 | **0.6799** | **0 of 3** |
+| expB_cohort | 0.4254 | **0.7048** | **0 of 3** |
+| expD | 0.4274 | **0.7113** | **1 of 3** (SVM-RBF/SW, 0.8439) |
+
+This is the sharpest single result of the third pass, and it cuts two ways.
+
+1. In the three Goodware_Balanced experiments a rule that reads only the
+   architecture column scores 0.68–0.71 macro-F1, and **eight of those nine
+   model rows do not beat it**. Nothing in `expB`, `expB_cohort` or `expD` has
+   been shown to use the opcode stream except `expD`'s SVM-RBF/SW row.
+2. In the three Mendeley-goodware experiments the same rule scores only 0.43 —
+   level with the majority-class floor (0.4266 against 0.4268 in `expA`, 0.4335
+   against 0.4244 in the other two) and with a balanced accuracy of 0.433–0.447,
+   i.e. *worse than chance*. That is **not** evidence that those experiments are
+   free of the confound. Mendeley `good_test` is ~91% x86 while `good_train` is ~57%,
+   so the bitness shortcut is present in training and **misfires on the test
+   set**. What that looks like is in the per-architecture table of
+   `results/summary.md`: `expA`'s x64 slice scores 0.2865–0.3066 macro-F1
+   against 0.8724–0.9634 on x86, with x64 ransomware recall of 0.19–0.22.
+
+The `x86 → ransomware` rule counts an `unknown` architecture as not-x86. Six
+test files in `expA` and four in `expB` are `unknown`; the cohort-filtered and
+revised experiments have none.
+
 ---
 
 ## 3. Format compatibility
@@ -520,6 +738,11 @@ architecture skew in §5 and belongs with it in any reading of the A-vs-B gap.
 | hand-written normalizer + loader unit tests | `tests/test_tokenization_pipeline.py` |
 | `.asm` -> `LLM_Features` conversion | `asm_tool/asm_to_opcodes.py` |
 | disassembler equivalence proof | `asm_tool/consistency_check.py` |
+| cohort join, annotate-then-filter, split reuse (§2.7) | `llm_features_pipeline/data.py`, `config.yaml` |
+| per-architecture metrics for BOTH classes, per-family ransomware recall (§2.7) | `llm_features_pipeline/run_pipeline.py` |
+| majority-class and architecture-only floors beside every score (§2.7) | `llm_features_pipeline/data.py` (`baselines`), `run_pipeline.py` |
+| `predictions.csv` per run, so an old run can answer a new question | `llm_features_pipeline/run_pipeline.py` |
+| cohort, mnemonic-only and floor unit tests | `tests/test_tokenization_cohort.py` |
 
 `Tokenization-Testing-for-Malware-Data` itself is **unmodified**. Its
 `normalize_instruction`, `train_tokenizer`, `build_word2vec_embeddings` and
@@ -574,6 +797,27 @@ demonstrably using the former. Until the ransomware side can be split by
 architecture too — which needs a per-sample index out of the VM — the A-vs-B
 delta cannot be read as "the Mendeley goodware is easier."
 
+**[updated 14 September 2026]** The per-sample index arrived, in the cohort
+CSVs, and it did not need the VM: `cohort_mendeley.csv` and
+`cohort_balanced.csv` carry an architecture for every input binary of every set,
+`good_test` and both ransomware splits included. The question this section had
+to leave open is now answered in §2.7, and the answer is worse than the one
+feared here:
+
+* The conclusion above stands and is now quantified. An `x86 → ransomware` rule
+  that reads no opcode scores macro-F1 0.6799 on Exp B's test set. **No Exp B
+  model row beats it** (0.5862, 0.6629, 0.6756), and none does in `expB_cohort`
+  either. One of `expD`'s three does.
+* It is not symmetric. The same rule scores 0.4266 on Exp A — below the
+  majority-class floor — because Mendeley `good_test` is ~91% x86 and so looks
+  like the ransomware to a bitness rule, while `good_train` is ~57%. Exp A's
+  models still learn the shortcut and it still costs them: their x64 test slice
+  scores 0.2865–0.3066 macro-F1 against 0.8724–0.9634 on x86.
+
+So the A-vs-B gap remains unattributable to the goodware source, for the reason
+given here, and the per-architecture slices in `results/summary.md` are now the
+form in which any of these scores should be read.
+
 ---
 
 ## 5. Open items
@@ -587,8 +831,9 @@ delta cannot be read as "the Mendeley goodware is easier."
   Fixing it means unpacking installers before disassembly, which
   `Goodware_Balanced` does for goodware but nobody has done for the Mendeley
   ransomware.
-* **Architecture skew is measured everywhere it can be, and it is large.**
-  Re-measured 13 September 2026:
+* **Architecture skew is large, and as of 14 September 2026 it is measured on
+  every side.** First measured 13 September 2026 with the gaps noted below the
+  table; those gaps are now closed:
 
   | side | x86 | x64 | source |
   |---|---|---|---|
@@ -606,17 +851,25 @@ delta cannot be read as "the Mendeley goodware is easier."
   leaks through the operands (`rbp`, `r8`–`r15`, rip-relative addressing) and
   survives normalization.
 
-  What exists now: `results/summary.md` carries the table above and a
-  per-architecture goodware-recall breakdown for Exp B, computed from the
-  manifest. What is still missing, and why:
-  * **Exp A's goodware test set** — the 131 `good_test` binaries are not on this
-    machine (0 of 131 match by filename) and the feature files carry no
-    architecture, so there is nothing to join on.
-  * **The ransomware side of either experiment** — VM-only binaries; only the
-    aggregate counts above exist. Run
-    `python check_arch.py --dir <ransomware dir> --compare ../Goodware_Balanced/corpus_index.csv`
-    inside the VM to produce a per-sample index, then split ransomware recall by
-    bitness.
+  **[closed 14 September 2026]** Both gaps named below are filled. The cohort
+  CSVs (§2.7) carry an architecture for every input binary of every set, so
+  `results/summary.md` now prints the x86/x64 split for `good_test` and for both
+  ransomware splits in all six experiments, test metrics for **both classes
+  inside each architecture slice**, and an `x86 → ransomware` floor. The
+  `check_arch.py`-in-the-VM route is no longer needed for this. What was
+  missing, and is not any more:
+  * ~~**Exp A's goodware test set**~~ — 12 x64 / 117 x86 / 2 unknown; 91% x86,
+    against 57% in `good_train`.
+  * ~~**The ransomware side of either experiment**~~ — train 42 x64 / 927 x86 /
+    6 unknown, test 88 x64 / 290 x86 / 4 unknown (the cohort-filtered variants
+    drop the unknowns and 16 x64 test samples).
+
+  What the filled-in numbers show is in §2.7: eight of the nine
+  Goodware_Balanced model rows score **below** a rule that reads only the
+  architecture column. The skew is not merely present; on that half of the
+  experiment grid it is most of the measured signal. What remains open is the
+  *remedy* — matching the architecture mixes, or scoring on a bitness-balanced
+  test set — not the measurement.
 
 * **WPC results are not reproducible on a new corpus.** §1.10. The cached
   tokenizer makes the committed numbers reproducible, but the first run on any
@@ -628,4 +881,18 @@ delta cannot be read as "the Mendeley goodware is easier."
   §3.1: Exp B's goodware uses 526 mnemonics the Mendeley goodware never does,
   dominated by AVX/AVX-512/AES-NI. Same remedy as the architecture skew — it has
   to be controlled for before the A-vs-B gap is read as a statement about
-  goodware quality.
+  goodware quality. The revised feature form does **not** remove it and may
+  widen it: `extract_unified.py` sweeps past undecodable bytes instead of
+  stopping at the first one, so it reaches vector code the linear sweep never
+  got to (§2.7).
+* **`expB`, `expB_cohort` and `expD` have not been shown to use opcodes at
+  all.** §2.7: eight of those nine model rows score below the architecture-only
+  floor. This is the one open item that should be resolved before any of those
+  three experiments is quoted. Either the goodware architecture mix gets matched
+  to the ransomware's, or those rows are reported with the floor printed beside
+  them — which `results/summary.md` now does, in every table.
+* **Half the goodware test set is still a copy of training data in the revised
+  corpus too.** §2.7: 62 of 129, against 64 of 131 traditional. The revised
+  extractor was never meant to fix this and did not. `expA` ↔ `expC` is a fair
+  comparison *to each other* because both carry it at the same rate; neither is
+  a field estimate.

@@ -16,6 +16,25 @@ paths:
   # asm_to_opcodes.py output for Goodware_Balanced.
   balanced_goodware: "C:/Users/chaoa/Downloads/LLM_Features_Balanced/good_all"
   balanced_manifest: "C:/Users/chaoa/Downloads/LLM_Features_Balanced/opcode_manifest.csv"
+  # --- REVISED feature variant -------------------------------------------
+  # asm_tool/mn_to_features.py output, built from extract_unified.py
+  # (capstone skip-data sweep, uncapped) instead of extract.py's linear sweep.
+  # Lines are MNEMONICS ONLY ("mov"), not full instructions ("mov eax, ebx"),
+  # and the cohort filter is already applied, so these folders contain exactly
+  # the `in_cohort == 1` rows of cohort_mendeley.csv / cohort_balanced.csv.
+  # Same `<family>_<filename>.txt` naming, same folder layout.
+  llm_features_revised: "C:/Users/chaoa/Downloads/LLM_Features_Revised/Features_Extraction"
+  revised_manifest: "C:/Users/chaoa/Downloads/LLM_Features_Revised/Features_Extraction/revised_manifest.csv"
+  balanced_goodware_revised: "C:/Users/chaoa/Downloads/LLM_Features_Revised_Balanced/good_all"
+  balanced_revised_manifest: "C:/Users/chaoa/Downloads/LLM_Features_Revised_Balanced/revised_manifest.csv"
+  # --- cohort definitions -------------------------------------------------
+  # One row per input binary, kept or not, with the ARCHITECTURE of every file
+  # of every set. This is the first source in the project that has arch for
+  # `good_test` and for the ransomware side, so the per-architecture breakdown
+  # the earlier audit had to leave open is now computable for all six
+  # experiments. Joined on `<family>_<filename>.txt`; see data.Cohort.
+  cohort_mendeley: "C:/Users/chaoa/Downloads/asm and mm/Shared/cohort_mendeley.csv"
+  cohort_balanced: "C:/Users/chaoa/Downloads/asm and mm/Shared/cohort_balanced.csv"
   # sha256 of every Mendeley goodware binary, for the cross-source dedup guard.
   mendeley_goodware_sha256: "C:/Users/chaoa/Downloads/LLM_Features_Balanced/mendeley_goodware_sha256.json"
   results: "results"
@@ -82,3 +101,50 @@ experiments:
     description: "Mendeley ransomware + Goodware_Balanced (hard-negative-rich goodware)"
     ransomware: mendeley
     goodware: balanced
+
+  # --- the four added experiments ----------------------------------------
+  #
+  # Two variables are being separated, and they were previously confounded:
+  #
+  #   SAMPLE SET   traditional corpus as shipped  ->  cohort-filtered
+  #                (drops .NET, entropy-packed, UPX-unrecoverable, no-code,
+  #                 odd-arch, broken and duplicate rows, and the thanos family)
+  #   FEATURE FORM full instruction per line      ->  mnemonic only
+  #                (extract.py linear sweep       ->  extract_unified.py
+  #                 skip-data sweep, uncapped)
+  #
+  # A vs A_cohort and B vs B_cohort move ONLY the sample set.
+  # A_cohort vs C and B_cohort vs D move ONLY the feature form (the REVISED
+  # folders are already exactly the cohort, so nothing else changes).
+  # A vs C and B vs D move both at once - the comparison that was on the table
+  # before these four existed.
+  #
+  # `cohort_filter: true` applies the filter to a TRADITIONAL corpus. The
+  # revised corpora do not set it: they are pre-filtered, and asking for it
+  # again would be a no-op that hides where the filtering happened.
+  #
+  # `reuse_goodware_split: expB` takes Exp B's committed goodware membership
+  # from results/expB/splits.csv verbatim instead of re-running group_split.
+  # Re-splitting a pool the cohort filter has changed would move whole source
+  # projects across the train/test line, so B_cohort and D would differ from B
+  # for two reasons at once. See data.reuse_split.
+  expA_cohort:
+    description: "Exp A restricted to the cohort (traditional features, same folders as the split)"
+    ransomware: mendeley
+    goodware: mendeley
+    cohort_filter: true
+  expB_cohort:
+    description: "Exp B restricted to the cohort (traditional features, Exp B's own goodware split membership)"
+    ransomware: mendeley
+    goodware: balanced
+    cohort_filter: true
+    reuse_goodware_split: expB
+  expC:
+    description: "REVISED Mendeley ransomware + REVISED Mendeley goodware (mnemonic-only features)"
+    ransomware: mendeley_revised
+    goodware: mendeley_revised
+  expD:
+    description: "REVISED Mendeley ransomware + REVISED Goodware_Balanced, Exp B's goodware split membership"
+    ransomware: mendeley_revised
+    goodware: balanced_revised
+    reuse_goodware_split: expB

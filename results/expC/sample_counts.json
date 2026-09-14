@@ -1,33 +1,33 @@
 {
-  "total": 2604,
+  "total": 2509,
   "train": {
-    "n": 2091,
-    "goodware": 1116,
-    "ransomware": 975,
+    "n": 2018,
+    "goodware": 1114,
+    "ransomware": 904,
     "sources": {
-      "mendeley_ransomware": 975,
-      "mendeley_goodware": 1116
+      "mendeley_ransomware": 904,
+      "mendeley_goodware": 1114
     },
-    "groups": 1141
+    "groups": 1138
   },
   "test": {
-    "n": 513,
-    "goodware": 131,
-    "ransomware": 382,
+    "n": 491,
+    "goodware": 129,
+    "ransomware": 362,
     "sources": {
-      "mendeley_ransomware": 382,
-      "mendeley_goodware": 131
+      "mendeley_ransomware": 362,
+      "mendeley_goodware": 129
     },
-    "groups": 146
+    "groups": 143
   },
   "group_overlap": [],
   "cohort_annotation": {
     "mendeley": {
       "cohort_csv": "C:\\Users\\chaoa\\Downloads\\asm and mm\\Shared\\cohort_mendeley.csv",
       "cohort_rows": 2675,
-      "annotated": 2604,
+      "annotated": 2509,
       "unmatched_examples": [],
-      "in_cohort": 2500,
+      "in_cohort": 2509,
       "unmatched": 0
     },
     "balanced": {
@@ -41,89 +41,82 @@
   },
   "cohort_filter": {
     "applied": false,
-    "in": 2604,
-    "out": 2604,
-    "would_keep_if_applied": 2500,
-    "already_cohort_only": false
+    "in": 2509,
+    "out": 2509,
+    "would_keep_if_applied": 2509,
+    "already_cohort_only": true
   },
   "content_leak": {
-    "test_goodware_duplicated_in_train": 64,
-    "test_goodware_n": 131,
-    "test_goodware_leak_rate": 0.4885,
-    "test_ransomware_duplicated_in_train": 1,
-    "test_ransomware_n": 382,
-    "test_ransomware_leak_rate": 0.0026,
-    "unique_streams": 1765,
-    "total_files": 2604,
+    "test_goodware_duplicated_in_train": 62,
+    "test_goodware_n": 129,
+    "test_goodware_leak_rate": 0.4806,
+    "test_ransomware_duplicated_in_train": 0,
+    "test_ransomware_n": 362,
+    "test_ransomware_leak_rate": 0.0,
+    "unique_streams": 1655,
+    "total_files": 2509,
     "streams_labelled_both_classes": 2
   },
   "goodware_arch": {
     "train": {
-      "unknown": 3,
-      "x64": 483,
-      "x86": 630
+      "x64": 482,
+      "x86": 632
     },
     "test": {
-      "unknown": 2,
       "x64": 12,
       "x86": 117
     }
   },
   "test_goodware_arch": {
-    "unknown": 2,
     "x64": 12,
     "x86": 117
   },
   "arch": {
     "train_goodware": {
-      "unknown": 3,
-      "x64": 483,
-      "x86": 630
+      "x64": 482,
+      "x86": 632
     },
     "train_ransomware": {
-      "unknown": 6,
       "x64": 42,
-      "x86": 927
+      "x86": 862
     },
     "test_goodware": {
-      "unknown": 2,
       "x64": 12,
       "x86": 117
     },
     "test_ransomware": {
-      "unknown": 4,
-      "x64": 88,
+      "x64": 72,
       "x86": 290
     }
   },
   "baselines": {
     "majority_class": {
       "predicts": "ransomware",
-      "accuracy": 0.744639,
+      "accuracy": 0.737271,
       "balanced_accuracy": 0.5,
-      "macro_f1": 0.426816,
+      "macro_f1": 0.424385,
       "recall_goodware": 0.0,
       "recall_ransomware": 1.0,
       "confusion_matrix": {
         "tn": 0,
-        "fp": 131,
+        "fp": 129,
         "fn": 0,
-        "tp": 382
+        "tp": 362
       }
     },
     "x86_is_ransomware": {
       "rule": "predict ransomware iff arch == x86, from the cohort CSV",
       "test_x86": 407,
-      "test_unknown_arch": 6,
-      "accuracy": 0.592593,
-      "balanced_accuracy": 0.433016,
-      "macro_f1": 0.426626,
-      "recall_goodware": 0.10687,
-      "recall_ransomware": 0.759162,
+      "test_unknown_arch": 0,
+      "accuracy": 0.615071,
+      "balanced_accuracy": 0.447064,
+      "macro_f1": 0.433451,
+      "recall_goodware": 0.093023,
+      "recall_ransomware": 0.801105,
       "confusion_matrix": {
-        "tn": 14,
+        "tn": 12,
         "fp": 117,
-        "fn": 92,
+        "fn": 72,
         "tp": 290
       }
     }
@@ -131,36 +124,35 @@
   "ransomware_families": {
     "train": {
       "avaddon": 49,
-      "babuk": 44,
-      "blackmatter": 45,
+      "babuk": 42,
+      "blackmatter": 43,
       "conti": 48,
-      "darkside": 49,
+      "darkside": 38,
       "dharma": 46,
-      "doppelpaymer": 23,
-      "exorcist": 19,
-      "gandcrab": 50,
-      "lockbit": 45,
-      "makop": 32,
-      "maze": 48,
+      "doppelpaymer": 22,
+      "exorcist": 17,
+      "gandcrab": 49,
+      "lockbit": 47,
+      "makop": 30,
+      "maze": 47,
       "mountlocker": 14,
-      "nefilim": 39,
+      "nefilim": 37,
       "netwalker": 50,
       "phobos": 49,
       "pysa": 38,
       "ragnarok": 42,
       "ransomexx": 13,
-      "revil": 48,
-      "ryuk": 48,
-      "stop": 48,
-      "thanos": 1,
-      "wastedlocker": 39,
-      "zeppelin": 48
+      "revil": 47,
+      "ryuk": 47,
+      "stop": 35,
+      "wastedlocker": 36,
+      "zeppelin": 18
     },
     "test": {
       "avoslocker": 50,
       "bianlian": 11,
       "blackbasta": 30,
-      "blackbyte": 13,
+      "blackbyte": 7,
       "blackcat": 50,
       "bluesky": 34,
       "clop": 45,
@@ -169,7 +161,6 @@
       "karma": 13,
       "lorenz": 16,
       "maui": 3,
-      "nightsky": 14,
       "playcrypt": 43,
       "quantum": 6
     }
