@@ -38,8 +38,9 @@ from pathlib import Path
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+for _p in (REPO_ROOT / "CNN-ViT", REPO_ROOT):   # yanping scripts moved under CNN-ViT/
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 import asm_parser  # noqa: E402  (imported, never modified; import is side-effect free)
 from cnn_vit_pipeline import cohort as C  # noqa: E402

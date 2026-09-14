@@ -20,9 +20,11 @@ asm_tool/wheels/
 !ember_pipeline/**
 ember_pipeline/wheels/
 
-# CNN-ViT (yanping) rerun harness
+# CNN-ViT (yanping) rerun harness + the yanping scripts it drives (same path as upstream yanping)
 !cnn_vit_pipeline/
 !cnn_vit_pipeline/**
+!CNN-ViT/
+!CNN-ViT/**
 
 # research prototypes: CFG + graph2vec / WL, mnemonic rules + TF-IDF calibration baseline
 !graph2vec_pipeline/

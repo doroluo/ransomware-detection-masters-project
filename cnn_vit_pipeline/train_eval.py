@@ -44,8 +44,11 @@ import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+# The yanping scripts (asm_parser.py, model_train.py) live under CNN-ViT/ since
+# upstream moved them there; older checkouts had them at the repo root.
+for _p in (REPO_ROOT / "CNN-ViT", REPO_ROOT):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from cnn_vit_pipeline import cohort as C  # noqa: E402
 
