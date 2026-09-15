@@ -1,0 +1,60 @@
+pipeline: graph2vec
+config_name: tuned_best_sparse_histogram
+source: results\graph2vec\tuned\mendeley\chosen.json
+selected_by: 'post-hoc: highest-CV sparse-histogram configuration of the tuning study'
+construction:
+  max_blocks: 5000
+  windows: 1
+  calls: true
+  cross_section: false
+  extern: true
+  max_insns: 80000
+  keep_edges:
+  - 0
+  - 1
+  - 3
+  - 5
+representation:
+  kind: wl_tfidf
+  labelling: lenbucket
+  h: 4
+  edge_labels: false
+  norm: tfidf
+  min_df: 3
+  with_size: false
+model:
+  name: LR
+  params:
+    C: 10.0
+    class_weight: balanced
+  estimator: "LogisticRegression(C=10.0, class_weight='balanced', max_iter=4000,\n\
+    \                   random_state=42, solver='liblinear')"
+graph_cache: graph2vec_pipeline/graph_cache.py b20000 n80000 w1 xs1 ex1 (filtered
+  down to this construction)
+fit_per_fold:
+- WL min_df vocabulary (training rows)
+- TF-IDF IDF weights (training rows)
+- classifier (training rows)
+n_features_per_kfold:
+  '0': 1109342
+  '1': 1164232
+  '2': 1130897
+  '3': 1111688
+  '4': 1166364
+seed: 42
+decision: threshold from training-fold out-of-fold scores
+threshold_per_fold:
+  '0': 0.503601
+  '1': 0.369127
+  '2': 0.347526
+  '3': 0.309771
+  '4': 0.368701
+oof_macro_f1_per_fold:
+  '0': 0.9696
+  '1': 0.9826
+  '2': 0.9736
+  '3': 0.9731
+  '4': 0.9761
+threshold_source_for_lofo: the K-fold training set that also excludes the family
+threshold_rule: best_threshold(macro_f1) over StratifiedGroupKFold(5, shuffle=True,
+  random_state=42) out-of-fold scores of the training rows

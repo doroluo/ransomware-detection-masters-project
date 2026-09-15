@@ -57,4 +57,37 @@ configurations), `results/graph2vec/summary.md` section 7 (103), `results/cnn_vi
    change the picture is evaluation by family-holdout over all 40 families with per-architecture reporting, not more
    search (`docs/RESEARCH_DIRECTIONS.md`).
 
+## Family holdout over all 38 cohort families (`results/family_holdout/summary.md`)
+
+Every cohort ransomware family is held out exactly once (5 folds, families whole, goodware by duplicate group or
+project), plus leave-one-family-out for per-family recall. Untuned, pre-registered configurations only. Fold mean of
+macro-F1 (+/- sd over folds), and the x86-rule floor in macro-F1, which is 0.63 on Mendeley and **0.84 on Balanced**:
+
+| model | Mendeley | Balanced | fixed split (Mendeley / Balanced) |
+|---|---|---|---|
+| TF-IDF 1-3gram + LogReg | **0.954 +/- 0.021** | **0.942 +/- 0.032** | 0.968 / 0.796 |
+| graph2vec, untuned WL baseline, OOF threshold | 0.942 +/- 0.037 | 0.867 +/- 0.059 | 0.885 / 0.568 |
+| graph2vec, tuning study's post-hoc winner | 0.885 +/- 0.057 | 0.751 +/- 0.056 | 0.947 / n/a |
+| tokenization expC/expD config, MLP/WP | 0.869 +/- 0.035 | 0.820 +/- 0.043 | 0.926 / 0.597 |
+| CNN-ViT, untuned recipe, 3 seeds per fold | 0.679 +/- 0.038 | 0.736 +/- 0.032 | 0.628 / 0.502 |
+
+10. **The single split was misleading in both directions.** The fixed split understated the CNN-ViT encoder by 0.05 on
+    Mendeley and 0.23 on Balanced, overstated the graph2vec post-hoc winner by 0.06, and understated TF-IDF on Balanced
+    by 0.15. Differences smaller than about one fold sd (0.02-0.09 depending on the model) should not be read at all.
+11. **The graph2vec post-hoc winner does not confirm.** Under family holdout it is worse than the untuned WL baseline on
+    both datasets and worse on leave-one-family-out recall by 0.13-0.17. The untuned baseline is the configuration that
+    holds up, at 0.94 on Mendeley.
+12. **TF-IDF is the only pipeline that is strong on both goodware sources and the one that moves least** from its
+    fixed-split number. On Balanced it is one of two models above the 0.84 architecture floor (with the graph2vec
+    baseline); every tokenization row and the CNN-ViT encoder sit below it, so their Balanced numbers still do not show
+    anything the PE machine field does not.
+13. **x64 ransomware recall is the weak spot of every model** (0.13-0.79 pooled, against x64 goodware recall near 1.00),
+    and 43 of the 114 x64 ransomware files are one family, Hive. Two families fail everywhere: Phobos (median LOFO
+    recall 0.06) and Makop (0.23). Between models the failing set differs, which is the first evidence that an ensemble
+    across representations could pay off.
+14. **Consequence.** Report family-holdout fold means with their sd as the headline numbers from here on; the fixed
+    split remains only for comparability with the paper. The next investment is not another model but an
+    architecture-matched evaluation (or arch-balanced sampling) so that the Balanced numbers can be interpreted, and a
+    look at why Phobos and Makop are invisible to every representation.
+
 EMBER is not in this table; that rerun is being done by a teammate (`ember_pipeline/`, `vm_package/README.md`).
