@@ -80,3 +80,18 @@ tests/fixtures/
 *.dll
 *.bin
 asm_output/
+
+# sequence transformer over mnemonic tokens (replacement for the image encoder)
+!seq_model/
+!seq_model/**
+
+# PE import-table side channel. The JSON outputs (14-36 MB, regenerable with
+# imports/extract_imports.py in minutes) stay out of git; their CSV manifests are kept.
+!imports/
+!imports/**
+manifests/imports/*.json
+
+# (repeated last so the whitelists above cannot re-include them)
+**/__pycache__/
+**/.pytest_cache/
+*.pyc

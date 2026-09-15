@@ -32,7 +32,8 @@ python vm_package/make_package.py --out ~/Downloads/vm_package.zip
 ```
 
 That zips: `asm_parse.py`, `check_arch.py`, `asm_tool/` (with `wheels/`),
-`ember_pipeline/` (with `wheels/`), and this README. About 66 MB, almost all wheels.
+`ember_pipeline/` (with `wheels/`), `imports/`, and this README. About 66 MB,
+almost all wheels.
 
 ## 2. Install on the VM (offline)
 
@@ -81,6 +82,40 @@ Each produces `<name>.npz` (X, sha256, rel_path, label) and
 byte-entropy histogram is the slow part; expect roughly a minute per 100 MB
 of binaries.
 
+## 4b. Import tables / IAT maps (sequence model)
+
+The side channel that turns `call dword ptr [0x4291f0]` in the `.asm`
+transcripts back into `kernel32.dll!createfilew`: for every sample, its import
+list and a map from IAT slot virtual address to `dll!func`. Import-directory
+parsing only (`pefile`, already installed by step 2 via
+`asm_tool/requirements-vm.txt`); no capstone, no disassembly, seconds per
+corpus.
+
+```bash
+mkdir -p ~/imports
+python3 imports/extract_imports.py --in ~/Downloads/Ransomware_Training/rans    --out ~/imports/mendeley_mal_train.json  --manifest ~/imports/mendeley_mal_train.csv
+python3 imports/extract_imports.py --in ~/Downloads/Ransomware_Test/rans_test   --out ~/imports/mendeley_mal_test.json   --manifest ~/imports/mendeley_mal_test.csv
+python3 imports/extract_imports.py --in ~/Downloads/Goodware_Training/goodware  --out ~/imports/mendeley_good_train.json --manifest ~/imports/mendeley_good_train.csv
+python3 imports/extract_imports.py --in ~/Downloads/Goodware_Test/goodware_test --out ~/imports/mendeley_good_test.json  --manifest ~/imports/mendeley_good_test.csv
+```
+
+Each `.json` is keyed by SHA-256 with `imports`, `iat`, `dll_count`,
+`func_count`, `error`; each `.csv` has one row per input file
+(`sha256, rel_path, status, dll_count, func_count`). Expect roughly 13 KB of
+JSON per sample - the host's 1,115-file goodware copy came to 14 MB. If a run
+prints `iat maps spilled to ...` the corpus crossed the 50 MB default and
+there is an extra `mendeley_*.iat.json` beside it; copy that back too.
+
+These files are names and addresses, not a transcript of malware code, so they
+are far less sensitive than the `.asm` trees - but they still come from the
+samples, so they travel with the rest of the archive.
+
+This run supersedes the host-built
+`manifests/imports/mendeley_goodware_host.json`, which was extracted from the
+incomplete host copy of `Goodware_Training` (1,115 files, 67 still UPX-packed,
+so only 1,028 of the 1,114 in-cohort `good_train` hashes are covered) and has
+no `Goodware_Test` at all. See `imports/README.md`.
+
 ## 5. Copy back to the host
 
 Only these leave the VM:
@@ -91,6 +126,7 @@ Only these leave the VM:
 ~/asm_output/mendeley_goodware_test/      ->  C:/Users/chaoa/Downloads/asm_output/mendeley_goodware_test/
 ~/asm_output/mendeley_goodware_train/     ->  C:/Users/chaoa/Downloads/asm_output/mendeley_goodware_train/   (replaces the host-built mendeley_goodware/)
 ~/ember_features/*.npz, *.manifest.csv    ->  C:/Users/chaoa/Downloads/ember_features/
+~/imports/*.json, *.csv                   ->  C:/Users/chaoa/Downloads/rdmp-llm/manifests/imports/   (mendeley_good_train.json replaces mendeley_goodware_host.json)
 ```
 
 The `.asm` trees are a faithful transcript of malware code. Treat the archive
