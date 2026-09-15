@@ -36,6 +36,10 @@ ember_pipeline/wheels/
 !tools/
 !tools/**
 
+# family-holdout evaluation over all cohort families (fold definition + runners)
+!family_holdout/
+!family_holdout/**
+
 # offline VM runbook + packager (wheels themselves stay ignored)
 !vm_package/
 !vm_package/**
