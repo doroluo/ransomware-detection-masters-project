@@ -229,4 +229,35 @@ macro-F1 (+/- sd over folds), and the x86-rule floor in macro-F1, which is 0.63 
     architecture-matched evaluation (or arch-balanced sampling) so that the Balanced numbers can be interpreted, and a
     look at why Phobos and Makop are invisible to every representation.
 
+## Sequence transformer over mnemonics (replaces the image encoder; `results/family_holdout/summary_seq_transformer.md`)
+
+Same six ViT blocks as the yanping model, but fed an embedded mnemonic sequence (full vocabulary, attention masks,
+1-D stem) instead of token ids as pixels; 16 windows of 4,096 tokens strided over the whole file, mean of window
+logits; masked-token pretraining on both corpora (unlabelled, transductive); architecture-balanced batches; 3 seeds
+per fold. Configuration frozen before any test fold was scored. Family holdout, fold mean +/- sd of macro-F1:
+
+| model | Mendeley | Balanced | LOFO mean recall (M / B) |
+|---|---|---|---|
+| sequence transformer (this work) | **0.923 +/- 0.057** | **0.889 +/- 0.057** | 0.92 / 0.84 |
+| CNN-ViT image encoder (replaced) | 0.679 +/- 0.038 | 0.736 +/- 0.032 | 0.68 / 0.65 |
+| TF-IDF 1-3gram + LogReg | 0.954 +/- 0.021 | 0.942 +/- 0.032 | 0.90 / 0.89 |
+| graph2vec WL baseline | 0.942 +/- 0.037 | 0.867 +/- 0.059 | 0.91 / 0.79 |
+
+15. **Fixing the representation recovers the transformer.** +0.24 on Mendeley and +0.15 on Balanced over the image
+    encoder, AUC 0.98 / 0.95, now the second-best pipeline on Balanced and above its 0.84 architecture floor. It is
+    still 0.03 to 0.05 behind TF-IDF on both datasets and needs the transductive pretraining to get there.
+16. **Which of the six changes mattered (Mendeley K-fold, one seed).** Removing pretraining costs 0.13 (0.797 +/-
+    0.117), so the masked-token pass on unlabelled streams is the single largest contributor; without it the model is
+    below the graph and TF-IDF baselines. Reading only the first window scored 0.947 +/- 0.014, no worse than the
+    whole-file windows, so multiple-instance coverage did not help here. Dropping the architecture-balanced sampler
+    changed nothing (0.931 +/- 0.044). The gains therefore come from the embedding, the masking and the pretraining;
+    the strictly inductive number to quote is 0.80.
+17. **It fixes Phobos and misses Makop.** Phobos, invisible to every other representation (median LOFO recall 0.06),
+    is recalled at 0.98 / 0.94 (K-fold / LOFO) on Mendeley. Makop stays at 0.53 / 0.07. Hive, the x64 family, is
+    1.00 / 1.00 on Mendeley but 0.64 / 0.96 on Balanced, and x64 ransomware recall inside Balanced is 0.75 against
+    goodware recall 0.94, so the architecture lean is reduced but not gone.
+18. **What was not done.** The import-name side input exists and is unit-tested, but the ransomware import tables
+    need the VM (`vm_package/README.md` step 4b), so no run used real import features. Seeds were cut from five to
+    three per fold to fit the GPU budget; leave-one-family-out is one seed.
+
 EMBER is not in this table; that rerun is being done by a teammate (`ember_pipeline/`, `vm_package/README.md`).

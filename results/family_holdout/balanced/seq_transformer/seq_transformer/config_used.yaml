@@ -1,0 +1,81 @@
+name: "seq_transformer"
+pipeline: "seq_transformer"
+model:
+  emb_dim: 64
+  dim: 256
+  depth: 6
+  heads: 8
+  mlp_dim: 512
+  dropout: 0.25
+  drop_path_rate: 0.0
+  pooling: "masked_mean"
+  mil: "mean_logits"
+  positional_encoding: "learned_relative_bias_from_RobustRelativeAttention"
+windows:
+  window: 4096
+  n_windows: 16
+vocabulary:
+  min_count: 1
+  fit_on: "training_folds_only"
+sampler:
+  arch_balanced: true
+imports:
+  enabled: false
+  hash_dim: 2048
+pretrain:
+  enabled: true
+  checkpoint: "C:/Users/chaoa/Downloads/seq_models/pretrained.pt"
+  note: "transductive_unlabelled_pass_over_both_corpora"
+training:
+  batch_size: 24
+  eval_batch_size: 24
+  lr: 0.0003
+  weight_decay: 0.05
+  warmup_epochs: 1
+  max_epochs: 12
+  patience: 3
+  grad_clip: 1.0
+  label_smoothing: 0.0
+  num_workers: 6
+  eval_workers: 2
+  samples_per_epoch: 1000
+  amp_dtype: "bfloat16"
+evaluation:
+  decision: "argmax_0.5"
+  seed_aggregation: "mean_of_scores"
+seeds:
+  kfold:
+    - 1
+    - 2
+    - 3
+  lofo:
+    - 1
+paths:
+  weights: "C:/Users/chaoa/Downloads/seq_models"
+  token_cache: "C:/Users/chaoa/Downloads/seq_models/token_cache"
+fingerprint: "873ff3c1984f6b46"
+device: "cuda"
+per_seed_fold_macro_f1:
+  1:
+    0: 0.922071
+    1: 0.791364
+    2: 0.816938
+    3: 0.853764
+    4: 0.949806
+  2:
+    0: 0.957068
+    1: 0.875653
+    2: 0.864268
+    3: 0.793997
+    4: 0.959456
+  3:
+    0: 0.949896
+    1: 0.889385
+    2: 0.766777
+    3: 0.816219
+    4: 0.903105
+runs_dir: "C:\\Users\\chaoa\\Downloads\\seq_models\\runs\\balanced\\seq_transformer"
+token_cache:
+  path: "C:\\Users\\chaoa\\Downloads\\seq_models\\token_cache"
+  global_vocabulary: 1418
+  note: "global ids are a property of the corpus; the model vocabulary is refitted on the training folds of every split"

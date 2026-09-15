@@ -1,0 +1,117 @@
+# seq_transformer - the FIXED configuration of the family-holdout run.
+#
+# Written before any test fold was scored. Nothing in this file was chosen by
+# looking at a test fold, and nothing in it is changed between folds, seeds,
+# families or datasets. The only permitted departures are the four ablations
+# enumerated in seq_model/config.py::ablation, each of which changes exactly
+# one entry and writes to its own results directory.
+#
+# Two numbers were confirmed on fold 0's VAL fold of the mendeley dataset
+# before freezing (recorded in seq_model/lr_sanity.json and quoted in
+# results/family_holdout/summary_seq_transformer.md): the learning rate, and
+# that the epoch budget below reaches the val plateau. No test fold was read.
+
+name: seq_transformer
+pipeline: seq_transformer
+
+model:
+  # the encoder is CNN-ViT/model_train.py's HierarchicalMalwareNet stack at its
+  # own defaults - 6 TransformerBlocks of dim 256, 8 heads, mlp 512, dropout
+  # 0.25 - IMPORTED from that file, so this row cannot drift from the image
+  # model it is being compared against.
+  emb_dim: 64
+  dim: 256
+  depth: 6
+  heads: 8
+  mlp_dim: 512
+  dropout: 0.25
+  drop_path_rate: 0.0
+  # masked mean pooling over the valid block positions, which is exactly the
+  # "masked global average pooling" HierarchicalMalwareNet.forward does.
+  pooling: masked_mean
+  # file logit = mean of the window logits over the file's real windows.
+  mil: mean_logits
+  # positional signal: the LEARNED RELATIVE position-bias table that
+  # RobustRelativeAttention already carries (2*num_patches-1 x heads). No
+  # absolute encoding is added - see seq_model/model.py's module docstring.
+  positional_encoding: learned_relative_bias_from_RobustRelativeAttention
+
+windows:
+  # 4,096 tokens per window / stem stride 16 = 256 block positions, the same
+  # sequence length the image ViT saw.
+  window: 4096
+  # up to 16 windows per file, evenly spaced over the WHOLE stream.
+  n_windows: 16
+
+vocabulary:
+  # fitted on the training folds of each split only; every mnemonic the
+  # training folds never produced maps to <unk>.
+  min_count: 1
+  fit_on: training_folds_only
+
+sampler:
+  # batches balance the four (label, arch) cells in expectation.
+  arch_balanced: true
+
+imports:
+  # interface only for this run: --imports is not passed, so imports_dim is 0
+  # and no import feature exists. See the summary's "what was NOT done".
+  enabled: false
+  hash_dim: 2048
+
+pretrain:
+  enabled: true
+  checkpoint: C:/Users/chaoa/Downloads/seq_models/pretrained.pt
+  # transductive: the pass sees the unlabelled token streams of every file in
+  # both corpora, test folds included. Labels are never read. The no_pretrain
+  # ablation is the strictly inductive comparison.
+  note: transductive_unlabelled_pass_over_both_corpora
+
+training:
+  batch_size: 24
+  eval_batch_size: 24
+  lr: 0.0003
+  weight_decay: 0.05
+  warmup_epochs: 1
+  max_epochs: 12
+  patience: 3
+  grad_clip: 1.0
+  label_smoothing: 0.0
+  num_workers: 6
+  # the val fold is re-scored every epoch, so its loader pays the Windows
+  # worker-spawn cost once and saves it twelve times; the single test pass at
+  # the end of a run loads in-process instead.
+  eval_workers: 2
+  # an "epoch" is a fixed number of weighted draws rather than one pass over
+  # the training folds, so that a K-fold run and a LOFO run (which has ~25%
+  # more training files) get the same optimisation budget.
+  samples_per_epoch: 1000
+  amp_dtype: bfloat16
+
+evaluation:
+  # argmax at 0.5 on the seed-mean P(ransomware). No threshold is moved, on
+  # any fold, for any reason.
+  decision: argmax_0.5
+  # per-fold score = mean over seeds of the per-file P(ransomware); the fold's
+  # macro-F1 is computed from that pooled score, and the headline is the mean
+  # +/- sd of those five per-fold numbers.
+  seed_aggregation: mean_of_scores
+
+seeds:
+  # Three per fold, not the five the protocol asks for. The budget is about
+  # 4 GPU-hours and the sanctioned fallback if it does not fit is "reduce seeds
+  # to 3 or windows to 8", with LOFO never cut. Measured over the first ten
+  # runs of the sweep, a training run costs ~120 s; the five-seed study then
+  # projects to ~5.7 h and the three-seed one to ~5.0 h, of which the 76 LOFO
+  # runs are ~2.6 h. Seeds were cut rather than windows because multiple-
+  # instance coverage of the whole file is one of the six changes under test
+  # and halving it would confound the headline. Decided on the run-time
+  # arithmetic alone, before any test fold was read; the seed list is not part
+  # of a run's fingerprint - it decides how many runs are averaged, never what
+  # a run computes.
+  kfold: [1, 2, 3]
+  lofo: [1]
+
+paths:
+  weights: C:/Users/chaoa/Downloads/seq_models
+  token_cache: C:/Users/chaoa/Downloads/seq_models/token_cache

@@ -1,0 +1,107 @@
+{
+ "what": "learning-rate sanity check, mendeley fold 0 VAL fold only; fold 0's test rows were never scored",
+ "config": "C:\\Users\\chaoa\\Downloads\\rdmp-llm\\seq_model\\config.yaml",
+ "device": "cuda",
+ "n_train": 1759,
+ "n_val": 247,
+ "max_epochs_probed": 16,
+ "config_max_epochs": 12,
+ "config_lr": 0.0003,
+ "results": {
+  "0.0001": {
+   "best_val_macro_f1": 0.966599,
+   "best_epoch": 5,
+   "epochs_run": 16,
+   "val_macro_f1_by_epoch": [
+    0.936676,
+    0.950302,
+    0.946093,
+    0.958585,
+    0.958249,
+    0.966599,
+    0.966395,
+    0.942413,
+    0.958479,
+    0.962478,
+    0.942019,
+    0.962679,
+    0.946352,
+    0.958479,
+    0.958479,
+    0.958479
+   ],
+   "seconds": 146.0,
+   "pretrained": {
+    "encoder_tensors_loaded": 104,
+    "encoder_tensors_skipped": [],
+    "embedding_rows_transferred": 769,
+    "embedding_rows_total": 769,
+    "checkpoint_step": 92090
+   }
+  },
+  "0.0003": {
+   "best_val_macro_f1": 0.974875,
+   "best_epoch": 5,
+   "epochs_run": 16,
+   "val_macro_f1_by_epoch": [
+    0.927982,
+    0.953865,
+    0.9534,
+    0.927158,
+    0.966694,
+    0.974875,
+    0.962254,
+    0.962679,
+    0.958585,
+    0.958367,
+    0.950534,
+    0.946352,
+    0.958585,
+    0.934186,
+    0.958585,
+    0.958585
+   ],
+   "seconds": 146.4,
+   "pretrained": {
+    "encoder_tensors_loaded": 104,
+    "encoder_tensors_skipped": [],
+    "embedding_rows_transferred": 769,
+    "embedding_rows_total": 769,
+    "checkpoint_step": 92090
+   }
+  },
+  "0.001": {
+   "best_val_macro_f1": 0.970897,
+   "best_epoch": 9,
+   "epochs_run": 16,
+   "val_macro_f1_by_epoch": [
+    0.940796,
+    0.946352,
+    0.94229,
+    0.940584,
+    0.94512,
+    0.842064,
+    0.966599,
+    0.950534,
+    0.958685,
+    0.970897,
+    0.755929,
+    0.938481,
+    0.922344,
+    0.9143,
+    0.938362,
+    0.938362
+   ],
+   "seconds": 146.2,
+   "pretrained": {
+    "encoder_tensors_loaded": 104,
+    "encoder_tensors_skipped": [],
+    "embedding_rows_transferred": 769,
+    "embedding_rows_total": 769,
+    "checkpoint_step": 92090
+   }
+  }
+ },
+ "argmax_lr": "0.0003",
+ "when": "2026-09-15 01:26:40"
+}
