@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated tokenizer/model artifacts.
+# Existing committed .pkl files stay tracked; this only stops new ones.
+*.pkl
+*.pt
+*.pth
+*.h5
+*.joblib
+
+# Raw sample binaries - never commit live malware executables
+*.exe
+*.dll
+*.bin
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
