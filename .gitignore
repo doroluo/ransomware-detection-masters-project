@@ -7,7 +7,11 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+.pylibs/
 .ipynb_checkpoints/
+
+# Model checkpoints and metrics
+runs/
 
 # macOS
 .DS_Store
