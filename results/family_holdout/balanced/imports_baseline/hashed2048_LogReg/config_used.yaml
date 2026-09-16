@@ -1,0 +1,158 @@
+pipeline: imports_baseline
+model: hashed2048_LogReg
+config: hashed2048
+imports: manifests\imports\imports_flat.json
+n_files_without_imports: 99
+features: seq_model/data.py::hash_imports, dim 2048, L2-normalised
+classifier:
+  name: LogReg
+  estimator: LogisticRegression(max_iter=4000, random_state=42)
+  C_grid:
+  - 0.1
+  - 1
+  - 10
+  C_selection: GridSearchCV(StratifiedKFold(2, shuffle, rs=42), f1_macro) inside training
+    rows
+  C_chosen:
+    kfold:
+      '0':
+        C: 10
+        cv_f1_macro: 0.9738
+        n_features: 2048
+      '1':
+        C: 10
+        cv_f1_macro: 0.9856
+        n_features: 2048
+      '2':
+        C: 10
+        cv_f1_macro: 0.9775
+        n_features: 2048
+      '3':
+        C: 10
+        cv_f1_macro: 0.9765
+        n_features: 2048
+      '4':
+        C: 10
+        cv_f1_macro: 0.963
+        n_features: 2048
+    lofo:
+      avaddon:
+        C: 10
+        cv_f1_macro: 0.9745
+      avoslocker:
+        C: 10
+        cv_f1_macro: 0.9737
+      babuk:
+        C: 10
+        cv_f1_macro: 0.9746
+      bianlian:
+        C: 10
+        cv_f1_macro: 0.9745
+      blackbasta:
+        C: 10
+        cv_f1_macro: 0.9767
+      blackbyte:
+        C: 10
+        cv_f1_macro: 0.9769
+      blackcat:
+        C: 10
+        cv_f1_macro: 0.9757
+      blackmatter:
+        C: 10
+        cv_f1_macro: 0.975
+      bluesky:
+        C: 10
+        cv_f1_macro: 0.9754
+      clop:
+        C: 10
+        cv_f1_macro: 0.9738
+      conti:
+        C: 10
+        cv_f1_macro: 0.9749
+      darkside:
+        C: 10
+        cv_f1_macro: 0.9746
+      dharma:
+        C: 10
+        cv_f1_macro: 0.973
+      doppelpaymer:
+        C: 10
+        cv_f1_macro: 0.9752
+      exorcist:
+        C: 10
+        cv_f1_macro: 0.9764
+      gandcrab:
+        C: 10
+        cv_f1_macro: 0.9761
+      hive:
+        C: 10
+        cv_f1_macro: 0.9761
+      holyghost:
+        C: 10
+        cv_f1_macro: 0.9707
+      karma:
+        C: 10
+        cv_f1_macro: 0.976
+      lockbit:
+        C: 10
+        cv_f1_macro: 0.9753
+      lorenz:
+        C: 10
+        cv_f1_macro: 0.9752
+      makop:
+        C: 10
+        cv_f1_macro: 0.9763
+      maui:
+        C: 10
+        cv_f1_macro: 0.9735
+      maze:
+        C: 10
+        cv_f1_macro: 0.9741
+      mountlocker:
+        C: 10
+        cv_f1_macro: 0.976
+      nefilim:
+        C: 10
+        cv_f1_macro: 0.975
+      netwalker:
+        C: 10
+        cv_f1_macro: 0.9749
+      phobos:
+        C: 10
+        cv_f1_macro: 0.9745
+      playcrypt:
+        C: 10
+        cv_f1_macro: 0.9746
+      pysa:
+        C: 10
+        cv_f1_macro: 0.9738
+      quantum:
+        C: 10
+        cv_f1_macro: 0.9761
+      ragnarok:
+        C: 10
+        cv_f1_macro: 0.975
+      ransomexx:
+        C: 10
+        cv_f1_macro: 0.9776
+      revil:
+        C: 10
+        cv_f1_macro: 0.9769
+      ryuk:
+        C: 10
+        cv_f1_macro: 0.9745
+      stop:
+        C: 10
+        cv_f1_macro: 0.9747
+      wastedlocker:
+        C: 10
+        cv_f1_macro: 0.9746
+      zeppelin:
+        C: 10
+        cv_f1_macro: 0.9783
+decision: argmax (predict)
+seed: 42
+pre_registered: true
+schemes:
+- kfold
+- lofo

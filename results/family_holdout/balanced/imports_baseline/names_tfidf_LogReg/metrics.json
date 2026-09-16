@@ -1,0 +1,1127 @@
+{
+  "experiment": "family_holdout/balanced/imports_baseline/names_tfidf_LogReg",
+  "description": "names_tfidf + LogReg, family-holdout K-fold and LOFO on the balanced cohort",
+  "task": "binary: 0=goodware, 1=ransomware",
+  "samples": {
+    "total": 2603,
+    "goodware": 1337,
+    "ransomware": 1266,
+    "families": 38,
+    "folds": {
+      "0": {
+        "n": 539,
+        "goodware": 285,
+        "ransomware": 254,
+        "x64_ransomware": 12
+      },
+      "1": {
+        "n": 516,
+        "goodware": 263,
+        "ransomware": 253,
+        "x64_ransomware": 10
+      },
+      "2": {
+        "n": 516,
+        "goodware": 263,
+        "ransomware": 253,
+        "x64_ransomware": 59
+      },
+      "3": {
+        "n": 514,
+        "goodware": 263,
+        "ransomware": 251,
+        "x64_ransomware": 24
+      },
+      "4": {
+        "n": 518,
+        "goodware": 263,
+        "ransomware": 255,
+        "x64_ransomware": 9
+      }
+    },
+    "fold_definition": "results\\family_holdout\\folds_balanced.csv"
+  },
+  "results": [
+    {
+      "accuracy": 0.8993469074145217,
+      "balanced_accuracy": 0.8990202889920018,
+      "majority_class_accuracy": 0.5136381098732232,
+      "precision_goodware": 0.8949301983835415,
+      "recall_goodware": 0.9109947643979057,
+      "f1_goodware": 0.9028910303928837,
+      "support_goodware": 1337,
+      "precision_ransomware": 0.9041867954911433,
+      "recall_ransomware": 0.8870458135860979,
+      "f1_ransomware": 0.8955342902711324,
+      "support_ransomware": 1266,
+      "macro_precision": 0.8995584969373425,
+      "macro_recall": 0.8990202889920018,
+      "macro_f1": 0.8992126603320081,
+      "false_positive_rate": 0.08900523560209424,
+      "confusion_matrix": {
+        "tn": 1218,
+        "fp": 119,
+        "fn": 143,
+        "tp": 1123
+      },
+      "roc_auc": 0.9613592242187067,
+      "per_architecture": {
+        "x64": {
+          "accuracy": 0.9422572178477691,
+          "balanced_accuracy": 0.921129353997238,
+          "majority_class_accuracy": 0.9002624671916011,
+          "precision_goodware": 0.9878419452887538,
+          "recall_goodware": 0.9475218658892128,
+          "f1_goodware": 0.9672619047619047,
+          "support_goodware": 1029,
+          "precision_ransomware": 0.6538461538461539,
+          "recall_ransomware": 0.8947368421052632,
+          "f1_ransomware": 0.7555555555555555,
+          "support_ransomware": 114,
+          "macro_precision": 0.8208440495674538,
+          "macro_recall": 0.921129353997238,
+          "macro_f1": 0.8614087301587301,
+          "false_positive_rate": 0.052478134110787174,
+          "confusion_matrix": {
+            "tn": 975,
+            "fp": 54,
+            "fn": 12,
+            "tp": 102
+          },
+          "roc_auc": 0.9438903380901233,
+          "n": 1143
+        },
+        "x86": {
+          "accuracy": 0.8657534246575342,
+          "balanced_accuracy": 0.8376228805916306,
+          "majority_class_accuracy": 0.7890410958904109,
+          "precision_goodware": 0.6497326203208557,
+          "recall_goodware": 0.788961038961039,
+          "f1_goodware": 0.7126099706744868,
+          "support_goodware": 308,
+          "precision_ransomware": 0.9401473296500921,
+          "recall_ransomware": 0.8862847222222222,
+          "f1_ransomware": 0.9124218051831994,
+          "support_ransomware": 1152,
+          "macro_precision": 0.7949399749854739,
+          "macro_recall": 0.8376228805916306,
+          "macro_f1": 0.8125158879288431,
+          "false_positive_rate": 0.21103896103896103,
+          "confusion_matrix": {
+            "tn": 243,
+            "fp": 65,
+            "fn": 131,
+            "tp": 1021
+          },
+          "roc_auc": 0.9289124503968254,
+          "n": 1460
+        }
+      },
+      "per_arch": {
+        "x64": {
+          "n": 1143,
+          "support_goodware": 1029,
+          "support_ransomware": 114,
+          "recall_goodware": 0.9475218658892128,
+          "recall_ransomware": 0.8947368421052632,
+          "accuracy": 0.9422572178477691,
+          "macro_f1": 0.8614087301587301
+        },
+        "x86": {
+          "n": 1460,
+          "support_goodware": 308,
+          "support_ransomware": 1152,
+          "recall_goodware": 0.788961038961039,
+          "recall_ransomware": 0.8862847222222222,
+          "accuracy": 0.8657534246575342,
+          "macro_f1": 0.8125158879288431
+        }
+      },
+      "goodware_recall_by_arch": {
+        "x64": {
+          "n": 1029,
+          "recall_goodware": 0.9475218658892128
+        },
+        "x86": {
+          "n": 308,
+          "recall_goodware": 0.788961038961039
+        }
+      },
+      "per_family_recall": {
+        "avaddon": {
+          "recall": 1.0,
+          "correct": 49,
+          "support": 49
+        },
+        "avoslocker": {
+          "recall": 1.0,
+          "correct": 50,
+          "support": 50
+        },
+        "babuk": {
+          "recall": 1.0,
+          "correct": 42,
+          "support": 42
+        },
+        "bianlian": {
+          "recall": 1.0,
+          "correct": 11,
+          "support": 11
+        },
+        "blackbasta": {
+          "recall": 0.7666666666666667,
+          "correct": 23,
+          "support": 30
+        },
+        "blackbyte": {
+          "recall": 0.42857142857142855,
+          "correct": 3,
+          "support": 7
+        },
+        "blackcat": {
+          "recall": 1.0,
+          "correct": 50,
+          "support": 50
+        },
+        "blackmatter": {
+          "recall": 0.7441860465116279,
+          "correct": 32,
+          "support": 43
+        },
+        "bluesky": {
+          "recall": 1.0,
+          "correct": 34,
+          "support": 34
+        },
+        "clop": {
+          "recall": 0.9777777777777777,
+          "correct": 44,
+          "support": 45
+        },
+        "conti": {
+          "recall": 0.9583333333333334,
+          "correct": 46,
+          "support": 48
+        },
+        "darkside": {
+          "recall": 1.0,
+          "correct": 38,
+          "support": 38
+        },
+        "dharma": {
+          "recall": 1.0,
+          "correct": 46,
+          "support": 46
+        },
+        "doppelpaymer": {
+          "recall": 0.5909090909090909,
+          "correct": 13,
+          "support": 22
+        },
+        "exorcist": {
+          "recall": 1.0,
+          "correct": 17,
+          "support": 17
+        },
+        "gandcrab": {
+          "recall": 1.0,
+          "correct": 49,
+          "support": 49
+        },
+        "hive": {
+          "recall": 1.0,
+          "correct": 50,
+          "support": 50
+        },
+        "holyghost": {
+          "recall": 1.0,
+          "correct": 4,
+          "support": 4
+        },
+        "karma": {
+          "recall": 1.0,
+          "correct": 13,
+          "support": 13
+        },
+        "lockbit": {
+          "recall": 0.2765957446808511,
+          "correct": 13,
+          "support": 47
+        },
+        "lorenz": {
+          "recall": 1.0,
+          "correct": 16,
+          "support": 16
+        },
+        "makop": {
+          "recall": 0.5333333333333333,
+          "correct": 16,
+          "support": 30
+        },
+        "maui": {
+          "recall": 1.0,
+          "correct": 3,
+          "support": 3
+        },
+        "maze": {
+          "recall": 0.9787234042553191,
+          "correct": 46,
+          "support": 47
+        },
+        "mountlocker": {
+          "recall": 0.9285714285714286,
+          "correct": 13,
+          "support": 14
+        },
+        "nefilim": {
+          "recall": 0.972972972972973,
+          "correct": 36,
+          "support": 37
+        },
+        "netwalker": {
+          "recall": 0.98,
+          "correct": 49,
+          "support": 50
+        },
+        "phobos": {
+          "recall": 1.0,
+          "correct": 49,
+          "support": 49
+        },
+        "playcrypt": {
+          "recall": 1.0,
+          "correct": 43,
+          "support": 43
+        },
+        "pysa": {
+          "recall": 1.0,
+          "correct": 38,
+          "support": 38
+        },
+        "quantum": {
+          "recall": 1.0,
+          "correct": 6,
+          "support": 6
+        },
+        "ragnarok": {
+          "recall": 1.0,
+          "correct": 42,
+          "support": 42
+        },
+        "ransomexx": {
+          "recall": 0.7692307692307693,
+          "correct": 10,
+          "support": 13
+        },
+        "revil": {
+          "recall": 0.2127659574468085,
+          "correct": 10,
+          "support": 47
+        },
+        "ryuk": {
+          "recall": 0.9787234042553191,
+          "correct": 46,
+          "support": 47
+        },
+        "stop": {
+          "recall": 0.9714285714285714,
+          "correct": 34,
+          "support": 35
+        },
+        "wastedlocker": {
+          "recall": 0.7222222222222222,
+          "correct": 26,
+          "support": 36
+        },
+        "zeppelin": {
+          "recall": 0.7222222222222222,
+          "correct": 13,
+          "support": 18
+        }
+      },
+      "ransomware_recall_by_family": {
+        "avaddon": {
+          "n": 49,
+          "recall": 1.0,
+          "detected": 49
+        },
+        "avoslocker": {
+          "n": 50,
+          "recall": 1.0,
+          "detected": 50
+        },
+        "babuk": {
+          "n": 42,
+          "recall": 1.0,
+          "detected": 42
+        },
+        "bianlian": {
+          "n": 11,
+          "recall": 1.0,
+          "detected": 11
+        },
+        "blackbasta": {
+          "n": 30,
+          "recall": 0.7666666666666667,
+          "detected": 23
+        },
+        "blackbyte": {
+          "n": 7,
+          "recall": 0.42857142857142855,
+          "detected": 3
+        },
+        "blackcat": {
+          "n": 50,
+          "recall": 1.0,
+          "detected": 50
+        },
+        "blackmatter": {
+          "n": 43,
+          "recall": 0.7441860465116279,
+          "detected": 32
+        },
+        "bluesky": {
+          "n": 34,
+          "recall": 1.0,
+          "detected": 34
+        },
+        "clop": {
+          "n": 45,
+          "recall": 0.9777777777777777,
+          "detected": 44
+        },
+        "conti": {
+          "n": 48,
+          "recall": 0.9583333333333334,
+          "detected": 46
+        },
+        "darkside": {
+          "n": 38,
+          "recall": 1.0,
+          "detected": 38
+        },
+        "dharma": {
+          "n": 46,
+          "recall": 1.0,
+          "detected": 46
+        },
+        "doppelpaymer": {
+          "n": 22,
+          "recall": 0.5909090909090909,
+          "detected": 13
+        },
+        "exorcist": {
+          "n": 17,
+          "recall": 1.0,
+          "detected": 17
+        },
+        "gandcrab": {
+          "n": 49,
+          "recall": 1.0,
+          "detected": 49
+        },
+        "hive": {
+          "n": 50,
+          "recall": 1.0,
+          "detected": 50
+        },
+        "holyghost": {
+          "n": 4,
+          "recall": 1.0,
+          "detected": 4
+        },
+        "karma": {
+          "n": 13,
+          "recall": 1.0,
+          "detected": 13
+        },
+        "lockbit": {
+          "n": 47,
+          "recall": 0.2765957446808511,
+          "detected": 13
+        },
+        "lorenz": {
+          "n": 16,
+          "recall": 1.0,
+          "detected": 16
+        },
+        "makop": {
+          "n": 30,
+          "recall": 0.5333333333333333,
+          "detected": 16
+        },
+        "maui": {
+          "n": 3,
+          "recall": 1.0,
+          "detected": 3
+        },
+        "maze": {
+          "n": 47,
+          "recall": 0.9787234042553191,
+          "detected": 46
+        },
+        "mountlocker": {
+          "n": 14,
+          "recall": 0.9285714285714286,
+          "detected": 13
+        },
+        "nefilim": {
+          "n": 37,
+          "recall": 0.972972972972973,
+          "detected": 36
+        },
+        "netwalker": {
+          "n": 50,
+          "recall": 0.98,
+          "detected": 49
+        },
+        "phobos": {
+          "n": 49,
+          "recall": 1.0,
+          "detected": 49
+        },
+        "playcrypt": {
+          "n": 43,
+          "recall": 1.0,
+          "detected": 43
+        },
+        "pysa": {
+          "n": 38,
+          "recall": 1.0,
+          "detected": 38
+        },
+        "quantum": {
+          "n": 6,
+          "recall": 1.0,
+          "detected": 6
+        },
+        "ragnarok": {
+          "n": 42,
+          "recall": 1.0,
+          "detected": 42
+        },
+        "ransomexx": {
+          "n": 13,
+          "recall": 0.7692307692307693,
+          "detected": 10
+        },
+        "revil": {
+          "n": 47,
+          "recall": 0.2127659574468085,
+          "detected": 10
+        },
+        "ryuk": {
+          "n": 47,
+          "recall": 0.9787234042553191,
+          "detected": 46
+        },
+        "stop": {
+          "n": 35,
+          "recall": 0.9714285714285714,
+          "detected": 34
+        },
+        "wastedlocker": {
+          "n": 36,
+          "recall": 0.7222222222222222,
+          "detected": 26
+        },
+        "zeppelin": {
+          "n": 18,
+          "recall": 0.7222222222222222,
+          "detected": 13
+        }
+      },
+      "pipeline": "imports_baseline",
+      "model": "names_tfidf_LogReg",
+      "scheme": "kfold_pooled",
+      "n_configs": 1,
+      "fold_mean": {
+        "accuracy": 0.899368,
+        "balanced_accuracy": 0.899506,
+        "macro_f1": 0.898518,
+        "roc_auc": 0.959834
+      },
+      "fold_sd": {
+        "accuracy": 0.068838,
+        "balanced_accuracy": 0.069353,
+        "macro_f1": 0.070037,
+        "roc_auc": 0.039605
+      },
+      "lofo_mean_recall": 0.883322,
+      "lofo_weighted_recall": 0.885466,
+      "lofo_recall_by_family": {
+        "avaddon": 1.0,
+        "avoslocker": 1.0,
+        "babuk": 1.0,
+        "bianlian": 1.0,
+        "blackbasta": 0.633333,
+        "blackbyte": 0.571429,
+        "blackcat": 1.0,
+        "blackmatter": 0.72093,
+        "bluesky": 1.0,
+        "clop": 0.977778,
+        "conti": 0.958333,
+        "darkside": 1.0,
+        "dharma": 1.0,
+        "doppelpaymer": 0.636364,
+        "exorcist": 1.0,
+        "gandcrab": 1.0,
+        "hive": 1.0,
+        "holyghost": 1.0,
+        "karma": 1.0,
+        "lockbit": 0.276596,
+        "lorenz": 1.0,
+        "makop": 0.533333,
+        "maui": 1.0,
+        "maze": 0.978723,
+        "mountlocker": 0.928571,
+        "nefilim": 0.972973,
+        "netwalker": 0.98,
+        "phobos": 1.0,
+        "playcrypt": 1.0,
+        "pysa": 1.0,
+        "quantum": 1.0,
+        "ragnarok": 1.0,
+        "ransomexx": 0.769231,
+        "revil": 0.212766,
+        "ryuk": 1.0,
+        "stop": 0.971429,
+        "wastedlocker": 0.722222,
+        "zeppelin": 0.722222
+      },
+      "config": {
+        "pipeline": "imports_baseline",
+        "model": "names_tfidf_LogReg",
+        "config": "names_tfidf",
+        "imports": "manifests\\imports\\imports_flat.json",
+        "n_files_without_imports": 99,
+        "features": "TfidfVectorizer(binary=True, sublinear_tf=True, min_df=2) over import names, fit on training rows",
+        "classifier": {
+          "name": "LogReg",
+          "estimator": "LogisticRegression(max_iter=4000, random_state=42)",
+          "C_grid": [
+            0.1,
+            1,
+            10
+          ],
+          "C_selection": "GridSearchCV(StratifiedKFold(2, shuffle, rs=42), f1_macro) inside training rows",
+          "C_chosen": {
+            "kfold": {
+              "0": {
+                "C": 10,
+                "cv_f1_macro": 0.9821,
+                "n_features": 31601
+              },
+              "1": {
+                "C": 10,
+                "cv_f1_macro": 0.9861,
+                "n_features": 30098
+              },
+              "2": {
+                "C": 10,
+                "cv_f1_macro": 0.9837,
+                "n_features": 29039
+              },
+              "3": {
+                "C": 10,
+                "cv_f1_macro": 0.9837,
+                "n_features": 25420
+              },
+              "4": {
+                "C": 10,
+                "cv_f1_macro": 0.9668,
+                "n_features": 23765
+              }
+            },
+            "lofo": {
+              "avaddon": {
+                "C": 10,
+                "cv_f1_macro": 0.9812
+              },
+              "avoslocker": {
+                "C": 10,
+                "cv_f1_macro": 0.9823
+              },
+              "babuk": {
+                "C": 10,
+                "cv_f1_macro": 0.9801
+              },
+              "bianlian": {
+                "C": 10,
+                "cv_f1_macro": 0.9819
+              },
+              "blackbasta": {
+                "C": 10,
+                "cv_f1_macro": 0.9825
+              },
+              "blackbyte": {
+                "C": 10,
+                "cv_f1_macro": 0.9823
+              },
+              "blackcat": {
+                "C": 10,
+                "cv_f1_macro": 0.9816
+              },
+              "blackmatter": {
+                "C": 10,
+                "cv_f1_macro": 0.9824
+              },
+              "bluesky": {
+                "C": 10,
+                "cv_f1_macro": 0.9829
+              },
+              "clop": {
+                "C": 10,
+                "cv_f1_macro": 0.982
+              },
+              "conti": {
+                "C": 10,
+                "cv_f1_macro": 0.9828
+              },
+              "darkside": {
+                "C": 10,
+                "cv_f1_macro": 0.9824
+              },
+              "dharma": {
+                "C": 10,
+                "cv_f1_macro": 0.9836
+              },
+              "doppelpaymer": {
+                "C": 10,
+                "cv_f1_macro": 0.9818
+              },
+              "exorcist": {
+                "C": 10,
+                "cv_f1_macro": 0.9818
+              },
+              "gandcrab": {
+                "C": 10,
+                "cv_f1_macro": 0.9812
+              },
+              "hive": {
+                "C": 10,
+                "cv_f1_macro": 0.9812
+              },
+              "holyghost": {
+                "C": 10,
+                "cv_f1_macro": 0.9808
+              },
+              "karma": {
+                "C": 10,
+                "cv_f1_macro": 0.9815
+              },
+              "lockbit": {
+                "C": 10,
+                "cv_f1_macro": 0.982
+              },
+              "lorenz": {
+                "C": 10,
+                "cv_f1_macro": 0.9814
+              },
+              "makop": {
+                "C": 10,
+                "cv_f1_macro": 0.9817
+              },
+              "maui": {
+                "C": 10,
+                "cv_f1_macro": 0.9815
+              },
+              "maze": {
+                "C": 10,
+                "cv_f1_macro": 0.9824
+              },
+              "mountlocker": {
+                "C": 10,
+                "cv_f1_macro": 0.9814
+              },
+              "nefilim": {
+                "C": 10,
+                "cv_f1_macro": 0.9817
+              },
+              "netwalker": {
+                "C": 10,
+                "cv_f1_macro": 0.9827
+              },
+              "phobos": {
+                "C": 10,
+                "cv_f1_macro": 0.9804
+              },
+              "playcrypt": {
+                "C": 10,
+                "cv_f1_macro": 0.9828
+              },
+              "pysa": {
+                "C": 10,
+                "cv_f1_macro": 0.9805
+              },
+              "quantum": {
+                "C": 10,
+                "cv_f1_macro": 0.9827
+              },
+              "ragnarok": {
+                "C": 10,
+                "cv_f1_macro": 0.9824
+              },
+              "ransomexx": {
+                "C": 10,
+                "cv_f1_macro": 0.983
+              },
+              "revil": {
+                "C": 10,
+                "cv_f1_macro": 0.9816
+              },
+              "ryuk": {
+                "C": 10,
+                "cv_f1_macro": 0.9828
+              },
+              "stop": {
+                "C": 10,
+                "cv_f1_macro": 0.9821
+              },
+              "wastedlocker": {
+                "C": 10,
+                "cv_f1_macro": 0.9809
+              },
+              "zeppelin": {
+                "C": 10,
+                "cv_f1_macro": 0.9814
+              }
+            }
+          }
+        },
+        "decision": "argmax (predict)",
+        "seed": 42,
+        "pre_registered": true,
+        "schemes": [
+          "kfold",
+          "lofo"
+        ]
+      }
+    }
+  ],
+  "elapsed_seconds": 1849.58,
+  "floors": {
+    "pooled": {
+      "majority": {
+        "accuracy": 0.5136,
+        "balanced_accuracy": 0.5,
+        "recall_goodware": 1.0,
+        "recall_ransomware": 0.0,
+        "macro_f1": 0.3393,
+        "false_positive_rate": 0.0
+      },
+      "x86_rule": {
+        "accuracy": 0.8379,
+        "balanced_accuracy": 0.8398,
+        "recall_goodware": 0.7696,
+        "recall_ransomware": 0.91,
+        "macro_f1": 0.8375,
+        "false_positive_rate": 0.2304
+      }
+    },
+    "per_fold": {
+      "0": {
+        "majority": {
+          "accuracy": 0.5288,
+          "balanced_accuracy": 0.5,
+          "recall_goodware": 1.0,
+          "recall_ransomware": 0.0,
+          "macro_f1": 0.3459,
+          "false_positive_rate": 0.0
+        },
+        "x86_rule": {
+          "accuracy": 0.7959,
+          "balanced_accuracy": 0.8044,
+          "recall_goodware": 0.6561,
+          "recall_ransomware": 0.9528,
+          "macro_f1": 0.7938,
+          "false_positive_rate": 0.3439
+        }
+      },
+      "1": {
+        "majority": {
+          "accuracy": 0.5097,
+          "balanced_accuracy": 0.5,
+          "recall_goodware": 1.0,
+          "recall_ransomware": 0.0,
+          "macro_f1": 0.3376,
+          "false_positive_rate": 0.0
+        },
+        "x86_rule": {
+          "accuracy": 0.8721,
+          "balanced_accuracy": 0.8738,
+          "recall_goodware": 0.7871,
+          "recall_ransomware": 0.9605,
+          "macro_f1": 0.8715,
+          "false_positive_rate": 0.2129
+        }
+      },
+      "2": {
+        "majority": {
+          "accuracy": 0.5097,
+          "balanced_accuracy": 0.5,
+          "recall_goodware": 1.0,
+          "recall_ransomware": 0.0,
+          "macro_f1": 0.3376,
+          "false_positive_rate": 0.0
+        },
+        "x86_rule": {
+          "accuracy": 0.7694,
+          "balanced_accuracy": 0.7693,
+          "recall_goodware": 0.7719,
+          "recall_ransomware": 0.7668,
+          "macro_f1": 0.7693,
+          "false_positive_rate": 0.2281
+        }
+      },
+      "3": {
+        "majority": {
+          "accuracy": 0.5117,
+          "balanced_accuracy": 0.5,
+          "recall_goodware": 1.0,
+          "recall_ransomware": 0.0,
+          "macro_f1": 0.3385,
+          "false_positive_rate": 0.0
+        },
+        "x86_rule": {
+          "accuracy": 0.8813,
+          "balanced_accuracy": 0.8818,
+          "recall_goodware": 0.8593,
+          "recall_ransomware": 0.9044,
+          "macro_f1": 0.8813,
+          "false_positive_rate": 0.1407
+        }
+      },
+      "4": {
+        "majority": {
+          "accuracy": 0.5077,
+          "balanced_accuracy": 0.5,
+          "recall_goodware": 1.0,
+          "recall_ransomware": 0.0,
+          "macro_f1": 0.3367,
+          "false_positive_rate": 0.0
+        },
+        "x86_rule": {
+          "accuracy": 0.8726,
+          "balanced_accuracy": 0.874,
+          "recall_goodware": 0.7833,
+          "recall_ransomware": 0.9647,
+          "macro_f1": 0.8718,
+          "false_positive_rate": 0.2167
+        }
+      }
+    }
+  },
+  "n_configs": 1,
+  "config": {
+    "pipeline": "imports_baseline",
+    "model": "names_tfidf_LogReg",
+    "config": "names_tfidf",
+    "imports": "manifests\\imports\\imports_flat.json",
+    "n_files_without_imports": 99,
+    "features": "TfidfVectorizer(binary=True, sublinear_tf=True, min_df=2) over import names, fit on training rows",
+    "classifier": {
+      "name": "LogReg",
+      "estimator": "LogisticRegression(max_iter=4000, random_state=42)",
+      "C_grid": [
+        0.1,
+        1,
+        10
+      ],
+      "C_selection": "GridSearchCV(StratifiedKFold(2, shuffle, rs=42), f1_macro) inside training rows",
+      "C_chosen": {
+        "kfold": {
+          "0": {
+            "C": 10,
+            "cv_f1_macro": 0.9821,
+            "n_features": 31601
+          },
+          "1": {
+            "C": 10,
+            "cv_f1_macro": 0.9861,
+            "n_features": 30098
+          },
+          "2": {
+            "C": 10,
+            "cv_f1_macro": 0.9837,
+            "n_features": 29039
+          },
+          "3": {
+            "C": 10,
+            "cv_f1_macro": 0.9837,
+            "n_features": 25420
+          },
+          "4": {
+            "C": 10,
+            "cv_f1_macro": 0.9668,
+            "n_features": 23765
+          }
+        },
+        "lofo": {
+          "avaddon": {
+            "C": 10,
+            "cv_f1_macro": 0.9812
+          },
+          "avoslocker": {
+            "C": 10,
+            "cv_f1_macro": 0.9823
+          },
+          "babuk": {
+            "C": 10,
+            "cv_f1_macro": 0.9801
+          },
+          "bianlian": {
+            "C": 10,
+            "cv_f1_macro": 0.9819
+          },
+          "blackbasta": {
+            "C": 10,
+            "cv_f1_macro": 0.9825
+          },
+          "blackbyte": {
+            "C": 10,
+            "cv_f1_macro": 0.9823
+          },
+          "blackcat": {
+            "C": 10,
+            "cv_f1_macro": 0.9816
+          },
+          "blackmatter": {
+            "C": 10,
+            "cv_f1_macro": 0.9824
+          },
+          "bluesky": {
+            "C": 10,
+            "cv_f1_macro": 0.9829
+          },
+          "clop": {
+            "C": 10,
+            "cv_f1_macro": 0.982
+          },
+          "conti": {
+            "C": 10,
+            "cv_f1_macro": 0.9828
+          },
+          "darkside": {
+            "C": 10,
+            "cv_f1_macro": 0.9824
+          },
+          "dharma": {
+            "C": 10,
+            "cv_f1_macro": 0.9836
+          },
+          "doppelpaymer": {
+            "C": 10,
+            "cv_f1_macro": 0.9818
+          },
+          "exorcist": {
+            "C": 10,
+            "cv_f1_macro": 0.9818
+          },
+          "gandcrab": {
+            "C": 10,
+            "cv_f1_macro": 0.9812
+          },
+          "hive": {
+            "C": 10,
+            "cv_f1_macro": 0.9812
+          },
+          "holyghost": {
+            "C": 10,
+            "cv_f1_macro": 0.9808
+          },
+          "karma": {
+            "C": 10,
+            "cv_f1_macro": 0.9815
+          },
+          "lockbit": {
+            "C": 10,
+            "cv_f1_macro": 0.982
+          },
+          "lorenz": {
+            "C": 10,
+            "cv_f1_macro": 0.9814
+          },
+          "makop": {
+            "C": 10,
+            "cv_f1_macro": 0.9817
+          },
+          "maui": {
+            "C": 10,
+            "cv_f1_macro": 0.9815
+          },
+          "maze": {
+            "C": 10,
+            "cv_f1_macro": 0.9824
+          },
+          "mountlocker": {
+            "C": 10,
+            "cv_f1_macro": 0.9814
+          },
+          "nefilim": {
+            "C": 10,
+            "cv_f1_macro": 0.9817
+          },
+          "netwalker": {
+            "C": 10,
+            "cv_f1_macro": 0.9827
+          },
+          "phobos": {
+            "C": 10,
+            "cv_f1_macro": 0.9804
+          },
+          "playcrypt": {
+            "C": 10,
+            "cv_f1_macro": 0.9828
+          },
+          "pysa": {
+            "C": 10,
+            "cv_f1_macro": 0.9805
+          },
+          "quantum": {
+            "C": 10,
+            "cv_f1_macro": 0.9827
+          },
+          "ragnarok": {
+            "C": 10,
+            "cv_f1_macro": 0.9824
+          },
+          "ransomexx": {
+            "C": 10,
+            "cv_f1_macro": 0.983
+          },
+          "revil": {
+            "C": 10,
+            "cv_f1_macro": 0.9816
+          },
+          "ryuk": {
+            "C": 10,
+            "cv_f1_macro": 0.9828
+          },
+          "stop": {
+            "C": 10,
+            "cv_f1_macro": 0.9821
+          },
+          "wastedlocker": {
+            "C": 10,
+            "cv_f1_macro": 0.9809
+          },
+          "zeppelin": {
+            "C": 10,
+            "cv_f1_macro": 0.9814
+          }
+        }
+      }
+    },
+    "decision": "argmax (predict)",
+    "seed": 42,
+    "pre_registered": true,
+    "schemes": [
+      "kfold",
+      "lofo"
+    ]
+  },
+  "lofo_mean_recall": 0.883322,
+  "lofo_weighted_recall": 0.885466,
+  "caveat": "x64 ransomware concentrates in fold 2: 59 of the 114 x64 ransomware files, of which Hive is 43. Per-fold x64 numbers outside fold 2 rest on a handful of files."
+}
