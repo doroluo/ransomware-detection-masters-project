@@ -228,32 +228,168 @@ def run_once(args, payload, seed, quiet=False):
     }
 
 
-def print_report(result):
-    test = result["test"]
-    print("\n=== Test set ===")
-    print(f"threshold (chosen on val) : {result['threshold']:.4f}")
-    print(f"accuracy  {test['accuracy']:.4f}")
-    print(f"precision {test['precision']:.4f}")
-    print(f"recall    {test['recall']:.4f}")
-    print(f"f1        {test['f1']:.4f}")
-    print(f"auc       {test['auc']:.4f}")
-    print("\nconfusion matrix")
-    print("                 predicted good   predicted ransom")
-    print(f"actual good      {test['tn']:>14}   {test['fp']:>16}")
-    print(f"actual ransom    {test['fn']:>14}   {test['tp']:>16}")
+METRIC_LABELS = [
+    ("accuracy", "Accuracy", "of all samples, how many were called correctly"),
+    ("precision", "Precision", "of the samples flagged as ransomware, how many were"),
+    ("recall", "Recall", "of the actual ransomware, how much was caught"),
+    ("f1", "F1", "harmonic mean of precision and recall"),
+    ("auc", "ROC-AUC", "ranking quality, independent of the threshold"),
+]
 
-    per_family = defaultdict(lambda: [0, 0])
+
+def as_percent(value):
+    return "n/a" if value != value else f"{value * 100:.2f}%"
+
+
+def summarize(values):
+    """mean / std / min / max for one metric across seeds."""
+    clean = [v for v in values if v == v]
+    if not clean:
+        return {"mean": None, "std": None, "min": None, "max": None}
+    mean = sum(clean) / len(clean)
+    std = (sum((v - mean) ** 2 for v in clean) / len(clean)) ** 0.5
+    return {
+        "mean": round(mean, 4),
+        "std": round(std, 4),
+        "min": round(min(clean), 4),
+        "max": round(max(clean), 4),
+    }
+
+
+def per_family_recall(result):
+    """How much of each ransomware family the model caught, worst family first."""
+    tally = defaultdict(lambda: [0, 0])
     for graph, probability in zip(result["test_graphs"], result["test_probabilities"]):
         if graph["label"] != 1:
             continue
-        per_family[graph["family"]][1] += 1
+        tally[graph["family"]][1] += 1
         if probability >= result["threshold"]:
-            per_family[graph["family"]][0] += 1
+            tally[graph["family"]][0] += 1
 
-    if per_family:
-        print("\nper-family recall (test)")
-        for family, (hit, total) in sorted(per_family.items(), key=lambda kv: kv[1][0] / kv[1][1]):
-            print(f"  {family:<15} {hit:>3}/{total:<3}  {hit/total:.2f}")
+    return {
+        family: {"detected": hit, "total": total, "recall": round(hit / total, 4)}
+        for family, (hit, total) in sorted(tally.items(), key=lambda kv: (kv[1][0] / kv[1][1], kv[0]))
+    }
+
+
+def round_metrics(metrics):
+    """Trims 16-digit floats down to something a human can scan."""
+    return {
+        key: (round(value, 4) if isinstance(value, float) else value)
+        for key, value in metrics.items()
+    }
+
+
+def print_report(result, results, families):
+    test = result["test"]
+    total = test["tp"] + test["tn"] + test["fp"] + test["fn"]
+
+    print("\n" + "=" * 62)
+    print(f"TEST RESULTS   (best of {len(results)} seed"
+          f"{'s' if len(results) > 1 else ''}, {total} held-out samples)")
+    print("=" * 62)
+
+    spread = {key: summarize([r["test"][key] for r in results]) for key, _, _ in METRIC_LABELS}
+    show_spread = len(results) > 1
+
+    header = f"{'':<11}{'best run':>10}"
+    if show_spread:
+        header += f"{'mean':>10}{'std dev':>10}"
+    print(header)
+    for key, label, explanation in METRIC_LABELS:
+        line = f"{label:<11}{as_percent(test[key]):>10}"
+        if show_spread:
+            mean, std = spread[key]["mean"], spread[key]["std"]
+            line += f"{as_percent(mean) if mean is not None else 'n/a':>10}"
+            line += f"{as_percent(std) if std is not None else 'n/a':>10}"
+        print(f"{line}   {explanation}")
+
+    print(f"\nDecision threshold {result['threshold']:.4f}, chosen on validation "
+          f"(best epoch {result['best_epoch']}).")
+
+    print("\nConfusion matrix")
+    print(f"  {'':<22}{'called goodware':>17}{'called ransomware':>19}")
+    print(f"  {'really goodware':<22}{test['tn']:>17}{test['fp']:>19}"
+          f"   <- {test['fp']} false alarm{'s' if test['fp'] != 1 else ''}")
+    print(f"  {'really ransomware':<22}{test['fn']:>17}{test['tp']:>19}"
+          f"   <- {test['fn']} missed")
+
+    if families:
+        print("\nPer-family recall, worst first")
+        for family, stats in families.items():
+            bar = "#" * round(stats["recall"] * 20)
+            print(f"  {family:<15}{stats['detected']:>3}/{stats['total']:<4}"
+                  f"{as_percent(stats['recall']):>8}  {bar}")
+        perfect = sum(1 for s in families.values() if s["recall"] == 1.0)
+        print(f"  ({perfect} of {len(families)} families fully detected)")
+
+
+def write_report(path, metrics):
+    """A markdown summary meant to be read, not parsed."""
+    summary = metrics["summary"]
+    best = summary["best_run"]
+    lines = [
+        "# GIN ransomware detection - results",
+        "",
+        f"Generated {metrics['created']} from `{metrics['dataset']['graphs']}`.",
+        "",
+        "## Test set",
+        "",
+        f"Best of {summary['seeds']} seed(s), evaluated once on "
+        f"{metrics['dataset']['splits']['test']['total']} held-out samples.",
+        "",
+    ]
+
+    if summary["seeds"] > 1:
+        lines += ["| Metric | Best run | Mean | Std dev |", "| --- | --- | --- | --- |"]
+        for key, label, _ in METRIC_LABELS:
+            spread = summary["spread"][key]
+            lines.append(f"| {label} | {as_percent(best['test'][key])} | "
+                         f"{as_percent(spread['mean'])} | {as_percent(spread['std'])} |")
+    else:
+        lines += ["| Metric | Value |", "| --- | --- |"]
+        for key, label, _ in METRIC_LABELS:
+            lines.append(f"| {label} | {as_percent(best['test'][key])} |")
+
+    test = best["test"]
+    lines += [
+        "",
+        f"Decision threshold {best['threshold']:.4f}, chosen on the validation split "
+        f"(best epoch {best['best_epoch']}).",
+        "",
+        "## Confusion matrix",
+        "",
+        "| | Called goodware | Called ransomware |",
+        "| --- | --- | --- |",
+        f"| **Really goodware** | {test['tn']} | {test['fp']} (false alarms) |",
+        f"| **Really ransomware** | {test['fn']} (missed) | {test['tp']} |",
+        "",
+    ]
+
+    if metrics["per_family_recall"]:
+        lines += ["## Per-family recall (worst first)", "",
+                  "| Family | Detected | Recall |", "| --- | --- | --- |"]
+        for family, stats in metrics["per_family_recall"].items():
+            lines.append(f"| {family} | {stats['detected']}/{stats['total']} | "
+                         f"{as_percent(stats['recall'])} |")
+        lines.append("")
+
+    config = metrics["config"]
+    lines += [
+        "## Configuration",
+        "",
+        f"{config['layers']} GIN layers, hidden dim {config['hidden_dim']}, "
+        f"embedding dim {config['embedding_dim']}, dropout {config['dropout']}, "
+        f"{config['pooling']} pooling, {config['adjacency_norm']} adjacency "
+        f"normalisation, {config['direction']} edge direction.",
+        "",
+        f"Trained with AdamW at lr {config['lr']}, batch size {config['batch_size']}, "
+        f"up to {config['epochs']} epochs, early stopping after "
+        f"{config['patience']} epochs without a validation gain.",
+        "",
+    ]
+
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def main(argv=None):
@@ -312,15 +448,52 @@ def main(argv=None):
         results.append(result)
 
     best = max(results, key=lambda r: r["val"]["f1"])
-    print_report(best)
+    families = per_family_recall(best)
+    print_report(best, results, families)
 
-    if len(results) > 1:
-        print(f"\n=== Across {len(results)} seeds ===")
-        for metric in ("accuracy", "precision", "recall", "f1", "auc"):
-            values = [r["test"][metric] for r in results]
-            mean = sum(values) / len(values)
-            std = (sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5
-            print(f"{metric:<10} {mean:.4f} +/- {std:.4f}")
+    # Ordered so the answer comes first: what the run scored, then the spread
+    # across seeds, then the per-seed detail, rather than 160 lines of floats.
+    metrics = {
+        "created": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "dataset": {
+            "graphs": str(graphs_path),
+            "vocab_size": len(payload["vocab"]),
+            "splits": {
+                split: {
+                    "total": counts[(split, 0)] + counts[(split, 1)],
+                    "goodware": counts[(split, 0)],
+                    "ransomware": counts[(split, 1)],
+                }
+                for split in SPLITS
+            },
+        },
+        "summary": {
+            "seeds": len(results),
+            "spread": {
+                key: summarize([r["test"][key] for r in results])
+                for key, _, _ in METRIC_LABELS
+            },
+            "best_run": {
+                "seed": best["seed"],
+                "best_epoch": best["best_epoch"],
+                "threshold": round(best["threshold"], 4),
+                "test": round_metrics(best["test"]),
+                "val": round_metrics(best["val"]),
+            },
+        },
+        "per_family_recall": families,
+        "config": vars(args),
+        "runs": [
+            {
+                "seed": r["seed"],
+                "best_epoch": r["best_epoch"],
+                "threshold": round(r["threshold"], 4),
+                "val": round_metrics(r["val"]),
+                "test": round_metrics(r["test"]),
+            }
+            for r in results
+        ],
+    }
 
     torch.save({"state_dict": best["model"].state_dict(),
                 "vocab": payload["vocab"],
@@ -329,13 +502,8 @@ def main(argv=None):
                out_dir / "model.pt")
 
     with open(out_dir / "metrics.json", "w", encoding="utf-8") as handle:
-        json.dump({
-            "args": vars(args),
-            "runs": [{"seed": r["seed"], "best_epoch": r["best_epoch"],
-                      "threshold": r["threshold"],
-                      "val": {k: v for k, v in r["val"].items()},
-                      "test": {k: v for k, v in r["test"].items()}} for r in results],
-        }, handle, indent=2)
+        json.dump(metrics, handle, indent=2)
+    write_report(out_dir / "report.md", metrics)
 
     with open(out_dir / "test_predictions.csv", "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
@@ -344,7 +512,7 @@ def main(argv=None):
             writer.writerow([graph["sha256"], graph["family"], graph["label"],
                              f"{probability:.6f}", int(probability >= best["threshold"])])
 
-    print(f"\nWrote model.pt, metrics.json and test_predictions.csv to {out_dir}")
+    print(f"\nWrote report.md, metrics.json, model.pt and test_predictions.csv to {out_dir}")
     return 0
 
 
