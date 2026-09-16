@@ -1,0 +1,13 @@
+# Datasets are too large for GitHub (100 MB per-file limit) and are
+# downloaded locally instead. See README.md for sources.
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
