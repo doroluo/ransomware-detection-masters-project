@@ -11,7 +11,7 @@ venv/
 .ipynb_checkpoints/
 
 # Model checkpoints and metrics
-runs/
+# runs/
 
 # macOS
 .DS_Store

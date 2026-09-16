@@ -1,0 +1,368 @@
+{
+  "created": "2026-09-16 07:27:07",
+  "dataset": {
+    "graphs": "data/graphs/graphs.pt",
+    "vocab_size": 256,
+    "splits": {
+      "train": {
+        "total": 1390,
+        "goodware": 730,
+        "ransomware": 660
+      },
+      "val": {
+        "total": 303,
+        "goodware": 157,
+        "ransomware": 146
+      },
+      "test": {
+        "total": 294,
+        "goodware": 155,
+        "ransomware": 139
+      }
+    }
+  },
+  "summary": {
+    "seeds": 5,
+    "spread": {
+      "accuracy": {
+        "mean": 0.9619,
+        "std": 0.0082,
+        "min": 0.949,
+        "max": 0.9694
+      },
+      "precision": {
+        "mean": 0.9651,
+        "std": 0.0051,
+        "min": 0.9577,
+        "max": 0.971
+      },
+      "recall": {
+        "mean": 0.954,
+        "std": 0.0174,
+        "min": 0.9281,
+        "max": 0.9784
+      },
+      "f1": {
+        "mean": 0.9594,
+        "std": 0.009,
+        "min": 0.9451,
+        "max": 0.968
+      },
+      "auc": {
+        "mean": 0.9931,
+        "std": 0.0023,
+        "min": 0.9903,
+        "max": 0.9958
+      }
+    },
+    "best_run": {
+      "seed": 46,
+      "best_epoch": 33,
+      "threshold": 0.0988,
+      "test": {
+        "accuracy": 0.9694,
+        "precision": 0.971,
+        "recall": 0.964,
+        "f1": 0.9675,
+        "auc": 0.9958,
+        "tp": 134,
+        "tn": 151,
+        "fp": 4,
+        "fn": 5
+      },
+      "val": {
+        "accuracy": 0.9868,
+        "precision": 0.9733,
+        "recall": 1.0,
+        "f1": 0.9865,
+        "auc": 0.9983,
+        "tp": 146,
+        "tn": 153,
+        "fp": 4,
+        "fn": 0
+      }
+    }
+  },
+  "per_family_recall": {
+    "makop": {
+      "detected": 4,
+      "total": 5,
+      "recall": 0.8
+    },
+    "nefilim": {
+      "detected": 4,
+      "total": 5,
+      "recall": 0.8
+    },
+    "babuk": {
+      "detected": 5,
+      "total": 6,
+      "recall": 0.8333
+    },
+    "conti": {
+      "detected": 6,
+      "total": 7,
+      "recall": 0.8571
+    },
+    "zeppelin": {
+      "detected": 6,
+      "total": 7,
+      "recall": 0.8571
+    },
+    "avaddon": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "blackmatter": {
+      "detected": 6,
+      "total": 6,
+      "recall": 1.0
+    },
+    "darkside": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "dharma": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "doppelpaymer": {
+      "detected": 3,
+      "total": 3,
+      "recall": 1.0
+    },
+    "exorcist": {
+      "detected": 3,
+      "total": 3,
+      "recall": 1.0
+    },
+    "gandcrab": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "lockbit": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "maze": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "mountlocker": {
+      "detected": 2,
+      "total": 2,
+      "recall": 1.0
+    },
+    "netwalker": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "phobos": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "pysa": {
+      "detected": 6,
+      "total": 6,
+      "recall": 1.0
+    },
+    "ragnarok": {
+      "detected": 5,
+      "total": 5,
+      "recall": 1.0
+    },
+    "ransomexx": {
+      "detected": 2,
+      "total": 2,
+      "recall": 1.0
+    },
+    "revil": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "ryuk": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "stop": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "wastedlocker": {
+      "detected": 5,
+      "total": 5,
+      "recall": 1.0
+    }
+  },
+  "config": {
+    "graphs": "data/graphs/graphs.pt",
+    "out": "runs/gin",
+    "epochs": 60,
+    "batch_size": 32,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "clip": 2.0,
+    "embedding_dim": 64,
+    "hidden_dim": 64,
+    "layers": 3,
+    "dropout": 0.5,
+    "adjacency_norm": "row",
+    "direction": "both",
+    "pooling": "sum",
+    "patience": 15,
+    "select_on": "auc",
+    "tune_threshold": true,
+    "seed": 42,
+    "seeds": 5,
+    "device": "cpu",
+    "log_every": 5
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "best_epoch": 18,
+      "threshold": 0.8576,
+      "val": {
+        "accuracy": 0.967,
+        "precision": 0.9658,
+        "recall": 0.9658,
+        "f1": 0.9658,
+        "auc": 0.9957,
+        "tp": 141,
+        "tn": 152,
+        "fp": 5,
+        "fn": 5
+      },
+      "test": {
+        "accuracy": 0.949,
+        "precision": 0.9627,
+        "recall": 0.9281,
+        "f1": 0.9451,
+        "auc": 0.9909,
+        "tp": 129,
+        "tn": 150,
+        "fp": 5,
+        "fn": 10
+      }
+    },
+    {
+      "seed": 43,
+      "best_epoch": 25,
+      "threshold": 0.2801,
+      "val": {
+        "accuracy": 0.9703,
+        "precision": 0.9597,
+        "recall": 0.9795,
+        "f1": 0.9695,
+        "auc": 0.9965,
+        "tp": 143,
+        "tn": 151,
+        "fp": 6,
+        "fn": 3
+      },
+      "test": {
+        "accuracy": 0.966,
+        "precision": 0.9708,
+        "recall": 0.9568,
+        "f1": 0.9638,
+        "auc": 0.9926,
+        "tp": 133,
+        "tn": 151,
+        "fp": 4,
+        "fn": 6
+      }
+    },
+    {
+      "seed": 44,
+      "best_epoch": 15,
+      "threshold": 0.8638,
+      "val": {
+        "accuracy": 0.9637,
+        "precision": 0.972,
+        "recall": 0.9521,
+        "f1": 0.9619,
+        "auc": 0.9958,
+        "tp": 139,
+        "tn": 153,
+        "fp": 4,
+        "fn": 7
+      },
+      "test": {
+        "accuracy": 0.9558,
+        "precision": 0.9632,
+        "recall": 0.9424,
+        "f1": 0.9527,
+        "auc": 0.9903,
+        "tp": 131,
+        "tn": 150,
+        "fp": 5,
+        "fn": 8
+      }
+    },
+    {
+      "seed": 45,
+      "best_epoch": 15,
+      "threshold": 0.0007,
+      "val": {
+        "accuracy": 0.967,
+        "precision": 0.9474,
+        "recall": 0.9863,
+        "f1": 0.9664,
+        "auc": 0.9938,
+        "tp": 144,
+        "tn": 149,
+        "fp": 8,
+        "fn": 2
+      },
+      "test": {
+        "accuracy": 0.9694,
+        "precision": 0.9577,
+        "recall": 0.9784,
+        "f1": 0.968,
+        "auc": 0.9958,
+        "tp": 136,
+        "tn": 149,
+        "fp": 6,
+        "fn": 3
+      }
+    },
+    {
+      "seed": 46,
+      "best_epoch": 33,
+      "threshold": 0.0988,
+      "val": {
+        "accuracy": 0.9868,
+        "precision": 0.9733,
+        "recall": 1.0,
+        "f1": 0.9865,
+        "auc": 0.9983,
+        "tp": 146,
+        "tn": 153,
+        "fp": 4,
+        "fn": 0
+      },
+      "test": {
+        "accuracy": 0.9694,
+        "precision": 0.971,
+        "recall": 0.964,
+        "f1": 0.9675,
+        "auc": 0.9958,
+        "tp": 134,
+        "tn": 151,
+        "fp": 4,
+        "fn": 5
+      }
+    }
+  ]
+}
