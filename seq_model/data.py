@@ -69,11 +69,18 @@ if str(REPO) not in sys.path:
 # ---------------------------------------------------------------------------
 SHARED = Path(os.environ.get(
     "RANSOM_SHARED", r"C:/Users/chaoa/Downloads/asm and mm/Shared"))
-MN_DIRS = (SHARED / "Extract" / "mn",
-           SHARED / "Extract_Goodware_Balanced" / "mn")
+# Which token tree the model reads. "mn" is the mnemonic stream of the
+# committed study; "mn_api_top" is the API-inlined stream with rare names
+# collapsed (asm_tool/rewrite_streams.py, asm_tool/cap_api_vocab.py). A
+# non-default stream gets its own token cache so global ids never mix.
+STREAM = os.environ.get("RANSOM_SEQ_STREAM", "mn")
+MN_DIRS = (SHARED / "Extract" / STREAM,
+           SHARED / "Extract_Goodware_Balanced" / STREAM)
 WEIGHTS_ROOT = Path(os.environ.get(
     "RANSOM_SEQ_MODELS", r"C:/Users/chaoa/Downloads/seq_models"))
-CACHE_ROOT = Path(os.environ.get("RANSOM_SEQ_CACHE", WEIGHTS_ROOT / "token_cache"))
+CACHE_ROOT = Path(os.environ.get(
+    "RANSOM_SEQ_CACHE",
+    WEIGHTS_ROOT / ("token_cache" if STREAM == "mn" else f"token_cache_{STREAM}")))
 
 PAD_ID = 0
 UNK_ID = 1

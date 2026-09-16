@@ -119,7 +119,8 @@ class Tee:
 def fingerprint(cfg: dict) -> str:
     """Everything that changes what a run computes, and nothing else."""
     keep = {k: cfg[k] for k in ("model", "windows", "vocabulary", "sampler",
-                                "imports", "pretrain", "training", "evaluation")
+                                "imports", "pretrain", "training", "evaluation",
+                                "stream")
             if k in cfg}
     keep = json.loads(json.dumps(keep, sort_keys=True))
     for k in ("num_workers", "eval_workers"):
@@ -312,7 +313,9 @@ def run_dataset(cfg: dict, dataset: str, out_root: Path, device, log,
     abl = cfg.get("ablation")
     # an imports run gets its own model and run directories, so it can never
     # overwrite the committed no-imports study or reuse its cached runs
-    name = (f"ablation_{abl}" if abl else MODEL) + ("_imports" if imports is not None else "")
+    name = ((f"ablation_{abl}" if abl else MODEL)
+            + (f"_{D.STREAM}" if D.STREAM != "mn" else "")
+            + ("_imports" if imports is not None else ""))
     model_dir = out_root / dataset / PIPELINE / name
     run_dir = Path(cfg["paths"]["weights"]) / "runs" / dataset / name
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -434,6 +437,12 @@ def main() -> int:
                          "side-input. NOT used for the committed run.")
     ap.add_argument("--no-pretrain", action="store_true",
                     help="train the encoder from scratch (overrides the config)")
+    ap.add_argument("--stream", default="",
+                    help="token tree to read (mn, mn_api_top); must equal the "
+                         "RANSOM_SEQ_STREAM the process was started with. A "
+                         "non-default stream uses paths.token_cache_<stream> and "
+                         "pretrain.checkpoint_<stream> and writes to "
+                         "<model>_<stream>/")
     ap.add_argument("--log", default="")
     ap.add_argument("--max-runs", type=int, default=0,
                     help=f"exit with status {MORE_WORK} after this many "
@@ -449,6 +458,14 @@ def main() -> int:
                           else "cpu")
 
     cfg = CFG.load(a.config)
+    if a.stream and a.stream != D.STREAM:
+        raise SystemExit(f"--stream {a.stream} but RANSOM_SEQ_STREAM={D.STREAM}; "
+                         f"set the environment variable before starting")
+    if D.STREAM != "mn":
+        cfg["paths"]["token_cache"] = str(D.CACHE_ROOT)
+        ck = Path(cfg["pretrain"]["checkpoint"])
+        cfg["pretrain"]["checkpoint"] = str(ck.with_name(f"{ck.stem}_{D.STREAM}{ck.suffix}"))
+        cfg["stream"] = D.STREAM
     if a.no_pretrain:
         cfg["pretrain"]["enabled"] = False
     imports = None

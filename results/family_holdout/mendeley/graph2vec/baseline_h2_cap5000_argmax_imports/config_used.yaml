@@ -1,0 +1,44 @@
+pipeline: graph2vec
+config_name: baseline_h2_cap5000
+source: results\graph2vec\tuned\mendeley\chosen.json
+selected_by: group-CV inside the fixed split's TRAIN rows (pre-registered baseline)
+construction:
+  max_blocks: 5000
+  windows: 1
+  calls: true
+  cross_section: false
+  extern: false
+  max_insns: 80000
+  keep_edges:
+  - 0
+  - 1
+  - 3
+representation:
+  kind: wl_tfidf
+  labelling: class
+  h: 2
+  edge_labels: false
+  norm: tfidf
+  min_df: 5
+  with_size: false
+model:
+  name: LR
+  params:
+    C: 1.0
+  estimator: LogisticRegression(max_iter=4000, random_state=42, solver='liblinear')
+graph_cache: graph2vec_pipeline/graph_cache.py b20000 n80000 w1 xs1 ex1 (filtered
+  down to this construction)
+fit_per_fold:
+- WL min_df vocabulary (training rows)
+- TF-IDF IDF weights (training rows)
+- classifier (training rows)
+n_features_per_kfold:
+  '0': 346418
+  '1': 374407
+  '2': 363888
+  '3': 359691
+  '4': 371205
+imports_side_input: family_holdout/run_imports_baseline.hash_imports, 2048 dims, hstacked
+  onto the WL TF-IDF block
+seed: 42
+decision: argmax (default 0.5)
