@@ -121,4 +121,33 @@ per fold. Configuration frozen before any test fold was scored. Family holdout, 
     need the VM (`vm_package/README.md` step 4b), so no run used real import features. Seeds were cut from five to
     three per fold to fit the GPU budget; leave-one-family-out is one seed.
 
+## Ensemble of TF-IDF and the sequence transformer (`results/family_holdout/summary_ensemble.md`)
+
+Two parameter-free rules over the two members' held-out P(ransomware), pre-registered before scoring: `mean`
+(primary) and `max` (the OR rule). No weight, threshold or stacker is fitted; argmax at 0.5. Both K-fold and
+LOFO rows reuse the members' own held-out predictions, so nothing is retrained. Fold mean +/- sd of macro-F1:
+
+| model | Mendeley | Balanced | LOFO mean recall (M / B) | FPR (M / B) |
+|---|---|---|---|---|
+| TF-IDF 1-3gram + LogReg (member) | 0.954 +/- 0.018 | 0.942 +/- 0.028 | 0.90 / 0.89 | 0.019 / 0.028 |
+| sequence transformer (member) | 0.923 +/- 0.057 | 0.889 +/- 0.057 | 0.92 / 0.84 | 0.045 / 0.122 |
+| ensemble, mean (primary) | 0.955 +/- 0.026 | 0.930 +/- 0.036 | 0.92 / 0.88 | 0.024 / 0.049 |
+| ensemble, max (OR rule) | 0.951 +/- 0.009 | 0.911 +/- 0.050 | **0.95 / 0.94** | 0.053 / 0.126 |
+
+19. **The mean ensemble does not beat TF-IDF.** It ties on Mendeley (0.955 against 0.954, inside one fold sd)
+    and loses on Balanced (0.930 against 0.942), because the transformer's higher false-positive rate on the
+    hard negatives is averaged in. The complementarity is real but a parameter-free rule does not harvest it: a
+    per-file oracle that picks whichever member is right would reach ransomware recall 0.956 / 0.950 against
+    0.928 / 0.912 for TF-IDF alone, on the 6.7% / 9.3% of files where the two members disagree.
+20. **The OR rule is the one that changes a number.** Leave-one-family-out recall rises from 0.90 / 0.89 to
+    0.95 / 0.94, the best LOFO figure in the study on both datasets, and it is the most stable row on Mendeley
+    (fold sd 0.009). The price is the false-positive rate, which doubles on Mendeley (0.019 to 0.053) and
+    quadruples on Balanced (0.028 to 0.126). Which of the two rows is preferable depends on the cost of a miss
+    against the cost of an alert, not on macro-F1.
+21. **Per family, the mean rule sits between its members, never above both.** DoppelPaymer and WastedLocker
+    (TF-IDF right, transformer wrong) are pulled down; Nefilim and RansomEXX (transformer right) are pulled up;
+    Makop and Maze on Balanced are dragged toward the weaker member. The OR rule recovers each family to its
+    better member's recall by construction. A learned combiner (stacking with nested family-grouped CV) is the
+    obvious next step, and the negative tuning result above is the reason it was not attempted here.
+
 EMBER is not in this table; that rerun is being done by a teammate (`ember_pipeline/`, `vm_package/README.md`).

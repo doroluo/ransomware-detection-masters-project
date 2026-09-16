@@ -1,0 +1,33 @@
+pipeline: ensemble
+model: tfidf_logreg+seq_transformer_seq_transformer_max
+members:
+- pipeline: tfidf
+  model: LogReg
+  source: results/family_holdout/balanced/tfidf/LogReg/{predictions,lofo_predictions}.csv
+  score: predict_proba P(ransomware)
+- pipeline: seq_transformer
+  model: seq_transformer
+  source: results/family_holdout/balanced/seq_transformer/seq_transformer/{predictions,lofo_predictions}.csv
+  score: seed-mean P(ransomware), 3 seeds K-fold / 1 seed LOFO
+rule: max
+rule_definition: score = max of member P(ransomware)
+decision: score >= 0.5 (fixed; no threshold fitted anywhere)
+primary: false
+pre_registered: true
+trained: false
+oracle_kfold:
+  disagreement_rate: 0.09297
+  n_disagree: 242
+  oracle_recall_ransomware: 0.950237
+  oracle_recall_goodware: 0.975318
+  member_recall_ransomware:
+  - 0.912322
+  - 0.903633
+  member_recall_goodware:
+  - 0.971578
+  - 0.878085
+  note: oracle = a per-file choice of whichever member is right; an upper bound on
+    any combination rule, not a result
+schemes:
+- kfold
+- lofo
