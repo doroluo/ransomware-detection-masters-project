@@ -310,10 +310,11 @@ def run_dataset(cfg: dict, dataset: str, out_root: Path, device, log,
     check_kfold(folds)
     check_lofo(folds)
     abl = cfg.get("ablation")
-    model_dir = (out_root / dataset / PIPELINE /
-                 (f"ablation_{abl}" if abl else MODEL))
-    run_dir = Path(cfg["paths"]["weights"]) / "runs" / dataset / (
-        f"ablation_{abl}" if abl else MODEL)
+    # an imports run gets its own model and run directories, so it can never
+    # overwrite the committed no-imports study or reuse its cached runs
+    name = (f"ablation_{abl}" if abl else MODEL) + ("_imports" if imports is not None else "")
+    model_dir = out_root / dataset / PIPELINE / name
+    run_dir = Path(cfg["paths"]["weights"]) / "runs" / dataset / name
     run_dir.mkdir(parents=True, exist_ok=True)
     cache = Path(cfg["paths"]["token_cache"])
     t_start = time.time()
@@ -403,7 +404,7 @@ def run_dataset(cfg: dict, dataset: str, out_root: Path, device, log,
     if abl:
         desc += f" [ablation: {abl}]"
     write_model_dir(model_dir, folds, PIPELINE,
-                    (f"ablation_{abl}" if abl else MODEL),
+                    name,
                     kf_score, kf_pred, folds.fold, lofo, cfg_used,
                     time.time() - t_start, description=desc)
     if not do_lofo:

@@ -91,6 +91,14 @@ parsing only (`pefile`, already installed by step 2 via
 `asm_tool/requirements-vm.txt`); no capstone, no disassembly, seconds per
 corpus.
 
+One command does the whole step, checks the counts and bundles the output:
+
+```bash
+bash vm_package/run_imports_vm.sh        # writes ~/imports/*.json|csv and ~/imports_out.tar.gz
+```
+
+Or by hand:
+
 ```bash
 mkdir -p ~/imports
 python3 imports/extract_imports.py --in ~/Downloads/Ransomware_Training/rans    --out ~/imports/mendeley_mal_train.json  --manifest ~/imports/mendeley_mal_train.csv
@@ -109,6 +117,13 @@ there is an extra `mendeley_*.iat.json` beside it; copy that back too.
 These files are names and addresses, not a transcript of malware code, so they
 are far less sensitive than the `.asm` trees - but they still come from the
 samples, so they travel with the rest of the archive.
+
+On the host, extract `imports_out.tar.gz` into `manifests/imports/`, then flatten
+everything into the one file the sequence model reads and check cohort coverage:
+
+```bash
+python imports/merge_imports.py --out manifests/imports/imports_flat.json \n    manifests/imports/mendeley_mal_train.json manifests/imports/mendeley_mal_test.json \n    manifests/imports/mendeley_good_train.json manifests/imports/mendeley_good_test.json \n    manifests/imports/goodware_balanced.json
+```
 
 This run supersedes the host-built
 `manifests/imports/mendeley_goodware_host.json`, which was extracted from the

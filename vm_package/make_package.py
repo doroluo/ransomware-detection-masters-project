@@ -6,7 +6,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 INCLUDE = ["asm_parse.py", "check_arch.py", "asm_tool", "ember_pipeline", "imports",
-           "vm_package/README.md"]
+           "vm_package/README.md", "vm_package/run_imports_vm.sh"]
 SKIP_DIRS = {"__pycache__", ".pytest_cache"}
 
 
