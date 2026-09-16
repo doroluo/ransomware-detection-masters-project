@@ -1,0 +1,164 @@
+pipeline: tfidf
+model: mnemonic_tfidf_1_3+LinearSVC
+source: rules_pipeline/train_eval.py section (c), calibration baseline (pre-registered;
+  not the tuned pick)
+features:
+  input: Shared/Extract*/mn_api/<sha256>.txt (rewritten stream, asm_tool/rewrite_streams.py)
+  stream: mn_api
+  max_mnemonics: 30000
+  vectoriser: TfidfVectorizer(analyzer=word, token_pattern=\S+, ngram_range=(1, 3),
+    min_df=5, sublinear_tf=True, max_features=300000)
+  fit_on: training rows of each fold / each LOFO train set only
+  n_features_per_kfold:
+    kfold_0: 118278
+    kfold_1: 134952
+    kfold_2: 127865
+    kfold_3: 129854
+    kfold_4: 130277
+classifier:
+  name: LinearSVC
+  estimator: LinearSVC(random_state=42, max_iter=5000)
+  class_weight: null
+  C_grid:
+  - 0.1
+  - 1
+  - 10
+  C_selection: GridSearchCV(cv=StratifiedKFold(2, shuffle=True, random_state=42),
+    scoring=f1_macro) inside the training rows
+  C_chosen:
+    kfold:
+      '0':
+        C: 1
+        cv_f1_macro: 0.9786
+      '1':
+        C: 1
+        cv_f1_macro: 0.988
+      '2':
+        C: 10
+        cv_f1_macro: 0.9865
+      '3':
+        C: 10
+        cv_f1_macro: 0.9891
+      '4':
+        C: 10
+        cv_f1_macro: 0.9855
+    lofo:
+      avaddon:
+        C: 10
+        cv_f1_macro: 0.9862
+      avoslocker:
+        C: 1
+        cv_f1_macro: 0.9849
+      babuk:
+        C: 10
+        cv_f1_macro: 0.9866
+      bianlian:
+        C: 10
+        cv_f1_macro: 0.9872
+      blackbasta:
+        C: 10
+        cv_f1_macro: 0.9871
+      blackbyte:
+        C: 10
+        cv_f1_macro: 0.9872
+      blackcat:
+        C: 10
+        cv_f1_macro: 0.9854
+      blackmatter:
+        C: 10
+        cv_f1_macro: 0.987
+      bluesky:
+        C: 10
+        cv_f1_macro: 0.9891
+      clop:
+        C: 10
+        cv_f1_macro: 0.9894
+      conti:
+        C: 10
+        cv_f1_macro: 0.9858
+      darkside:
+        C: 10
+        cv_f1_macro: 0.987
+      dharma:
+        C: 10
+        cv_f1_macro: 0.9882
+      doppelpaymer:
+        C: 1
+        cv_f1_macro: 0.9895
+      exorcist:
+        C: 10
+        cv_f1_macro: 0.9876
+      gandcrab:
+        C: 1
+        cv_f1_macro: 0.987
+      hive:
+        C: 1
+        cv_f1_macro: 0.987
+      holyghost:
+        C: 10
+        cv_f1_macro: 0.988
+      karma:
+        C: 10
+        cv_f1_macro: 0.9876
+      lockbit:
+        C: 10
+        cv_f1_macro: 0.9866
+      lorenz:
+        C: 10
+        cv_f1_macro: 0.9884
+      makop:
+        C: 10
+        cv_f1_macro: 0.9887
+      maui:
+        C: 10
+        cv_f1_macro: 0.9864
+      maze:
+        C: 10
+        cv_f1_macro: 0.987
+      mountlocker:
+        C: 1
+        cv_f1_macro: 0.988
+      nefilim:
+        C: 10
+        cv_f1_macro: 0.9899
+      netwalker:
+        C: 10
+        cv_f1_macro: 0.9854
+      phobos:
+        C: 10
+        cv_f1_macro: 0.9841
+      playcrypt:
+        C: 10
+        cv_f1_macro: 0.985
+      pysa:
+        C: 10
+        cv_f1_macro: 0.9895
+      quantum:
+        C: 10
+        cv_f1_macro: 0.988
+      ragnarok:
+        C: 10
+        cv_f1_macro: 0.9854
+      ransomexx:
+        C: 10
+        cv_f1_macro: 0.988
+      revil:
+        C: 1
+        cv_f1_macro: 0.9882
+      ryuk:
+        C: 10
+        cv_f1_macro: 0.987
+      stop:
+        C: 10
+        cv_f1_macro: 0.9867
+      wastedlocker:
+        C: 10
+        cv_f1_macro: 0.9903
+      zeppelin:
+        C: 10
+        cv_f1_macro: 0.9876
+decision: argmax (the estimator's own predict)
+seed: 42
+schemes:
+- kfold
+- lofo
