@@ -1,0 +1,11 @@
+# Opcode extraction
+pefile==2024.8.26
+capstone==5.0.9
+
+# GIN model, graph building and baselines.
+# On a machine without an NVIDIA GPU, install torch from the CPU index to avoid
+# pulling ~2.5 GB of unused CUDA libraries:
+#   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.2
+numpy>=1.26
+scikit-learn>=1.4
