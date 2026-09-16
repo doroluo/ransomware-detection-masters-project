@@ -74,6 +74,11 @@ directory *name* case-insensitively (`_upx_packed`, `flagged`, `.tools`).
 |---|---|---|---|---|
 | `manifests/imports/goodware_balanced.{json,csv}` | `Goodware_Balanced` (minus `_upx_packed`, `flagged`) | 1,504 | 1,500 | 36.4 MB / 0.15 MB |
 | `manifests/imports/mendeley_goodware_host.{json,csv}` | host `Goodware_Training/goodware` | 1,115 | 1,112 | 14.1 MB / 0.10 MB |
+| `manifests/imports/mendeley_mal_train.{json,csv}` | VM `Ransomware_Training/rans` (step 4b, 15 Sep 2026) | 1,023 | 975 ok, 48 no_imports | 6.0 MB / 0.15 MB |
+| `manifests/imports/mendeley_mal_test.{json,csv}` | VM `Ransomware_Test/rans_test` | 385 | 337 ok, 48 no_imports | 3.2 MB / 0.06 MB |
+| `manifests/imports/mendeley_good_train.{json,csv}` | VM `Goodware_Training/goodware` (complete, unpacked copy) | 1,134 | 1,130 ok, 4 no_imports | 15.2 MB / 0.11 MB |
+| `manifests/imports/mendeley_good_test.{json,csv}` | VM `Goodware_Test/goodware_test` | 133 | 133 ok | 1.7 MB / 0.01 MB |
+| `manifests/imports/imports_flat.json` | `merge_imports.py` over the five above: `{sha256: [names]}` for the sequence model | | | (not committed) |
 
 No parse errors in either run. 107 of the balanced PEs and 4 of the Mendeley
 PEs have no import directory at all (`status=no_imports`): .NET images whose
