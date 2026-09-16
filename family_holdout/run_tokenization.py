@@ -195,7 +195,7 @@ def _scores(est, X, pred):
 
 # ---------------------------------------------------------------------------
 def run_dataset(dataset: str, out_root: Path, tok_repo: Path,
-                combos=COMBOS) -> None:
+                combos=COMBOS, imports=None, suffix: str = "") -> None:
     import pandas as pd
     from llm_features_pipeline.run_pipeline import (build_sequence_frame,
                                                     fit_and_score,
@@ -213,7 +213,7 @@ def run_dataset(dataset: str, out_root: Path, tok_repo: Path,
 
     for model_type, tok in combos:
         t_combo = time.time()
-        tag_model = f"{model_type}_{tok}_w2v"
+        tag_model = f"{model_type}_{tok}_w2v{suffix}"
         kf_score = np.zeros(n)
         kf_pred = np.zeros(n, dtype=int)
         lofo, chosen = {}, {}
@@ -238,6 +238,10 @@ def run_dataset(dataset: str, out_root: Path, tok_repo: Path,
             model = w2v_model(seqs.iloc[tr])
             X = w2v_vectors(model, seqs)
             del model
+            if imports is not None:
+                # the transformer's own hashed bag-of-imports (2,048 dims,
+                # L2-normalised) appended to the 100-d document vector
+                X = np.hstack([X, imports])
 
             # The pipeline's own selection code, unchanged. It returns the
             # metrics and the predictions but not the per-sample scores, and
@@ -292,6 +296,9 @@ def run_dataset(dataset: str, out_root: Path, tok_repo: Path,
                           "LLM_Features_Revised ransomware + "
                           "LLM_Features_Revised_Balanced goodware"),
                 "max_instructions": MAX_INSTRUCTIONS,
+                "imports_side_input": (None if imports is None else
+                                       "family_holdout/run_imports_baseline.hash_imports, "
+                                       f"{imports.shape[1]} dims, hstacked onto the w2v vector"),
                 "normalize": "Tokenization.tokenization.normalize_instruction",
                 "empty_files_kept_as_UNK": len(empty),
             },
@@ -333,6 +340,7 @@ def run_dataset(dataset: str, out_root: Path, tok_repo: Path,
 
 
 def main() -> int:
+    global MAX_INSTRUCTIONS
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dataset", choices=(*DATASETS, "both"), default="both")
     ap.add_argument("--out", default=str(OUT_ROOT))
@@ -341,11 +349,25 @@ def main() -> int:
     ap.add_argument("--tok-repo",
                     default="C:/Users/chaoa/Downloads/"
                             "Tokenization-Testing-for-Malware-Data")
+    ap.add_argument("--max-instructions", type=int, default=MAX_INSTRUCTIONS,
+                    help="lines read per file (config: 5000); a non-default "
+                         "value is written to <model>_w<N>/")
+    ap.add_argument("--imports", action="store_true",
+                    help="append the hashed bag-of-imports "
+                         "(manifests/imports/imports_flat.json) to the w2v "
+                         "vector; written to <model>_imports/")
     a = ap.parse_args()
+    MAX_INSTRUCTIONS = a.max_instructions
+    suffix = ("" if a.max_instructions == 5000 else f"_w{a.max_instructions}") +              ("_imports" if a.imports else "")
     combos = COMBOS if not a.combos else tuple(
         tuple(x.split("/")) for x in a.combos.split(","))
     for d in (DATASETS if a.dataset == "both" else (a.dataset,)):
-        run_dataset(d, Path(a.out), Path(a.tok_repo), combos)
+        imports = None
+        if a.imports:
+            from family_holdout.run_imports_baseline import hash_imports, load_imports
+            f = Folds(d)
+            imports = np.vstack([hash_imports(x) for x in load_imports(f)])
+        run_dataset(d, Path(a.out), Path(a.tok_repo), combos, imports, suffix)
     return 0
 
 

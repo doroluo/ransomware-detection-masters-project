@@ -131,6 +131,14 @@ def _tfidf(X, a, b):
     return tf.transform(X[a]), tf.transform(X[b])
 
 
+def _with_imports(A, B, imports, tr, te):
+    """Append the hashed bag-of-imports block (dense, 2,048 dims) to the
+    TF-IDF'd WL histogram of the training and test rows."""
+    H = sparse.csr_matrix(imports)
+    return (sparse.hstack([A, H[tr]], format="csr"),
+            sparse.hstack([B, H[te]], format="csr"))
+
+
 def _fit(m: Model, A, ytr, B):
     est = make_model(m)
     est.fit(A, ytr)
@@ -213,7 +221,7 @@ def load_cache(folds: Folds, cache_dir: Path = DEFAULT_CACHE):
 
 
 # ---------------------------------------------------------------------------
-def run_dataset(dataset: str, out_root: Path, names=WANT) -> None:
+def run_dataset(dataset: str, out_root: Path, names=WANT, imports=None) -> None:
     t_start = time.time()
     folds = Folds(dataset)
     check_kfold(folds)
@@ -241,6 +249,8 @@ def run_dataset(dataset: str, out_root: Path, names=WANT) -> None:
             thr, f1 = oof_threshold(X, y, groups, tr, m)
             thr_of_fold[f], oof_f1[str(f)] = thr, round(f1, 4)
             A, B = _tfidf(X, tr, te)
+            if imports is not None:
+                A, B = _with_imports(A, B, imports, tr, te)
             pred, score = _fit(m, A, y[tr], B)
             kf_pred_a[te], kf_score[te] = pred, score
             kf_pred_t[te] = (score >= thr).astype(int)
@@ -256,6 +266,8 @@ def run_dataset(dataset: str, out_root: Path, names=WANT) -> None:
             trmask[tr] = True
             X = L.build(trmask, r.min_df, r.h)
             A, B = _tfidf(X, tr, te)
+            if imports is not None:
+                A, B = _with_imports(A, B, imports, tr, te)
             pred, score = _fit(m, A, y[tr], B)
             # The threshold is a train-side quantity. Recomputing it inside
             # each LOFO training set would be a sixth of the whole run for a
@@ -294,6 +306,9 @@ def run_dataset(dataset: str, out_root: Path, names=WANT) -> None:
                              "TF-IDF IDF weights (training rows)",
                              "classifier (training rows)"],
             "n_features_per_kfold": n_feat,
+            "imports_side_input": (None if imports is None else
+                                   "family_holdout/run_imports_baseline.hash_imports, "
+                                   f"{imports.shape[1]} dims, hstacked onto the WL TF-IDF block"),
             "seed": SEED,
         }
         for tag, preds, lofo, extra in (
@@ -311,7 +326,7 @@ def run_dataset(dataset: str, out_root: Path, names=WANT) -> None:
                       "shuffle=True, random_state=42) out-of-fold scores of "
                       "the training rows"})):
             cfg = {**base_cfg, **extra}
-            model_dir = f"{name}_{tag}"
+            model_dir = f"{name}_{tag}" + ("_imports" if imports is not None else "")
             d = out_root / dataset / PIPELINE / model_dir
             write_model_dir(d, folds, PIPELINE, model_dir, kf_score, preds,
                             folds.fold, lofo, cfg, elapsed,
@@ -328,10 +343,18 @@ def main() -> int:
     ap.add_argument("--dataset", choices=(*DATASETS, "both"), default="both")
     ap.add_argument("--configs", default=",".join(WANT))
     ap.add_argument("--out", default=str(OUT_ROOT))
+    ap.add_argument("--imports", action="store_true",
+                    help="append the hashed bag-of-imports to the WL block; "
+                         "written to <config>_<decision>_imports/")
     a = ap.parse_args()
     names = tuple(x for x in a.configs.split(",") if x)
     for d in (DATASETS if a.dataset == "both" else (a.dataset,)):
-        run_dataset(d, Path(a.out), names)
+        imports = None
+        if a.imports:
+            from family_holdout.run_imports_baseline import hash_imports, load_imports
+            f = Folds(d)
+            imports = np.vstack([hash_imports(x) for x in load_imports(f)])
+        run_dataset(d, Path(a.out), names, imports)
     return 0
 
 

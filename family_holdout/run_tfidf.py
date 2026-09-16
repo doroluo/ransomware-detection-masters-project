@@ -66,14 +66,18 @@ def read_mnemonics(path: Path, cap: int) -> list:
     return out
 
 
-def load_texts(folds: Folds) -> list:
-    """One whitespace-joined mnemonic string per fold-file row."""
+STREAMS = ("mn", "mn_api", "mn_opclass")   # see asm_tool/rewrite_streams.py
+
+
+def load_texts(folds: Folds, stream: str = "mn") -> list:
+    """One whitespace-joined token string per fold-file row, from the `mn/`
+    tree or one of the rewritten variants (`mn_api/`, `mn_opclass/`)."""
     texts = []
     for sha, lab in zip(folds.sha, folds.y):
         tree = ("balanced_goodware"
                 if (folds.dataset == "balanced" and lab == 0) else "mendeley")
         texts.append(" ".join(read_mnemonics(
-            TREES[tree] / "mn" / f"{sha}.txt", MAX_MNEMS)))
+            TREES[tree] / stream / f"{sha}.txt", MAX_MNEMS)))
     return texts
 
 
@@ -111,7 +115,7 @@ def fit_score(name, Xtr, ytr, Xte):
 MODELS = ("LogReg", "LinearSVC")
 
 
-def run_dataset(dataset: str, out_root: Path) -> dict:
+def run_dataset(dataset: str, out_root: Path, stream: str = "mn") -> dict:
     t_start = time.time()
     folds = Folds(dataset)
     check_kfold(folds)
@@ -119,7 +123,7 @@ def run_dataset(dataset: str, out_root: Path) -> dict:
     print(f"[{dataset}] {folds.n} files, {len(folds.families)} families; "
           f"reading mnemonics ...", flush=True)
     t0 = time.time()
-    texts = load_texts(folds)
+    texts = load_texts(folds, stream)
     print(f"[{dataset}] read in {time.time()-t0:.0f}s", flush=True)
 
     n = folds.n
@@ -167,7 +171,10 @@ def run_dataset(dataset: str, out_root: Path) -> dict:
             "source": "rules_pipeline/train_eval.py section (c), calibration "
                       "baseline (pre-registered; not the tuned pick)",
             "features": {
-                "input": "Shared/Extract*/mn/<sha256>.txt (raw mnemonic stream)",
+                "input": f"Shared/Extract*/{stream}/<sha256>.txt"
+                         + (" (raw mnemonic stream)" if stream == "mn" else
+                            " (rewritten stream, asm_tool/rewrite_streams.py)"),
+                "stream": stream,
                 "max_mnemonics": MAX_MNEMS,
                 "vectoriser": (f"TfidfVectorizer(analyzer=word, "
                                f"token_pattern=\\S+, ngram_range={NGRAM}, "
@@ -192,7 +199,7 @@ def run_dataset(dataset: str, out_root: Path) -> dict:
             "seed": SEED,
             "schemes": ["kfold", "lofo"],
         }
-        d = out_root / dataset / PIPELINE / m
+        d = out_root / dataset / PIPELINE / (m if stream == "mn" else f"{m}_{stream}")
         out[m] = write_model_dir(
             d, folds, PIPELINE, m, kf_score[m], kf_pred[m], kf_fold,
             lofo[m], cfg, elapsed,
@@ -207,10 +214,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dataset", choices=(*DATASETS, "both"), default="both")
     ap.add_argument("--out", default=str(OUT_ROOT))
+    ap.add_argument("--stream", choices=STREAMS, default="mn",
+                    help="which token tree to read; a non-default stream is "
+                         "written to <model>_<stream>/")
     a = ap.parse_args()
     ds = DATASETS if a.dataset == "both" else (a.dataset,)
     for d in ds:
-        run_dataset(d, Path(a.out))
+        run_dataset(d, Path(a.out), a.stream)
     return 0
 
 

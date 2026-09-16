@@ -144,14 +144,14 @@ def _pred_of_member(folds: Folds, out_root: Path, pipeline: str, model: str):
 # ---------------------------------------------------------------------------
 # one dataset
 # ---------------------------------------------------------------------------
-def run_dataset(dataset: str, out_root: Path) -> dict:
+def run_dataset(dataset: str, out_root: Path, members=MEMBERS) -> dict:
     t0 = time.time()
     folds = Folds(dataset)
-    names = [f"{p}/{m}" for p, m in MEMBERS]
+    names = [f"{p}/{m}" for p, m in members]
     print(f"[{dataset}] members: {', '.join(names)}", flush=True)
 
     kf_scores, lofo_scores, member_preds = [], [], []
-    for p, m in MEMBERS:
+    for p, m in members:
         sc, lo = load_member(folds, out_root, p, m)
         kf_scores.append(sc)
         lofo_scores.append(lo)
@@ -169,15 +169,15 @@ def run_dataset(dataset: str, out_root: Path) -> dict:
         "oracle_recall_ransomware": round(float(oracle_pred[y == 1].mean()), 6),
         "oracle_recall_goodware": round(float(1 - oracle_pred[y == 0].mean()), 6),
         "member_recall_ransomware": [round(float(preds[k][y == 1].mean()), 6)
-                                     for k in range(len(MEMBERS))],
+                                     for k in range(len(members))],
         "member_recall_goodware": [round(float(1 - preds[k][y == 0].mean()), 6)
-                                   for k in range(len(MEMBERS))],
+                                   for k in range(len(members))],
         "note": ("oracle = a per-file choice of whichever member is right; an "
                  "upper bound on any combination rule, not a result"),
     }
 
     out = {}
-    tag = "+".join(f"{p}_{m}".lower() for p, m in MEMBERS)
+    tag = "+".join(f"{p}_{m}".lower() for p, m in members)
     for rule in RULES:
         sc = combine(kf_scores, rule)
         pr = decide(sc)
@@ -193,7 +193,7 @@ def run_dataset(dataset: str, out_root: Path) -> dict:
                                    "{predictions,lofo_predictions}.csv",
                          "score": ("predict_proba P(ransomware)" if p == "tfidf"
                                    else "seed-mean P(ransomware), 3 seeds K-fold / 1 seed LOFO")}
-                        for p, m in MEMBERS],
+                        for p, m in members],
             "rule": rule,
             "rule_definition": ("score = mean of member P(ransomware)" if rule == "mean"
                                 else "score = max of member P(ransomware)"),
@@ -218,6 +218,7 @@ def run_dataset(dataset: str, out_root: Path) -> dict:
               f"  -> {d}", flush=True)
     out["_oracle"] = oracle
     out["_tag"] = tag
+    out["_members"] = list(members)
     return out
 
 
@@ -244,8 +245,9 @@ def _member_metrics(out_root: Path, dataset: str, pipeline: str, model: str) -> 
             "lofo": m.get("lofo_mean_recall"), "per_family": pf}
 
 
-def write_summary(out_root: Path, results: dict) -> Path:
-    L = ["# Ensemble of TF-IDF and the sequence transformer under family holdout", "",
+def write_summary(out_root: Path, results: dict, suffix: str = "") -> Path:
+    members = next(iter(results.values()))["_members"]
+    L = ["# Ensemble of " + " and ".join(f"{p}/{m}" for p, m in members) + " under family holdout", "",
          "Two pre-registered, parameter-free rules over the members' held-out P(ransomware):",
          "`mean` (primary) and `max` (the OR rule, secondary). No weight, threshold or stacker is fitted;",
          "argmax at 0.5 everywhere. Members are the pre-registered TF-IDF/LogReg baseline and the frozen",
@@ -254,8 +256,7 @@ def write_summary(out_root: Path, results: dict) -> Path:
          "the five held-out folds (population sd, as in summary.md). Written by `family_holdout/run_ensemble.py`.", ""]
     for ds, res in results.items():
         tag = res["_tag"]
-        rows = [("tfidf / LogReg", _member_metrics(out_root, ds, "tfidf", "LogReg")),
-                ("seq_transformer", _member_metrics(out_root, ds, "seq_transformer", "seq_transformer"))]
+        rows = [(f"{p} / {m}", _member_metrics(out_root, ds, p, m)) for p, m in res["_members"]]
         for rule in RULES:
             rows.append((f"ensemble / {rule}" + (" (primary)" if rule == PRIMARY else ""),
                          _member_metrics(out_root, ds, PIPELINE, f"{tag}_{rule}")))
@@ -289,7 +290,7 @@ def write_summary(out_root: Path, results: dict) -> Path:
             for fam, ak, al, bk, bl, ek, el in diff:
                 L.append(f"| {fam} | {ak:.2f} / {al:.2f} | {bk:.2f} / {bl:.2f} | {ek:.2f} / {el:.2f} |")
             L.append("")
-    p = out_root / "summary_ensemble.md"
+    p = out_root / (f"summary_ensemble{suffix}.md")
     p.write_text("\n".join(L) + "\n", encoding="utf-8", newline="\n")
     return p
 
@@ -299,12 +300,19 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dataset", choices=(*DATASETS, "both"), default="both")
     ap.add_argument("--out", default=str(OUT_ROOT))
+    ap.add_argument("--members", default=",".join(f"{p}/{m}" for p, m in MEMBERS),
+                    help="two 'pipeline/model' result directories, comma-separated")
+    ap.add_argument("--summary-suffix", default="",
+                    help="written as summary_ensemble<suffix>.md (default: the pre-registered pair)")
     a = ap.parse_args()
     out_root = Path(a.out)
+    members = tuple(tuple(x.split("/", 1)) for x in a.members.split(","))
+    if len(members) != 2 or any(len(m) != 2 for m in members):
+        raise SystemExit("--members needs exactly two pipeline/model entries")
     ds = DATASETS if a.dataset == "both" else (a.dataset,)
-    results = {d: run_dataset(d, out_root) for d in ds}
+    results = {d: run_dataset(d, out_root, members) for d in ds}
     if a.dataset == "both":
-        print(f"wrote {write_summary(out_root, results)}")
+        print(f"wrote {write_summary(out_root, results, a.summary_suffix)}")
     return 0
 
 

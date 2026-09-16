@@ -1,0 +1,159 @@
+pipeline: stacker
+model: tfidf_logreg+seq_transformer_seq_transformer_imports_logitlr
+members:
+- pipeline: tfidf
+  model: LogReg
+- pipeline: seq_transformer
+  model: seq_transformer_imports
+combiner: LogisticRegression(C=1) over [logit(p_member1), logit(p_member2)], decision
+  0.5
+protocol:
+  kfold: fit on the other four folds' held-out member scores, apply to the held-out
+    fold
+  lofo: fit on the K-fold held-out scores of every file outside the family, apply
+    to the family's LOFO member scores
+  caveat: 'cross-validated stacking: the combiner''s training rows carry member scores
+    from models whose training data included the test fold; members were not retrained
+    per outer fold'
+kfold_weights:
+  '0':
+    w:
+    - 0.8709
+    - 0.2154
+    b: 0.7975
+  '1':
+    w:
+    - 0.9675
+    - 0.2973
+    b: 0.5927
+  '2':
+    w:
+    - 0.9864
+    - 0.2677
+    b: 0.7389
+  '3':
+    w:
+    - 0.8659
+    - 0.359
+    b: 0.4156
+  '4':
+    w:
+    - 0.9646
+    - 0.2399
+    b: 0.8494
+lofo_weights:
+  avaddon:
+  - 0.9364
+  - 0.2567
+  avoslocker:
+  - 0.9043
+  - 0.2695
+  babuk:
+  - 0.9287
+  - 0.2668
+  bianlian:
+  - 0.9276
+  - 0.2696
+  blackbasta:
+  - 0.9522
+  - 0.27
+  blackbyte:
+  - 0.9276
+  - 0.2697
+  blackcat:
+  - 0.9289
+  - 0.2514
+  blackmatter:
+  - 0.9257
+  - 0.2697
+  bluesky:
+  - 0.9274
+  - 0.2697
+  clop:
+  - 0.9209
+  - 0.2712
+  conti:
+  - 0.9187
+  - 0.2712
+  darkside:
+  - 0.9213
+  - 0.2697
+  dharma:
+  - 0.927
+  - 0.2691
+  doppelpaymer:
+  - 0.808
+  - 0.3732
+  exorcist:
+  - 0.9729
+  - 0.2481
+  gandcrab:
+  - 0.9265
+  - 0.2652
+  hive:
+  - 1.0101
+  - 0.2527
+  holyghost:
+  - 0.9283
+  - 0.2693
+  karma:
+  - 0.929
+  - 0.2672
+  lockbit:
+  - 0.9201
+  - 0.2692
+  lorenz:
+  - 0.923
+  - 0.27
+  makop:
+  - 0.9493
+  - 0.327
+  maui:
+  - 0.9271
+  - 0.2699
+  maze:
+  - 0.8987
+  - 0.2745
+  mountlocker:
+  - 0.9278
+  - 0.2683
+  nefilim:
+  - 0.9218
+  - 0.2657
+  netwalker:
+  - 0.9265
+  - 0.2697
+  phobos:
+  - 0.9108
+  - 0.2728
+  playcrypt:
+  - 0.9227
+  - 0.2692
+  pysa:
+  - 0.9226
+  - 0.2611
+  quantum:
+  - 0.928
+  - 0.2691
+  ragnarok:
+  - 0.9261
+  - 0.2689
+  ransomexx:
+  - 0.9253
+  - 0.2697
+  revil:
+  - 0.9263
+  - 0.2685
+  ryuk:
+  - 1.0285
+  - 0.259
+  stop:
+  - 0.8919
+  - 0.2811
+  wastedlocker:
+  - 0.9273
+  - 0.2664
+  zeppelin:
+  - 1.0078
+  - 0.2543
+pre_registered: true
