@@ -150,4 +150,60 @@ LOFO rows reuse the members' own held-out predictions, so nothing is retrained. 
     better member's recall by construction. A learned combiner (stacking with nested family-grouped CV) is the
     obvious next step, and the negative tuning result above is the reason it was not attempted here.
 
+## Import tables for every pipeline, richer token streams, and combiners (`results/family_holdout/summary.md`)
+
+The VM import pass (runbook step 4b) gave every cohort file its import table. Three things were then done to
+every pipeline that could take them, all pre-registered, all under the same family holdout. Fold mean +/- sd of
+macro-F1, Mendeley / Balanced, with LOFO mean recall:
+
+| model | Mendeley | Balanced | LOFO M / B |
+|---|---|---|---|
+| TF-IDF 1-3gram + LogReg (reference) | 0.954 +/- 0.018 | 0.942 +/- 0.028 | 0.90 / 0.89 |
+| bag of import names + LogReg, imports ONLY | **0.978 +/- 0.015** | 0.899 +/- 0.063 | 0.95 / 0.88 |
+| hashed imports (the transformer's 2,048-d block) + LogReg, imports only | 0.961 +/- 0.034 | 0.892 +/- 0.060 | 0.95 / 0.86 |
+| mnemonic TF-IDF + import names + LogReg | 0.973 +/- 0.011 | **0.962 +/- 0.022** | 0.95 / 0.93 |
+| sequence transformer + hashed imports | 0.964 +/- 0.011 | 0.927 +/- 0.042 | 0.96 / 0.88 |
+| graph2vec WL baseline + hashed imports | 0.966 +/- 0.015 | 0.916 +/- 0.058 | 0.96 / 0.90 |
+| tokenization RF/WPC + hashed imports | 0.945 +/- 0.060 | 0.871 +/- 0.065 | 0.90 / 0.80 |
+| tokenization MLP/WP + hashed imports | 0.913 +/- 0.055 | 0.899 +/- 0.054 | 0.93 / 0.86 |
+| tokenization MLP/WP, 30,000-instruction window (no imports) | 0.904 +/- 0.031 | 0.872 +/- 0.049 | 0.88 / 0.81 |
+| TF-IDF + LogReg on `mn_api` (API names inlined) | 0.961 +/- 0.014 | 0.944 +/- 0.026 | 0.93 / 0.91 |
+| TF-IDF + LogReg on `mn_opclass` (operand classes) | 0.965 +/- 0.012 | 0.945 +/- 0.033 | 0.94 / 0.90 |
+| ensemble mean: TF-IDF+names, transformer+imports | 0.971 +/- 0.016 | 0.953 +/- 0.029 | 0.97 / 0.91 |
+| **learned combiner (logit LR): TF-IDF+names, transformer+imports** | **0.980 +/- 0.015** | **0.959 +/- 0.025** | **0.97 / 0.95** |
+
+22. **The import table is the single most valuable feature in the study, and it is a linear feature.** A logistic
+    regression over the bag of import names, reading no opcode at all, scores 0.978 on Mendeley, above every
+    opcode model including the transformer that was handed the same names as a side input (0.964). The transformer's
+    +0.04 from imports is therefore the feature, not the encoder: a linear model on its exact 2,048-d hashed block
+    scores 0.961. On Balanced, imports alone are weaker (0.899) because the hard negatives (encryption tools,
+    archivers, backup clients) import the same cryptography and file APIs; there the mnemonic stream and the
+    imports are complementary and their concatenation, 0.962, is the best single model.
+23. **Imports lift every pipeline, by 0.02 to 0.15.** graph2vec +0.02 / +0.05, the tokenization pipeline +0.04 to
+    +0.15, the transformer +0.04 / +0.04. They also break the architecture lean: x64 ransomware recall goes from
+    0.79 (TF-IDF) to 0.96 (names only) on Mendeley and from 0.67 to 0.89 on Balanced, because API usage does not
+    depend on bitness.
+24. **Richer opcode streams help TF-IDF a little.** Operand classes (`mov_reg_mem`, `call_api`) are the best TF-IDF
+    row, 0.965 / 0.945 against 0.954 / 0.942, and inlining the resolved API name on the instruction gives 0.961 /
+    0.944. Both are small next to the whole-file bag of names, because the 30,000-token window covers a fraction
+    of most binaries and the import table covers all of it.
+25. **The 5,000-instruction window was too small after all.** Reading 30,000 instructions lifts the tokenization
+    pipeline by 0.035 to 0.10 under family holdout (MLP/WP 0.869 to 0.904, SVM/SW 0.775 to 0.872 on Balanced),
+    the opposite of what the fixed-split tuning study concluded from the 24 training families. One more instance
+    of the single split misleading.
+26. **Combining the two best members is now worth 0.01 to 0.02.** The fixed mean rule reaches 0.971 / 0.953 and the
+    three-parameter learned combiner 0.980 +/- 0.015 / 0.959 +/- 0.025, with LOFO recall 0.97 / 0.95, the best
+    rows in the study on both cohorts. The combiner puts almost all of its weight on the linear member (about 1.2
+    against 0.1 on the transformer), so the transformer contributes a correction on the few files where they
+    disagree, not a second opinion of equal weight. Caveat as documented in `run_stacker.py`: the combiner is
+    fitted by cross-validated stacking; members were not retrained inside each outer fold.
+27. **What is still missed, by everything.** Makop stays at recall 0.53 on both cohorts and Zeppelin at 0.72;
+    DoppelPaymer (0.32) and Ryuk (0.74) on Balanced. These are the families whose remaining samples resolve no
+    imports (83 cohort ransomware files have an empty import directory and a zero import vector) or whose imports
+    look like the hard negatives'.
+28. **Two caveats on the import feature.** It is the easiest feature in this study for an adversary to change:
+    dynamic API resolution (`GetProcAddress` by hash) empties the import table, and 83 of the 1,266 cohort
+    ransomware already have one. And the rare-name cap used for the transformer's API stream (`mn_api_top`,
+    document frequency over both corpora without labels) is transductive in the same sense as the pretraining pass.
+
 EMBER is not in this table; that rerun is being done by a teammate (`ember_pipeline/`, `vm_package/README.md`).
