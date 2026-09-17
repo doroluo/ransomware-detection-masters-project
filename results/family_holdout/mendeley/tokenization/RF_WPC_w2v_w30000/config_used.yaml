@@ -1,0 +1,55 @@
+pipeline: tokenization
+model: RF_WPC_w2v_w30000
+source: llm_features_pipeline/config.yaml, experiment expC (pre-registered; not a
+  tuned pick)
+features:
+  input: LLM_Features_Revised (mnemonic-only, cohort pre-filtered)
+  max_instructions: 30000
+  imports_side_input: null
+  normalize: Tokenization.tokenization.normalize_instruction
+  empty_files_kept_as_UNK: 0
+tokenizer:
+  method: WPC
+  vocab_size: 1000
+  fit_on: training folds only
+  cache: results\family_holdout\tokenizers
+embedding:
+  method: w2v
+  vector_size: 100
+  window: 30
+  epochs: 5
+  seed: 42
+  workers: 1
+  min_count: 1
+  fit_on: training folds only
+classifier:
+  name: RF
+  kfold:
+    selection: run_pipeline.fit_and_score GridSearchCV, cv=StratifiedKFold(2, shuffle=True,
+      random_state=42), scoring=f1_macro
+    best_params_per_fold:
+      '0':
+        max_depth: None
+        n_estimators: '400'
+      '1':
+        max_depth: None
+        n_estimators: '400'
+      '2':
+        max_depth: None
+        n_estimators: '100'
+      '3':
+        max_depth: None
+        n_estimators: '100'
+      '4':
+        max_depth: None
+        n_estimators: '100'
+  lofo:
+    selection: FIXED to the committed results/expC/metrics.json best_params - the
+      per-fold grid does not fit the compute budget
+    params:
+      max_depth: null
+      n_estimators: 400
+lofo_unsupervised_state: reused from the K-fold fold that contains the held-out family;
+  that state was fit on the other four folds and never saw the family
+decision: argmax (the estimator's own predict)
+seed: 42
