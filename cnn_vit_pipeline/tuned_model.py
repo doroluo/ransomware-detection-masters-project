@@ -205,11 +205,6 @@ def assert_matches_original(verbose: bool = True) -> bool:
     for p in (root / "CNN-ViT", root):
         if str(p) not in sys.path:
             sys.path.insert(0, str(p))
-    try:
-        import torchvision  # noqa: F401
-    except ImportError:
-        from cnn_vit_pipeline.train_eval import _install_torchvision_shim
-        _install_torchvision_shim()
     import model_train as mt
 
     a = mt.HierarchicalMalwareNet(num_classes=2, dropout=0.15)

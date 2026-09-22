@@ -188,3 +188,26 @@ def test_head3_matches_unmodified_asm_parser_byte_for_byte(tmp_path, tiny):
 
 def test_selftest_entry_point_passes():
     assert E.selftest() == 0
+
+
+def test_structural_shift_pads_with_end_pad_and_keeps_mask_aligned():
+    """The augmentation inserts END_PAD rows (the encoder's fill token, never
+    PADDING = 0) and moves the image and the 16x16 patch mask by the same
+    number of whole patches."""
+    torch = pytest.importorskip("torch")
+    import random
+    import model_train as M
+    random.seed(7)
+    H = asm_parser.SQUARE_RESOLUTION
+    img = torch.full((1, H, H), 0.5)
+    mask = torch.ones(16, 16)
+    shift = M.MaskAwareStructuralShift(p=1.0, max_shift_ratio=0.20)
+    for _ in range(20):
+        out = shift({"image": img, "mask": mask})
+        oi, om = out["image"], out["mask"]
+        pad_rows = torch.nonzero((oi[0] == M.END_PAD_PIXEL).all(dim=1)).flatten()
+        assert len(pad_rows) > 0 and len(pad_rows) % 16 == 0     # whole patches
+        assert (oi == 0).sum() == 0                              # never PADDING
+        mask_rows = torch.nonzero((om == 0).all(dim=1)).flatten()
+        assert len(mask_rows) * 16 == len(pad_rows)              # same shift on both tracks
+        assert int(pad_rows[0]) == int(mask_rows[0]) * 16        # same insertion point

@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, WeightedRandomSampler, Dataset
-from torchvision import transforms
 
 
 def confusion_matrix(y_true, y_pred, num_classes):
@@ -110,7 +109,9 @@ class MalwareMaskedDataset(Dataset):
 
         # 1. Load baseline PNG texture representation
         image = Image.open(img_path).convert('L')
-        img_tensor = transforms.ToTensor()(image)
+        # uint8 HxW -> float32 1xHxW in [0, 1]; what torchvision's ToTensor did,
+        # without the dependency
+        img_tensor = torch.from_numpy(np.asarray(image, dtype=np.uint8).copy()).to(torch.float32).div_(255.0).unsqueeze(0)
 
         # 2. Extract corresponding dynamic ViT mask track file
         # foo.png -> foo_vit_mask.npy

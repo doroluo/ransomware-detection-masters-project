@@ -17,16 +17,11 @@ cohort split instead of stratified_split.py's random per-class shuffle.
 
 A note on importing model_train
 -------------------------------
-model_train.py has no module-level side effects: everything that touches disk
-or starts training lives under `if __name__ == "__main__"`, so importing it is
-safe. Its one import-time obstacle is `from torchvision import transforms`,
-and torchvision is not installed in this environment (torch 2.11 CPU is).
-model_train uses exactly one thing from it, `transforms.ToTensor()`, applied
-to a mode-'L' PIL image. Rather than copy 250 lines of model definitions out
-of model_train.py - which would silently go stale the moment anyone edits it -
-this module registers a minimal stand-in for that single call before
-importing, and says so loudly at runtime. If torchvision is present the real
-one is used and the stand-in is never installed.
+model_train.py has no module-level side effects (its old __main__ block is
+gone), so importing it is safe, and it no longer needs torchvision: the one
+ToTensor call is a plain uint8 -> float32 / 255 conversion now. The model and
+dataset classes are imported from it rather than copied, so they cannot go
+stale.
 """
 from __future__ import annotations
 
@@ -37,7 +32,6 @@ import random
 import shutil
 import sys
 import time
-import types
 from pathlib import Path
 
 import numpy as np
@@ -66,50 +60,10 @@ LABEL_SMOOTHING = 0.15
 DROPOUT = 0.15
 NUM_CLASSES = 2
 
-SHIM_USED = False
-
-
 # ------------------------------------------------- importing model_train ----
-def _install_torchvision_shim() -> None:
-    """Minimal stand-in for torchvision.transforms.ToTensor.
-
-    ToTensor on a mode-'L' PIL image is exactly: uint8 HxW -> float32 1xHxW
-    scaled to [0, 1]. That is the only torchvision call model_train.py makes.
-    """
-    global SHIM_USED
-    import torch
-
-    class ToTensor:
-        def __call__(self, pic):
-            arr = np.asarray(pic, dtype=np.uint8)
-            if arr.ndim == 2:
-                arr = arr[None, :, :]
-            else:
-                arr = arr.transpose(2, 0, 1)
-            return torch.from_numpy(arr.copy()).to(torch.float32).div_(255.0)
-
-    transforms = types.ModuleType("torchvision.transforms")
-    transforms.ToTensor = ToTensor
-    tv = types.ModuleType("torchvision")
-    tv.transforms = transforms
-    tv.__SHIM__ = True
-    sys.modules.setdefault("torchvision", tv)
-    sys.modules.setdefault("torchvision.transforms", transforms)
-    SHIM_USED = True
-
-
 def import_model_train():
-    """Import model_train.py without running its __main__ block."""
-    try:
-        import torchvision  # noqa: F401
-    except ImportError:
-        _install_torchvision_shim()
-        print("NOTE: torchvision is not installed. model_train.py needs it only "
-              "for transforms.ToTensor(); a minimal stand-in was registered so "
-              "the ORIGINAL model and dataset classes are imported from "
-              "model_train.py rather than copied. Nothing else is substituted.")
+    """Import model_train.py (the original model and dataset classes)."""
     import model_train
-    assert not hasattr(model_train, "_ran_main"), "model_train ran its main block"
     return model_train
 
 
@@ -349,7 +303,6 @@ def do_run(a) -> int:
         n_train=len(sets["train"]),
         n_val=len(sets["val"]),
         n_test=len(sets["test"]),
-        torchvision_shim=SHIM_USED,
         history=history,
     )
     print(f"\ntest acc {result['accuracy']:.4f}  "
