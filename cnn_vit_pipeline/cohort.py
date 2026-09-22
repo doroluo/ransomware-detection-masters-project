@@ -308,9 +308,11 @@ def _core_metrics(y_true, y_pred, y_score=None) -> dict:
         "recall_ransomware": rec_r,
         "f1_ransomware": f1_r,
         "support_ransomware": sup_r,
-        "macro_precision": float(np.mean([pre_g, pre_r])),
-        "macro_recall": float(np.mean([rec_g, rec_r])),
-        "macro_f1": float(np.mean([f1_g, f1_r])),
+        # undefined (None) when a class has no support: averaging a 0.0 for the
+        # absent class would halve the number and read as a real score
+        "macro_precision": float(np.mean([pre_g, pre_r])) if sup_g and sup_r else None,
+        "macro_recall": float(np.mean([rec_g, rec_r])) if sup_g and sup_r else None,
+        "macro_f1": float(np.mean([f1_g, f1_r])) if sup_g and sup_r else None,
         "false_positive_rate": _safe_div(fp, tn + fp),
         "confusion_matrix": {"tn": tn, "fp": fp, "fn": fn, "tp": tp},
         "roc_auc": None,

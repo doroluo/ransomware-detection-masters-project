@@ -78,8 +78,11 @@ class Folds:
         self.arch = np.array([r["arch"] for r in rows], dtype=object)
         self.orig_set = np.array([r["orig_set"] for r in rows], dtype=object)
         self.fold = np.array([int(r["fold"]) for r in rows], dtype=int)
+        self.corpus = np.array([r.get("corpus") or "mendeley" for r in rows], dtype=object)
         self.n = len(rows)
         self.families = sorted({f for f, l in zip(self.family, self.y) if l == 1})
+        if len(set(self.sha)) != self.n:
+            raise ValueError(f"{path}: duplicate sha256 rows; rebuild the fold file")
 
     # -- the two schemes ---------------------------------------------------
     def kfold(self):
@@ -101,12 +104,14 @@ class Folds:
         return out
 
     def fold_of_family(self) -> dict:
-        return {f: int(self.fold[np.flatnonzero(self.family == f)[0]])
+        rans = self.y == 1
+        return {f: int(self.fold[np.flatnonzero((self.family == f) & rans)[0]])
                 for f in self.families}
 
     def counts(self) -> dict:
-        fam_n = {f: int((self.family == f).sum()) for f in self.families}
-        fam_x64 = {f: int(((self.family == f) & (self.arch == "x64")).sum())
+        rans = self.y == 1
+        fam_n = {f: int(((self.family == f) & rans).sum()) for f in self.families}
+        fam_x64 = {f: int(((self.family == f) & rans & (self.arch == "x64")).sum())
                    for f in self.families}
         return fam_n, fam_x64
 
@@ -114,16 +119,21 @@ class Folds:
 # ---------------------------------------------------------------------------
 # floors
 # ---------------------------------------------------------------------------
-def floor_blocks(y_true, arch) -> dict:
-    """majority and x86-rule, as full metric blocks, for one test set."""
+def floor_blocks(y_true, arch, y_train=None) -> dict:
+    """majority and x86-rule, as full metric blocks, for one test set.
+
+    The majority class comes from y_train when given (a real baseline that
+    knows only the training labels); without it the test set's own majority is
+    used, which is an oracle and slightly optimistic."""
     y_true = np.asarray(y_true).astype(int)
     arch = np.asarray(arch, dtype=object)
-    maj = int(np.bincount(y_true, minlength=2).argmax())
+    src = y_true if y_train is None else np.asarray(y_train).astype(int)
+    maj = int(np.bincount(src, minlength=2).argmax())
     out = {"majority": _core_metrics(y_true, np.full(len(y_true), maj)),
            "x86_rule": _core_metrics(y_true, (arch == "x86").astype(int))}
     keep = ("accuracy", "balanced_accuracy", "macro_f1", "recall_goodware",
             "recall_ransomware", "false_positive_rate")
-    return {k: {kk: round(vv, 4) for kk, vv in v.items() if kk in keep}
+    return {k: {kk: (None if vv is None else round(vv, 4)) for kk, vv in v.items() if kk in keep}
             for k, v in out.items()}
 
 
@@ -135,12 +145,12 @@ def _recall(y_true, y_pred, mask, label) -> float:
     return _safe_div(int(hit), int(m.sum()))
 
 
-def fold_row(fold, y_true, y_pred, y_score, arch) -> dict:
+def fold_row(fold, y_true, y_pred, y_score, arch, y_train=None) -> dict:
     y_true = np.asarray(y_true).astype(int)
     y_pred = np.asarray(y_pred).astype(int)
     arch = np.asarray(arch, dtype=object)
     m = _core_metrics(y_true, y_pred, y_score)
-    fl = floor_blocks(y_true, arch)
+    fl = floor_blocks(y_true, arch, y_train)
     is86, is64 = arch == "x86", arch == "x64"
     return {
         "fold": fold,
@@ -211,7 +221,7 @@ def write_model_dir(out_dir: Path, folds: Folds, pipeline: str, model: str,
     frows = []
     for f in range(K):
         m = kfold_fold == f
-        frows.append(fold_row(f, y[m], kfold_pred[m], kfold_score[m], arch[m]))
+        frows.append(fold_row(f, y[m], kfold_pred[m], kfold_score[m], arch[m], y_train=y[~m]))
     _write_csv(out_dir / "fold_metrics.csv", FOLD_METRIC_COLS, frows)
 
     # -- lofo_predictions.csv ---------------------------------------------
@@ -236,10 +246,11 @@ def write_model_dir(out_dir: Path, folds: Folds, pipeline: str, model: str,
         rk = _safe_div(int((kfold_pred[idx] == 1).sum()), len(idx))
         prows.append({"family": famname, "n": fam_n[famname],
                       "n_x64": fam_x64[famname], "fold": fold_of[famname],
+                      "corpus": "+".join(sorted(set(folds.corpus[idx]))),
                       "recall_kfold": round(rk, 6),
                       "recall_lofo": round(lofo_recall[famname], 6)})
     _write_csv(out_dir / "per_family.csv",
-               ["family", "n", "n_x64", "fold", "recall_kfold", "recall_lofo"],
+               ["family", "n", "n_x64", "fold", "corpus", "recall_kfold", "recall_lofo"],
                prows)
 
     # -- metrics.json -----------------------------------------------------
@@ -283,7 +294,8 @@ def write_model_dir(out_dir: Path, folds: Folds, pipeline: str, model: str,
         samples=samples, results=[pooled], elapsed_seconds=elapsed,
         floors={"pooled": floor_blocks(y, arch),
                 "per_fold": {str(f): floor_blocks(y[folds.fold == f],
-                                                  arch[folds.fold == f])
+                                                  arch[folds.fold == f],
+                                                  y_train=y[folds.fold != f])
                              for f in range(K)}},
         n_configs=1, config=config,
         # also at the top level: family_holdout/aggregate.py reads them there

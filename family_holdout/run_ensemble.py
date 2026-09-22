@@ -238,7 +238,7 @@ def _member_metrics(out_root: Path, dataset: str, pipeline: str, model: str) -> 
     v = [float(r["macro_f1"]) for r in fm]
     pf = {r["family"]: (float(r["recall_kfold"]), float(r["recall_lofo"]))
           for r in _read(d / "per_family.csv")}
-    return {"fold_mean": st.mean(v), "fold_sd": st.pstdev(v),
+    return {"fold_mean": st.mean(v), "fold_sd": (st.stdev(v) if len(v) > 1 else 0.0),
             "pooled": res["macro_f1"], "auc": res.get("roc_auc"),
             "rr": res.get("recall_ransomware"), "rg": res.get("recall_goodware"),
             "fpr": res.get("false_positive_rate"),

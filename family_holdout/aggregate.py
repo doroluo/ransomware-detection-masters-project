@@ -43,7 +43,8 @@ def mean_sd(rows, key):
     v = [float(r[key]) for r in rows if r.get(key) not in (None, "")]
     if not v:
         return None, None
-    return st.mean(v), (st.pstdev(v) if len(v) > 1 else 0.0)
+    # sample sd (ddof=1), the same definition common.py stores in metrics.json
+    return st.mean(v), (st.stdev(v) if len(v) > 1 else 0.0)
 
 
 def main() -> int:
@@ -57,7 +58,7 @@ def main() -> int:
          "partly measures architecture mix, not only family difficulty. See `family_holdout/folds.py`.", ""]
 
     families = {}
-    for ds in ("mendeley", "balanced"):
+    for ds in sorted(d.name for d in FH.iterdir() if d.is_dir() and any(d.glob("*/*/metrics.json"))):
         models = sorted((FH / ds).glob("*/*/metrics.json"))
         if not models:
             continue
@@ -83,22 +84,23 @@ def main() -> int:
             pf = mp.parent / "per_family.csv"
             if pf.is_file():
                 for r in read_csv(pf):
-                    families.setdefault(r["family"], {"n": r.get("n"), "n_x64": r.get("n_x64"), "fold": r.get("fold")})
+                    families.setdefault(r["family"], {"n": r.get("n"), "n_x64": r.get("n_x64"), "fold": r.get("fold"),
+                                                      "corpus": r.get("corpus") or "mendeley"})
                     families[r["family"]][f"{ds}:{pipe}/{model}"] = (r.get("recall_kfold"), r.get("recall_lofo"))
         L.append("")
 
     if families:
         cols = sorted({k for v in families.values() for k in v if ":" in k})
         L += ["## Per-family recall (K-fold held-out / LOFO), all models", "",
-              "| family | n | x64 | fold | " + " | ".join(cols) + " |",
-              "|---|---|---|---|" + "---|" * len(cols)]
+              "| family | corpus | n | x64 | fold | " + " | ".join(cols) + " |",
+              "|---|---|---|---|---|" + "---|" * len(cols)]
         def med(fam):
             v = [float(families[fam][c][0]) for c in cols if c in families[fam] and families[fam][c][0] not in (None, "")]
             return st.median(v) if v else -1
         for fam in sorted(families, key=lambda x: (med(x), x)):
             d = families[fam]
             cells = [f"{f(d[c][0], 2)} / {f(d[c][1], 2)}" if c in d else "" for c in cols]
-            L.append(f"| {fam} | {d['n']} | {d['n_x64']} | {d['fold']} | " + " | ".join(cells) + " |")
+            L.append(f"| {fam} | {d['corpus']} | {d['n']} | {d['n_x64']} | {d['fold']} | " + " | ".join(cells) + " |")
         L.append("")
         L.append("Sorted by the median K-fold recall across models; families at the top are the ones every pipeline misses.")
         L.append("")

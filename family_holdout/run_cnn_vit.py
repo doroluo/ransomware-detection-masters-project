@@ -363,7 +363,8 @@ def sweep(dataset: str, a, mt) -> None:
 
 # --------------------------------------------------------------- scoring ---
 def _pstdev(v):
-    return float(st.pstdev(v)) if len(v) > 1 else 0.0
+    """sample sd (ddof=1): the one definition every summary in this repo uses"""
+    return float(st.stdev(v)) if len(v) > 1 else 0.0
 
 
 def _mean(v):
@@ -602,7 +603,7 @@ def score_dataset(dataset: str, a) -> dict | None:
         scheme="family_holdout_5fold + LOFO",
         fold_mean=fold_mean,
         fold_sd=fold_sd,
-        fold_sd_kind="population sd over the 5 folds",
+        fold_sd_kind="sample sd (ddof=1) over the 5 folds",
         lofo_mean_recall=(_mean(list(lofo_recall.values())) if lofo_recall else None),
         lofo_families_done=len(lofo_recall),
         lofo_pooled_recall=(float(lofo["pred"].mean()) if len(lofo) else None),
@@ -676,7 +677,7 @@ def build_config(dataset: str, a, dev_names) -> dict:
         "aggregation": {"per_fold": "mean over seeds of the per-seed metric",
                         "pooled": "argmax of the seed-mean score, over the union "
                                   "of the five held-out folds",
-                        "fold_sd": "population sd over the five folds"},
+                        "fold_sd": "sample sd (ddof=1) over the five folds"},
         "floors": {"majority": "accuracy of always predicting the larger test class",
                    "x86_rule": "accuracy of predicting ransomware iff arch == x86"},
         "paths": {"images": str(Path(a.images_root)),
