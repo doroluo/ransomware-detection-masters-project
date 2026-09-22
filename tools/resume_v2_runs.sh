@@ -44,14 +44,26 @@ export RANSOM_SEQ_CACHE="C:/Users/chaoa/Downloads/seq_models_v2/token_cache"
 export PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb:256"
 SEQCFG="$LOG/seq_config_v2.yaml"
 [ -f "$SEQCFG" ] || sed 's#C:/Users/chaoa/Downloads/seq_models#C:/Users/chaoa/Downloads/seq_models_v2#g' seq_model/config.yaml > "$SEQCFG"
-seqrun() {
-  "$PYCUDA" -u seq_model/run_family_holdout.py --dataset all --config "$SEQCFG" --out "$R" --imports manifests/imports/imports_flat.json --log "$RANSOM_SEQ_MODELS/logs/fh_all.log" "$@" >> "$LOG/seq_all.log" 2>&1
-  echo "== seq ($*) ended rc=$? $(date)" >> "$LOG/seq_all.log"
+# The transformer runner leaks GPU memory across runs inside one process (the
+# second or third run of a process ends in CUDA OOM on this 16 GB card), so
+# every process trains ONE run and exits with status 7 ("more work"); the loop
+# re-invokes it until it exits 0 (done) or fails 8 times in a row.
+seqphase() {   # $@ = extra runner flags (e.g. --scheme kfold)
+  local fails=0 rc
+  while :; do
+    "$PYCUDA" -u seq_model/run_family_holdout.py --dataset all --config "$SEQCFG" --out "$R" --imports manifests/imports/imports_flat.json --log "$RANSOM_SEQ_MODELS/logs/fh_all.log" --max-runs 1 "$@" >> "$LOG/seq_all.log" 2>&1
+    rc=$?; echo "== seq ($*) process ended rc=$rc $(date)" >> "$LOG/seq_all.log"
+    case $rc in
+      0) return 0 ;;
+      7) fails=0 ;;
+      *) fails=$((fails+1)); [ $fails -ge 8 ] && { echo "== seq ($*) giving up after 8 consecutive failures" >> "$LOG/seq_all.log"; return 1; }; sleep 20 ;;
+    esac
+  done
 }
 (
-  for a in 1 2 3; do seqrun --scheme kfold; tail -1 "$LOG/seq_all.log" | grep -q "rc=0" && break; done
+  seqphase --scheme kfold
   "$PYCUDA" -u family_holdout/run_cnn_vit.py --dataset all --out-root "$R" --data-root "$D/cnn_vit_data/family_holdout_v2" --models-root "$D/cnn_vit_models/family_holdout_v2" >> "$LOG/cnnvit_all.log" 2>&1
-  for a in 1 2 3; do seqrun; tail -1 "$LOG/seq_all.log" | grep -q "rc=0" && break; done
+  seqphase
   echo "== gpu chain done $(date)" >> "$LOG/seq_all.log"
 ) &
 echo "launched; logs under $LOG"
