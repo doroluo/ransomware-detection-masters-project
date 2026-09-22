@@ -39,8 +39,11 @@ ARCHES = ("x86", "x64")
 
 
 def build(manifest_rows, corpus: str, set_name: str | None, label: int | None,
-          exclude_families=("thanos",)) -> list[dict]:
+          exclude_families=("thanos",), index: dict | None = None) -> list[dict]:
+    """`index` maps sha256 -> extra columns (e.g. group, is_dll) appended to
+    every row; rows without an index entry get empty values."""
     excl = {normalise_family(f) for f in exclude_families}
+    extra_cols = sorted({k for v in (index or {}).values() for k in v})
     out = []
     for r in manifest_rows:
         lab = int(r["label"]) if label is None else label
@@ -52,10 +55,14 @@ def build(manifest_rows, corpus: str, set_name: str | None, label: int | None,
             reason = f"arch:{r['arch'] or 'unknown'}"
         elif lab == 1 and fam in excl:
             reason = f"family:{fam}"
-        out.append({"corpus": corpus, "sha256": r["sha256"].lower(),
-                    "set": set_name or r["set"], "label": lab, "family": fam,
-                    "filename": r["filename"], "arch": r["arch"], "tag": r["tag"],
-                    "in_cohort": 0 if reason else 1, "exclude_reason": reason})
+        row = {"corpus": corpus, "sha256": r["sha256"].lower(),
+               "set": set_name or r["set"], "label": lab, "family": fam,
+               "filename": r["filename"], "arch": r["arch"], "tag": r["tag"],
+               "in_cohort": 0 if reason else 1, "exclude_reason": reason}
+        if extra_cols:
+            ex = (index or {}).get(r["sha256"].lower(), {})
+            row.update({k: ex.get(k, "") for k in extra_cols})
+        out.append(row)
     return out
 
 
@@ -84,13 +91,20 @@ def main() -> int:
     ap.add_argument("--set", dest="set_name", help="override the manifest's set column (e.g. mal_train)")
     ap.add_argument("--label", type=int, choices=(0, 1), help="override the manifest's label column")
     ap.add_argument("--exclude-family", action="append", default=["thanos"], metavar="NAME")
+    ap.add_argument("--index", type=Path, help="CSV with sha256 plus extra columns (group, is_dll) to append")
     a = ap.parse_args()
     with a.manifest.open(encoding="utf-8", newline="") as fh:
         rows = list(csv.DictReader(fh))
-    cohort = build(rows, a.corpus, a.set_name, a.label, a.exclude_family)
+    index = None
+    if a.index:
+        with a.index.open(encoding="utf-8", newline="") as fh:
+            index = {r["sha256"].lower(): {k: v for k, v in r.items()
+                                           if k in ("group", "is_dll")}
+                     for r in csv.DictReader(fh)}
+    cohort = build(rows, a.corpus, a.set_name, a.label, a.exclude_family, index)
     a.out.parent.mkdir(parents=True, exist_ok=True)
     with a.out.open("w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=COLUMNS)
+        w = csv.DictWriter(fh, fieldnames=list(cohort[0]) if cohort else COLUMNS)
         w.writeheader()
         w.writerows(cohort)
     print(summary(cohort))

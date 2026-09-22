@@ -45,3 +45,13 @@ def test_set_and_label_overrides_and_summary():
     assert "2 of 2 rows in cohort" in text and "akira" in text
     line = next(l for l in text.splitlines() if l.startswith("akira"))
     assert line.split() == ["akira", "1", "1"]
+
+
+def test_index_columns_are_appended_by_sha256():
+    rows = [_row("a" * 64, "root", "x86", label="0", set_="good_train"),
+            _row("b" * 64, "root", "x86", label="0", set_="good_train")]
+    index = {"a" * 64: {"group": "pf:app", "is_dll": "1"}}
+    out = B.build(rows, "hostgood", None, None, index=index)
+    assert out[0]["group"] == "pf:app" and out[0]["is_dll"] == "1"
+    assert out[1]["group"] == "" and out[1]["is_dll"] == ""
+    assert list(out[0])[:len(B.COLUMNS)] == B.COLUMNS

@@ -54,6 +54,9 @@ Two evaluation schemes are derived from the same file:
 Output (--out DIR)
     folds_mendeley.csv, folds_balanced.csv   dataset, sha256, label, family,
                                              group, arch, orig_set, fold, corpus
+    folds_all.csv (with --goodware / --all)  every ransomware corpus against
+                                             every goodware source, goodware
+                                             groups balanced jointly
     families.csv                             family, n, n_x64, fold, orig_set, corpus
 
 Usage
@@ -186,6 +189,41 @@ def balanced_goodware_rows():
              "corpus": "balanced"} for r in rows]
 
 
+def extra_goodware_rows(name: str, path: Path) -> list:
+    """In-cohort goodware rows of one extra cohort file. The file must carry a
+    `group` column (program / project identity); files of one group never
+    straddle a fold. Folds are assigned here per corpus; all_goodware_rows()
+    re-assigns them jointly."""
+    rows = [r for r in _read(Path(path)) if r["in_cohort"] == "1" and r["label"] == "0"]
+    if rows and "group" not in rows[0]:
+        raise ValueError(f"{path}: an extra goodware cohort needs a `group` column "
+                         "(e.g. from tools/build_cohort.py --index)")
+    groups = {r["sha256"].lower(): (r["group"] or "file:" + r["sha256"][:8]) for r in rows}
+    grp_fold = assign_greedy(collections.Counter(groups.values()))
+    return [{"sha256": r["sha256"].lower(), "label": 0, "family": "goodware", "group": groups[r["sha256"].lower()],
+             "arch": r["arch"], "orig_set": r["set"], "fold": grp_fold[groups[r["sha256"].lower()]],
+             "corpus": name} for r in rows]
+
+
+def all_goodware_rows(extra: dict | None = None) -> list:
+    """Every goodware source in one pool (Mendeley, Goodware_Balanced, extras),
+    sha256 de-duplicated in that order, groups assigned to folds jointly so the
+    five folds are balanced over the whole pool."""
+    rows, seen = [], set()
+    sources = [mendeley_goodware_rows(), balanced_goodware_rows()]
+    sources += [extra_goodware_rows(n, p) for n, p in (extra or {}).items()]
+    for src in sources:
+        for r in src:
+            if r["sha256"] in seen:
+                continue
+            seen.add(r["sha256"])
+            rows.append(dict(r))
+    grp_fold = assign_greedy(collections.Counter(r["group"] for r in rows))
+    for r in rows:
+        r["fold"] = grp_fold[r["group"]]
+    return rows
+
+
 def check_dataset(ds: str, rows: list) -> None:
     """A sha256 appears once, and never with both labels; arch is x86 or x64."""
     by_sha = collections.defaultdict(set)
@@ -205,10 +243,14 @@ def check_dataset(ds: str, rows: list) -> None:
 
 
 def build(out: Path, extra: dict | None = None, arch_aware: bool = False,
-          pool_small: bool = False) -> dict:
+          pool_small: bool = False, extra_goodware: dict | None = None,
+          build_all: bool = False) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     rans, fam_fold = ransomware_rows(extra, arch_aware, pool_small)
     datasets = {"mendeley": rans + mendeley_goodware_rows(), "balanced": rans + balanced_goodware_rows()}
+    if extra_goodware or build_all:
+        # the joint dataset: every ransomware corpus against every goodware source
+        datasets["all"] = rans + all_goodware_rows(extra_goodware)
     for ds, rows in datasets.items():
         check_dataset(ds, rows)
         with (out / f"folds_{ds}.csv").open("w", newline="", encoding="utf-8") as fh:
@@ -256,16 +298,25 @@ def main() -> int:
                     help="balance x64 ransomware across folds as well as file counts")
     ap.add_argument("--pool-small", action="store_true",
                     help=f"assign families with fewer than {SMALL_FAMILY} files to folds as one group")
+    ap.add_argument("--goodware", action="append", default=[], metavar="NAME=COHORT.csv",
+                    help="extra goodware cohort file(s) with a `group` column; implies --all")
+    ap.add_argument("--all", action="store_true",
+                    help="also write folds_all.csv: all ransomware corpora vs all goodware sources")
     a = ap.parse_args()
-    extra = {}
-    for spec in a.ransomware:
-        name, _, path = spec.partition("=")
-        if not path:
-            ap.error(f"--ransomware expects NAME=PATH, got {spec!r}")
-        extra[name] = Path(path)
-    datasets = build(Path(a.out), extra, a.arch_aware, a.pool_small)
+
+    def specs(items, flag):
+        out = {}
+        for spec in items:
+            name, _, path = spec.partition("=")
+            if not path:
+                ap.error(f"{flag} expects NAME=PATH, got {spec!r}")
+            out[name] = Path(path)
+        return out
+    extra = specs(a.ransomware, "--ransomware")
+    extra_good = specs(a.goodware, "--goodware")
+    datasets = build(Path(a.out), extra, a.arch_aware, a.pool_small, extra_good, a.all)
     print(summary(datasets))
-    print(f"wrote folds_mendeley.csv, folds_balanced.csv, families.csv under {a.out}")
+    print("wrote " + ", ".join(f"folds_{ds}.csv" for ds in datasets) + f", families.csv under {a.out}")
     return 0
 
 

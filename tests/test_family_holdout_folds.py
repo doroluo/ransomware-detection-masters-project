@@ -146,3 +146,40 @@ def test_pool_small_keeps_tiny_families_together(tmp_path, monkeypatch):
     assert len({r["fold"] for r in r_pooled if r["family"].startswith("tiny")}) == 1
     assert len({r["fold"] for r in r_default if r["family"].startswith("tiny")}) == 4
     assert {r["family"] for r in r_pooled} == {r["family"] for r in r_default}   # names kept for LOFO
+
+
+def test_extra_goodware_needs_group_and_joins_the_all_dataset(tmp_path, monkeypatch):
+    mend = tmp_path / "m.csv"
+    _cohort(mend, [{"sha256": f"m{i:063d}", "family": "conti", "arch": "x86"} for i in range(6)])
+    monkeypatch.setitem(folds.COHORT, "mendeley", mend)
+    good = tmp_path / "g.csv"
+    cols = ["corpus", "sha256", "set", "label", "family", "filename", "arch", "tag", "in_cohort",
+            "exclude_reason", "group"]
+    with good.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols)
+        w.writeheader()
+        for i in range(8):
+            w.writerow({"corpus": "hostgood", "sha256": f"g{i:063d}", "set": "good_train", "label": "0",
+                        "family": "goodware", "filename": f"f{i}.dll", "arch": "x86", "tag": "plain",
+                        "in_cohort": "1", "exclude_reason": "", "group": f"pf:app{i % 2}"})
+        w.writerow({"corpus": "hostgood", "sha256": "x" * 64, "set": "good_train", "label": "0",
+                    "family": "goodware", "filename": "x.dll", "arch": "x86", "tag": "dotnet",
+                    "in_cohort": "0", "exclude_reason": "dotnet", "group": "pf:app9"})
+    rows = folds.extra_goodware_rows("hostgood", good)
+    assert len(rows) == 8 and {r["corpus"] for r in rows} == {"hostgood"}
+    assert len({r["fold"] for r in rows if r["group"] == "pf:app0"}) == 1      # a group stays together
+    # without a group column the builder refuses
+    bad = tmp_path / "bad.csv"
+    _cohort(bad, [{"sha256": "b" * 64, "family": "", "arch": "x64", "label": "0", "set": "good_train"}])
+    with pytest.raises(ValueError, match="group"):
+        folds.extra_goodware_rows("bad", bad)
+    # the joint dataset re-assigns goodware groups over the whole pool and de-duplicates by sha256
+    monkeypatch.setattr(folds, "mendeley_goodware_rows",
+                        lambda: [{"sha256": "g" + "0" * 63, "label": 0, "family": "goodware",
+                                  "group": "mn:dup", "arch": "x86", "orig_set": "good_train",
+                                  "fold": 0, "corpus": "mendeley"}])
+    monkeypatch.setattr(folds, "balanced_goodware_rows", lambda: [])
+    allrows = folds.all_goodware_rows({"hostgood": good})
+    assert len(allrows) == 8                                    # g000..0 came from mendeley first
+    assert [r["corpus"] for r in allrows if r["sha256"] == "g" + "0" * 63] == ["mendeley"]
+    assert all(len({r["fold"] for r in allrows if r["group"] == g}) == 1 for g in {r["group"] for r in allrows})
