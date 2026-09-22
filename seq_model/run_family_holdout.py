@@ -471,6 +471,10 @@ def main() -> int:
     imports = None
     if a.imports:
         cfg["imports"]["enabled"] = True
+        # the file's content is part of the run fingerprint: a regenerated
+        # imports JSON must not reuse runs cached under the old one
+        cfg["imports"]["file_sha256"] = hashlib.sha256(
+            Path(a.imports).read_bytes()).hexdigest()[:16]
         imports = D.load_imports(a.imports, cfg["imports"]["hash_dim"])
         print(f"imports side-input: {len(imports)} files hashed to "
               f"{cfg['imports']['hash_dim']} dims")

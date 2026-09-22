@@ -238,19 +238,22 @@ def test_mendeley_family_split_is_disjoint(tmp_path):
     assert D.summarize(ran)["group_overlap"] == []
 
 
-def test_empty_files_are_counted_as_dropped(tmp_path):
-    """The loader keeps every file; `build_frames` is what drops the empty ones,
-    and it must say so rather than letting them vanish from the count."""
+def test_empty_files_stop_the_run(tmp_path):
+    """The loader keeps every file. `build_frames` used to drop the empty ones
+    silently, which left sample_counts.json, splits.csv and the floors on a
+    larger denominator than the model rows; now it stops and names them, so the
+    cohort file is where such files get excluded."""
     pytest.importorskip("pandas")
     root = _make_corpus(tmp_path / "corpus")
     samples = D.load_mendeley(root, "ransomware") + D.load_mendeley(root, "goodware")
     assert len(samples) == 9, "the loader itself drops nothing"
 
     from llm_features_pipeline.run_pipeline import build_frames
-    df = build_frames(samples, lambda s: (s.strip().lower() or None), cap=5000)
-    assert len(df) == 7, "the two empty files must be dropped from the frame"
-    kept = set(df["file"])
-    assert not [n for n in kept if n.startswith("phobos_") or n == "root_zeta.exe.txt"]
+    with pytest.raises(SystemExit, match="2 files normalise to nothing"):
+        build_frames(samples, lambda s: (s.strip().lower() or None), cap=5000)
+    full = [s for s in samples if not (s.name.startswith("phobos_") or s.name == "root_zeta.exe.txt")]
+    df = build_frames(full, lambda s: (s.strip().lower() or None), cap=5000)
+    assert len(df) == 7
 
 
 def test_content_leak_finds_a_planted_duplicate(tmp_path):
@@ -452,8 +455,15 @@ def test_cross_source_dedup_is_a_noop_when_there_is_no_overlap(tmp_path):
     bal.write_text("nop\n", encoding="utf-8")
     sha_json = tmp_path / "s.json"
     sha_json.write_text(_json.dumps({}), encoding="utf-8")
+    manifest = tmp_path / "manifest.csv"
+    manifest.write_text("txt_file,sha256\neveryday_b.exe.txt,\n", encoding="utf-8")
     kept, rep = D.dedup_goodware_sources(
         [D.Sample(bal, 0, "balanced_goodware", "g")],
         [D.Sample(m, 0, "mendeley_goodware", "file:a")],
-        tmp_path / "missing.csv", sha_json)
+        manifest, sha_json)
     assert len(kept) == 1 and rep["removed_total"] == 0
+    # a missing manifest used to degrade the check to a no-op; it is fatal now
+    with pytest.raises(FileNotFoundError):
+        D.dedup_goodware_sources([D.Sample(bal, 0, "balanced_goodware", "g")],
+                                 [D.Sample(m, 0, "mendeley_goodware", "file:a")],
+                                 tmp_path / "missing.csv", sha_json)

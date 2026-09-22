@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import os
 import sys
@@ -201,13 +200,12 @@ def budget_seqs(cache, sampling: str, budget: int):
 def ensure_tokenization_repo(cfg) -> None:
     """Put the tokenization repo AHEAD of this repo on sys.path.
 
-    This repo also contains a directory called `Tokenization/` - an older
-    vendored copy whose `train_tokenizer` still reads a hard-coded `Opcodes`
-    column. `run_pipeline.load_repo_modules` gets the ordering right because it
-    inserts the real checkout at position 0 before importing; the tuning driver
-    reaches `train_tokenizer` without going through it, so it has to do the same
-    thing, or it silently trains with the wrong copy.
+    `Tokenization.tokenization` lives only in the external checkout (the stale
+    vendored copy this repo used to carry was deleted); this keeps the import
+    order explicit for the tuning driver, which reaches `train_tokenizer`
+    without going through `run_pipeline.load_repo_modules`.
     """
+
     repo = str(Path(cfg["paths"]["tokenization_repo"]))
     if sys.path and sys.path[0] == repo:
         return
@@ -332,42 +330,6 @@ def _fit(clf, X, y, sw):
 # ---------------------------------------------------------------------------
 # Stage 2: the CV search (train split only)
 # ---------------------------------------------------------------------------
-
-
-def cv_evaluate(Xs, y, groups, arch, folds, clf_kind, clf_params, weight_mode):
-    """Out-of-fold scores for one configuration. `Xs` is per-fold (X_all, ...).
-
-    Returns CV macro-F1 at the tuned threshold, balanced accuracy, AUC, the
-    out-of-fold threshold, and the per-fold macro-F1 spread. All of it from
-    training rows: `folds` indexes into the train split.
-    """
-    from sklearn.metrics import balanced_accuracy_score, f1_score, roc_auc_score
-
-    oof = np.full(len(y), np.nan)
-    per_fold = []
-    for k, (tr, te) in enumerate(folds):
-        X = Xs[k]
-        sw = arch_sample_weight(y[tr], arch[tr], weight_mode)
-        clf = _fit(make_clf(clf_kind, clf_params), X[tr], y[tr],
-                   None if weight_mode == "none" else sw)
-        s = decision_scores(clf, X[te])
-        oof[te] = s
-        # Per-fold macro-F1 at that fold's own natural cut, for the spread only.
-        cut = 0.5 if hasattr(clf, "predict_proba") else 0.0
-        per_fold.append(f1_score(y[te], (s >= cut).astype(int),
-                                 average="macro", zero_division=0))
-    thr, f1 = T.best_threshold(y, oof, "macro_f1")
-    pred = (oof >= thr).astype(int)
-    try:
-        auc = float(roc_auc_score(y, oof))
-    except Exception:
-        auc = float("nan")
-    return {"cv_macro_f1": float(f1),
-            "cv_balanced_accuracy": float(balanced_accuracy_score(y, pred)),
-            "cv_roc_auc": auc,
-            "cv_macro_f1_default_cut_mean": float(np.mean(per_fold)),
-            "cv_macro_f1_fold_std": float(np.std(per_fold)),
-            "oof_threshold": float(thr)}
 
 
 TFIDF_CLFS = [

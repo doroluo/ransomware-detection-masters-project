@@ -150,8 +150,10 @@ def _fit(m: Model, A, ytr, B):
     return est.predict(B), np.asarray(s, dtype=float)
 
 
-def oof_threshold(X, y, groups, tr, m: Model):
-    """macro-F1-optimal threshold on out-of-fold scores inside `tr` only."""
+def oof_threshold(X, y, groups, tr, m: Model, imports=None):
+    """macro-F1-optimal threshold on out-of-fold scores inside `tr` only, on
+    the same feature matrix (WL TF-IDF, plus the imports block when given)
+    that the gated model is fitted on."""
     from sklearn.model_selection import StratifiedGroupKFold
     inner = StratifiedGroupKFold(n_splits=N_FOLDS, shuffle=True,
                                  random_state=SEED).split(
@@ -159,6 +161,8 @@ def oof_threshold(X, y, groups, tr, m: Model):
     oof = np.zeros(len(tr), dtype=float)
     for a_idx, b_idx in inner:
         A, B = _tfidf(X, tr[a_idx], tr[b_idx])
+        if imports is not None:
+            A, B = _with_imports(A, B, imports, tr[a_idx], tr[b_idx])
         _, s = _fit(m, A, y[tr[a_idx]], B)
         oof[b_idx] = s
     thr, f1 = best_threshold(y[tr], oof, "macro_f1")
@@ -246,7 +250,7 @@ def run_dataset(dataset: str, out_root: Path, names=WANT, imports=None) -> None:
             t0 = time.time()
             X = L.build(folds.fold != f, r.min_df, r.h)
             n_feat[str(f)] = int(X.shape[1])
-            thr, f1 = oof_threshold(X, y, groups, tr, m)
+            thr, f1 = oof_threshold(X, y, groups, tr, m, imports)
             thr_of_fold[f], oof_f1[str(f)] = thr, round(f1, 4)
             A, B = _tfidf(X, tr, te)
             if imports is not None:

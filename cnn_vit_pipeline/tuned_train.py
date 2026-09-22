@@ -221,6 +221,9 @@ def get_bundle(cfg: Config) -> Bundle:
 
 
 # ---------------------------------------------------------- augmentation ---
+END_PAD_PIXEL = 3 / 255.0   # asm_parser.TOKEN_MAP END_PAD / 255, the encoder fill value
+
+
 def structural_shift(imgs, masks, p: float, max_ratio: float, gen):
     """model_train.MaskAwareStructuralShift, vectorised over the batch.
 
@@ -238,9 +241,11 @@ def structural_shift(imgs, masks, p: float, max_ratio: float, gen):
         return imgs, masks
 
     ratio = 0.05 + (max_ratio - 0.05) * torch.rand(B, device=dev, generator=gen)
-    shift = (H * ratio).to(torch.long)
+    ps = H // P                                   # pixel rows per patch row
+    # whole patch rows, so image and mask move by exactly the same amount
+    shift = torch.ceil(H * ratio / ps).to(torch.long).clamp(min=1) * ps
     lo, hi = int(H * 0.1), int(H * 0.8)
-    insert = (lo + torch.rand(B, device=dev, generator=gen) * (hi - lo)).to(torch.long)
+    insert = (lo + torch.rand(B, device=dev, generator=gen) * (hi - lo)).to(torch.long) // ps * ps
     shift = torch.where(hit, shift, torch.zeros_like(shift))
 
     rows = torch.arange(H, device=dev).unsqueeze(0).expand(B, H)
@@ -248,10 +253,10 @@ def structural_shift(imgs, masks, p: float, max_ratio: float, gen):
     zero = (rows >= insert.unsqueeze(1)) & (src < insert.unsqueeze(1))
     src = torch.where(rows < insert.unsqueeze(1), rows, src).clamp(0, H - 1)
     out = torch.gather(imgs, 1, src.unsqueeze(-1).expand(B, H, W))
-    out = out.masked_fill(zero.unsqueeze(-1), 0)
+    out = out.masked_fill(zero.unsqueeze(-1), END_PAD_PIXEL)   # END_PAD, not PADDING
 
-    pshift = torch.ceil(shift.float() / (H // P)).to(torch.long)
-    pinsert = insert // (H // P)
+    pshift = shift // ps
+    pinsert = insert // ps
     prows = torch.arange(P, device=dev).unsqueeze(0).expand(B, P)
     psrc = prows - pshift.unsqueeze(1)
     pzero = (prows >= pinsert.unsqueeze(1)) & (psrc < pinsert.unsqueeze(1))

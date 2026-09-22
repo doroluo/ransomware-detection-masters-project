@@ -67,8 +67,8 @@ if str(REPO) not in sys.path:
 # ---------------------------------------------------------------------------
 # where things live
 # ---------------------------------------------------------------------------
-SHARED = Path(os.environ.get(
-    "RANSOM_SHARED", r"C:/Users/chaoa/Downloads/asm and mm/Shared"))
+SHARED = Path(os.environ.get("RANSOM_SHARED_DIR", os.environ.get(
+    "RANSOM_SHARED", r"C:/Users/chaoa/Downloads/asm and mm/Shared")))
 # Which token tree the model reads. "mn" is the mnemonic stream of the
 # committed study; "mn_api_top" is the API-inlined stream with rare names
 # collapsed (asm_tool/rewrite_streams.py, asm_tool/cap_api_vocab.py). A

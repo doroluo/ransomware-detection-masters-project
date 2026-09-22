@@ -1,4 +1,3 @@
-import os
 import re
 import numpy as np
 import lief
@@ -164,36 +163,6 @@ def extract_features_single(file_path, sanitize=False):
     string_feats = extract_string_features(file_bytes)        # 4
 
     return np.hstack([byte_hist, entropy_hist, struct_feats, string_feats])
-
-def extract_features_from_folder(folder_path, label, sanitize=False):
-    """Recursively parses all nested binaries into feature matrices."""
-    X, y = [], []
-    if not os.path.exists(folder_path):
-        print(f"[!] Path not found: {folder_path}")
-        return np.array(X), np.array(y)
-
-    all_files = [
-        os.path.join(root, filename)
-        for root, _, files in os.walk(folder_path)
-        for filename in files
-    ]
-
-    print(f"[*] Processing {len(all_files)} files in {folder_path} (Sanitize={sanitize})...")
-    first_error = False
-    for path in all_files:
-        try:
-            vec = extract_features_single(path, sanitize=sanitize)
-            if vec is not None:
-                X.append(vec)
-                y.append(label)
-        except Exception as e:
-            if not first_error:
-                print(f"[!] First extraction error on {os.path.basename(path)}: {e}")
-                first_error = True
-            continue
-
-    print(f"[+] Successfully loaded {len(X)} samples from {folder_path}.")
-    return np.array(X, dtype=np.float32), np.array(y, dtype=np.int32)
 
 def prune_brittle_features(X_features):
     """Strips volatile byte/entropy histograms (0:512) and string stats (-4:)."""

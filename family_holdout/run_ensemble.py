@@ -112,6 +112,10 @@ def load_member(folds: Folds, out_root: Path, pipeline: str, model: str):
         assert r["arch"] == folds.arch[i], f"{d}: arch mismatch {sha}"
         assert int(r["fold"]) == int(folds.fold[i]), f"{d}: fold mismatch {sha}"
         score[i] = float(r["score"])
+    if score.min() < 0.0 or score.max() > 1.0:
+        raise ValueError(f"{d}: scores outside [0, 1] (min {score.min():.3f}, max "
+                         f"{score.max():.3f}); this member writes a decision margin, "
+                         "not a probability, and cannot be averaged or stacked")
 
     lrows = {r["sha256"]: r for r in _read(d / "lofo_predictions.csv")}
     lofo = {}

@@ -192,7 +192,12 @@ class _Scorer:
         t0 = time.time()
         Xpair, needs_scaling, infold_tfidf = self._built(c, r)
         svd_dim = r.dim if r.kind == "wl_svd" else 0
-        w = arch_sample_weight(y, self.arch) if m.arch_weight else None
+        w = None
+        if m.arch_weight:
+            # weights from the TRAIN rows only: the (label, arch) cell sizes of
+            # the test half must not influence the fit (tune.py does the same)
+            w = np.zeros(len(y), dtype=float)
+            w[tr] = arch_sample_weight(y[tr], self.arch[tr])
         rep_key = (c, r)
         self._evict(rep_key)
 

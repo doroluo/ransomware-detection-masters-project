@@ -171,7 +171,7 @@ def attach_metadata(frame: pd.DataFrame) -> pd.DataFrame:
     out["arch"] = out["sha256"].map(meta["arch"]).fillna("unknown")
     fam = out["sha256"].map(meta["family"])
     # fall back to the npz rel_path, whose first component is the family folder
-    fallback = out["rel_path"].str.rsplit("/", n=1).str[0].where(
+    fallback = out["rel_path"].str.split("/", n=1).str[0].where(
         out["rel_path"].str.contains("/"), "root")
     out["family"] = fam.fillna(fallback)
     return out

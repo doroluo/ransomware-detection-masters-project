@@ -130,7 +130,11 @@ def build_frames(samples, normalize, cap: int):
         if i % 400 == 0:
             print(f"  read {i}/{len(samples)}", flush=True)
     if dropped:
-        print(f"  dropped {len(dropped)} empty files, e.g. {dropped[:3]}")
+        # sample_counts.json, splits.csv and the floors were computed over the
+        # full sample list before this point; a silent drop here would leave
+        # them on a different denominator from the model rows
+        sys.exit(f"{len(dropped)} files normalise to nothing, e.g. {dropped[:3]}; "
+                 "exclude them in the cohort (in_cohort = 0) rather than dropping them here")
     df = pd.DataFrame(rows)
     if df.empty:
         sys.exit("no samples survived reading")

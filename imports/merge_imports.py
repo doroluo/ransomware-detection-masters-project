@@ -40,12 +40,18 @@ FOLDS = REPO / "results" / "family_holdout"
 
 def load_one(path: Path) -> dict:
     doc = json.loads(Path(path).read_text(encoding="utf-8"))
-    out = {}
+    out, n_err = {}, 0
     for sha, rec in doc.items():
         if isinstance(rec, list):                 # already flat
             out[sha] = [str(x) for x in rec]
         else:
             out[sha] = [str(x) for x in (rec.get("imports") or [])]
+            n_err += bool(rec.get("error"))
+    if n_err:
+        # a parse failure and a genuinely empty import table both flatten to
+        # []; say how many of the former there are so a label-skewed failure
+        # rate cannot pass unnoticed
+        print(f"{path}: {n_err} of {len(doc)} records are parse errors (flattened to [])")
     return out
 
 
@@ -63,10 +69,12 @@ def merge(paths) -> tuple[dict, dict]:
 
 def coverage(merged: dict) -> list:
     rows = []
-    for ds in ("mendeley", "balanced"):
-        f = FOLDS / f"folds_{ds}.csv"
-        if not f.is_file():
-            continue
+    fold_files = sorted(FOLDS.glob("folds_*.csv"))
+    if not fold_files:
+        raise SystemExit(f"no folds_*.csv under {FOLDS}; run family_holdout/folds.py first "
+                         "(the coverage guarantee cannot be checked without it)")
+    for f in fold_files:
+        ds = f.stem[len("folds_"):]
         with f.open(encoding="utf-8", newline="") as fh:
             recs = list(csv.DictReader(fh))
         for label in ("1", "0"):

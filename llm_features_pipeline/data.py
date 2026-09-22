@@ -40,7 +40,11 @@ class Sample:
 
 def _family_of(name: str) -> str:
     m = FAMILY_RE.match(name)
-    return m.group("family").lower() if m else "unknown"
+    if not m:
+        # every positive would otherwise share one group and one CV fold
+        raise ValueError(f"ransomware file {name!r} does not match <family>_<sha>.txt; "
+                         "the family is the split group and cannot be guessed")
+    return m.group("family").lower()
 
 
 def load_mendeley(root: Path, which: str) -> list[Sample]:
@@ -73,10 +77,12 @@ def load_balanced(pool_dir: Path, manifest: Path, group_field: str,
                   ungrouped: list[str]) -> list[Sample]:
     """Goodware_Balanced as an unsplit pool, with grouping metadata attached."""
     meta_by_txt: dict[str, dict] = {}
-    if manifest.is_file():
-        with manifest.open(encoding="utf-8", newline="") as fh:
-            for row in csv.DictReader(fh):
-                meta_by_txt[row["txt_file"]] = row
+    if not manifest.is_file():
+        raise FileNotFoundError(f"{manifest}: the balanced manifest is what groups and "
+                                "de-duplicates the pool; without it the split is ungrouped")
+    with manifest.open(encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            meta_by_txt[row["txt_file"]] = row
 
     out = []
     for p in sorted(pool_dir.glob("*.txt")):
@@ -124,17 +130,18 @@ def dedup_goodware_sources(pool: list[Sample], mendeley_goodware: list[Sample],
     report = {"pool_in": len(pool), "removed_by_source_sha256": [],
               "removed_by_content_hash": [], "manifest_rows_without_sha256": 0}
 
-    mendeley_bin_sha: set[str] = set()
-    if mendeley_sha_json.is_file():
-        loaded = json.loads(mendeley_sha_json.read_text(encoding="utf-8"))
-        mendeley_bin_sha = set(loaded if isinstance(loaded, list) else loaded.keys())
+    if not mendeley_sha_json.is_file():
+        raise FileNotFoundError(f"{mendeley_sha_json}: needed for the source-sha256 dedup channel")
+    loaded = json.loads(mendeley_sha_json.read_text(encoding="utf-8"))
+    mendeley_bin_sha: set[str] = set(loaded if isinstance(loaded, list) else loaded.keys())
     report["mendeley_binary_sha256_known"] = len(mendeley_bin_sha)
 
     sha_by_txt: dict[str, str] = {}
-    if manifest.is_file():
-        with manifest.open(encoding="utf-8", newline="") as fh:
-            for row in csv.DictReader(fh):
-                sha_by_txt[row["txt_file"]] = (row.get("sha256") or "").strip().lower()
+    if not manifest.is_file():
+        raise FileNotFoundError(f"{manifest}: needed for the source-sha256 dedup channel")
+    with manifest.open(encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            sha_by_txt[row["txt_file"]] = (row.get("sha256") or "").strip().lower()
 
     mendeley_content = {file_sha256(s.path) for s in mendeley_goodware}
     report["mendeley_goodware_feature_files"] = len(mendeley_goodware)

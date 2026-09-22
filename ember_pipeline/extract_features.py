@@ -41,25 +41,32 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0)
     a = ap.parse_args()
     root = Path(a.inp); excl = set(a.exclude)
-    files = []
+    files, rows = [], []
     for dp, dns, fns in os.walk(root):
         dns[:] = sorted(d for d in dns if not d.startswith(".") and d not in excl)
         for fn in sorted(fns):
             p = Path(dp) / fn
+            rel = p.relative_to(root).as_posix()
+            fam = rel.split("/", 1)[0] if "/" in rel else "root"
             try:
                 with p.open("rb") as fh:
-                    if fh.read(2) != b"MZ":
-                        continue
-            except OSError:
+                    magic = fh.read(2)
+            except OSError as e:
+                rows.append({"sha256": "", "rel_path": rel, "family": fam, "set": a.set,
+                             "label": a.label, "size": 0, "status": f"read_error:{type(e).__name__}"})
+                continue
+            if magic != b"MZ":
+                rows.append({"sha256": "", "rel_path": rel, "family": fam, "set": a.set,
+                             "label": a.label, "size": p.stat().st_size, "status": "not_pe"})
                 continue
             files.append(p)
     if a.limit: files = files[:a.limit]
     print(f"{len(files)} PEs under {root}")
-    X, shas, rels, labels, rows = [], [], [], [], []
+    X, shas, rels, labels = [], [], [], []
     t0 = time.time()
     for i, p in enumerate(files, 1):
         rel = p.relative_to(root).as_posix()
-        fam = rel.rsplit("/", 1)[0] if "/" in rel else "root"
+        fam = rel.split("/", 1)[0] if "/" in rel else "root"     # family = top-level folder
         sha = sha256_file(p)
         row = {"sha256": sha, "rel_path": rel, "family": fam, "set": a.set, "label": a.label,
                "size": p.stat().st_size, "status": "ok"}
@@ -74,6 +81,8 @@ def main() -> int:
         rows.append(row)
         if i % 100 == 0 or i == len(files):
             print(f"  {i}/{len(files)}  {time.time()-t0:.0f}s", flush=True)
+    if not rows:
+        sys.exit(f"nothing under {root}: wrong --in path?")
     out = Path(a.out); out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(str(out) + ".npz", X=np.vstack(X) if X else np.zeros((0, 537), np.float32),
                         sha256=np.array(shas), rel_path=np.array(rels), label=np.array(labels, np.int32))
