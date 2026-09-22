@@ -51,7 +51,7 @@ REPO = HERE.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from family_holdout.common import DATASETS, Folds, OUT_ROOT, write_model_dir  # noqa: E402
+from family_holdout.common import DATASETS, Folds, OUT_ROOT, write_model_dir  # noqa: E402, ALL_DATASETS
 from family_holdout.run_ensemble import MEMBERS as DEFAULT_MEMBERS  # noqa: E402
 from family_holdout.run_ensemble import _member_metrics, _fm, load_member  # noqa: E402
 
@@ -153,7 +153,7 @@ def write_summary(out_root: Path, results: dict, members, suffix: str) -> Path:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dataset", choices=(*DATASETS, "both"), default="both")
+    ap.add_argument("--dataset", choices=(*ALL_DATASETS, "both"), default="both")
     ap.add_argument("--out", default=str(OUT_ROOT))
     ap.add_argument("--members", default=",".join(f"{p}/{m}" for p, m in DEFAULT_MEMBERS))
     ap.add_argument("--summary-suffix", default="")

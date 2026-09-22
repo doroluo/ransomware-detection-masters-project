@@ -61,7 +61,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from family_holdout.common import (DATASETS, Folds, OUT_ROOT,  # noqa: E402
-                                   check_kfold, check_lofo, write_model_dir)
+                                   check_kfold, check_lofo, write_model_dir, ALL_DATASETS)
 
 PIPELINE = "tokenization"
 SEED = 42
@@ -342,7 +342,7 @@ def run_dataset(dataset: str, out_root: Path, tok_repo: Path,
 def main() -> int:
     global MAX_INSTRUCTIONS
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dataset", choices=(*DATASETS, "both"), default="both")
+    ap.add_argument("--dataset", choices=(*ALL_DATASETS, "both"), default="both")
     ap.add_argument("--out", default=str(OUT_ROOT))
     ap.add_argument("--combos", default="",
                     help="comma-separated MODEL/TOKENIZER pairs; default all")

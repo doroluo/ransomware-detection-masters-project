@@ -52,7 +52,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from family_holdout.common import (DATASETS, Folds, OUT_ROOT,  # noqa: E402
-                                   check_kfold, check_lofo, write_model_dir)
+                                   check_kfold, check_lofo, write_model_dir, ALL_DATASETS)
 from family_holdout.run_tfidf import (C_GRID, MAX_FEATURES, MAX_MNEMS,  # noqa: E402
                                       MIN_DF, NGRAM, SEED, fit_score,
                                       load_texts, make_vec)
@@ -178,7 +178,7 @@ def run_dataset(dataset: str, out_root: Path, configs) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dataset", choices=(*DATASETS, "both"), default="both")
+    ap.add_argument("--dataset", choices=(*ALL_DATASETS, "both"), default="both")
     ap.add_argument("--configs", default=",".join(CONFIGS))
     ap.add_argument("--out", default=str(OUT_ROOT))
     a = ap.parse_args()

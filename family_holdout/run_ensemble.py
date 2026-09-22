@@ -55,7 +55,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from family_holdout.common import (DATASETS, Folds, OUT_ROOT,  # noqa: E402
-                                   write_model_dir)
+                                   write_model_dir, ALL_DATASETS)
 
 PIPELINE = "ensemble"
 MEMBERS = (("tfidf", "LogReg"), ("seq_transformer", "seq_transformer"))
@@ -302,7 +302,7 @@ def write_summary(out_root: Path, results: dict, suffix: str = "") -> Path:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dataset", choices=(*DATASETS, "both"), default="both")
+    ap.add_argument("--dataset", choices=(*ALL_DATASETS, "both"), default="both")
     ap.add_argument("--out", default=str(OUT_ROOT))
     ap.add_argument("--members", default=",".join(f"{p}/{m}" for p, m in MEMBERS),
                     help="two 'pipeline/model' result directories, comma-separated")

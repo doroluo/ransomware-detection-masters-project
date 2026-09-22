@@ -27,6 +27,7 @@ spread of any x64 metric is not a sampling spread.
 from __future__ import annotations
 
 import csv
+import os
 import json
 import sys
 from pathlib import Path
@@ -42,9 +43,32 @@ from cnn_vit_pipeline.cohort import (_core_metrics, _safe_div,  # noqa: E402
                                      build_result, write_metrics)
 
 K = 5
-DATASETS = ("mendeley", "balanced")
-FOLD_DIR = REPO / "results" / "family_holdout"
-OUT_ROOT = REPO / "results" / "family_holdout"
+DATASETS = ("mendeley", "balanced")          # what "--dataset both" means
+ALL_DATASETS = (*DATASETS, "all")            # "all": every ransomware corpus vs every goodware source
+# RANSOM_FH_DIR points a run at another fold set (e.g. results/family_holdout_v2)
+# without touching the committed one.
+FOLD_DIR = Path(os.environ.get("RANSOM_FH_DIR", REPO / "results" / "family_holdout"))
+OUT_ROOT = FOLD_DIR
+
+# Where each corpus's extraction outputs live (asm/, mn/, mn_api/ ... under one
+# folder per corpus). Rows in the fold file carry `corpus`, so runners route by
+# corpus instead of by (dataset, label).
+SHARED = Path(os.environ.get("RANSOM_SHARED_DIR", r"C:/Users/chaoa/Downloads/asm and mm/Shared"))
+TREE_OF_CORPUS = {
+    "mendeley": SHARED / "Extract",
+    "balanced": SHARED / "Extract_Goodware_Balanced",
+    "vs": SHARED / "Extract_VS",
+    "hostgood": SHARED / "Extract_Goodware_HostX86",
+}
+
+
+def stream_path(corpus: str, sha: str, stream: str = "mn", ext: str = ".txt") -> Path:
+    """The token-stream file of one sample: <corpus tree>/<stream>/<sha><ext>."""
+    try:
+        return TREE_OF_CORPUS[corpus] / stream / f"{sha}{ext}"
+    except KeyError:
+        raise KeyError(f"no extraction tree registered for corpus {corpus!r}; "
+                       f"add it to common.TREE_OF_CORPUS") from None
 
 FOLD_METRIC_COLS = [
     "fold", "n_test", "n_good", "n_rans", "accuracy", "balanced_accuracy",

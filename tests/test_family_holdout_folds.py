@@ -126,12 +126,17 @@ def test_check_dataset_rejects_sha_with_both_labels_and_bad_arch():
 
 
 def test_arch_aware_balancer_spreads_x64_across_folds():
-    # ten families of 20 files; the first five are all-x64, the rest x86-only
-    counts = {f"f{i}": (20, 20 if i < 5 else 0) for i in range(10)}
+    # ten families of 20 files; the first five are all-x64, the rest x86-only.
+    # ransomware_rows() passes (x64, files) pairs: x64 is balanced first.
+    counts = {f"f{i}": (20 if i < 5 else 0, 20) for i in range(10)}
     a = folds.assign_greedy(counts)
     x64_per_fold = collections.Counter(a[f"f{i}"] for i in range(5))
     assert max(x64_per_fold.values()) == 1        # one x64 family per fold, not five in one
-    plain = folds.assign_greedy({k: v[0] for k, v in counts.items()})
+    files_per_fold = collections.Counter()
+    for f, k in a.items():
+        files_per_fold[k] += 20
+    assert max(files_per_fold.values()) == min(files_per_fold.values())   # files still balanced
+    plain = folds.assign_greedy({k: v[1] for k, v in counts.items()})
     assert set(plain.values()) == set(range(folds.K))
 
 

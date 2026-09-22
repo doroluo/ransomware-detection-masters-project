@@ -39,7 +39,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from family_holdout.common import (DATASETS, Folds, OUT_ROOT,  # noqa: E402
-                                   check_kfold, check_lofo, write_model_dir)
+                                   check_kfold, check_lofo, write_model_dir, ALL_DATASETS, stream_path)
 
 SEED = 42
 MAX_MNEMS = 30_000                 # rules_pipeline.train_eval.MAX_MNEMS
@@ -49,10 +49,9 @@ MAX_FEATURES = 300_000
 C_GRID = [0.1, 1, 10]
 PIPELINE = "tfidf"
 
-SHARED = Path(os.environ.get("RANSOM_SHARED_DIR",
-                             REPO.parent / "asm and mm" / "Shared"))
-TREES = {"mendeley": SHARED / "Extract",
-         "balanced_goodware": SHARED / "Extract_Goodware_Balanced"}
+# extraction trees are registered per corpus in family_holdout.common
+# (TREE_OF_CORPUS); rows of the fold file carry `corpus`, so nothing here
+# needs to know which dataset a row belongs to
 
 
 def read_mnemonics(path: Path, cap: int) -> list:
@@ -73,11 +72,9 @@ def load_texts(folds: Folds, stream: str = "mn") -> list:
     """One whitespace-joined token string per fold-file row, from the `mn/`
     tree or one of the rewritten variants (`mn_api/`, `mn_opclass/`)."""
     texts = []
-    for sha, lab in zip(folds.sha, folds.y):
-        tree = ("balanced_goodware"
-                if (folds.dataset == "balanced" and lab == 0) else "mendeley")
+    for sha, corpus in zip(folds.sha, folds.corpus):
         texts.append(" ".join(read_mnemonics(
-            TREES[tree] / stream / f"{sha}.txt", MAX_MNEMS)))
+            stream_path(corpus, sha, stream), MAX_MNEMS)))
     return texts
 
 
@@ -212,7 +209,7 @@ def run_dataset(dataset: str, out_root: Path, stream: str = "mn") -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dataset", choices=(*DATASETS, "both"), default="both")
+    ap.add_argument("--dataset", choices=(*ALL_DATASETS, "both"), default="both")
     ap.add_argument("--out", default=str(OUT_ROOT))
     ap.add_argument("--stream", choices=STREAMS, default="mn",
                     help="which token tree to read; a non-default stream is "

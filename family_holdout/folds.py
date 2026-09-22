@@ -109,21 +109,29 @@ def _read(path: Path):
 
 
 def assign_greedy(counts: dict, k: int = K) -> dict:
-    """Largest group first into the currently smallest fold. Ties broken by name,
+    """Largest group first into the currently lightest fold. Ties broken by name,
     so the result is a pure function of the input.
 
-    A count may be an int or a (files, x64_files) pair; with pairs the fold
-    load is compared lexicographically, so x64 files are balanced first among
-    folds of equal size and the x64 concentration in one fold is avoided."""
-    def as_pair(c):
-        return (c, 0) if isinstance(c, int) else tuple(c)
+    A count is an int (files) or a (x64 files, files) pair. With pairs the
+    fold load is the sum of the two shares, x64 / total_x64 + files /
+    total_files, so the scarce architecture and the file count are balanced
+    together; groups are placed in order of x64 count, then size. With ints
+    the behaviour is the original count balancing."""
+    pairs = {n: ((c, 0) if isinstance(c, int) else tuple(c)) for n, c in counts.items()}
+    weighted = any(not isinstance(c, int) for c in counts.values())
+    tot0 = sum(p[0] for p in pairs.values()) or 1
+    tot1 = sum(p[1] for p in pairs.values()) or 1
     folds = [(0, 0)] * k
     out = {}
-    for name in sorted(counts, key=lambda n: (tuple(-x for x in as_pair(counts[n])), n)):
-        f = min(range(k), key=lambda i: (folds[i], i))
+
+    def load(i):
+        a, b = folds[i]
+        return (a / tot0 + b / tot1, i) if weighted else (a, i)
+
+    for name in sorted(pairs, key=lambda n: (-pairs[n][0], -pairs[n][1], n)):
+        f = min(range(k), key=load)
         out[name] = f
-        c = as_pair(counts[name])
-        folds[f] = (folds[f][0] + c[0], folds[f][1] + c[1])
+        folds[f] = (folds[f][0] + pairs[name][0], folds[f][1] + pairs[name][1])
     return out
 
 
@@ -151,8 +159,10 @@ def ransomware_rows(extra: dict | None = None, arch_aware: bool = False, pool_sm
     unit = {f: (f if fam_n[f] >= SMALL_FAMILY or not pool_small else "_small") for f in fam_n}
     counts = collections.Counter(unit[r["family"]] for r in rows)
     if arch_aware:
+        # (x64 files, files): the scarce architecture is balanced first, file
+        # counts second, so x64 ransomware cannot pile into one fold
         x64 = collections.Counter(unit[r["family"]] for r in rows if r["arch"] == "x64")
-        counts = {u: (counts[u], x64.get(u, 0)) for u in counts}
+        counts = {u: (x64.get(u, 0), counts[u]) for u in counts}
     unit_fold = assign_greedy(counts)
     fam_fold = {f: unit_fold[unit[f]] for f in fam_n}
     for r in rows:

@@ -78,7 +78,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from family_holdout.common import (DATASETS, Folds, OUT_ROOT,  # noqa: E402
-                                   check_kfold, check_lofo, write_model_dir)
+                                   check_kfold, check_lofo, write_model_dir, ALL_DATASETS)
 from seq_model import config as CFG                               # noqa: E402
 from seq_model import data as D                                   # noqa: E402
 
@@ -422,7 +422,7 @@ def run_dataset(cfg: dict, dataset: str, out_root: Path, device, log,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dataset", choices=(*DATASETS, "both"), default="both")
+    ap.add_argument("--dataset", choices=(*ALL_DATASETS, "both"), default="both")
     ap.add_argument("--config", default=str(CFG.CONFIG_PATH))
     ap.add_argument("--out", default=str(OUT_ROOT))
     ap.add_argument("--device", default="cuda")
