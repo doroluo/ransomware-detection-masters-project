@@ -155,7 +155,7 @@ def run_dataset(dataset: str, out_root: Path, stream: str = "mn") -> dict:
             pred, score, C, cv = fit_score(m, Xtr, folds.y[tr], Xte)
             lofo[m][fam] = (score, pred)
             chosen[m]["lofo"][fam] = {"C": C, "cv_f1_macro": round(cv, 4)}
-        print(f"  [{dataset}] lofo {k}/38 {fam}: n={len(te)} "
+        print(f"  [{dataset}] lofo {k}/{len(folds.families)} {fam}: n={len(te)} "
               f"{time.time()-t0:.0f}s", flush=True)
 
     # ---- write ----------------------------------------------------------

@@ -142,7 +142,7 @@ def run_dataset(dataset: str, out_root: Path, configs) -> dict:
             pred, score, C, cv = fit_score("LogReg", Xtr, folds.y[tr], Xte)
             lofo[c][fam] = (score, pred)
             chosen[c]["lofo"][fam] = {"C": C, "cv_f1_macro": round(cv, 4)}
-        print(f"  [{dataset}] lofo {k}/38 {fam}: {time.time()-t0:.0f}s", flush=True)
+        print(f"  [{dataset}] lofo {k}/{len(folds.families)} {fam}: {time.time()-t0:.0f}s", flush=True)
 
     out = {}
     for c in configs:

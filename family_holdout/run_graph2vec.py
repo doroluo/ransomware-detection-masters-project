@@ -283,7 +283,7 @@ def run_dataset(dataset: str, out_root: Path, names=WANT, imports=None) -> None:
             lofo_thr[fam] = thr
             lofo_a[fam] = (score, pred)
             lofo_t[fam] = (score, (score >= thr).astype(int))
-            print(f"  [{dataset}/{name}] lofo {k}/38 {fam}: n={len(te)} "
+            print(f"  [{dataset}/{name}] lofo {k}/{len(folds.families)} {fam}: n={len(te)} "
                   f"{time.time()-t0:.0f}s", flush=True)
             del X
 

@@ -10,7 +10,8 @@
 The configuration is `llm_features_pipeline/config.yaml` verbatim, i.e. the
 pre-registered expC (mendeley) / expD (balanced) setting, not a tuned pick:
 
-    mnemonic-only REVISED features, first 5,000 normalised lines per file
+    mnemonic-only streams (`<corpus tree>/mn/<sha256>.txt`, the same text the
+    revised features held), first 5,000 mnemonics per file
     vocab_size 1000, tokenizers SW / WP / WPC
     Word2Vec(vector_size=100, window=30, epochs=5, seed=42, workers=1)
     RF / SVM-RBF / MLP through run_pipeline.fit_and_score's GridSearchCV
@@ -29,7 +30,7 @@ Per-fold fitting
 ----------------
 For each of the five folds the WordPiece vocabulary and the Word2Vec model are
 fit on that fold's TRAINING rows only. The trained tokenizer is cached under
-`results/family_holdout/tokenizers/` keyed by the training corpus fingerprint,
+`<fold dir>/tokenizers/` keyed by the training corpus fingerprint,
 exactly as run_pipeline does, so a rerun reproduces the committed numbers
 instead of re-rolling the Rust HashMap.
 
@@ -60,7 +61,7 @@ REPO = HERE.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from family_holdout.common import (DATASETS, Folds, OUT_ROOT,  # noqa: E402
+from family_holdout.common import (DATASETS, Folds, OUT_ROOT, stream_path,  # noqa: E402
                                    check_kfold, check_lofo, write_model_dir, ALL_DATASETS)
 
 PIPELINE = "tokenization"
@@ -70,53 +71,48 @@ VOCAB_SIZE = 1000
 CV = 2
 W2V = dict(vector_size=100, window=30, epochs=5, seed=SEED, workers=1)
 COMBOS = (("RF", "WPC"), ("MLP", "WP"), ("SVM-RBF", "SW"))
-EXP_OF = {"mendeley": "expC", "balanced": "expD"}
-
-REVISED = Path("C:/Users/chaoa/Downloads/LLM_Features_Revised/Features_Extraction")
-REVISED_BALANCED = Path("C:/Users/chaoa/Downloads/LLM_Features_Revised_Balanced")
+# the committed fixed-split experiment whose best_params each dataset reuses;
+# the multi-corpus datasets take the balanced set's (the closer class mix)
+EXP_OF = {"mendeley": "expC", "balanced": "expD", "all": "expD", "arch_matched": "expD"}
 TOK_CACHE = OUT_ROOT / "tokenizers"
 
 
 # ---------------------------------------------------------------------------
 # data
 # ---------------------------------------------------------------------------
-def _manifest(path: Path) -> dict:
-    """sha256 -> row, keeping only the rows the revised extraction kept."""
-    with path.open(encoding="utf-8-sig", newline="") as fh:
-        rows = [r for r in csv.DictReader(fh) if r["kept"] == "1"]
-    out = {}
-    for r in rows:
-        out.setdefault(r["sha256"], r)
-    return out
-
-
 def feature_paths(folds: Folds):
-    """One revised mnemonic .txt path per fold-file row, in fold-file order."""
-    m1 = _manifest(REVISED / "revised_manifest.csv")
-    m2 = _manifest(REVISED_BALANCED / "revised_manifest.csv")
+    """One mnemonic-stream path per fold-file row, in fold-file order, from
+    the extraction tree of the row's corpus (family_holdout.common.stream_path).
+    The stream is the same mnemonic-only text the revised features held, one
+    line per executable section instead of one mnemonic per line."""
     paths, names = [], []
-    for sha, lab in zip(folds.sha, folds.y):
-        if folds.dataset == "balanced" and lab == 0:
-            r, root = m2.get(sha), REVISED_BALANCED
-        else:
-            r, root = m1.get(sha), REVISED
-        if r is None:
-            raise KeyError(f"{sha} not in the revised manifest ({folds.dataset})")
-        p = root / r["out_dir"] / r["txt_file"]
+    for sha, corpus in zip(folds.sha, folds.corpus):
+        p = stream_path(corpus, sha, "mn")
         if not p.exists():
             raise FileNotFoundError(p)
         paths.append(p)
-        names.append(r["txt_file"])
+        names.append(f"{corpus}_{sha}.txt")
     return paths, names
+
+
+def read_stream(path: Path, cap: int) -> list:
+    """The first `cap` mnemonics of a `mn/` stream (whitespace-separated,
+    already lower-case, one line per section)."""
+    out = []
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            out.extend(line.split())
+            if cap and len(out) >= cap:
+                return out[:cap]
+    return out
 
 
 def build_df(folds: Folds, normalize):
     import pandas as pd
-    from llm_features_pipeline.run_pipeline import read_instructions
     paths, names = feature_paths(folds)
     rows, empty = [], []
     for i, p in enumerate(paths):
-        insns = read_instructions(p, normalize, MAX_INSTRUCTIONS)
+        insns = read_stream(p, MAX_INSTRUCTIONS)   # mnemonics need no normalising
         if not insns:
             empty.append(names[i])
             insns = ["<UNK>"]        # keep the row: the fold file defines the pool
