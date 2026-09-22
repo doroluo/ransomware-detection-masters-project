@@ -7,7 +7,7 @@
 #
 # To make the runs independent of the Claude session (they die with it
 # otherwise), start it from Task Scheduler:
-#   schtasks /create /tn ransom_v2_resume /sc once /st 23:59 /f /tr '"C:\Program Files\Gitinash.exe" -lc "cd /c/Users/chaoa/Downloads/rdmp-llm && bash tools/resume_v2_runs.sh /c/Users/chaoa/Downloads/v2_logs > /c/Users/chaoa/Downloads/v2_logs/resume.out 2>&1"'
+#   schtasks /create /tn ransom_v2_resume /sc once /st 23:59 /f /tr '"C:\Program Files\Git\bin\bash.exe" -lc "cd /c/Users/chaoa/Downloads/rdmp-llm && bash tools/resume_v2_runs.sh /c/Users/chaoa/Downloads/v2_logs > /c/Users/chaoa/Downloads/v2_logs/resume.out 2>&1"'
 #   schtasks /run /tn ransom_v2_resume
 #
 # Finished results live under results/family_holdout_v2/<dataset>/<pipeline>/
