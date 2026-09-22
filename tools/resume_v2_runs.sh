@@ -5,6 +5,11 @@
 #
 #   bash tools/resume_v2_runs.sh /path/to/log/dir
 #
+# To make the runs independent of the Claude session (they die with it
+# otherwise), start it from Task Scheduler:
+#   schtasks /create /tn ransom_v2_resume /sc once /st 23:59 /f /tr '"C:\Program Files\Gitinash.exe" -lc "cd /c/Users/chaoa/Downloads/rdmp-llm && bash tools/resume_v2_runs.sh /c/Users/chaoa/Downloads/v2_logs > /c/Users/chaoa/Downloads/v2_logs/resume.out 2>&1"'
+#   schtasks /run /tn ransom_v2_resume
+#
 # Finished results live under results/family_holdout_v2/<dataset>/<pipeline>/
 # and are never recomputed. GPU jobs run one at a time (the sequence
 # transformer needs ~15.6 GB alone; sharing the card ends in CUDA OOM).
@@ -50,3 +55,7 @@ seqrun() {
   echo "== gpu chain done $(date)" >> "$LOG/seq_all.log"
 ) &
 echo "launched; logs under $LOG"
+# stay alive until every run has finished, so a Task Scheduler task that
+# started this script keeps owning the processes
+wait
+echo "== all v2 runs finished $(date)"
