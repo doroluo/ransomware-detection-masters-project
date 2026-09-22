@@ -30,7 +30,7 @@ so that per-architecture metrics stop being computed on 12 files per fold.
 | corpus | role | source | state |
 |---|---|---|---|
 | `mendeley` ransomware | existing, 38 families | Mendeley yzhcvn7sj5 (VirusShare + Hybrid-Analysis) | text outputs on host under `Shared/Extract/`; **raw binaries are on no machine any more** (old VM gone). Re-download from Mendeley if a re-extraction is ever needed. |
-| `vs` ransomware (new) | x64 lift, newer families | MalwareBazaar public CSV dump, family = MB `signature`, downloaded on the VM | 1,239 candidates, 44 families, 60 per family cap, newest first, none overlapping the 4,160 known sha256s. Pools for later: GandCrab 5.9k, STOP 2.3k, REvil 280, BlackMatter 240, Hive 170, LockBit 170, Akira 145. |
+| `vs` ransomware (new) | x64 lift, newer families | MalwareBazaar public CSV dump, family = MB `signature`, downloaded on the VM | **fetched 2026-09-21: all 1,239 candidates (44 families, 60 per family cap, newest first, none overlapping the 4,160 known sha256s), every one served by MalwareBazaar.** 13 families sit at the 60 cap (Trigona, STOP, REvil, Phobos, Medusa, LockBit, Hive, GandCrab, Dharma, Conti, BlackMatter, Babuk, Akira); 22 families have under 20. Pools for later: GandCrab 5.9k, STOP 2.3k, REvil 280, BlackMatter 240, Hive 170, LockBit 170, Akira 145. |
 | `mendeley` goodware | existing | Mendeley cv3v9szdn7 | 1,243 in cohort, x86-leaning, heavy duplication (grouped) |
 | `balanced` goodware | existing | Goodware_Balanced (curated, DLL-heavy, x64-heavy) | 1,337 in cohort |
 
@@ -77,7 +77,9 @@ files; nothing else in the repository uses it.
 
 - Keep EXE and DLL on both sides. Record `is_dll` (from the PE characteristics
   flag, not the filename, since Mendeley ransomware carries no extension) in
-  the manifest.
+  the manifest. `extract_unified.py` does not write that column yet; add it on
+  the next extraction pass (the `vs` pass was already running when this was
+  decided).
 - Add a `dll_rule` floor next to `x86_rule`: predict goodware iff DLL. If a
   model does not clearly beat it, the model has learned the file type.
 - The `vs` candidates include DLLs where MalwareBazaar lists them; keep them.
@@ -143,8 +145,11 @@ On the VM (`ssh seedvm`, everything under `~/work`):
 On the host:
 
 5. `scp -r seedvm:~/work/out/Extract_VS/{manifest.csv,asm,mn}` and `out/imports_vs.*` into `C:/Users/chaoa/Downloads/asm and mm/Shared/Extract_VS/`. Binaries never leave the VM.
-6. Build `cohort_vs.csv` from the manifest with the 2.1 to 2.4 rules, `corpus = vs`, `set = mal_train` for every row (family holdout ignores `set`).
-7. Extend `family_holdout/folds.py` to read a list of cohort files, dedup across them, normalise families, key the balancer on `(count, x64)`, and write `corpus` into the fold file.
+6. Build `cohort_vs.csv` from the manifest with the 2.1 to 2.4 rules (family holdout ignores `set`):
+   `python tools/build_cohort.py --manifest <Shared>/Extract_VS/manifest.csv --corpus vs --set mal_train --out <Shared>/cohort_vs.csv`
+7. Build the v2 folds into a **new** directory, so the committed folds and every result under them stay reproducible:
+   `python family_holdout/folds.py --out results/family_holdout_v2 --ransomware vs=<Shared>/cohort_vs.csv --arch-aware --pool-small`
+   (extra cohorts, cross-corpus dedup, family aliases, x64-aware balancing and the `corpus` column are all in `folds.py` now).
 8. Merge `imports_vs.json` into `imports_flat.json` with `imports/merge_imports.py`.
 9. Re-run the runners in the order TF-IDF, imports baseline, graph2vec, seq transformer (with pretrain), CNN-ViT; regenerate `summary.md` with one sd definition.
 
