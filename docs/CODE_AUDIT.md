@@ -112,3 +112,19 @@ be regenerated after it.
 
 Steps 1 to 3 change no model; steps 4 and 5 change some reported numbers and
 every affected summary must be regenerated and the write-up updated.
+
+## 4. Status (2026-09-21, commits 58773c3 .. c104298)
+
+Done, all 408 tests passing:
+
+- A1, A2, A3, A4, A5, A6 (fold builder v2, `common.Folds`, one sd, train-derived majority floor, undefined per-arch macro-F1).
+- A7 (graph2vec weights from train rows), A8 (OOF threshold on the gated matrix), A10 (ensemble/stacker refuse non-probability scores), A11 (CNN-ViT augmentation, both copies, with a test).
+- B1, B2, B3 (tokenizer pipeline fails loudly), B5 (merge reports parse-error counts), B6 (coverage refuses without fold files), B10 (imports file in the seq fingerprint), B11 (ember manifest rows, empty guard, family folder).
+- C: root `extract.py`, `Tokenization/`, `CNN-ViT/stratified_split.py`, the CNN-ViT `__main__` block, `cv_evaluate`, `extract_features_from_folder`, the torchvision shim (and the torchvision dependency itself) are gone.
+- `tools/build_cohort.py` turns an extraction manifest into a cohort file under the plan's rules.
+
+Not done, in the order they are worth doing:
+
+- A9 (stacker LOFO calibration), A12 (EMBER environment confound: needs a VM-side goodware extraction), A13 (graph2vec wall-clock stop), A14 (transductive vocabularies: documented, not changed), A15 to A17 (teammate branches: proposals, not edits).
+- B4, B7, B8, B9, B12 to B16.
+- Rewrite of `run_cnn_vit.py` on `common.py`; the shared `repo_paths.py`; the legacy graph2vec and rules runners (tests still import them); the report writers.
