@@ -72,6 +72,17 @@ files; nothing else in the repository uses it.
 - Fold assignment becomes architecture-aware: the greedy balancer keys on
   `(family_count, x64_count)` so that x64 ransomware is spread over the five
   folds instead of concentrated in one.
+- Measured on 2026-09-21 with `tools/arch_balance.py` over both cohorts
+  (3,846 in-cohort files): ransomware 1,152 x86 / 114 x64 (9.0% x64),
+  goodware 1,057 x86 / 1,523 x64 (59.0% x64), x86-rule accuracy 0.696. An
+  arch-matched pool built from today's files alone (`--match`) keeps only
+  2,342 files with 114 x64 per class, which is why the lift has to come from
+  new x64 ransomware, not from thinning. A 40% x64 share needs about 650 more
+  x64 ransomware files; the `vs` corpus is running at roughly 55% x64 in its
+  first 185 disassembled samples, so its 1,239 files should bring the merged
+  ransomware pool to roughly 28% x64 (target: at least 25%). The arch-matched
+  selection is the secondary evaluation every model is reported on, next to
+  the full pool and the x86-rule floor.
 
 ### 2.3 File type
 
