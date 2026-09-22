@@ -87,9 +87,11 @@ SMALL_FAMILY = 5
 # Mendeley spelling so that existing results, tests and summaries keep their keys
 ALIASES = {
     "sodinokibi": "revil", "djvu": "stop", "stopdjvu": "stop", "alphv": "blackcat",
-    "noberus": "blackcat", "crysis": "dharma", "mespinoza": "pysa", "nemty": "nefilim",
-    "mailto": "netwalker", "play": "playcrypt", "medusalocker": "medusa",
+    "noberus": "blackcat", "crysis": "dharma", "mespinoza": "pysa",
+    "mailto": "netwalker", "play": "playcrypt",
     "agenda": "qilin", "cl0p": "clop", "basta": "blackbasta", "defray777": "ransomexx",
+    # NOT aliases, kept distinct on purpose: MedusaLocker (2019) vs Medusa (2021),
+    # Nemty vs Nefilim (a successor, not the same code base).
 }
 
 

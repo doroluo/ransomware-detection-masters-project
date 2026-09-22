@@ -95,6 +95,8 @@ def test_normalise_family_maps_aliases_onto_mendeley_spelling():
     assert folds.normalise_family("Play") == "playcrypt"
     assert folds.normalise_family("Black Basta") == "blackbasta"
     assert folds.normalise_family("conti") == "conti"
+    assert folds.normalise_family("MedusaLocker") == "medusalocker"     # not Medusa
+    assert folds.normalise_family("Nemty") == "nemty"                   # not Nefilim
 
 
 def test_extra_corpus_pools_families_and_drops_repeated_sha(tmp_path, monkeypatch):
