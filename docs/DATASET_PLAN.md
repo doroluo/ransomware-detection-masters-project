@@ -180,7 +180,36 @@ On the host:
 - Pooled AUC stays reported but the per-fold AUC is the one to quote; the pooled
   number mixes five separately fitted score scales.
 
-## 6. Decisions still open
+## 6. Dataset v2 as built (2026-09-22)
+
+`results/family_holdout_v2/folds_all.csv`, built with
+`folds.py --ransomware vs=... --goodware hostgood=... --arch-aware --pool-small`.
+Cohort files are copied under `manifests/cohort/`.
+
+| class | corpus | x86 | x64 | x64 share |
+|---|---|---|---|---|
+| ransomware | mendeley | 1,152 | 114 | 0.09 |
+| ransomware | vs (MalwareBazaar, two batches, 1,632 of 1,999 usable) | 1,139 | 493 | 0.30 |
+| goodware | mendeley | 749 | 494 | 0.40 |
+| goodware | balanced | 308 | 1,029 | 0.77 |
+| goodware | hostgood (after cross-corpus dedup) | 1,462 | 0 | 0.00 |
+| **ransomware** | all | **2,291** | **607** | **0.21** |
+| **goodware** | all | **2,519** | **1,523** | **0.38** |
+
+- 6,940 files, 97 ransomware families (38 Mendeley, 59 new or deepened), five
+  folds of 525 to 684 ransomware and 99 to 133 x64 ransomware each.
+- x86-rule accuracy on the pool: **0.55** (was 0.70 on Mendeley + balanced).
+- `arch_matched.csv`: 5,796 files with identical (x86, x64) counts in both
+  classes (2,291 / 607), x86 rule exactly 0.50. Every model is reported on the
+  full pool with the floors and on this selection.
+- Still pending: 327 batch-2 hashes waiting on MalwareBazaar quota
+  (`refetch_loop.sh` on the VM), which would add roughly 100 x64; a further
+  x64 lift needs the deeper pools (GandCrab and STOP are x86-only, so the
+  candidates are Akira, Hive, LockBit, BlackCat and the modern families).
+- VM snapshot `vs-batch2-1999-samples-2026-09-22` holds the binaries and
+  outputs of this state.
+
+## 7. Decisions still open
 
 1. Whether to also pull extra x86 samples for families that Mendeley covers
    thinly (Maui 3, Thanos 1, HolyGhost 4), or to leave those as LOFO-only.
