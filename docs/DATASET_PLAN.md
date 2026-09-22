@@ -219,3 +219,14 @@ Cohort files are copied under `manifests/cohort/`.
 3. How much of the MalwareBazaar pool to take beyond the first 1,239: the
    x64-heavy families (Akira, BlackMatter, Hive, LockBit, BlackCat, Medusa,
    Trigona) are the ones worth deepening.
+4. **How the executable datasets are archived and shared for replication**
+   (user requirement, 2026-09-22). The binaries exist only on the VM
+   (`~/work/samples/vs/<family>/<sha256>`, MalwareBazaar batches 1 and 2) and,
+   for goodware, on the host (`Goodware_HostX86/`, `Goodware_Balanced/`); the
+   repo carries hashes and text outputs only. Once batch 3 lands: publish the
+   sample list (sha256, family, source, first-seen) so teammates can re-pull
+   from MalwareBazaar with their own key, and upload a password-protected
+   (`infected`) archive of the ransomware samples plus the goodware sets to
+   Mendeley Data (the original dataset's home) or a shared drive. Host
+   goodware is licensed software, so ship its hash list and provenance rather
+   than the binaries unless redistribution is cleared.
