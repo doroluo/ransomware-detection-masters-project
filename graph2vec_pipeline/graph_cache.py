@@ -53,10 +53,11 @@ from graph2vec_pipeline.cfg import cfg_from_file  # noqa: E402
 
 SHARED = Path(os.environ.get(
     "RANSOM_SHARED_DIR", REPO.parent / "asm and mm" / "Shared"))
-TREES = {
-    "mendeley": SHARED / "Extract",
-    "balanced_goodware": SHARED / "Extract_Goodware_Balanced",
-}
+# the extraction tree of every registered corpus (family_holdout.common), plus
+# the pipeline's historical name for the balanced-goodware tree, which its
+# cache files are keyed by
+from family_holdout.common import TREE_OF_CORPUS  # noqa: E402
+TREES = {**TREE_OF_CORPUS, "balanced_goodware": TREE_OF_CORPUS["balanced"]}
 DEFAULT_CACHE = Path(os.environ.get(
     "RANSOM_G2V_CACHE",
     Path(os.environ.get("TEMP", "/tmp")) / "ransom_g2v_cache"))

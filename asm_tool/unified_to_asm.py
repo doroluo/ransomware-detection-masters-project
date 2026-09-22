@@ -53,8 +53,11 @@ Usage
         --extract ".../Shared/Extract_Goodware_Balanced" \
         --out     ".../asm_output/unified_goodware_balanced"
 
+and likewise Extract_VS -> unified_vs, Extract_Goodware_HostX86 ->
+unified_goodware_hostx86 (CORPUS_OF_TREE below maps a tree to its corpus).
+
 Add `--cohort-only` to convert just the rows the shared cohort keeps
-(`in_cohort == 1` in `Shared/cohort_{mendeley,balanced}.csv`). Without it every
+(`in_cohort == 1` in `Shared/cohort_<corpus>.csv`). Without it every
 row with `disassembled == 1` is converted, which is the default because the
 extra files cost little and keep the tree reusable for other splits.
 """
@@ -89,22 +92,33 @@ MANIFEST_COLUMNS = ["sha256", "set", "family", "label", "arch",
 
 
 # --------------------------------------------------------------- corpora ---
+# extraction-tree directory name -> corpus name, as registered in
+# family_holdout.common.TREE_OF_CORPUS (the cohort file is cohort_<corpus>.csv)
+CORPUS_OF_TREE = {"extract": "mendeley", "extract_goodware_balanced": "balanced",
+                  "extract_vs": "vs", "extract_goodware_hostx86": "hostgood"}
+GOODWARE_ONLY = ("balanced", "hostgood")
+
+
 def detect_corpus(extract_dir: Path) -> str:
-    """'balanced' for Extract_Goodware_Balanced, else 'mendeley'."""
-    return "balanced" if "goodware_balanced" in extract_dir.name.lower() else "mendeley"
+    """The corpus an extraction tree belongs to, from its directory name."""
+    try:
+        return CORPUS_OF_TREE[extract_dir.name.lower()]
+    except KeyError:
+        raise SystemExit(f"{extract_dir.name}: not a registered extraction tree "
+                         f"({', '.join(sorted(CORPUS_OF_TREE))})") from None
 
 
 def rel_dir_for(corpus: str, row: dict) -> str:
     """Where one sample's .asm goes, relative to --out.
 
-    mendeley: <set>/<family>       good_train/root, mal_test/conti, ...
-    balanced: goodware_balanced/<bucket>   every row is goodware; the manifest's
-              `set` column is a constant there and carries no split information
-              (the balanced split comes from expB, not from the extractor), so
-              the bucket in `family` is the only meaningful level.
+    mendeley, vs:  <set>/<family>       good_train/root, mal_test/conti, ...
+    balanced, hostgood (goodware only): goodware_<corpus>/<bucket>   the
+              manifest's `set` column is a constant there and carries no split
+              information, so the bucket in `family` (a category, or the host
+              program's folder) is the only meaningful level.
     """
-    if corpus == "balanced":
-        return f"goodware_balanced/{_safe(row['family'])}"
+    if corpus in GOODWARE_ONLY:
+        return f"goodware_{corpus}/{_safe(row['family'])}"
     return f"{_safe(row['set'])}/{_safe(row['family'])}"
 
 

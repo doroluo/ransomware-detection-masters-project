@@ -61,6 +61,7 @@ if str(REPO) not in sys.path:
 from family_holdout.common import (DATASETS, Folds, OUT_ROOT,  # noqa: E402
                                    check_kfold, check_lofo, write_model_dir, ALL_DATASETS)
 from graph2vec_pipeline import wl  # noqa: E402
+from family_holdout.common import TREE_OF_CORPUS  # noqa: E402
 from graph2vec_pipeline.graph_cache import (DEFAULT_CACHE, TREES,  # noqa: E402
                                             build_tree, cache_file,
                                             load_graphs)
@@ -181,27 +182,27 @@ def load_cache(folds: Folds, cache_dir: Path = DEFAULT_CACHE):
 
     `graph_cache.needed_samples()` enumerates the two fixed-split datasets, and
     the balanced one of those is expB's committed goodware membership. The
-    family-holdout balanced pool is every in-cohort row of cohort_balanced.csv
-    instead, which is a superset: 97 goodware files have no cached graph. They
-    are built here, once, with the identical construction and written beside
-    the pipeline's cache files - nothing already cached is touched or rebuilt.
+    family-holdout pools are wider: every in-cohort row of the cohort files
+    (97 more balanced goodware files, and everything of the vs and hostgood
+    corpora). Rows without a cached graph are built here, once, with the
+    identical construction, from the extraction tree of their `corpus` column,
+    and written beside the pipeline's cache files as one extra file per
+    corpus - nothing already cached is touched or rebuilt.
     """
     cache_dir = Path(cache_dir)
     paths = [cache_file(cache_dir, t, 20_000, 80_000, 1, True, True)
              for t in ("mendeley", "balanced_goodware")]
-    extra = [cache_dir / EXTRA.format(tree=t)
-             for t in ("mendeley", "balanced_goodware")]
+    extra = [cache_dir / EXTRA.format(tree=t) for t in TREES]
     gs = load_graphs(paths + [p for p in extra if p.exists()])
     missing = [s for s in folds.sha if s not in gs.index]
     if not missing:
         return gs
     print(f"[{folds.dataset}] {len(missing)} fold rows are outside the "
           f"pipeline's graph cache; building them", flush=True)
-    by_tree = {"mendeley": [], "balanced_goodware": []}
-    lab = dict(zip(folds.sha, folds.y))
+    by_tree = {t: [] for t in TREE_OF_CORPUS}
+    corpus = dict(zip(folds.sha, folds.corpus))
     for s in missing:
-        t = ("balanced_goodware"
-             if (folds.dataset == "balanced" and lab[s] == 0) else "mendeley")
+        t = corpus[s]
         if not (TREES[t] / "asm" / f"{s}.asm").exists():
             raise FileNotFoundError(TREES[t] / "asm" / f"{s}.asm")
         by_tree[t].append(s)

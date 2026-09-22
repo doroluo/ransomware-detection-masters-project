@@ -122,6 +122,7 @@ Done, all 408 tests passing:
 - B1, B2, B3 (tokenizer pipeline fails loudly), B5 (merge reports parse-error counts), B6 (coverage refuses without fold files), B10 (imports file in the seq fingerprint), B11 (ember manifest rows, empty guard, family folder).
 - C: root `extract.py`, `Tokenization/`, `CNN-ViT/stratified_split.py`, the CNN-ViT `__main__` block, `cv_evaluate`, `extract_features_from_folder`, the torchvision shim (and the torchvision dependency itself) are gone.
 - `tools/build_cohort.py` turns an extraction manifest into a cohort file under the plan's rules.
+- Corpus routing (2026-09-22): every family-holdout runner, `seq_model/data.py`, the graph2vec cache builders, `asm_tool/rewrite_streams.py`, `cap_api_vocab.py`, `imports/merge_imports.py` and `asm_tool/unified_to_asm.py` locate a sample's files through `common.TREE_OF_CORPUS` / the fold file's `corpus` column, and read the fold directory from `RANSOM_FH_DIR`. The seven `(dataset, label) -> tree` copies of item 2 are gone.
 
 Not done, in the order they are worth doing:
 

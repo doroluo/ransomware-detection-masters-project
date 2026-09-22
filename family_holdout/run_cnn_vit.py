@@ -93,6 +93,8 @@ MODELS_ROOT = Path(os.environ.get("RANSOM_FH_MODELS", DOWNLOADS / "cnn_vit_model
 IMAGE_TREES = {
     "mendeley": ("unified_mendeley",),
     "balanced": ("unified_goodware_balanced", "unified_mendeley"),
+    "all": ("unified_mendeley", "unified_goodware_balanced", "unified_vs",
+            "unified_goodware_hostx86"),
 }
 
 KFOLD_SEEDS = (1, 2, 3)

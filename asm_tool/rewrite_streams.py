@@ -33,8 +33,10 @@ architecture tell:
                 its own token).
 
 Both are written from one pass over `asm/<sha256>.asm`, one output line per
-executable section (like `mn/`), for exactly the cohort files listed in
-results/family_holdout/folds_{mendeley,balanced}.csv. Prefixes (rep, lock,
+executable section (like `mn/`), for exactly the cohort files listed in the
+folds_*.csv of the fold directory (results/family_holdout, or $RANSOM_FH_DIR);
+each file is read from and written under the extraction tree of its `corpus`
+column (family_holdout.common.TREE_OF_CORPUS). Prefixes (rep, lock,
 bnd, ...) are emitted as their own token, which is what a whitespace split of
 the `mn/` line already gives. IAT slots come from the per-corpus JSONs of
 imports/extract_imports.py (their `iat` maps); a RIP-relative operand is
@@ -42,9 +44,8 @@ resolved against the address printed on the NEXT transcript line, exactly as
 `extract_imports.py --verify-asm` does.
 
 Output
-    <shared>/Extract/{mn_api,mn_opclass}/<sha256>.txt
-    <shared>/Extract_Goodware_Balanced/{mn_api,mn_opclass}/<sha256>.txt
-    <shared>/rewrite_stats.csv   sha256, tree, n_sections, n_insns,
+    <corpus tree>/{mn_api,mn_opclass}/<sha256>.txt
+    <shared>/rewrite_stats.csv   sha256, tree (= corpus), n_sections, n_insns,
                                  n_mem_indirect_branch, n_api_resolved, n_api_any
 """
 from __future__ import annotations
@@ -60,12 +61,15 @@ from multiprocessing import Pool
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-SHARED = Path(os.environ.get("RANSOM_SHARED_DIR", REPO.parent / "asm and mm" / "Shared"))
-TREES = {"mendeley": SHARED / "Extract", "balanced_goodware": SHARED / "Extract_Goodware_Balanced"}
-FOLDS = REPO / "results" / "family_holdout"
+sys.path.insert(0, str(REPO))
+from family_holdout.common import FOLD_DIR, SHARED, TREE_OF_CORPUS, ALL_DATASETS  # noqa: E402
+
+TREES = TREE_OF_CORPUS
+FOLDS = FOLD_DIR
 IMPORT_JSONS = [REPO / "manifests" / "imports" / n for n in
                 ("mendeley_mal_train.json", "mendeley_mal_test.json", "mendeley_good_train.json",
-                 "mendeley_good_test.json", "goodware_balanced.json")]
+                 "mendeley_good_test.json", "goodware_balanced.json", "vs.json",
+                 "goodware_hostx86.json")]
 VARIANTS = ("mn_api", "mn_opclass")
 
 LINE_RE = re.compile(r"^\s*0x([0-9a-fA-F]+)\s*:\s*(\S+)\s*(.*?)\s*$")
@@ -217,14 +221,18 @@ def _task(args):
 
 
 def cohort_files() -> list:
-    """[(sha, tree)] for every cohort file of both datasets, each once."""
+    """[(sha, corpus)] for every cohort file of every fold file present, each once."""
     seen, out = set(), []
-    for ds in ("mendeley", "balanced"):
-        with (FOLDS / f"folds_{ds}.csv").open(encoding="utf-8", newline="") as fh:
+    for ds in ALL_DATASETS:
+        f = FOLDS / f"folds_{ds}.csv"
+        if not f.is_file():
+            continue
+        with f.open(encoding="utf-8", newline="") as fh:
             for r in csv.DictReader(fh):
-                tree = "balanced_goodware" if (ds == "balanced" and r["label"] == "0") else "mendeley"
                 if r["sha256"] not in seen:
-                    seen.add(r["sha256"]); out.append((r["sha256"], tree))
+                    seen.add(r["sha256"]); out.append((r["sha256"], r["corpus"]))
+    if not out:
+        raise SystemExit(f"no folds_*.csv under {FOLDS}; run family_holdout/folds.py first")
     return out
 
 

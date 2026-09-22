@@ -9,7 +9,7 @@ sequence model reads, and report cohort coverage.
         manifests/imports/mendeley_mal_test.json \
         manifests/imports/mendeley_good_train.json \
         manifests/imports/mendeley_good_test.json \
-        manifests/imports/goodware_balanced.json
+        manifests/imports/goodware_balanced.json         manifests/imports/vs.json         manifests/imports/goodware_hostx86.json
 
 `imports/extract_imports.py` writes `{sha256: {"imports": [...], "iat": {...},
 ...}}` per corpus; `seq_model/run_family_holdout.py --imports` wants one
@@ -20,8 +20,8 @@ all zeros, which is what "this file imports nothing we can see" should look
 like). If a sha256 appears in more than one input the lists must agree, else
 the run stops.
 
-Coverage is checked against results/family_holdout/folds_{mendeley,balanced}.csv
-and printed per (dataset, label); the run refuses to write when any cohort
+Coverage is checked against every folds_*.csv of the fold directory
+(results/family_holdout, or $RANSOM_FH_DIR) and printed per (dataset, label); the run refuses to write when any cohort
 file is missing unless --allow-missing is given, because a silent gap would
 turn the imports feature into a "which corpus half is this" feature.
 """
@@ -35,7 +35,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-FOLDS = REPO / "results" / "family_holdout"
+sys.path.insert(0, str(REPO))
+from family_holdout.common import FOLD_DIR as FOLDS  # noqa: E402
 
 
 def load_one(path: Path) -> dict:

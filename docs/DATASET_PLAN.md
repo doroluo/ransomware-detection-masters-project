@@ -132,12 +132,12 @@ files; nothing else in the repository uses it.
 
 | model | input it consumes | split/label source | what the `vs` corpus must add | change needed in code |
 |---|---|---|---|---|
-| TF-IDF + LogReg (`family_holdout/run_tfidf.py`) | `Extract*/mn/<sha>.txt` (also `mn_api`, `mn_opclass`) | `folds_<ds>.csv` | `mn/` tree, cohort rows | tree routing at `run_tfidf.py:76-78` maps `(dataset,label)` to a tree; a third ransomware tree needs a `corpus -> tree` map |
-| imports baseline | `manifests/imports/imports_flat.json` | fold file | `imports_vs.json` merged in | none beyond the merge |
-| sequence transformer (`seq_model/`) | `mn/` (or `mn_api_top`), token cache, optional imports | fold file, val carve | `mn/` tree, imports JSON, re-run vocab and pretrain cache | tree list at `seq_model/data.py:77-78`; env var name mismatch (`RANSOM_SHARED` vs `RANSOM_SHARED_DIR`) |
-| graph2vec / WL (`graph2vec_pipeline/`) | `asm/<sha>.asm` | fold file | `asm/` tree | tree routing in `graph_cache.py`, extra-cache name in `run_graph2vec.py:196` |
+| TF-IDF + LogReg (`family_holdout/run_tfidf.py`) | `Extract*/mn/<sha>.txt` (also `mn_api`, `mn_opclass`) | `folds_<ds>.csv` | `mn/` tree, cohort rows | **done**: reads each row's stream through `common.stream_path(corpus, sha)` |
+| imports baseline | `manifests/imports/imports_flat.json` | fold file | `imports_vs.json` merged in | **done**: `vs.json` and `goodware_hostx86.json` merged; coverage checked against the v2 fold files |
+| sequence transformer (`seq_model/`) | `mn/` (or `mn_api_top`), token cache, optional imports | fold file, val carve | `mn/` tree, imports JSON, re-run vocab and pretrain cache | **done**: stream directories come from `common.TREE_OF_CORPUS`; the pretraining pool is every registered tree, so the vocab and token cache must be rebuilt for v2 |
+| graph2vec / WL (`graph2vec_pipeline/`) | `asm/<sha>.asm` | fold file | `asm/` tree | **done**: `TREES` is `TREE_OF_CORPUS` plus the legacy cache name; missing graphs are built per `corpus` column into one extra cache file per corpus |
 | tokenizer + word2vec (`llm_features_pipeline/`) | mnemonic text named `<family>_<sha>.txt` in set folders | Mendeley release split or cohort CSV | a folder per set with the naming rule, cohort rows, raise the 5,000-line cap | filename regex at `data.py:24` collapses any other naming into one family |
-| CNN-ViT (`cnn_vit_pipeline/`) | `asm/` -> uint8 token cache -> 256x256 canvas | cohort CSV + fold file | `asm/` tree, cache rebuild | four hard-coded tree tables (`build_dataset.py`, `tuned_train.py`, `run_cnn_vit.py`); cache has no fingerprint so it must be deleted by hand |
+| CNN-ViT (`cnn_vit_pipeline/`) | `asm/` -> uint8 token cache -> 256x256 canvas | cohort CSV + fold file | `asm/` tree, cache rebuild | **done for the family-holdout runner**: `unified_to_asm.py` knows the four trees, `run_cnn_vit.py` has an `all` image-tree set (`unified_vs`, `unified_goodware_hostx86` rendered with the unmodified `asm_parser.py`); the tuning tables in `build_dataset.py` and `tuned_train.py` are still Mendeley-only |
 | EMBER-style LightGBM (`ember_pipeline/`) | raw PE bytes -> 537 hand-rolled features | cohort CSV | **raw PE on the VM**; extract goodware there too | never run; extractor is not real EMBER; goodware on host vs ransomware on VM is a label-correlated environment confound; pin LIEF and record its version |
 | GIN over opcode transitions (Dorothy, `dorothy-work`) | its own PE -> mnemonic extractor | its own random or 4-family split | nothing if it reads `mn/` + the fold file | replace `extract_opcodes.py` + `split_dataset.py` (875 lines) with a 40-line adapter over `mn/` and `folds_*.csv`; carry `arch` through to the metrics |
 | CT_GAT transformer (Yanping, `yanping`) | its own PE -> asm -> `[opcode, op1, op2]` triplets | random 70/15/15, not family-disjoint | nothing if it reads `mn_api/` | its tokenizer diverges from the CNN-ViT one in three behaviours; the GAT half is two empty files |
@@ -153,7 +153,7 @@ On the VM (`ssh seedvm`, everything under `~/work`):
 1. `vs_fetch.py fetch candidates.csv` (running; MalwareBazaar first, VirusShare fallback; log `vs_log.csv`).
 2. `extract_unified.py --out out/Extract_VS --mal-train samples/vs --disasm-packed --resume` (queued behind the fetch; family = folder name).
 3. `extract_imports.py --in samples/vs --out out/imports_vs.json --manifest out/imports_vs.csv` (queued behind the extraction).
-4. Rewrite the token streams on the host with `asm_tool/rewrite_streams.py` and `cap_api_vocab.py` once `imports_vs.json` is back, because `mn_api*` streams need the IAT map.
+4. Rewrite the token streams on the host with `asm_tool/rewrite_streams.py` and `cap_api_vocab.py` once `imports_vs.json` is back, because `mn_api*` streams need the IAT map. **Done 2026-09-22** with `RANSOM_FH_DIR=results/family_holdout_v2`: 6,940 files, 49.2% of memory-indirect call/jmp resolved to an import name; `mn_api_top` recomputed over the v2 pool (so the v1 `mn_api_top` streams are superseded; rerun with the v1 fold dir to get them back).
 
 On the host:
 
@@ -163,7 +163,7 @@ On the host:
 7. Build the v2 folds into a **new** directory, so the committed folds and every result under them stay reproducible:
    `python family_holdout/folds.py --out results/family_holdout_v2 --ransomware vs=<Shared>/cohort_vs.csv --arch-aware --pool-small`
    (extra cohorts, cross-corpus dedup, family aliases, x64-aware balancing and the `corpus` column are all in `folds.py` now).
-8. Merge `imports_vs.json` into `imports_flat.json` with `imports/merge_imports.py`.
+8. Merge `imports_vs.json` into `imports_flat.json` with `imports/merge_imports.py`. **Done 2026-09-22**: `manifests/imports/vs.json` (1,999 records, 14 parse errors) and `goodware_hostx86.json` (1,655 PEs, extracted on the host from the staged x86 binaries) merged; every v2 fold row is covered (143 ransomware and 143 goodware rows have an empty import list).
 9. Re-run the runners in the order TF-IDF, imports baseline, graph2vec, seq transformer (with pretrain), CNN-ViT; regenerate `summary.md` with one sd definition.
 
 ## 5. Evaluation protocol changes that come with the corpus

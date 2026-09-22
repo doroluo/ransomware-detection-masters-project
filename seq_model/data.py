@@ -74,8 +74,11 @@ SHARED = Path(os.environ.get("RANSOM_SHARED_DIR", os.environ.get(
 # collapsed (asm_tool/rewrite_streams.py, asm_tool/cap_api_vocab.py). A
 # non-default stream gets its own token cache so global ids never mix.
 STREAM = os.environ.get("RANSOM_SEQ_STREAM", "mn")
-MN_DIRS = (SHARED / "Extract" / STREAM,
-           SHARED / "Extract_Goodware_Balanced" / STREAM)
+# one <tree>/<STREAM>/ directory per registered corpus (mendeley, balanced,
+# vs, hostgood, ...); sha256s are unique across corpora, so a stream is
+# looked up in each in turn
+from family_holdout.common import TREE_OF_CORPUS  # noqa: E402
+MN_DIRS = tuple(tree / STREAM for tree in TREE_OF_CORPUS.values())
 WEIGHTS_ROOT = Path(os.environ.get(
     "RANSOM_SEQ_MODELS", r"C:/Users/chaoa/Downloads/seq_models"))
 CACHE_ROOT = Path(os.environ.get(
