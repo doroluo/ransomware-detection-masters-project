@@ -24,7 +24,9 @@ import statistics as st
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-FH = REPO / "results" / "family_holdout"
+import sys  # noqa: E402
+sys.path.insert(0, str(REPO))
+from family_holdout.common import FOLD_DIR as FH  # noqa: E402  ($RANSOM_FH_DIR or results/family_holdout)
 
 
 def read_csv(p: Path):
@@ -48,14 +50,13 @@ def mean_sd(rows, key):
 
 
 def main() -> int:
-    L = ["# Family-holdout evaluation over all 38 cohort families", "",
-         "Every in-cohort ransomware family from both Mendeley sets (1,266 files) is held out exactly once in a",
-         "5-fold scheme (families assigned whole; goodware assigned by duplicate-stream group or source project).",
-         "`fold mean +/- sd` is over the five held-out folds; `pooled` scores the union of all held-out predictions.",
-         "LOFO = leave-one-family-out (train on the other 37 families + all goodware), a recall study only.",
-         "Floors are per-fold means: majority-class accuracy and the x86 rule (ransomware iff x86).",
-         "Caveat: x64 ransomware concentrates in fold 2 (59 of 114 x64 files; Hive is 43 of them), so the fold sd",
-         "partly measures architecture mix, not only family difficulty. See `family_holdout/folds.py`.", ""]
+    L = [f"# Family-holdout evaluation ({FH.name})", "",
+         "Every in-cohort ransomware family is held out exactly once in a 5-fold scheme (families assigned",
+         "whole; goodware assigned by duplicate-stream group or source project).",
+         "`fold mean +/- sd` is over the five held-out folds (sample sd); `pooled` scores the union of all held-out predictions.",
+         "LOFO = leave-one-family-out (train on every other family + all goodware), a recall study only.",
+         "Floors are per-fold means over the training folds: majority-class accuracy and the x86 rule (ransomware iff x86).",
+         f"Fold files: `{FH}`. See `family_holdout/folds.py`.", ""]
 
     families = {}
     for ds in sorted(d.name for d in FH.iterdir() if d.is_dir() and any(d.glob("*/*/metrics.json"))):

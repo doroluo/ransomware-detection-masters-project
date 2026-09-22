@@ -44,7 +44,7 @@ from cnn_vit_pipeline.cohort import (_core_metrics, _safe_div,  # noqa: E402
 
 K = 5
 DATASETS = ("mendeley", "balanced")          # what "--dataset both" means
-ALL_DATASETS = (*DATASETS, "all")            # "all": every ransomware corpus vs every goodware source
+ALL_DATASETS = (*DATASETS, "all", "arch_matched")   # "all": every corpus jointly; "arch_matched": its subset with identical (x86, x64) counts per class
 # RANSOM_FH_DIR points a run at another fold set (e.g. results/family_holdout_v2)
 # without touching the committed one.
 FOLD_DIR = Path(os.environ.get("RANSOM_FH_DIR", REPO / "results" / "family_holdout"))

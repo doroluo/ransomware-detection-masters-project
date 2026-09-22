@@ -78,10 +78,11 @@ from cnn_vit_pipeline import train_eval as T      # noqa: E402
 MODEL_NAME = "HierarchicalMalwareNet"
 PIPELINE = "cnn_vit"
 DATASETS = ("mendeley", "balanced")
+ALL_DATASETS = (*DATASETS, "all")     # "all" = every corpus jointly (folds_all.csv)
 CLASS_DIRS = {0: "Class_0_Goodware", 1: "Class_1_Ransomware"}
 HEX64 = re.compile(r"[0-9a-f]{64}")
 
-FOLDS_DIR = REPO_ROOT / "results" / "family_holdout"
+FOLDS_DIR = Path(os.environ.get("RANSOM_FH_DIR", REPO_ROOT / "results" / "family_holdout"))
 OUT_ROOT = REPO_ROOT / "results" / "family_holdout"
 DOWNLOADS = REPO_ROOT.parent
 IMAGES_ROOT = Path(os.environ.get("RANSOM_CNN_VIT_IMAGES", DOWNLOADS / "cnn_vit_images"))
@@ -146,8 +147,14 @@ def image_index(images_root: Path, trees) -> dict:
                      "tree_label": int(cls.split("_")[1]), "tree": tree}
             prev = idx.get(tail)
             if prev is not None and prev["png"] != entry["png"]:
-                raise AssertionError(
-                    f"sha256 {tail} rendered twice: {prev['png']} and {entry['png']}")
+                # the same binary can sit in two goodware corpora (a host
+                # program that Goodware_Balanced also collected); the fold
+                # file holds it once, so the first tree's render is used, but
+                # two trees disagreeing on the class is a real error
+                if prev["tree_label"] != entry["tree_label"]:
+                    raise AssertionError(
+                        f"sha256 {tail} rendered under two classes: {prev['png']} and {entry['png']}")
+                continue
             idx[tail] = entry
     return idx
 
@@ -841,7 +848,7 @@ def write_summary(results: list, out_root: Path) -> Path:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dataset", default="both", choices=(*DATASETS, "both"))
+    ap.add_argument("--dataset", default="both", choices=(*ALL_DATASETS, "both"))
     ap.add_argument("--stage", default="all", choices=("kfold", "lofo", "all"))
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--epochs", type=int, default=MAX_EPOCHS)
