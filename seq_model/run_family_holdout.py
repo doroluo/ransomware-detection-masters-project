@@ -285,8 +285,9 @@ def strip_lofo(model_dir: Path, why: str) -> None:
     for r in rows:
         r["recall_lofo"] = ""
     with p.open("w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=["family", "n", "n_x64", "fold",
-                                           "recall_kfold", "recall_lofo"])
+        # keep whatever columns write_model_dir produced (it gained `corpus`)
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]) if rows else
+                           ["family", "corpus", "n", "n_x64", "fold", "recall_kfold", "recall_lofo"])
         w.writeheader()
         w.writerows(rows)
     mp = model_dir / "metrics.json"
