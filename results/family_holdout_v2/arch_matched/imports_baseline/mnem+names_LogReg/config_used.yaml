@@ -1,0 +1,337 @@
+pipeline: imports_baseline
+model: mnem+names_LogReg
+config: mnem+names
+imports: manifests\imports\imports_flat.json
+n_files_without_imports: 273
+features: hstack[ mnemonic TfidfVectorizer(ngram_range=(1, 3), min_df=5, sublinear_tf=True,
+  max_features=300000) over the first 30000 mnemonics (run_tfidf.py verbatim), names_tfidf
+  ]
+classifier:
+  name: LogReg
+  estimator: LogisticRegression(max_iter=4000, random_state=42)
+  C_grid:
+  - 0.1
+  - 1
+  - 10
+  C_selection: GridSearchCV(StratifiedKFold(2, shuffle, rs=42), f1_macro) inside training
+    rows
+  C_chosen:
+    kfold:
+      '0':
+        C: 10
+        cv_f1_macro: 0.9838
+        n_features: 192697
+      '1':
+        C: 10
+        cv_f1_macro: 0.98
+        n_features: 196596
+      '2':
+        C: 10
+        cv_f1_macro: 0.9776
+        n_features: 196042
+      '3':
+        C: 10
+        cv_f1_macro: 0.9819
+        n_features: 190846
+      '4':
+        C: 10
+        cv_f1_macro: 0.9834
+        n_features: 183411
+    lofo:
+      abyss:
+        C: 10
+        cv_f1_macro: 0.9843
+      akira:
+        C: 10
+        cv_f1_macro: 0.9849
+      arcrypter:
+        C: 10
+        cv_f1_macro: 0.9857
+      atomsilo:
+        C: 10
+        cv_f1_macro: 0.985
+      avaddon:
+        C: 10
+        cv_f1_macro: 0.9853
+      avoslocker:
+        C: 10
+        cv_f1_macro: 0.9829
+      babuk:
+        C: 10
+        cv_f1_macro: 0.9849
+      bianlian:
+        C: 10
+        cv_f1_macro: 0.9868
+      blackbasta:
+        C: 10
+        cv_f1_macro: 0.9861
+      blackbyte:
+        C: 10
+        cv_f1_macro: 0.9858
+      blackcat:
+        C: 10
+        cv_f1_macro: 0.9834
+      blackhunt:
+        C: 10
+        cv_f1_macro: 0.9843
+      blackmatter:
+        C: 10
+        cv_f1_macro: 0.9842
+      blacksuit:
+        C: 10
+        cv_f1_macro: 0.9864
+      bluesky:
+        C: 10
+        cv_f1_macro: 0.984
+      bqtlock:
+        C: 10
+        cv_f1_macro: 0.9856
+      cactus:
+        C: 10
+        cv_f1_macro: 0.9849
+      cerber:
+        C: 10
+        cv_f1_macro: 0.9853
+      chaos:
+        C: 10
+        cv_f1_macro: 0.9857
+      clop:
+        C: 10
+        cv_f1_macro: 0.9842
+      cmlocker:
+        C: 10
+        cv_f1_macro: 0.9852
+      conti:
+        C: 10
+        cv_f1_macro: 0.9853
+      crylock:
+        C: 10
+        cv_f1_macro: 0.985
+      cryptowall:
+        C: 10
+        cv_f1_macro: 0.9858
+      cuba:
+        C: 10
+        cv_f1_macro: 0.9862
+      darkside:
+        C: 10
+        cv_f1_macro: 0.9856
+      dharma:
+        C: 10
+        cv_f1_macro: 0.9855
+      diavol:
+        C: 10
+        cv_f1_macro: 0.9862
+      doejocrypt:
+        C: 10
+        cv_f1_macro: 0.9848
+      doppelpaymer:
+        C: 10
+        cv_f1_macro: 0.9839
+      dragonforce:
+        C: 10
+        cv_f1_macro: 0.9846
+      egregor:
+        C: 10
+        cv_f1_macro: 0.9856
+      embargo:
+        C: 10
+        cv_f1_macro: 0.9855
+      exorcist:
+        C: 10
+        cv_f1_macro: 0.9851
+      fog:
+        C: 10
+        cv_f1_macro: 0.9856
+      gandcrab:
+        C: 10
+        cv_f1_macro: 0.9863
+      globeimposter:
+        C: 10
+        cv_f1_macro: 0.9849
+      helldown:
+        C: 10
+        cv_f1_macro: 0.9853
+      hellokitty:
+        C: 10
+        cv_f1_macro: 0.9861
+      hive:
+        C: 10
+        cv_f1_macro: 0.9839
+      holyghost:
+        C: 10
+        cv_f1_macro: 0.9855
+      hybridpetya:
+        C: 10
+        cv_f1_macro: 0.9853
+      inc:
+        C: 10
+        cv_f1_macro: 0.9851
+      interlock:
+        C: 10
+        cv_f1_macro: 0.985
+      jigsaw:
+        C: 10
+        cv_f1_macro: 0.9857
+      karma:
+        C: 10
+        cv_f1_macro: 0.9856
+      knight:
+        C: 10
+        cv_f1_macro: 0.9845
+      knightcrypt:
+        C: 10
+        cv_f1_macro: 0.9858
+      lockbit:
+        C: 10
+        cv_f1_macro: 0.9857
+      lockfile:
+        C: 10
+        cv_f1_macro: 0.9848
+      locky:
+        C: 10
+        cv_f1_macro: 0.9839
+      lokilocker:
+        C: 10
+        cv_f1_macro: 0.9848
+      lorenz:
+        C: 10
+        cv_f1_macro: 0.9846
+      lynx:
+        C: 10
+        cv_f1_macro: 0.9848
+      magniber:
+        C: 10
+        cv_f1_macro: 0.9862
+      makop:
+        C: 10
+        cv_f1_macro: 0.9855
+      mallox:
+        C: 10
+        cv_f1_macro: 0.985
+      matrix:
+        C: 10
+        cv_f1_macro: 0.9845
+      maui:
+        C: 10
+        cv_f1_macro: 0.986
+      maze:
+        C: 10
+        cv_f1_macro: 0.9859
+      medusa:
+        C: 10
+        cv_f1_macro: 0.9853
+      medusalocker:
+        C: 10
+        cv_f1_macro: 0.9842
+      money:
+        C: 10
+        cv_f1_macro: 0.9858
+      mountlocker:
+        C: 10
+        cv_f1_macro: 0.9848
+      nefilim:
+        C: 10
+        cv_f1_macro: 0.9859
+      nemty:
+        C: 10
+        cv_f1_macro: 0.985
+      netwalker:
+        C: 10
+        cv_f1_macro: 0.9843
+      nokoyawa:
+        C: 10
+        cv_f1_macro: 0.9855
+      pandora:
+        C: 10
+        cv_f1_macro: 0.9846
+      petya:
+        C: 10
+        cv_f1_macro: 0.9846
+      phobos:
+        C: 10
+        cv_f1_macro: 0.9841
+      playcrypt:
+        C: 10
+        cv_f1_macro: 0.9845
+      prometheus:
+        C: 10
+        cv_f1_macro: 0.9848
+      pysa:
+        C: 10
+        cv_f1_macro: 0.9866
+      qilin:
+        C: 10
+        cv_f1_macro: 0.985
+      quantum:
+        C: 10
+        cv_f1_macro: 0.9853
+      ragnarlocker:
+        C: 10
+        cv_f1_macro: 0.9848
+      ragnarok:
+        C: 10
+        cv_f1_macro: 0.9859
+      ransomexx:
+        C: 10
+        cv_f1_macro: 0.9863
+      ransomhub:
+        C: 10
+        cv_f1_macro: 0.9855
+      revil:
+        C: 10
+        cv_f1_macro: 0.9852
+      rhysida:
+        C: 10
+        cv_f1_macro: 0.9856
+      rook:
+        C: 10
+        cv_f1_macro: 0.9843
+      royal:
+        C: 10
+        cv_f1_macro: 0.9857
+      ryuk:
+        C: 10
+        cv_f1_macro: 0.9838
+      sarcoma:
+        C: 10
+        cv_f1_macro: 0.985
+      snatch:
+        C: 10
+        cv_f1_macro: 0.9856
+      stop:
+        C: 10
+        cv_f1_macro: 0.9838
+      sugar:
+        C: 10
+        cv_f1_macro: 0.9855
+      teslacrypt:
+        C: 10
+        cv_f1_macro: 0.9846
+      trigona:
+        C: 10
+        cv_f1_macro: 0.9835
+      underground:
+        C: 10
+        cv_f1_macro: 0.9848
+      voidcrypt:
+        C: 10
+        cv_f1_macro: 0.985
+      wannacry:
+        C: 10
+        cv_f1_macro: 0.9846
+      wastedlocker:
+        C: 10
+        cv_f1_macro: 0.9844
+      yanluowang:
+        C: 10
+        cv_f1_macro: 0.986
+      zeppelin:
+        C: 10
+        cv_f1_macro: 0.9839
+decision: argmax (predict)
+seed: 42
+pre_registered: true
+schemes:
+- kfold
+- lofo
