@@ -729,7 +729,8 @@ def write_summary(results: list, out_root: Path) -> Path:
         ds = r["dataset"]
         fm, fsd = r["fold_mean"], r["fold_sd"]
         p = r["pooled"]
-        fix_mu, fix_sd = FIXED_SPLIT[ds]
+        # the fixed-split comparison exists only for the two Mendeley-era datasets
+        fix_mu, fix_sd = FIXED_SPLIT.get(ds, (None, None))
         L += [f"## {ds}", "",
               f"{r['samples']['total']} files: {r['samples']['ransomware']} ransomware in "
               f"{r['samples']['families']} families, {r['samples']['goodware']} goodware in "
@@ -738,7 +739,8 @@ def write_summary(results: list, out_root: Path) -> Path:
               f"{r['n_lofo_runs']} LOFO).", "",
               "| metric | fold mean +/- sd (5 folds) | pooled | fixed split (5 seeds) |",
               "|---|---|---|---|",
-              f"| macro-F1 | {f(fm['macro_f1'])} +/- {f(fsd['macro_f1'])} | {f(p['macro_f1'])} | {fix_mu:.3f} +/- {fix_sd:.3f} |",
+              f"| macro-F1 | {f(fm['macro_f1'])} +/- {f(fsd['macro_f1'])} | {f(p['macro_f1'])} | "
+              + (f"{fix_mu:.3f} +/- {fix_sd:.3f}" if fix_mu is not None else "-") + " |",
               f"| balanced accuracy | {f(fm['balanced_accuracy'])} +/- {f(fsd['balanced_accuracy'])} | {f(p['balanced_accuracy'])} | - |",
               f"| accuracy | {f(fm['accuracy'])} +/- {f(fsd['accuracy'])} | {f(p['accuracy'])} | - |",
               f"| ROC AUC | {f(fm['roc_auc'])} +/- {f(fsd['roc_auc'])} | {f(p['roc_auc'])} | - |",
@@ -756,23 +758,25 @@ def write_summary(results: list, out_root: Path) -> Path:
                 f"{f(row['fpr'], 2)} | {f(row['majority_floor'])} | {f(row['x86_rule_floor'])} | "
                 f"{f(row['epochs_run_mean'], 1)} |")
         fl = r["floors"]
-        d_fixed = fm["macro_f1"] - fix_mu
         d_x86 = p["macro_f1"] - fl["x86_rule_macro_f1"]
-        ratio = (abs(d_fixed) / fsd["macro_f1"]) if fsd["macro_f1"] else float("inf")
         L += ["",
               f"Pooled floors over all {r['samples']['total']} held-out predictions: majority "
               f"{fl['majority_accuracy']:.3f} accuracy (macro-F1 {fl['majority_macro_f1']:.3f}), x86 rule "
               f"{fl['x86_rule_accuracy']:.3f} accuracy (macro-F1 {fl['x86_rule_macro_f1']:.3f}, recall "
               f"{fl['x86_rule_recall_ransomware']:.2f} ransomware / {fl['x86_rule_recall_goodware']:.2f} "
               f"goodware).",
-              "",
-              f"Against the fixed split: the fold mean is {d_fixed:+.3f} macro-F1 from the single 24/14 split's "
-              f"{fix_mu:.3f}, which is {ratio:.1f}x the fold sd "
-              f"({fsd['macro_f1']:.3f}) - "
-              + ("the one split was not representative of the cohort's families."
-                 if abs(d_fixed) > fsd["macro_f1"] else
-                 "the one split sat inside the spread over held-out family sets."),
-              "",
+              ""]
+        if fix_mu is not None:
+            d_fixed = fm["macro_f1"] - fix_mu
+            ratio = (abs(d_fixed) / fsd["macro_f1"]) if fsd["macro_f1"] else float("inf")
+            L += [f"Against the fixed split: the fold mean is {d_fixed:+.3f} macro-F1 from the single 24/14 split's "
+                  f"{fix_mu:.3f}, which is {ratio:.1f}x the fold sd "
+                  f"({fsd['macro_f1']:.3f}) - "
+                  + ("the one split was not representative of the cohort's families."
+                     if abs(d_fixed) > fsd["macro_f1"] else
+                     "the one split sat inside the spread over held-out family sets."),
+                  ""]
+        L += [
               (f"Against the architecture shortcut: pooled macro-F1 {p['macro_f1']:.3f} is {d_x86:+.3f} against the "
                f"x86 rule's {fl['x86_rule_macro_f1']:.3f}. "
                + ("**Below the floor** - a classifier that reads nothing but the PE machine field scores higher "
