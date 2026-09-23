@@ -209,6 +209,31 @@ Cohort files are copied under `manifests/cohort/`.
 - VM snapshot `vs-batch2-1999-samples-2026-09-22` holds the binaries and
   outputs of this state.
 
+## 6b. Dataset v3: the completed MalwareBazaar pull (2026-09-23)
+
+The 327 batch-2 hashes that had been waiting on the download quota came
+through overnight; the VM disassembled them and rebuilt the import tables
+(snapshot `vs-corpus-complete-2026-09-23`). The v2 fold set is frozen (every
+v2 result and the write-up refer to it); the completed corpus is built as
+`results/family_holdout_v3/` with the same command and rules.
+
+| class | corpus | x86 | x64 | x64 share |
+|---|---|---|---|---|
+| ransomware | mendeley | 1,152 | 114 | 0.09 |
+| ransomware | vs (batches 1-3, 1,935 of 2,326 usable) | 1,302 | 633 | 0.33 |
+| goodware | all three sources (unchanged) | 2,519 | 1,523 | 0.38 |
+| **ransomware** | all | **2,454** | **747** | **0.23** |
+
+- 7,243 files, 97 families (no new family; the batch-3 files deepen Hive,
+  LockBit, Akira, Trigona, REvil, Snatch and others; Hive alone is now 38 x86 / 180 x64).
+- x86-rule accuracy on the pool: 0.549; `arch_matched.csv` 6,402 files (2,454 / 747 per class).
+- Import coverage: every v3 row (154 ransomware and 143 goodware rows have an
+  empty list). The merged table is `manifests/imports/imports_flat_v3.json`;
+  `imports_flat.json` stays the v2 table until the v2 transformer runs finish,
+  because their run cache is keyed on that file's hash.
+- Models are rerun on v3 with `tools/run_v3_cpu.sh` (CPU models) once the v2
+  GPU runs are done.
+
 ## 7. Decisions still open
 
 1. Whether to also pull extra x86 samples for families that Mendeley covers

@@ -38,6 +38,7 @@ imports_baseline/<config>_LogReg/, the standard six files.
 from __future__ import annotations
 
 import argparse
+import os
 import hashlib
 import json
 import sys
@@ -58,7 +59,9 @@ from family_holdout.run_tfidf import (C_GRID, MAX_FEATURES, MAX_MNEMS,  # noqa: 
                                       load_texts, make_vec)
 
 PIPELINE = "imports_baseline"
-IMPORTS = REPO / "manifests" / "imports" / "imports_flat.json"
+# the merged {sha256: [names]} table; RANSOM_IMPORTS_FLAT points a run at another
+# merge (e.g. imports_flat_v3.json) without touching the file other runs cache on
+IMPORTS = Path(os.environ.get("RANSOM_IMPORTS_FLAT", REPO / "manifests" / "imports" / "imports_flat.json"))
 HASH_DIM = 2048
 CONFIGS = ("hashed2048", "names_tfidf", "mnem+names")
 
