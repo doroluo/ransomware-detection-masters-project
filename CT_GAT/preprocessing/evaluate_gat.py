@@ -7,22 +7,35 @@ from sklearn.metrics import (
     confusion_matrix,
 )
 
-from data_loader import test_loader
 from device import get_device
-from transformer_model import OpcodeTransformer
+from gat_model import OpcodeGAT
+from graph_loader import test_loader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CHECKPOINT_PATH = PROJECT_ROOT / "processed" / "checkpoints" / "best_transformer.pt"
+CHECKPOINT_PATH = PROJECT_ROOT / "processed" / "checkpoints" / "best_gat.pt"
+
+
+def resolve_device():
+    device = get_device()
+    if device.type == "privateuseone":
+        print("DirectML does not support PyG scatter/GATConv; using CPU for GAT.")
+        return torch.device("cpu")
+    return device
+
 
 def main():
     if not CHECKPOINT_PATH.is_file():
         raise FileNotFoundError(
             f"Checkpoint not found: {CHECKPOINT_PATH}\n"
-            "Run train.py first."
+            "Run train_gat.py first."
+        )
+    if len(test_loader.dataset) == 0:
+        raise FileNotFoundError(
+            "No test graphs found. Run: python build_pyg_graphs.py"
         )
 
-    device = get_device()
-    model = OpcodeTransformer()
+    device = resolve_device()
+    model = OpcodeGAT()
     model.load_state_dict(
         torch.load(CHECKPOINT_PATH, map_location="cpu", weights_only=True)
     )
@@ -33,15 +46,12 @@ def main():
     all_labels = []
 
     with torch.no_grad():
-        for sequences, labels, lengths in test_loader:
-            sequences = sequences.to(device)
-            lengths = lengths.to(device)
-
-            outputs = model(sequences, lengths)
+        for batch in test_loader:
+            batch = batch.to(device)
+            outputs = model(batch)
             predictions = outputs.argmax(dim=1)
-
             all_predictions.extend(predictions.cpu().tolist())
-            all_labels.extend(labels.tolist())
+            all_labels.extend(batch.y.cpu().tolist())
 
     accuracy = accuracy_score(all_labels, all_predictions)
 

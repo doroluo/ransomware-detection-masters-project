@@ -125,6 +125,17 @@ IMM_REGEX = re.compile(
 )
 
 
+OPCODE_PREFIXES = {"LOCK", "REP", "REPE", "REPZ", "REPNE", "REPNZ"}
+
+
+def strip_opcode_prefixes(opcode: str) -> str:
+    """Drop lock/rep prefixes so 'rep stosb' tokenizes as STOSB."""
+    parts = opcode.upper().split()
+    while parts and parts[0] in OPCODE_PREFIXES:
+        parts.pop(0)
+    return parts[-1] if parts else opcode.upper()
+
+
 def categorize_operand(operand):
     if not operand:
         return TOKEN_MAP["PADDING"]
@@ -156,7 +167,7 @@ def encode_instruction(opcode: str, raw_operands: list[str]):
     Capstone CALLs are usually addresses / mem refs — keep CALL unless
     the target string actually contains a known API name.
     """
-    opcode = opcode.upper()
+    opcode = strip_opcode_prefixes(opcode)
 
     if opcode == "CALL":
         opcode_id = TOKEN_MAP["CALL"]
@@ -255,8 +266,17 @@ def parse_asm_line(line):
     if not code_tokens:
         return None
 
-    opcode = code_tokens[0]
-    operand_text = " ".join(code_tokens[1:])
+    prefix_index = 0
+    while (
+        prefix_index < len(code_tokens)
+        and code_tokens[prefix_index].upper() in OPCODE_PREFIXES
+    ):
+        prefix_index += 1
+    if prefix_index >= len(code_tokens):
+        return None
+
+    opcode = code_tokens[prefix_index]
+    operand_text = " ".join(code_tokens[prefix_index + 1:])
     raw_operands = [
         operand.strip()
         for operand in operand_text.split(",")

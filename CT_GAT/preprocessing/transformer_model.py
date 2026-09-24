@@ -42,7 +42,9 @@ class OpcodeTransformer(nn.Module):
             batch_first=True,
         )
         self.transformer = nn.TransformerEncoder(
-            encoder_layer, num_layers=num_layers
+            encoder_layer,
+            num_layers=num_layers,
+            enable_nested_tensor=False,
         )
         self.classifier = nn.Linear(d_model, num_classes)
 
