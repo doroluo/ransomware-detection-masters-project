@@ -6,8 +6,11 @@ path (GAT).
 
 Usage:
     python compare_models.py
-    python compare_models.py --epochs 5 --skip-train
+    python compare_models.py --train-behavior --epochs 5
     python compare_models.py --sample-id <file_id>
+
+Baselines are loaded from best_transformer.pt and best_gat.pt and are not
+retrained. Behavior checkpoints are loaded unless --train-behavior is set.
 """
 
 from __future__ import annotations
@@ -330,7 +333,14 @@ def pick_ransomware_sample(sample_id: str | None) -> tuple[str, Path]:
     return file_id, graph_path
 
 
-def explain_sample(device, file_id: str, graph_path: Path, tf_ckpt: Path, gat_ckpt: Path):
+def explain_sample(
+    device,
+    gat_device,
+    file_id: str,
+    graph_path: Path,
+    tf_ckpt: Path,
+    gat_ckpt: Path,
+):
     print("\n=== Explanation for", file_id, "===")
 
     # Transformer windows
@@ -377,10 +387,11 @@ def explain_sample(device, file_id: str, graph_path: Path, tf_ckpt: Path, gat_ck
     if not graph_path.is_file():
         print(f"Missing graph for explanation: {graph_path}")
         return
-    data = next(iter(GeoDataLoader([load_graph(graph_path)], batch_size=1))).to(device)
+    # GATConv / scatter do not run on DirectML.
+    data = next(iter(GeoDataLoader([load_graph(graph_path)], batch_size=1))).to(gat_device)
     gat = BehaviorOpcodeGAT()
     gat.load_state_dict(torch.load(gat_ckpt, map_location="cpu", weights_only=True))
-    gat = gat.to(device).eval()
+    gat = gat.to(gat_device).eval()
     with torch.no_grad():
         _, block_logits, behavior_logits = gat(data)
     print("\nTop GAT blocks:")
@@ -393,13 +404,14 @@ def explain_sample(device, file_id: str, graph_path: Path, tf_ckpt: Path, gat_ck
         )
 
     payload = torch.load(graph_path, map_location="cpu", weights_only=False)
-    asm_path = Path(
-        payload.get("asm_path", PROJECT_ROOT / "data" / "asm" / f"{file_id}.asm")
-    )
+    asm_path = Path(str(payload.get("asm_path", "")))
+    local_asm = PROJECT_ROOT / "data" / "asm" / f"{file_id}.asm"
+    if not asm_path.is_file():
+        asm_path = local_asm
     if asm_path.is_file():
         cfg = build_tokenized_cfg(asm_path)
         paths = find_read_to_write_paths(cfg)
-        print("\nRead → write paths:")
+        print("\nRead -> write paths:")
         if not paths:
             print("  (none found)")
         for path in paths[:5]:
@@ -409,7 +421,16 @@ def explain_sample(device, file_id: str, graph_path: Path, tf_ckpt: Path, gat_ck
 def main():
     parser = argparse.ArgumentParser(description="Compare baseline vs behavior models")
     parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--skip-train", action="store_true")
+    parser.add_argument(
+        "--train-behavior",
+        action="store_true",
+        help="Train behavior models only. Baselines are never retrained.",
+    )
+    parser.add_argument(
+        "--skip-train",
+        action="store_true",
+        help="Use saved checkpoints. Same as omitting --train-behavior.",
+    )
     parser.add_argument("--sample-id", type=str, default=None)
     args = parser.parse_args()
 
@@ -422,16 +443,19 @@ def main():
     gat_base = CHECKPOINT_DIR / "best_gat.pt"
     gat_beh = CHECKPOINT_DIR / "best_gat_behavior.pt"
 
-    if not args.skip_train:
-        print("=== Training ===")
-        train_transformer_baseline(device, args.epochs)
+    if args.train_behavior and not args.skip_train:
+        print("=== Training behavior models ===")
         train_transformer_behavior(device, args.epochs)
-        train_gat_baseline(gat_device, args.epochs)
         train_gat_behavior(gat_device, args.epochs)
+    else:
+        print("Using saved behavior checkpoints (baselines are not retrained).")
 
     for path in (tf_base, tf_beh, gat_base, gat_beh):
         if not path.is_file():
-            raise FileNotFoundError(f"Missing checkpoint {path}; run without --skip-train")
+            raise FileNotFoundError(
+                f"Missing checkpoint {path}. "
+                "Behavior files are created with --train-behavior."
+            )
 
     print("\n=== Test ransomware F1 ===")
     results = {
@@ -445,7 +469,7 @@ def main():
         print(f"  {name}: {score:.4f}")
 
     file_id, graph_path = pick_ransomware_sample(args.sample_id)
-    explain_sample(device, file_id, graph_path, tf_beh, gat_beh)
+    explain_sample(device, gat_device, file_id, graph_path, tf_beh, gat_beh)
 
 
 if __name__ == "__main__":
