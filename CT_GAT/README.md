@@ -15,8 +15,8 @@ data/asm/ + data/metadata.csv
         ↓
 token_mapping.py     [opcode_or_api, op1, op2, behavior]
         ↓
-   ┌────┴────┐
-   ↓         ↓
+   ┌────┴───────────────────┐
+   ↓                        ↓
 build_sequences.py          build_pyg_graphs.py
 LongTensor[N, 4]            CFG + loop/call edges + block counts
    ↓                        ↓
