@@ -268,4 +268,18 @@ v2 result and the write-up refer to it); the completed corpus is built as
    (needs an API key; the free tier is 500 lookups a day), or a separate
    2016-era test set for temporal generalisation, reported apart from the
    family-holdout numbers.
+   **Labelled sample (2026-09-25).** 2,000 random unpacked EXEs labelled with
+   AVClass2 from the VirusTotal scans embedded in VirusShare reports (median 35
+   engines; `labels.csv` beside `survey.csv` on the VM). Only 32% are tagged
+   ransomware; the rest are grayware/adware (BetterSurf, DomaIQ), downloaders
+   (Upatre), backdoors (Poison Ivy), banking trojans (ZeuS) and others. Within
+   the ransomware tag, encrypting families are CryptoLocker 326, Xorist 65,
+   TeslaCrypt 27, Locky 25, GPCode, CryptoDef, Shade and a few more (about 455),
+   screen lockers (Urausy, Reveton, Gimemo, ...) about 26, and the rest are
+   non-ransomware families that one engine called ransom (ZeuS, Dalexis,
+   Tofsee), so a curated family list is needed on top of the AVClass class.
+   Every file is x86. Use: (a) a source of labelled OTHER malware for the
+   advisor's ransomware-vs-other-malware question, evaluated on x86 only so
+   bitness cannot separate the classes; (b) an old-era ransomware test set.
+   Not for the main family-holdout pool.
 
