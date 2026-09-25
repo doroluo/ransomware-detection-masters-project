@@ -5,10 +5,13 @@ Saves one .pt per sample:
     file_id,
     label,
     asm_path,
-    token_ids:     LongTensor[N, 3],   # opcode/API, operand1, operand2
-    insn_to_block: LongTensor[N],      # basic-block id for each instruction
-    edge_index:    LongTensor[2, E],   # directed CFG edges over blocks
-    num_blocks:    int,
+    token_ids:          LongTensor[N, 4],  # opcode/API, op1, op2, behavior
+    insn_to_block:      LongTensor[N],
+    edge_index:         LongTensor[2, E],  # CFG + loop + call edges
+    edge_type:          LongTensor[E],     # 0=cfg, 1=loop, 2=call
+    block_crypto_count: LongTensor[B],
+    block_file_count:   LongTensor[B],
+    num_blocks:         int,
   }
 
 Reads data/metadata.csv when it has rows. Otherwise uses the split CSVs
@@ -46,10 +49,14 @@ def build_tokenized_cfg(asm_path: Path):
     return build_cfg(instructions)
 
 
-def cfg_to_tensors(cfg) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
+def cfg_to_tensors(cfg):
     token_rows = []
     insn_to_block = []
+    crypto_counts = []
+    file_counts = []
     for block in cfg.blocks:
+        crypto_counts.append(block.crypto_count)
+        file_counts.append(block.file_count)
         for instruction in block.instructions:
             token_rows.append(list(instruction.token_ids))
             insn_to_block.append(block.block_id)
@@ -58,14 +65,34 @@ def cfg_to_tensors(cfg) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
     insn_to_block_tensor = torch.tensor(insn_to_block, dtype=torch.long)
     if cfg.edges:
         edge_index = torch.tensor(cfg.edges, dtype=torch.long).t().contiguous()
+        edge_type = torch.tensor(cfg.edge_types, dtype=torch.long)
     else:
         edge_index = torch.empty((2, 0), dtype=torch.long)
-    return token_ids, insn_to_block_tensor, edge_index, len(cfg.blocks)
+        edge_type = torch.empty((0,), dtype=torch.long)
+    block_crypto_count = torch.tensor(crypto_counts, dtype=torch.long)
+    block_file_count = torch.tensor(file_counts, dtype=torch.long)
+    return (
+        token_ids,
+        insn_to_block_tensor,
+        edge_index,
+        edge_type,
+        block_crypto_count,
+        block_file_count,
+        len(cfg.blocks),
+    )
 
 
 def save_graph(file_id: str, label: int, asm_path: Path) -> tuple[int, int]:
     cfg = build_tokenized_cfg(asm_path)
-    token_ids, insn_to_block, edge_index, num_blocks = cfg_to_tensors(cfg)
+    (
+        token_ids,
+        insn_to_block,
+        edge_index,
+        edge_type,
+        block_crypto_count,
+        block_file_count,
+        num_blocks,
+    ) = cfg_to_tensors(cfg)
     torch.save(
         {
             "file_id": file_id,
@@ -74,6 +101,9 @@ def save_graph(file_id: str, label: int, asm_path: Path) -> tuple[int, int]:
             "token_ids": token_ids,
             "insn_to_block": insn_to_block,
             "edge_index": edge_index,
+            "edge_type": edge_type,
+            "block_crypto_count": block_crypto_count,
+            "block_file_count": block_file_count,
             "num_blocks": num_blocks,
         },
         OUTPUT_DIR / f"{file_id}.pt",

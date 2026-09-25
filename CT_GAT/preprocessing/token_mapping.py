@@ -102,6 +102,114 @@ API_MAP = {
 }
 
 
+# Fourth token channel: what the instruction is doing (not the binary label).
+BEHAVIOR_MAP = {
+    "NONE": 0,
+    "CRYPTO_OPCODE": 1,
+    "DECRYPT": 2,
+    "ENCRYPT": 3,
+    "KEY_SETUP": 4,
+    "FILE_ENUM": 5,
+    "FILE_READ": 6,
+    "FILE_WRITE": 7,
+    "FILE_DELETE": 8,
+}
+BEHAVIOR_VOCAB_SIZE = len(BEHAVIOR_MAP)
+
+# Behavior-head / explainability labels (subset of BEHAVIOR_MAP).
+HEAD_BEHAVIOR_NAMES = ("ENCRYPT", "DECRYPT", "FILE_READ", "FILE_WRITE")
+HEAD_BEHAVIOR_IDS = tuple(BEHAVIOR_MAP[name] for name in HEAD_BEHAVIOR_NAMES)
+
+SUSPICIOUS_BEHAVIOR_IDS = frozenset(
+    {
+        BEHAVIOR_MAP["CRYPTO_OPCODE"],
+        BEHAVIOR_MAP["DECRYPT"],
+        BEHAVIOR_MAP["ENCRYPT"],
+        BEHAVIOR_MAP["KEY_SETUP"],
+        BEHAVIOR_MAP["FILE_ENUM"],
+        BEHAVIOR_MAP["FILE_READ"],
+        BEHAVIOR_MAP["FILE_WRITE"],
+        BEHAVIOR_MAP["FILE_DELETE"],
+    }
+)
+CRYPTO_BEHAVIOR_IDS = frozenset(
+    {
+        BEHAVIOR_MAP["CRYPTO_OPCODE"],
+        BEHAVIOR_MAP["DECRYPT"],
+        BEHAVIOR_MAP["ENCRYPT"],
+        BEHAVIOR_MAP["KEY_SETUP"],
+    }
+)
+FILE_BEHAVIOR_IDS = frozenset(
+    {
+        BEHAVIOR_MAP["FILE_ENUM"],
+        BEHAVIOR_MAP["FILE_READ"],
+        BEHAVIOR_MAP["FILE_WRITE"],
+        BEHAVIOR_MAP["FILE_DELETE"],
+    }
+)
+
+# Mixing-style opcodes often used in software crypto routines.
+CRYPTO_OPCODES = frozenset(
+    {
+        "XOR",
+        "PXOR",
+        "ROL",
+        "ROR",
+        "SHL",
+        "SHR",
+        "SAL",
+        "SAR",
+        "MOVDQA",
+        "MOVDQU",
+        "AESENC",
+        "AESENCLAST",
+        "AESDEC",
+        "AESDECLAST",
+        "AESKEYGENASSIST",
+        "AESIMC",
+    }
+)
+
+# Known API name (lowercase) -> behavior category.
+API_BEHAVIOR = {
+    "cryptencrypt": BEHAVIOR_MAP["ENCRYPT"],
+    "cryptdecrypt": BEHAVIOR_MAP["DECRYPT"],
+    "cryptacquirecontexta": BEHAVIOR_MAP["KEY_SETUP"],
+    "cryptacquirecontextw": BEHAVIOR_MAP["KEY_SETUP"],
+    "cryptcreatehash": BEHAVIOR_MAP["KEY_SETUP"],
+    "crypthashdata": BEHAVIOR_MAP["KEY_SETUP"],
+    "cryptderivekey": BEHAVIOR_MAP["KEY_SETUP"],
+    "cryptdestroykey": BEHAVIOR_MAP["KEY_SETUP"],
+    "cryptdestroyhash": BEHAVIOR_MAP["KEY_SETUP"],
+    "cryptreleasecontext": BEHAVIOR_MAP["KEY_SETUP"],
+    "cryptgenrandom": BEHAVIOR_MAP["KEY_SETUP"],
+    "cryptstringtobinarya": BEHAVIOR_MAP["KEY_SETUP"],
+    "bcreptopenalgorithmprovider": BEHAVIOR_MAP["KEY_SETUP"],
+    "bcryptexecute": BEHAVIOR_MAP["KEY_SETUP"],
+    "rtlcomputecrc32": BEHAVIOR_MAP["KEY_SETUP"],
+    "findfirstfilea": BEHAVIOR_MAP["FILE_ENUM"],
+    "findfirstfilew": BEHAVIOR_MAP["FILE_ENUM"],
+    "findnextfilea": BEHAVIOR_MAP["FILE_ENUM"],
+    "findnextfilew": BEHAVIOR_MAP["FILE_ENUM"],
+    "getlogicaldrives": BEHAVIOR_MAP["FILE_ENUM"],
+    "getdriveclass": BEHAVIOR_MAP["FILE_ENUM"],
+    "getdiskfreespaceexa": BEHAVIOR_MAP["FILE_ENUM"],
+    "readfile": BEHAVIOR_MAP["FILE_READ"],
+    "getfilesize": BEHAVIOR_MAP["FILE_READ"],
+    "setfilepointer": BEHAVIOR_MAP["FILE_READ"],
+    "createfilea": BEHAVIOR_MAP["FILE_READ"],
+    "createfilew": BEHAVIOR_MAP["FILE_READ"],
+    "writefile": BEHAVIOR_MAP["FILE_WRITE"],
+    "copyfilea": BEHAVIOR_MAP["FILE_WRITE"],
+    "copyfilew": BEHAVIOR_MAP["FILE_WRITE"],
+    "deletefilea": BEHAVIOR_MAP["FILE_DELETE"],
+    "deletefilew": BEHAVIOR_MAP["FILE_DELETE"],
+    "movefileexa": BEHAVIOR_MAP["FILE_DELETE"],
+    "movefileexw": BEHAVIOR_MAP["FILE_DELETE"],
+}
+
+
 REG_DATA_REGEX = re.compile(
     r"\b(rax|rbx|rcx|rdx|rsi|rdi|r8|r9|r10|r11|r12|r13|r14|r15|"
     r"eax|ebx|ecx|edx|esi|edi|ax|bx|cx|dx|al|bl|cl|dl)\b",
@@ -160,23 +268,45 @@ def categorize_operand(operand):
     return TOKEN_MAP["MEM_GLOBAL_REF"]
 
 
+def _match_api_in_operands(raw_operands: list[str]) -> str | None:
+    if not raw_operands:
+        return None
+    target = " ".join(raw_operands).lower()
+    for api_name in API_MAP:
+        if api_name in target:
+            return api_name
+    return None
+
+
+def categorize_behavior(opcode: str, opcode_id: int, matched_api: str | None) -> int:
+    """Map one instruction to a behavior category id (fourth token channel)."""
+    if matched_api is not None:
+        behavior = API_BEHAVIOR.get(matched_api)
+        if behavior is not None:
+            return behavior
+        return BEHAVIOR_MAP["NONE"]
+
+    if opcode in CRYPTO_OPCODES:
+        return BEHAVIOR_MAP["CRYPTO_OPCODE"]
+
+    return BEHAVIOR_MAP["NONE"]
+
+
 def encode_instruction(opcode: str, raw_operands: list[str]):
     """
-    Map mnemonic + operands to [opcode_or_api_id, operand_1_id, operand_2_id].
+    Map mnemonic + operands to
+    [opcode_or_api_id, operand_1_id, operand_2_id, behavior_id].
 
     Capstone CALLs are usually addresses / mem refs — keep CALL unless
     the target string actually contains a known API name.
     """
     opcode = strip_opcode_prefixes(opcode)
+    matched_api = _match_api_in_operands(raw_operands)
 
     if opcode == "CALL":
         opcode_id = TOKEN_MAP["CALL"]
-        if raw_operands:
-            target = raw_operands[0].lower()
-            for api_name, api_id in API_MAP.items():
-                if api_name in target:
-                    opcode_id = api_id
-                    break
+        if matched_api is not None:
+            opcode_id = API_MAP[matched_api]
     elif opcode == "NOP":
         opcode_id = TOKEN_MAP["NOP_SLED"]
     else:
@@ -192,8 +322,9 @@ def encode_instruction(opcode: str, raw_operands: list[str]):
         if len(raw_operands) >= 2
         else TOKEN_MAP["PADDING"]
     )
+    behavior_id = categorize_behavior(opcode, opcode_id, matched_api)
 
-    return [opcode_id, operand_1_id, operand_2_id]
+    return [opcode_id, operand_1_id, operand_2_id, behavior_id]
 
 
 def parse_capstone_insn(mnemonic: str, op_str: str = ""):
@@ -211,7 +342,7 @@ def parse_asm_line(line):
     Parse one assembly line.
 
     Returns:
-        [opcode_or_api_id, operand_1_id, operand_2_id]
+        [opcode_or_api_id, operand_1_id, operand_2_id, behavior_id]
 
     Returns None for comments, directives, or invalid lines.
     """
@@ -292,7 +423,7 @@ def parse_asm_file(asm_path):
 
     Returns:
         A list of instructions, where each instruction is:
-        [opcode_or_api_id, operand_1_id, operand_2_id]
+        [opcode_or_api_id, operand_1_id, operand_2_id, behavior_id]
     """
 
     asm_path = Path(asm_path)
@@ -329,4 +460,9 @@ if __name__ == "__main__":
     print("\nFirst 10 instructions:")
 
     for instruction in instructions[:10]:
+        print(instruction)
+
+    tagged = [row for row in instructions if row[3] != BEHAVIOR_MAP["NONE"]]
+    print(f"\nBehavior-tagged instructions: {len(tagged)}")
+    for instruction in tagged[:10]:
         print(instruction)

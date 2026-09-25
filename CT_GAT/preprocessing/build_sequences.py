@@ -1,7 +1,8 @@
 """Batch-parse ASM files from metadata.csv into transformer-ready sequences.
 
 Skips empty ASM files. Saves one .pt per sample:
-  {file_id, sequence: LongTensor[N, 3], label, asm_path}
+  {file_id, sequence: LongTensor[N, 4], label, asm_path}
+  where each row is [opcode_or_api, operand1, operand2, behavior].
 """
 
 from pathlib import Path

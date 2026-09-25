@@ -31,12 +31,40 @@ class OpcodeGraphData(Data):
 def load_graph(path: str | Path, label: int | None = None) -> OpcodeGraphData:
     payload = torch.load(path, map_location="cpu", weights_only=False)
     y = int(payload["label"] if label is None else label)
+    token_ids = payload["token_ids"].long()
+    if token_ids.shape[1] == 3:
+        # Legacy graphs without behavior channel.
+        pad = torch.zeros(token_ids.shape[0], 1, dtype=torch.long)
+        token_ids = torch.cat([token_ids, pad], dim=1)
+
+    num_blocks = int(payload["num_blocks"])
+    edge_type = payload.get("edge_type")
+    if edge_type is None:
+        edge_type = torch.zeros(payload["edge_index"].shape[1], dtype=torch.long)
+    else:
+        edge_type = edge_type.long()
+
+    block_crypto = payload.get("block_crypto_count")
+    if block_crypto is None:
+        block_crypto = torch.zeros(num_blocks, dtype=torch.long)
+    else:
+        block_crypto = block_crypto.long()
+
+    block_file = payload.get("block_file_count")
+    if block_file is None:
+        block_file = torch.zeros(num_blocks, dtype=torch.long)
+    else:
+        block_file = block_file.long()
+
     return OpcodeGraphData(
-        token_ids=payload["token_ids"].long(),
+        token_ids=token_ids,
         insn_to_block=payload["insn_to_block"].long(),
         edge_index=payload["edge_index"].long(),
+        edge_type=edge_type,
+        block_crypto_count=block_crypto,
+        block_file_count=block_file,
         y=torch.tensor(y, dtype=torch.long),
-        num_nodes=int(payload["num_blocks"]),
+        num_nodes=num_blocks,
         file_id=str(payload.get("file_id", Path(path).stem)),
     )
 
@@ -92,6 +120,8 @@ if __name__ == "__main__":
     print("token_ids:", tuple(data.token_ids.shape))
     print("insn_to_block:", tuple(data.insn_to_block.shape))
     print("edge_index:", tuple(data.edge_index.shape))
+    print("edge_type:", tuple(data.edge_type.shape))
+    print("block_crypto_count:", tuple(data.block_crypto_count.shape))
     print("num_nodes (blocks):", int(data.num_nodes))
     print("batch size (graphs):", int(data.y.numel()))
     print("labels:", data.y)
