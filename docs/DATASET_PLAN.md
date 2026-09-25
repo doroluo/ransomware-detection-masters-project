@@ -255,3 +255,17 @@ v2 result and the write-up refer to it); the completed corpus is built as
    Mendeley Data (the original dataset's home) or a shared drive. Host
    goodware is licensed software, so ship its hash list and provenance rather
    than the binaries unless redistribution is cleared.
+5. **The VirusShare 2016 "CryptoRansom" collection** (a teammate's Drive zip,
+   downloaded straight into the VM on 2026-09-24; `~/work/incoming/virusshare_drive/`,
+   survey in `survey.csv` there). 38,157 files: 35,427 PE, of which 35,421 are
+   x86 and 4 are x64; 7,444 DLLs, 446 .NET, 13,766 with a packing hint (UPX or a
+   section above 7.2 entropy). 27,537 new x86 EXEs, 17,459 of them unpacked.
+   Only 8 hashes have a MalwareBazaar family, and two of those are ZeuS and
+   Pony (banking trojan and stealer), so the collection is not purely
+   ransomware and has no family labels. Not added to any cohort: it would take
+   ransomware from 23% x64 back to about 4%, and family holdout needs a family
+   per file. Uses it could serve: a labelled subset via VirusTotal + AVClass2
+   (needs an API key; the free tier is 500 lookups a day), or a separate
+   2016-era test set for temporal generalisation, reported apart from the
+   family-holdout numbers.
+
