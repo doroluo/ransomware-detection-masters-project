@@ -50,6 +50,24 @@ def _pad_window(chunk: torch.Tensor, window_len: int) -> tuple[torch.Tensor, int
     return chunk, length
 
 
+def _coverage_starts(n: int, window_len: int, max_windows: int) -> list[int]:
+    """Evenly spaced window starts across a sequence of length ``n``."""
+    if n == 0:
+        return []
+    if n <= window_len or max_windows <= 1:
+        return [0]
+    max_start = n - window_len
+    starts = [
+        int(round(i * max_start / (max_windows - 1)))
+        for i in range(max_windows)
+    ]
+    deduped: list[int] = []
+    for start in starts:
+        if not deduped or start != deduped[-1]:
+            deduped.append(start)
+    return deduped
+
+
 def pick_stride_windows(
     sequence: torch.Tensor,
     window_len: int = WINDOW_LEN,
@@ -69,22 +87,7 @@ def pick_stride_windows(
     sequence = sequence.long()
     n = int(sequence.shape[0])
     channels = int(sequence.shape[1])
-
-    if n == 0:
-        starts: list[int] = []
-    elif n <= window_len or max_windows <= 1:
-        starts = [0]
-    else:
-        max_start = n - window_len
-        starts = [
-            int(round(i * max_start / (max_windows - 1)))
-            for i in range(max_windows)
-        ]
-        deduped: list[int] = []
-        for start in starts:
-            if not deduped or start != deduped[-1]:
-                deduped.append(start)
-        starts = deduped
+    starts = _coverage_starts(n, window_len, max_windows)
 
     windows = []
     lengths = []
@@ -101,6 +104,59 @@ def pick_stride_windows(
         torch.stack(windows, dim=0),
         torch.tensor(lengths, dtype=torch.long),
     )
+
+
+def behavior_window_starts(
+    sequence: torch.Tensor,
+    window_len: int = WINDOW_LEN,
+    max_windows: int = MAX_WINDOWS,
+) -> list[int]:
+    """Start index of each behavior window, in the same order as ``pick_behavior_windows``.
+
+    Empty padding windows are not included. When the file has no crypto/file
+    tags, the starts are the same even coverage the baseline uses.
+    """
+    sequence = _ensure_channels(sequence.long())
+    n = int(sequence.shape[0])
+    behaviors = sequence[:, 3]
+    suspicious = torch.zeros(n, dtype=torch.bool)
+    for behavior_id in SUSPICIOUS_BEHAVIOR_IDS:
+        suspicious |= behaviors == behavior_id
+
+    if n == 0 or not bool(suspicious.any()):
+        return _coverage_starts(n, window_len, max_windows)
+
+    step = max(1, window_len // 4)
+    sus_prefix = torch.zeros(n + 1, dtype=torch.long)
+    sus_prefix[1:] = suspicious.long().cumsum(0)
+    max_start = 0 if n <= window_len else n - window_len
+    candidates: list[tuple[int, int]] = []
+    for start in range(0, max_start + 1, step):
+        end = min(start + window_len, n)
+        score = int(sus_prefix[end] - sus_prefix[start])
+        if score > 0:
+            candidates.append((score, start))
+    for index in suspicious.nonzero(as_tuple=False).flatten().tolist():
+        start = max(0, int(index) - window_len // 4)
+        if n > window_len:
+            start = min(start, n - window_len)
+        else:
+            start = 0
+        end = min(start + window_len, n)
+        score = int(sus_prefix[end] - sus_prefix[start])
+        candidates.append((score, start))
+
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    starts: list[int] = []
+    for _score, start in candidates:
+        if any(abs(start - kept) < window_len for kept in starts):
+            continue
+        starts.append(start)
+        if len(starts) >= max_windows:
+            break
+    if not starts:
+        starts = [0]
+    return starts
 
 
 def pick_behavior_windows(
@@ -121,51 +177,9 @@ def pick_behavior_windows(
     Returns windows [W, L, 4], lengths [W], behavior targets [W, 4].
     """
     sequence = _ensure_channels(sequence.long())
-    n = int(sequence.shape[0])
-    behaviors = sequence[:, 3]
-    suspicious = torch.zeros(n, dtype=torch.bool)
-    for behavior_id in SUSPICIOUS_BEHAVIOR_IDS:
-        suspicious |= behaviors == behavior_id
-
-    step = max(1, window_len // 4)
-    candidates: list[tuple[int, int]] = []
-    if n == 0:
-        starts: list[int] = []
-    elif not bool(suspicious.any()):
-        stride_windows, stride_lengths = pick_stride_windows(
-            sequence, window_len=window_len, max_windows=max_windows
-        )
-        targets = torch.zeros(max_windows, len(HEAD_BEHAVIOR_IDS), dtype=torch.float)
-        return stride_windows, stride_lengths, targets
-    else:
-        sus_prefix = torch.zeros(n + 1, dtype=torch.long)
-        sus_prefix[1:] = suspicious.long().cumsum(0)
-        max_start = 0 if n <= window_len else n - window_len
-        for start in range(0, max_start + 1, step):
-            end = min(start + window_len, n)
-            score = int(sus_prefix[end] - sus_prefix[start])
-            if score > 0:
-                candidates.append((score, start))
-        for index in suspicious.nonzero(as_tuple=False).flatten().tolist():
-            start = max(0, int(index) - window_len // 4)
-            if n > window_len:
-                start = min(start, n - window_len)
-            else:
-                start = 0
-            end = min(start + window_len, n)
-            score = int(sus_prefix[end] - sus_prefix[start])
-            candidates.append((score, start))
-
-        candidates.sort(key=lambda item: (-item[0], item[1]))
-        starts = []
-        for score, start in candidates:
-            if any(abs(start - kept) < window_len for kept in starts):
-                continue
-            starts.append(start)
-            if len(starts) >= max_windows:
-                break
-        if not starts:
-            starts = [0]
+    starts = behavior_window_starts(
+        sequence, window_len=window_len, max_windows=max_windows
+    )
 
     windows = []
     lengths = []

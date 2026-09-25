@@ -211,9 +211,35 @@ API_BEHAVIOR = {
     "copyfilew": BEHAVIOR_MAP["FILE_WRITE"],
     "deletefilea": BEHAVIOR_MAP["FILE_DELETE"],
     "deletefilew": BEHAVIOR_MAP["FILE_DELETE"],
-    "movefileexa": BEHAVIOR_MAP["FILE_DELETE"],
-    "movefileexw": BEHAVIOR_MAP["FILE_DELETE"],
+    "movefileexa": BEHAVIOR_MAP["FILE_WRITE"],
+    "movefileexw": BEHAVIOR_MAP["FILE_WRITE"],
 }
+
+# Extra file APIs that share an existing opcode id so the embedding stays valid.
+# The value is the API_MAP key whose behavior tag should be used.
+API_ALIASES = {
+    "readfileex": "readfile",
+    "ntreadfile": "readfile",
+    "zwreadfile": "readfile",
+    "fread": "readfile",
+    "read": "readfile",
+    "writefileex": "writefile",
+    "ntwritefile": "writefile",
+    "zwwritefile": "writefile",
+    "fwrite": "writefile",
+    "write": "writefile",
+    "fopen": "createfilea",
+    "open": "createfilea",
+    "rename": "movefileexw",
+    "movefile": "movefileexw",
+    "movefilea": "movefileexw",
+    "movefilew": "movefileexw",
+    "replacefile": "movefileexw",
+    "replacefilea": "movefileexw",
+    "replacefilew": "movefileexw",
+}
+
+_API_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_@]*")
 
 
 REG_DATA_REGEX = re.compile(
@@ -277,8 +303,16 @@ def categorize_operand(operand):
 def _match_api_in_operands(raw_operands: list[str]) -> str | None:
     if not raw_operands:
         return None
+    tokens = [token.lower() for token in _API_IDENT.findall(" ".join(raw_operands))]
+    # Whole-name match first, so "read" does not steal "ReadFile" or "OpenProcess".
+    for token in sorted(set(tokens), key=len, reverse=True):
+        if token in API_MAP:
+            return token
+        alias = API_ALIASES.get(token)
+        if alias is not None:
+            return alias
     target = " ".join(raw_operands).lower()
-    for api_name in API_MAP:
+    for api_name in sorted(API_MAP, key=len, reverse=True):
         if api_name in target:
             return api_name
     return None
