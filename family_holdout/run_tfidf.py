@@ -39,7 +39,8 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from family_holdout.common import (DATASETS, Folds, OUT_ROOT,  # noqa: E402
-                                   check_kfold, check_lofo, write_model_dir, ALL_DATASETS, stream_path)
+                                   check_kfold, check_lofo, write_model_dir, ALL_DATASETS, stream_path,
+                                   lofo_placeholders, strip_lofo)
 
 SEED = 42
 MAX_MNEMS = 30_000                 # rules_pipeline.train_eval.MAX_MNEMS
@@ -78,11 +79,11 @@ def load_texts(folds: Folds, stream: str = "mn") -> list:
     return texts
 
 
-def make_vec():
+def make_vec(ngram_max: int = NGRAM[1], max_features=MAX_FEATURES):
     from sklearn.feature_extraction.text import TfidfVectorizer
     return TfidfVectorizer(analyzer="word", token_pattern=r"\S+",
-                           ngram_range=NGRAM, min_df=MIN_DF, sublinear_tf=True,
-                           max_features=MAX_FEATURES, dtype=np.float32)
+                           ngram_range=(1, ngram_max), min_df=MIN_DF, sublinear_tf=True,
+                           max_features=max_features, dtype=np.float32)
 
 
 def _grid(name):
@@ -95,12 +96,12 @@ def _grid(name):
     raise ValueError(name)
 
 
-def fit_score(name, Xtr, ytr, Xte):
+def fit_score(name, Xtr, ytr, Xte, n_jobs: int = -1):
     """GridSearchCV over C exactly as the calibration baseline does it."""
     from sklearn.model_selection import GridSearchCV, StratifiedKFold
     folds = StratifiedKFold(n_splits=2, shuffle=True, random_state=SEED)
     gs = GridSearchCV(_grid(name), {"C": C_GRID}, cv=folds,
-                      scoring="f1_macro", n_jobs=-1).fit(Xtr, ytr)
+                      scoring="f1_macro", n_jobs=n_jobs).fit(Xtr, ytr)
     est = gs.best_estimator_
     pred = est.predict(Xte)
     score = (est.predict_proba(Xte)[:, 1] if hasattr(est, "predict_proba")
@@ -112,7 +113,14 @@ def fit_score(name, Xtr, ytr, Xte):
 MODELS = ("LogReg", "LinearSVC")
 
 
-def run_dataset(dataset: str, out_root: Path, stream: str = "mn") -> dict:
+def run_dataset(dataset: str, out_root: Path, stream: str = "mn",
+                ngram_max: int = NGRAM[1], kfold_only: bool = False,
+                max_features=MAX_FEATURES, n_jobs: int = -1) -> dict:
+    """`ngram_max` != 3 or `kfold_only` is the phrase-length sweep: the model
+    dir gets a `_ng1-<n>` suffix and, K-fold only, its LOFO fields are blank.
+    `max_features=None` removes the vocabulary cap (the sweep uses it, since
+    the cap keeps the most frequent phrases and so would cut long ones first);
+    `n_jobs` bounds the parallel C-search fits, each of which copies X."""
     t_start = time.time()
     folds = Folds(dataset)
     check_kfold(folds)
@@ -133,26 +141,27 @@ def run_dataset(dataset: str, out_root: Path, stream: str = "mn") -> dict:
     # ---- K-fold ---------------------------------------------------------
     for f, tr, te in folds.kfold():
         t0 = time.time()
-        vec = make_vec()
+        vec = make_vec(ngram_max, max_features)
         Xtr = vec.fit_transform(texts[i] for i in tr)
         Xte = vec.transform(texts[i] for i in te)
+        del vec                     # the fitted vocabulary is the big object
         n_feat[f"kfold_{f}"] = int(Xtr.shape[1])
         for m in MODELS:
-            pred, score, C, cv = fit_score(m, Xtr, folds.y[tr], Xte)
+            pred, score, C, cv = fit_score(m, Xtr, folds.y[tr], Xte, n_jobs)
             kf_pred[m][te], kf_score[m][te] = pred, score
             chosen[m]["kfold"][str(f)] = {"C": C, "cv_f1_macro": round(cv, 4)}
         print(f"  [{dataset}] kfold {f}: {Xtr.shape[1]} features, "
               f"{time.time()-t0:.0f}s", flush=True)
 
     # ---- LOFO -----------------------------------------------------------
-    lofo = {m: {} for m in MODELS}
-    for k, (fam, tr, te) in enumerate(folds.lofo(), 1):
+    lofo = {m: (lofo_placeholders(folds) if kfold_only else {}) for m in MODELS}
+    for k, (fam, tr, te) in enumerate([] if kfold_only else folds.lofo(), 1):
         t0 = time.time()
-        vec = make_vec()
+        vec = make_vec(ngram_max, max_features)
         Xtr = vec.fit_transform(texts[i] for i in tr)
         Xte = vec.transform(texts[i] for i in te)
         for m in MODELS:
-            pred, score, C, cv = fit_score(m, Xtr, folds.y[tr], Xte)
+            pred, score, C, cv = fit_score(m, Xtr, folds.y[tr], Xte, n_jobs)
             lofo[m][fam] = (score, pred)
             chosen[m]["lofo"][fam] = {"C": C, "cv_f1_macro": round(cv, 4)}
         print(f"  [{dataset}] lofo {k}/{len(folds.families)} {fam}: n={len(te)} "
@@ -164,7 +173,7 @@ def run_dataset(dataset: str, out_root: Path, stream: str = "mn") -> dict:
     for m in MODELS:
         cfg = {
             "pipeline": PIPELINE,
-            "model": f"mnemonic_tfidf_1_3+{m}",
+            "model": f"mnemonic_tfidf_1_{ngram_max}+{m}",
             "source": "rules_pipeline/train_eval.py section (c), calibration "
                       "baseline (pre-registered; not the tuned pick)",
             "features": {
@@ -174,9 +183,9 @@ def run_dataset(dataset: str, out_root: Path, stream: str = "mn") -> dict:
                 "stream": stream,
                 "max_mnemonics": MAX_MNEMS,
                 "vectoriser": (f"TfidfVectorizer(analyzer=word, "
-                               f"token_pattern=\\S+, ngram_range={NGRAM}, "
+                               f"token_pattern=\\S+, ngram_range={(1, ngram_max)}, "
                                f"min_df={MIN_DF}, sublinear_tf=True, "
-                               f"max_features={MAX_FEATURES})"),
+                               f"max_features={max_features})"),
                 "fit_on": "training rows of each fold / each LOFO train set only",
                 "n_features_per_kfold": n_feat,
             },
@@ -194,15 +203,21 @@ def run_dataset(dataset: str, out_root: Path, stream: str = "mn") -> dict:
             },
             "decision": "argmax (the estimator's own predict)",
             "seed": SEED,
-            "schemes": ["kfold", "lofo"],
+            "schemes": ["kfold"] if kfold_only else ["kfold", "lofo"],
         }
-        d = out_root / dataset / PIPELINE / (m if stream == "mn" else f"{m}_{stream}")
+        suffix = (("" if stream == "mn" else f"_{stream}")
+                  + ("" if ngram_max == NGRAM[1] else f"_ng1-{ngram_max}")
+                  + ("" if max_features == MAX_FEATURES else "_nocap"))
+        d = out_root / dataset / PIPELINE / f"{m}{suffix}"
         out[m] = write_model_dir(
             d, folds, PIPELINE, m, kf_score[m], kf_pred[m], kf_fold,
             lofo[m], cfg, elapsed,
-            description=(f"mnemonic 1-3-gram TF-IDF + {m} (rules_pipeline "
+            description=(f"mnemonic 1-{ngram_max}-gram TF-IDF + {m} (rules_pipeline "
                          f"calibration baseline), family-holdout K-fold and "
                          f"LOFO on the {dataset} cohort"))
+        if kfold_only:
+            strip_lofo(d, "phrase-length sweep: K-fold only (97 LOFO fits per "
+                          "setting are outside the budget); the 1-3 model dir has LOFO")
         print(f"  wrote {d}", flush=True)
     return out
 
@@ -214,10 +229,20 @@ def main() -> int:
     ap.add_argument("--stream", choices=STREAMS, default="mn",
                     help="which token tree to read; a non-default stream is "
                          "written to <model>_<stream>/")
+    ap.add_argument("--ngram-max", type=int, default=NGRAM[1],
+                    help="longest phrase (n-gram) length; the committed baseline is 3, "
+                         "other values are written to <model>_ng1-<n>/")
+    ap.add_argument("--no-feature-cap", action="store_true",
+                    help="keep every phrase above min_df (written to <model>..._nocap/)")
+    ap.add_argument("--jobs", type=int, default=-1,
+                    help="parallel fits in the inner C search (each copies X)")
+    ap.add_argument("--kfold-only", action="store_true",
+                    help="skip leave-one-family-out (its fields are left blank)")
     a = ap.parse_args()
     ds = DATASETS if a.dataset == "both" else (a.dataset,)
     for d in ds:
-        run_dataset(d, Path(a.out), a.stream)
+        run_dataset(d, Path(a.out), a.stream, a.ngram_max, a.kfold_only,
+                    None if a.no_feature_cap else MAX_FEATURES, a.jobs)
     return 0
 
 

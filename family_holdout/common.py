@@ -397,3 +397,47 @@ def check_lofo(folds: Folds) -> dict:
         assert not set(folds.sha[tr]) & set(folds.sha[te])
         report[fam] = {"n_test": int(len(te)), "n_train": int(len(tr))}
     return report
+
+
+def lofo_placeholders(folds: "Folds") -> dict:
+    """LOFO entries write_model_dir accepts for a K-fold-only run; strip_lofo
+    blanks everything derived from them."""
+    out = {}
+    for fam in folds.families:
+        k = int(((folds.family == fam) & (folds.y == 1)).sum())
+        out[fam] = (np.zeros(k), np.full(k, -1, dtype=int))
+    return out
+
+
+def strip_lofo(model_dir: Path, why: str) -> None:
+    """Blank the LOFO half of a model dir that did not run LOFO.
+
+    For K-fold-only studies (ablations, parameter sweeps): `write_model_dir`
+    always writes the six files, so rather than fork it the LOFO-derived
+    fields are emptied afterwards and the reason is recorded in metrics.json.
+    An empty column is honest; a zero is not. Pass placeholder LOFO entries
+    (`lofo_placeholders`) to write_model_dir first.
+    """
+    import csv
+    (model_dir / "lofo_predictions.csv").write_text(
+        "sha256,family,arch,score,pred\n", encoding="utf-8")
+    p = model_dir / "per_family.csv"
+    rows = list(csv.DictReader(p.open(encoding="utf-8", newline="")))
+    for r in rows:
+        r["recall_lofo"] = ""
+    with p.open("w", newline="", encoding="utf-8") as fh:
+        # keep whatever columns write_model_dir produced (it gained `corpus`)
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]) if rows else
+                           ["family", "corpus", "n", "n_x64", "fold", "recall_kfold", "recall_lofo"])
+        w.writeheader()
+        w.writerows(rows)
+    mp = model_dir / "metrics.json"
+    doc = json.loads(mp.read_text(encoding="utf-8"))
+    for d in [doc] + list(doc.get("results", [])):
+        for k in ("lofo_mean_recall", "lofo_weighted_recall"):
+            if k in d:
+                d[k] = None
+        if "lofo_recall_by_family" in d:
+            d["lofo_recall_by_family"] = {}
+    doc["lofo_not_run"] = why
+    mp.write_text(json.dumps(doc, indent=1), encoding="utf-8")
