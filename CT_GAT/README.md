@@ -37,7 +37,11 @@ python3 prepare_dataset.py --mode 1 --limit 100
 python3 prepare_dataset.py --mode 2 --limit 100
 python3 build_sequences.py --limit 200
 python3 build_pyg_graphs.py --limit 200 --overwrite
-python3 create_split.py          # uses whatever is in processed/sequences/
+python3 create_split.py
+python3 train.py
+python3 evaluate.py
+python3 train_gat.py
+python3 evaluate_gat.py        
 python3 compare_models.py --epochs 10
 ```
 
@@ -103,7 +107,7 @@ python3 build_sequences.py --limit 200
 - `block_crypto_count`, `block_file_count`
 
 ```bash
-python3 build_pyg_graphs.py --overwrite
+python3 build_pyg_graphs.py
 python3 build_pyg_graphs.py --limit 200 --overwrite
 ```
 

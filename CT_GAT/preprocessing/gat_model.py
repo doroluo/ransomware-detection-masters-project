@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GATConv, global_mean_pool
 from torch_geometric.utils import scatter
 
-from token_mapping import BEHAVIOR_VOCAB_SIZE, HEAD_BEHAVIOR_NAMES
+from token_mapping import BEHAVIOR_VOCAB_SIZE, HEAD_BEHAVIOR_IDS, HEAD_BEHAVIOR_NAMES
 from transformer_model import OPCODE_VOCAB_SIZE, OPERAND_VOCAB_SIZE
 
 NUM_EDGE_TYPES = 3  # cfg, loop, call
@@ -80,7 +80,7 @@ class BehaviorOpcodeGAT(nn.Module):
     Returns:
       logits:          [G, 2]
       block_logits:    [num_blocks, 2]
-      behavior_logits: [num_blocks, 4]
+      behavior_logits: [num_blocks, 5]
     """
 
     def __init__(
@@ -117,7 +117,6 @@ class BehaviorOpcodeGAT(nn.Module):
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
-        self.classifier = nn.Linear(d_model, num_classes)
         self.block_classifier = nn.Linear(d_model, num_classes)
         self.behavior_head = nn.Linear(d_model, num_behaviors)
 
@@ -158,10 +157,45 @@ class BehaviorOpcodeGAT(nn.Module):
         block_x = self.encode_blocks(data)
         block_logits = self.block_classifier(block_x)
         behavior_logits = self.behavior_head(block_x)
-        # Stable graph decision (same idea as OpcodeGAT).
-        graph_x = global_mean_pool(block_x, data.batch)
-        logits = self.classifier(graph_x)
+        # File label comes from the strongest block that carries crypto/file evidence.
+        interesting = (data.block_crypto_count > 0) | (data.block_file_count > 0)
+        if data.token_ids.size(1) >= 4:
+            tagged = block_behavior_targets(data, HEAD_BEHAVIOR_IDS).sum(dim=1) > 0
+            interesting = interesting | tagged
+        logits = tagged_file_logits(block_logits, data.batch, interesting)
         return logits, block_logits, behavior_logits
+
+
+def tagged_file_logits(block_logits, batch_index, interesting):
+    """Class logits from the highest-scoring block that has behavior evidence.
+
+    Graphs with no crypto/file block get a benign logit.
+    """
+    if batch_index is None:
+        batch_index = torch.zeros(
+            block_logits.size(0), dtype=torch.long, device=block_logits.device
+        )
+    num_graphs = int(batch_index.max().item()) + 1 if batch_index.numel() else 0
+    logits = block_logits.new_zeros(num_graphs, block_logits.size(1))
+    if num_graphs == 0 or block_logits.numel() == 0:
+        return logits
+
+    scores = block_logits[:, 1].masked_fill(~interesting, -1e4)
+    max_score = scatter(scores, batch_index, dim=0, dim_size=num_graphs, reduce="max")
+    is_best = interesting & (block_logits[:, 1] == max_score[batch_index])
+    positions = torch.arange(block_logits.size(0), device=block_logits.device)
+    chosen = scatter(
+        positions.masked_fill(~is_best, -1),
+        batch_index,
+        dim=0,
+        dim_size=num_graphs,
+        reduce="max",
+    )
+    valid = chosen >= 0
+    if valid.any():
+        logits[valid] = block_logits[chosen[valid]]
+    logits[~valid, 0] = 1.0
+    return logits
 
 
 def block_behavior_targets(batch, head_ids: tuple[int, ...]) -> torch.Tensor:
@@ -188,11 +222,11 @@ def top_blocks_report(
     behavior_logits: torch.Tensor,
     top_k: int = 5,
 ) -> list[dict]:
-    """Rank blocks for a single-graph batch by ransomware score."""
+    """Rank blocks for a single-graph batch by behavior evidence."""
     if int(data.y.numel()) != 1:
         raise ValueError("top_blocks_report expects a single-graph batch")
-    scores = torch.softmax(block_logits, dim=-1)[:, 1]
     behavior_prob = torch.sigmoid(behavior_logits)
+    scores = behavior_prob.max(dim=-1).values
     order = scores.argsort(descending=True)[:top_k]
     rows = []
     for block_id in order.tolist():

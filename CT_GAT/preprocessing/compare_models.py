@@ -102,6 +102,14 @@ def train_transformer_baseline(device, epochs: int) -> Path:
     return path
 
 
+def _window_supervision(labels, lengths, behavior_targets):
+    """Ransomware only on windows that contain a behavior tag. Others are benign."""
+    real = lengths > 0
+    tagged = behavior_targets.sum(dim=-1) > 0
+    window_labels = labels.unsqueeze(1).expand_as(tagged).masked_fill(~tagged, 0)
+    return real, window_labels
+
+
 def train_transformer_behavior(device, epochs: int) -> Path:
     path = CHECKPOINT_DIR / "best_transformer_behavior.pt"
     model = BehaviorOpcodeTransformer().to(device)
@@ -117,14 +125,10 @@ def train_transformer_behavior(device, epochs: int) -> Path:
             lengths = lengths.to(device)
             behavior_targets = behavior_targets.to(device)
             optimizer.zero_grad()
-            logits, _, behavior_logits = model(windows, lengths)
-            # Supervise behavior head on real (non-empty) windows only.
-            mask = lengths > 0
-            loss = cls_loss(logits, labels)
-            if mask.any():
-                loss = loss + bce_loss(
-                    behavior_logits[mask], behavior_targets[mask]
-                )
+            _, window_logits, behavior_logits = model(windows, lengths)
+            mask, window_labels = _window_supervision(labels, lengths, behavior_targets)
+            loss = cls_loss(window_logits[mask], window_labels[mask])
+            loss = loss + bce_loss(behavior_logits[mask], behavior_targets[mask])
             loss.backward()
             optimizer.step()
         model.eval()
@@ -135,13 +139,12 @@ def train_transformer_behavior(device, epochs: int) -> Path:
                 labels = labels.to(device)
                 lengths = lengths.to(device)
                 behavior_targets = behavior_targets.to(device)
-                logits, _, behavior_logits = model(windows, lengths)
-                mask = lengths > 0
-                loss = cls_loss(logits, labels)
-                if mask.any():
-                    loss = loss + bce_loss(
-                        behavior_logits[mask], behavior_targets[mask]
-                    )
+                _, window_logits, behavior_logits = model(windows, lengths)
+                mask, window_labels = _window_supervision(
+                    labels, lengths, behavior_targets
+                )
+                loss = cls_loss(window_logits[mask], window_labels[mask])
+                loss = loss + bce_loss(behavior_logits[mask], behavior_targets[mask])
                 total_loss += loss.item()
         avg = total_loss / max(len(behavior_val_loader), 1)
         print(f"[TF behavior] epoch {epoch + 1}/{epochs} val_loss={avg:.4f}")
@@ -213,23 +216,21 @@ def train_gat_behavior(device, epochs: int) -> Path:
             optimizer.zero_grad()
             logits, block_logits, behavior_logits = model(batch)
             behavior_targets = block_behavior_targets(batch, HEAD_BEHAVIOR_IDS)
-            # Only supervise blocks that actually carry crypto/file signal.
             interesting = (
                 (behavior_targets.sum(dim=1) > 0)
                 | (batch.block_crypto_count > 0)
                 | (batch.block_file_count > 0)
             )
+            # Untagged blocks are benign. Tagged blocks inherit the file label.
+            block_labels = torch.zeros(
+                block_logits.size(0), dtype=torch.long, device=block_logits.device
+            )
+            block_labels[interesting] = batch.y[batch.batch][interesting]
             loss = cls_loss(logits, batch.y)
-            if interesting.any():
-                # Calibrate explanation heads only where crypto/file signal exists.
-                block_labels = batch.y[batch.batch]
-                loss = loss + BEHAVIOR_AUX_WEIGHT * cls_loss(
-                    block_logits[interesting], block_labels[interesting]
-                )
-                loss = loss + BEHAVIOR_AUX_WEIGHT * bce_loss(
-                    behavior_logits[interesting],
-                    behavior_targets[interesting],
-                )
+            loss = loss + BEHAVIOR_AUX_WEIGHT * cls_loss(block_logits, block_labels)
+            loss = loss + BEHAVIOR_AUX_WEIGHT * bce_loss(
+                behavior_logits, behavior_targets
+            )
             loss.backward()
             optimizer.step()
         model.eval()
@@ -279,8 +280,19 @@ def eval_transformer_behavior(device, path: Path) -> float:
     preds, labels = [], []
     with torch.no_grad():
         for windows, y, lengths, _, _ in behavior_test_loader:
-            logits, _, _ = model(windows.to(device), lengths.to(device))
-            preds.extend(logits.argmax(1).cpu().tolist())
+            _, window_logits, behavior_logits = model(
+                windows.to(device), lengths.to(device)
+            )
+            evidence = torch.sigmoid(behavior_logits).amax(dim=-1)
+            evidence = evidence.masked_fill(lengths.to(device) <= 0, -1.0)
+            best = evidence.argmax(dim=1)
+            batch_ix = torch.arange(best.size(0), device=best.device)
+            chosen = window_logits[batch_ix, best]
+            no_evidence = evidence[batch_ix, best] <= 0
+            chosen = chosen.clone()
+            chosen[no_evidence, 0] = 1.0
+            chosen[no_evidence, 1] = 0.0
+            preds.extend(chosen.argmax(1).cpu().tolist())
             labels.extend(y.tolist())
     return _ransomware_f1(labels, preds)
 
@@ -363,9 +375,9 @@ def explain_sample(
                 windows.unsqueeze(0).to(device),
                 lengths.unsqueeze(0).to(device),
             )
-        window_prob = torch.softmax(window_logits[0], dim=-1)[:, 1]
         behavior_prob = torch.sigmoid(behavior_logits[0])
-        order = window_prob.argsort(descending=True)
+        evidence = behavior_prob.max(dim=-1).values
+        order = evidence.argsort(descending=True)
         print("\nTop transformer windows:")
         shown = 0
         for w in order.tolist():
@@ -377,7 +389,7 @@ def explain_sample(
             )
             print(
                 f"  #{shown + 1} window={w} len={int(lengths[w])} "
-                f"ransomware={float(window_prob[w]):.3f} | {scores}"
+                f"ransomware={float(evidence[w]):.3f} | {scores}"
             )
             shown += 1
             if shown >= 5:

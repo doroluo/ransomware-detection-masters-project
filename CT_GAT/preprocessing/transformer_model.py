@@ -119,7 +119,7 @@ class BehaviorOpcodeTransformer(nn.Module):
     Returns:
       logits:           [B, 2]           — max over window malware scores
       window_logits:    [B, W, 2]        — per-window malware scores
-      behavior_logits:  [B, W, 4]        — encrypt/decrypt/file_read/file_write
+      behavior_logits:  [B, W, 5]        — crypto_opcode/encrypt/decrypt/file_read/file_write
     """
 
     def __init__(
