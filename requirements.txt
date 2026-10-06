@@ -9,3 +9,7 @@ capstone==5.0.9
 torch>=2.2
 numpy>=1.26
 scikit-learn>=1.4
+
+# Subword tokenization (bpe, wpc, uni, spc in tokenize_opcodes.py).
+# Single-word and word-pair tokenization do not need this package.
+tokenizers>=0.20

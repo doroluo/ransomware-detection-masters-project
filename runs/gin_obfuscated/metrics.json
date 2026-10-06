@@ -1,0 +1,485 @@
+{
+  "created": "2026-10-05 23:55:51",
+  "seconds": 175.6,
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "clean_test_mean": {
+    "accuracy": {
+      "mean": 0.9619,
+      "std": 0.0082,
+      "min": 0.949,
+      "max": 0.9694
+    },
+    "precision": {
+      "mean": 0.9651,
+      "std": 0.0051,
+      "min": 0.9577,
+      "max": 0.971
+    },
+    "recall": {
+      "mean": 0.954,
+      "std": 0.0174,
+      "min": 0.9281,
+      "max": 0.9784
+    },
+    "f1": {
+      "mean": 0.9594,
+      "std": 0.009,
+      "min": 0.9451,
+      "max": 0.968
+    },
+    "auc": {
+      "mean": 0.9931,
+      "std": 0.0023,
+      "min": 0.9903,
+      "max": 0.9958
+    }
+  },
+  "obfuscated_test_mean": {
+    "accuracy": {
+      "mean": 0.9639,
+      "std": 0.009,
+      "min": 0.949,
+      "max": 0.9728
+    },
+    "precision": {
+      "mean": 0.9681,
+      "std": 0.009,
+      "min": 0.951,
+      "max": 0.9781
+    },
+    "recall": {
+      "mean": 0.9554,
+      "std": 0.021,
+      "min": 0.9209,
+      "max": 0.9784
+    },
+    "f1": {
+      "mean": 0.9615,
+      "std": 0.0101,
+      "min": 0.9446,
+      "max": 0.9712
+    },
+    "auc": {
+      "mean": 0.9941,
+      "std": 0.0011,
+      "min": 0.9929,
+      "max": 0.996
+    }
+  },
+  "best_by_val_f1": {
+    "seed": 46,
+    "best_epoch": 33,
+    "threshold": 0.0988,
+    "clean_test": {
+      "accuracy": 0.9694,
+      "precision": 0.971,
+      "recall": 0.964,
+      "f1": 0.9675,
+      "auc": 0.9958,
+      "tp": 134,
+      "tn": 151,
+      "fp": 4,
+      "fn": 5
+    },
+    "obfuscated_test": {
+      "accuracy": 0.9728,
+      "precision": 0.9712,
+      "recall": 0.9712,
+      "f1": 0.9712,
+      "auc": 0.996,
+      "tp": 135,
+      "tn": 151,
+      "fp": 4,
+      "fn": 4
+    }
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "best_epoch": 18,
+      "threshold": 0.8576,
+      "clean_test": {
+        "accuracy": 0.949,
+        "precision": 0.9627,
+        "recall": 0.9281,
+        "f1": 0.9451,
+        "auc": 0.9909,
+        "tp": 129,
+        "tn": 150,
+        "fp": 5,
+        "fn": 10
+      },
+      "obfuscated_test": {
+        "accuracy": 0.949,
+        "precision": 0.9697,
+        "recall": 0.9209,
+        "f1": 0.9446,
+        "auc": 0.9939,
+        "tp": 128,
+        "tn": 151,
+        "fp": 4,
+        "fn": 11
+      }
+    },
+    {
+      "seed": 43,
+      "best_epoch": 25,
+      "threshold": 0.2801,
+      "clean_test": {
+        "accuracy": 0.966,
+        "precision": 0.9708,
+        "recall": 0.9568,
+        "f1": 0.9638,
+        "auc": 0.9926,
+        "tp": 133,
+        "tn": 151,
+        "fp": 4,
+        "fn": 6
+      },
+      "obfuscated_test": {
+        "accuracy": 0.9728,
+        "precision": 0.9781,
+        "recall": 0.964,
+        "f1": 0.971,
+        "auc": 0.9929,
+        "tp": 134,
+        "tn": 152,
+        "fp": 3,
+        "fn": 5
+      }
+    },
+    {
+      "seed": 44,
+      "best_epoch": 15,
+      "threshold": 0.8638,
+      "clean_test": {
+        "accuracy": 0.9558,
+        "precision": 0.9632,
+        "recall": 0.9424,
+        "f1": 0.9527,
+        "auc": 0.9903,
+        "tp": 131,
+        "tn": 150,
+        "fp": 5,
+        "fn": 8
+      },
+      "obfuscated_test": {
+        "accuracy": 0.9592,
+        "precision": 0.9704,
+        "recall": 0.9424,
+        "f1": 0.9562,
+        "auc": 0.9934,
+        "tp": 131,
+        "tn": 151,
+        "fp": 4,
+        "fn": 8
+      }
+    },
+    {
+      "seed": 45,
+      "best_epoch": 15,
+      "threshold": 0.0007,
+      "clean_test": {
+        "accuracy": 0.9694,
+        "precision": 0.9577,
+        "recall": 0.9784,
+        "f1": 0.968,
+        "auc": 0.9958,
+        "tp": 136,
+        "tn": 149,
+        "fp": 6,
+        "fn": 3
+      },
+      "obfuscated_test": {
+        "accuracy": 0.966,
+        "precision": 0.951,
+        "recall": 0.9784,
+        "f1": 0.9645,
+        "auc": 0.9941,
+        "tp": 136,
+        "tn": 148,
+        "fp": 7,
+        "fn": 3
+      }
+    },
+    {
+      "seed": 46,
+      "best_epoch": 33,
+      "threshold": 0.0988,
+      "clean_test": {
+        "accuracy": 0.9694,
+        "precision": 0.971,
+        "recall": 0.964,
+        "f1": 0.9675,
+        "auc": 0.9958,
+        "tp": 134,
+        "tn": 151,
+        "fp": 4,
+        "fn": 5
+      },
+      "obfuscated_test": {
+        "accuracy": 0.9728,
+        "precision": 0.9712,
+        "recall": 0.9712,
+        "f1": 0.9712,
+        "auc": 0.996,
+        "tp": 135,
+        "tn": 151,
+        "fp": 4,
+        "fn": 4
+      }
+    }
+  ],
+  "per_family_recall_clean": {
+    "makop": {
+      "detected": 4,
+      "total": 5,
+      "recall": 0.8
+    },
+    "nefilim": {
+      "detected": 4,
+      "total": 5,
+      "recall": 0.8
+    },
+    "babuk": {
+      "detected": 5,
+      "total": 6,
+      "recall": 0.8333
+    },
+    "conti": {
+      "detected": 6,
+      "total": 7,
+      "recall": 0.8571
+    },
+    "zeppelin": {
+      "detected": 6,
+      "total": 7,
+      "recall": 0.8571
+    },
+    "avaddon": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "blackmatter": {
+      "detected": 6,
+      "total": 6,
+      "recall": 1.0
+    },
+    "darkside": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "dharma": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "doppelpaymer": {
+      "detected": 3,
+      "total": 3,
+      "recall": 1.0
+    },
+    "exorcist": {
+      "detected": 3,
+      "total": 3,
+      "recall": 1.0
+    },
+    "gandcrab": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "lockbit": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "maze": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "mountlocker": {
+      "detected": 2,
+      "total": 2,
+      "recall": 1.0
+    },
+    "netwalker": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "phobos": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "pysa": {
+      "detected": 6,
+      "total": 6,
+      "recall": 1.0
+    },
+    "ragnarok": {
+      "detected": 5,
+      "total": 5,
+      "recall": 1.0
+    },
+    "ransomexx": {
+      "detected": 2,
+      "total": 2,
+      "recall": 1.0
+    },
+    "revil": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "ryuk": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "stop": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "wastedlocker": {
+      "detected": 5,
+      "total": 5,
+      "recall": 1.0
+    }
+  },
+  "per_family_recall_obfuscated": {
+    "makop": {
+      "detected": 4,
+      "total": 5,
+      "recall": 0.8
+    },
+    "nefilim": {
+      "detected": 4,
+      "total": 5,
+      "recall": 0.8
+    },
+    "babuk": {
+      "detected": 5,
+      "total": 6,
+      "recall": 0.8333
+    },
+    "conti": {
+      "detected": 6,
+      "total": 7,
+      "recall": 0.8571
+    },
+    "avaddon": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "blackmatter": {
+      "detected": 6,
+      "total": 6,
+      "recall": 1.0
+    },
+    "darkside": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "dharma": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "doppelpaymer": {
+      "detected": 3,
+      "total": 3,
+      "recall": 1.0
+    },
+    "exorcist": {
+      "detected": 3,
+      "total": 3,
+      "recall": 1.0
+    },
+    "gandcrab": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "lockbit": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "maze": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "mountlocker": {
+      "detected": 2,
+      "total": 2,
+      "recall": 1.0
+    },
+    "netwalker": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "phobos": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "pysa": {
+      "detected": 6,
+      "total": 6,
+      "recall": 1.0
+    },
+    "ragnarok": {
+      "detected": 5,
+      "total": 5,
+      "recall": 1.0
+    },
+    "ransomexx": {
+      "detected": 2,
+      "total": 2,
+      "recall": 1.0
+    },
+    "revil": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "ryuk": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "stop": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    },
+    "wastedlocker": {
+      "detected": 5,
+      "total": 5,
+      "recall": 1.0
+    },
+    "zeppelin": {
+      "detected": 7,
+      "total": 7,
+      "recall": 1.0
+    }
+  },
+  "graphs_changed": 287,
+  "test_samples": 294
+}
