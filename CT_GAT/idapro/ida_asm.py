@@ -8,7 +8,9 @@ Example:
    python3 batch_ida_asm.py \
        --ida /opt/idapro/idat64 \
        --input /data/exe_samples \
-       --output /data/asm
+       --output /data/asm \
+       --timeout 600 \
+       --recursive
 
 
 
