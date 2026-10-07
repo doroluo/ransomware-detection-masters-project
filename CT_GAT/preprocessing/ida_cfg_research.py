@@ -79,7 +79,7 @@ def file_strings(path):
                            text=match.group().decode(encoding))
 
 
-def extract(binary, output, digest, arch, kind):
+def extract(binary, output, digest, arch, kind, asm_out=None):
     import resource
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     if hash_file(binary) != digest:
@@ -222,6 +222,10 @@ def extract(binary, output, digest, arch, kind):
                                           'autoanalysis_is_not_ground_truth'], quality=quality))
         validate_file(tmp, digest)
         tmp.replace(output)
+        if opened and asm_out is not None:
+            # Export while this same analyzed IDA database is still open.
+            from run_mendeley_asm import export_current
+            export_current(asm_out, digest, hash_file(__file__))
     finally:
         if opened:
             idapro.close_database(False)
@@ -312,8 +316,9 @@ def main():
     parser.add_argument('--sha256', required=True)
     parser.add_argument('--arch', default='')
     parser.add_argument('--kind', required=True)
+    parser.add_argument('--asm-out', type=Path)
     args = parser.parse_args()
-    extract(args.binary, args.output, args.sha256, args.arch, args.kind)
+    extract(args.binary, args.output, args.sha256, args.arch, args.kind, args.asm_out)
 
 
 if __name__ == '__main__':

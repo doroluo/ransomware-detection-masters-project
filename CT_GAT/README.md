@@ -23,4 +23,4 @@ python -m unittest discover -s CT_GAT/preprocessing -p 'test_*.py'
 ```
 
 The [Mendeley assembly companion](IDA_ASM_RUNBOOK.md) exports full IDA text listings
-with verified transfer to the desktop after the Mendeley CFG run completes.
+from the same analyzed database as the CFG, with incremental verified desktop transfer. Earlier samples receive a separate assembly backfill.

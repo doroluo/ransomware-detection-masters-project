@@ -1,8 +1,10 @@
 # Mendeley assembly companion
 
 The owner authorized full text assembly transfer on October 6, 2026. This adds
-IDA-generated `.asm` listings alongside the existing CFG JSONL exports. It does
-not change the CFG extractor or its provenance hashes. No samples are executed
+IDA-generated `.asm` listings alongside the existing CFG JSONL exports. The
+combined mode adds assembly export before the CFG worker closes its IDA database;
+new CFG files record the updated extractor hash. Existing files keep their original
+hashes, and the run policy records the transition. No samples are executed
 or copied to the desktop. Output and temporary IDA databases stay under
 `~/work/out/`; sample inputs are private, hash-verified copies with execute bits
 cleared. The samples in the dataset folders remain unchanged.
@@ -28,10 +30,23 @@ transfer; the desktop receiver writes ordinary `<sample_sha256>.asm` files.
   `mendeley_samples.csv`; join by SHA-256. Use the CFG reconciliation manifests
   and identity aliases for leakage-aware experiments, not original splits blindly.
 
-Two small goodware/ransomware previews run first. The bulk pass waits for the
-Mendeley CFG controller to complete its final verified transfer, then holds its
-pipeline lock to avoid overlapping full IDA runs. It stops after Mendeley and
-does not process Balanced, VS, or VirusShare.
+Two small goodware/ransomware previews ran first. At the 1,000-sample checkpoint,
+the live run switched to combined extraction. For remaining native candidates,
+one IDA analysis produces both the CFG and assembly listing. The assembly
+controller transfers finished listings while CFG extraction continues. Once the
+CFG controller completes its final verified transfer, the assembly controller
+holds its pipeline lock and backfills only missing listings. These include earlier
+samples and managed/other inputs that did not open IDA during CFG extraction.
+It stops after Mendeley and does not process Balanced, VS, or VirusShare.
+
+`combined_asm.json` in the CFG output directory enables this behavior and names
+the assembly output directory (`{"out":"/home/seed/work/out/ida_asm_mendeley_20261006"}`).
+The combined path requires a Mendeley inventory row. Shared listings have
+`analysis_mode=shared_cfg_database` and the CFG extractor hash in their per-hash
+assembly status. Publication occurs only after the listing is complete and hashed.
+An assembly-generation exception leaves the valid CFG intact, records a separate
+error, and leaves the listing eligible for backfill. Resource-limit termination
+still follows the existing CFG worker retry policy.
 
 Every original Mendeley hash is attempted, including managed and other-machine
 inputs. A successful listing does not imply useful native x86 instructions:
@@ -83,7 +98,7 @@ API reference: https://python.docs.hex-rays.com/ida_loader/index.html#ida_loader
 
 ## Validation evidence
 
-The host regression suite passed 28 tests. Real IDA Pro 9.4 previews produced
+The host regression suite passed 30 tests. Real IDA Pro 9.4 previews produced
 and transferred these listings with verified compressed and plain-text checksums:
 
 | Group | Sample SHA-256 | Lines | Text bytes |
@@ -92,3 +107,9 @@ and transferred these listings with verified compressed and plain-text checksums
 | Ransomware train / nefilim | `3bac058dbea51f52ce154fed0325fd835f35c1cd521462ce048b41c9b099e1e5` | 4,354 | 172,959 |
 
 These are smoke-test results, not a claim that the entire assembly dataset is complete.
+
+Combined-mode smoke tests of those same samples verified matching sample and CFG
+extractor hashes, nonempty CFG instructions, and real `OFILE_ASM` listings from the
+same open database. They produced 50 functions / 198 blocks for goodware and
+33 functions / 332 blocks for ransomware. Assembly export added 0.028 and 0.049
+seconds respectively; these small-sample timings are not a whole-dataset estimate.

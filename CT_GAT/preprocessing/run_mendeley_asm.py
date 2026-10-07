@@ -43,26 +43,15 @@ def text_digest(stream, target=None):
     return h.hexdigest(), size
 
 
-def worker(args):
-    import resource
-    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    if digest(args.binary) != args.sha256:
-        raise ValueError('input_changed')
-    import idapro
-    import ida_auto
+def export_open_database(output, sha256):
+    """Export the already analyzed database; never opens or closes a database."""
     import ida_ida
     import ida_kernwin
     import ida_loader
     import idc
-    opened = False
-    plain = Path(str(args.output) + '.asm.tmp')
-    packed = Path(str(args.output) + '.tmp')
+    plain = Path(str(output) + '.asm.tmp')
+    packed = Path(str(output) + '.tmp')
     try:
-        if idapro.open_database(str(args.binary), True) != 0:
-            raise RuntimeError('ida_open_failed')
-        opened = True
-        if not ida_auto.auto_wait():
-            raise RuntimeError('autoanalysis_incomplete')
         lines = idc.gen_file(ida_loader.OFILE_ASM, str(plain), ida_ida.inf_get_min_ea(),
                              ida_ida.inf_get_max_ea(), ida_loader.GENFLG_ASMTYPE)
         if lines <= 0:
@@ -71,18 +60,63 @@ def worker(args):
             checksum, size = text_digest(stream)
         with plain.open('rb') as source, gzip.open(str(packed), 'wb') as target:
             shutil.copyfileobj(source, target)
-        packed.replace(args.output)
-        common.write_json(Path(str(args.output) + '.meta.json'), dict(
-            sha256=args.sha256, status='ok', asm_sha256=checksum, asm_bytes=size,
-            compressed_sha256=digest(args.output), lines=lines,
+        packed.replace(output)
+        metadata = dict(
+            sha256=sha256, status='ok', asm_sha256=checksum, asm_bytes=size,
+            compressed_sha256=digest(output), lines=lines,
             ida_version=ida_kernwin.get_kernel_version(), processor=ida_ida.inf_get_procname(),
-            exporter_sha256=digest(__file__), format='IDA OFILE_ASM', static_only=True))
+            exporter_sha256=digest(__file__), format='IDA OFILE_ASM', static_only=True)
+        common.write_json(Path(str(output) + '.meta.json'), metadata)
+        return metadata
     finally:
-        if opened:
-            idapro.close_database(False)
         for path in (plain, packed):
             if path.exists():
                 path.unlink()
+
+
+def export_current(out, sha256, cfg_extractor_sha256):
+    """Publish only complete ASM artifacts to the independent transfer controller."""
+    out = common.check_out(out)
+    for folder in ('asm', 'status', 'combined_errors'):
+        (out / folder).mkdir(exist_ok=True)
+    status = out / 'status' / (sha256 + '.json')
+    if status.exists() and json.loads(status.read_text()).get('status') == 'ok':
+        return
+    started = time.monotonic()
+    try:
+        metadata = export_open_database(out / 'asm' / (sha256 + '.asm.gz'), sha256)
+        metadata.update(analysis_mode='shared_cfg_database', cfg_extractor_sha256=cfg_extractor_sha256,
+                        asm_export_seconds=round(time.monotonic() - started, 3), attempts=[])
+        common.write_json(status, metadata)
+    except Exception as error:
+        # A valid CFG remains valid. The later backfill retries this missing ASM.
+        common.write_json(out / 'combined_errors' / (sha256 + '.json'),
+                          dict(sha256=sha256, reason=type(error).__name__ + ': ' + str(error)))
+
+
+def worker(args):
+    import resource
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    if digest(args.binary) != args.sha256:
+        raise ValueError('input_changed')
+    import idapro
+    import ida_auto
+    opened = False
+    try:
+        if idapro.open_database(str(args.binary), True) != 0:
+            raise RuntimeError('ida_open_failed')
+        opened = True
+        if not ida_auto.auto_wait():
+            raise RuntimeError('autoanalysis_incomplete')
+        export_open_database(args.output, args.sha256)
+    finally:
+        if opened:
+            idapro.close_database(False)
+
+
+def untransferred(out):
+    return [s for s in (json.loads(p.read_text()) for p in (out / 'status').glob('*.json'))
+            if not s.get('transferred')]
 
 
 def run_job(row, out, timeout=3600, retry_timeout=14400):
@@ -228,7 +262,8 @@ def run(args):
     common.write_json(out / 'policy.json', dict(scope='mendeley_only', static_only=True,
         source='original on-disk sample, unchanged', asm_export_authorized=True,
         format='IDA OFILE_ASM', raw_executables_export=False, max_workers=1,
-        no_line_or_address_caps=True, source_cfg=str(args.cfg), exporter_sha256=digest(__file__)))
+        no_line_or_address_caps=True, source_cfg=str(args.cfg), exporter_sha256=digest(__file__),
+        combined_cfg_export=(args.cfg / 'combined_asm.json').exists()))
     if (out / 'ready.json').exists():
         receipt = json.loads((out / 'ready.json').read_text())
         with tarfile.open(str(out / 'exports' / receipt['name'])) as archive:
@@ -255,6 +290,10 @@ def run(args):
         cfg_state = json.loads((args.cfg / 'pipeline_state.json').read_text())
         if cfg_state['stage'] == 'error':
             raise RuntimeError('CFG failed; ASM bulk pass not started')
+        pending_shared = untransferred(out)
+        if pending_shared:
+            ship(out, pending_shared)
+            common.write_json(out / 'pipeline_state.json', dict(stage='waiting_for_mendeley_cfg', total=len(jobs)))
         if cfg_state['stage'] == 'complete':
             break
         time.sleep(15)

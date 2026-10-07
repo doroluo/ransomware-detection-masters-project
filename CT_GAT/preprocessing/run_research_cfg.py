@@ -141,8 +141,15 @@ def run_job(job, out, first_timeout, retry_timeout, rss_mib, retry_failed=False)
             if rich.hash_file(binary) != digest:
                 raise RuntimeError('input_changed')
             with (out / 'logs' / (digest + '_' + str(attempt) + '.log')).open('w') as log:
-                process = subprocess.Popen([sys.executable, str(Path(rich.__file__).resolve()), '--binary', str(binary),
-                                            '--output', str(output), '--sha256', digest, '--arch', job['arch'], '--kind', job['kind']],
+                command = [sys.executable, str(Path(rich.__file__).resolve()), '--binary', str(binary),
+                           '--output', str(output), '--sha256', digest, '--arch', job['arch'], '--kind', job['kind']]
+                combined = out / 'combined_asm.json'
+                if combined.exists():
+                    if job.get('corpus') != 'mendeley':
+                        raise ValueError('combined_export_requires_mendeley')
+                    asm_out = common.check_out(Path(json.loads(combined.read_text())['out']))
+                    command += ['--asm-out', str(asm_out)]
+                process = subprocess.Popen(command,
                                            cwd=temp, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
                 while process.poll() is None:
                     rss = process_memory(process.pid)

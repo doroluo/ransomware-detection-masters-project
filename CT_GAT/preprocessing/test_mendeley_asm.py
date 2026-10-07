@@ -7,6 +7,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_mendeley_asm as asm
@@ -71,6 +72,28 @@ class AssemblyTransferTests(unittest.TestCase):
     def test_binary_content_rejected(self):
         with self.assertRaisesRegex(ValueError, 'not_plain_text'):
             asm.text_digest(io.BytesIO(b'MZ\0payload'))
+
+    def test_shared_export_publishes_once_and_records_cfg_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(asm.common, 'check_out', return_value=root), patch.object(
+                    asm, 'export_open_database', return_value=dict(sha256='a'*64, status='ok')) as export:
+                asm.export_current(root, 'a'*64, 'b'*64)
+                asm.export_current(root, 'a'*64, 'b'*64)
+                self.assertEqual(export.call_count, 1)
+            status = json.loads((root/'status'/('a'*64+'.json')).read_text())
+            self.assertEqual(status['analysis_mode'], 'shared_cfg_database')
+            self.assertEqual(status['cfg_extractor_sha256'], 'b'*64)
+            self.assertEqual(len(asm.untransferred(root)), 1)
+
+    def test_shared_asm_failure_remains_eligible_for_backfill(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(asm.common, 'check_out', return_value=root), patch.object(
+                    asm, 'export_open_database', side_effect=RuntimeError('ASM failure')):
+                asm.export_current(root, 'a'*64, 'b'*64)
+            self.assertFalse((root/'status'/('a'*64+'.json')).exists())
+            self.assertTrue((root/'combined_errors'/('a'*64+'.json')).exists())
 
 
 if __name__ == '__main__':
