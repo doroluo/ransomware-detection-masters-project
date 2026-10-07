@@ -73,6 +73,7 @@ tests/fixtures/
 !CT_GAT/IDA_CFG_PLAN.md
 !CT_GAT/IDA_CFG_QUALITY_REVIEW.md
 !CT_GAT/IDA_CFG_RUNBOOK.md
+!CT_GAT/IDA_ASM_RUNBOOK.md
 !CT_GAT/preprocessing/
 !CT_GAT/preprocessing/*.py
 !CT_GAT/preprocessing/*.ps1
