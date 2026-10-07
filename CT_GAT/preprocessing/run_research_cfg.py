@@ -113,6 +113,23 @@ def available_memory():
     return int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))) * 1024
 
 
+def recover_cfg_after_asm_disk_limit(out, output, digest):
+    control = out / 'combined_asm.json'
+    if not control.exists():
+        return False
+    asm_out = common.check_out(Path(json.loads(control.read_text())['out']))
+    if not (asm_out / 'asm' / (digest + '.asm.gz.asm.tmp')).exists():
+        return False
+    # A completed CFG must validate before its interrupted assembly is deferred.
+    try:
+        rich.validate_file(output, digest)
+    except Exception:
+        return False
+    from run_mendeley_asm import defer_disk_limited_assembly
+    defer_disk_limited_assembly(asm_out, digest)
+    return shutil.disk_usage(str(out)).free >= 3 * 1024**3
+
+
 def run_job(job, out, first_timeout, retry_timeout, rss_mib, retry_failed=False):
     digest = job['sha256']
     status_path = out / 'status' / (digest + '.json')
@@ -170,6 +187,9 @@ def run_job(job, out, first_timeout, retry_timeout, rss_mib, retry_failed=False)
                     reason = 'worker_exit_' + str(process.returncode)
         attempts.append(dict(attempt=attempt, seconds=round(time.monotonic() - started, 3), timeout=timeout,
                              peak_rss_bytes=peak, reason=reason))
+        if reason == 'disk_reserve' and recover_cfg_after_asm_disk_limit(out, output, digest):
+            attempts[-1]['asm_deferred'] = 'assembly_disk_reserve'
+            reason = ''
         if not reason:
             try:
                 data = rich.validate_file(output, digest)

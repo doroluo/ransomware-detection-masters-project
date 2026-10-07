@@ -95,6 +95,40 @@ class AssemblyTransferTests(unittest.TestCase):
             self.assertFalse((root/'status'/('a'*64+'.json')).exists())
             self.assertTrue((root/'combined_errors'/('a'*64+'.json')).exists())
 
+    def test_disk_deferral_removes_only_partial_and_prevents_automatic_repeat(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'asm').mkdir()
+            (root/'status').mkdir()
+            partial=root/'asm'/('a'*64+'.asm.gz.asm.tmp')
+            partial.write_bytes(b'partial listing')
+            preserved=root/'asm'/('b'*64+'.asm.gz')
+            preserved.write_bytes(b'completed other sample')
+            with patch.object(asm.common,'check_out',return_value=root), patch.object(asm,'export_open_database') as export:
+                state=asm.defer_disk_limited_assembly(root,'a'*64)
+                asm.export_current(root,'a'*64,'c'*64)
+                export.assert_not_called()
+            self.assertFalse(partial.exists())
+            self.assertEqual(preserved.read_bytes(),b'completed other sample')
+            self.assertEqual(state['status'],'deferred')
+            self.assertEqual(state['incomplete_bytes_removed'],15)
+
+    def test_disk_deferral_keeps_valid_cfg(self):
+        import run_research_cfg as runner
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'asm').mkdir()
+            (root/'status').mkdir()
+            (root/'combined_asm.json').write_text(json.dumps(dict(out=str(root))))
+            (root/'asm'/('a'*64+'.asm.gz.asm.tmp')).write_bytes(b'partial')
+            cfg=root/'graph.jsonl.gz'
+            cfg.write_bytes(b'validated fixture')
+            with patch.object(asm.common,'check_out',return_value=root), patch.object(runner.rich,'validate_file') as validate, patch.object(runner.shutil,'disk_usage') as disk:
+                disk.return_value.free=4*1024**3
+                self.assertTrue(runner.recover_cfg_after_asm_disk_limit(root,cfg,'a'*64))
+                validate.assert_called_once_with(cfg,'a'*64)
+            self.assertEqual(cfg.read_bytes(),b'validated fixture')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -46,7 +46,20 @@ The combined path requires a Mendeley inventory row. Shared listings have
 assembly status. Publication occurs only after the listing is complete and hashed.
 An assembly-generation exception leaves the valid CFG intact, records a separate
 error, and leaves the listing eligible for backfill. Resource-limit termination
-still follows the existing CFG worker retry policy.
+normally follows the CFG worker retry policy. When an unfinished assembly listing
+hits the disk reserve after its CFG is complete, the controller validates and
+preserves the CFG, removes only incomplete assembly temporary files, and records
+`status=deferred`, `reason=assembly_disk_reserve`. Automatic backfill skips that
+listing until its export strategy is changed; it is never counted as successful.
+If cleanup does not restore the disk reserve, the run still stops safely.
+
+On October 7, sample
+`bbbf38de4f40754f235441a8e6a4c8bdb9365dab7f5cfcdac77dbb4d6236360b`
+left a 13,075,230,720-byte incomplete assembly listing and stopped the original
+controller at 2,100 completed samples. That temporary file was removed, its ASM
+was marked deferred, and its CFG was successfully re-extracted (420 functions,
+3,717 blocks, 17,030 function instructions). Completed desktop outputs and source
+datasets were preserved; extraction resumed with about 15 GiB free in the VM.
 
 Every original Mendeley hash is attempted, including managed and other-machine
 inputs. A successful listing does not imply useful native x86 instructions:
@@ -98,7 +111,9 @@ API reference: https://python.docs.hex-rays.com/ida_loader/index.html#ida_loader
 
 ## Validation evidence
 
-The host regression suite passed 30 tests. Real IDA Pro 9.4 previews produced
+The host regression suite passed 32 tests, including preservation of completed
+CFGs and prevention of automatic repeated oversized assembly exports.
+Real IDA Pro 9.4 previews produced
 and transferred these listings with verified compressed and plain-text checksums:
 
 | Group | Sample SHA-256 | Lines | Text bytes |

@@ -74,13 +74,33 @@ def export_open_database(output, sha256):
                 path.unlink()
 
 
+def defer_disk_limited_assembly(out, sha256):
+    """Record a retryable exception and discard only incomplete listing files."""
+    out = common.check_out(out)
+    if not re.fullmatch(r'[0-9a-f]{64}', sha256):
+        raise ValueError('invalid_sample_hash')
+    status = out / 'status' / (sha256 + '.json')
+    if status.exists() and json.loads(status.read_text()).get('status') == 'ok':
+        return json.loads(status.read_text())
+    partial_bytes = 0
+    for suffix in ('.asm.gz.asm.tmp', '.asm.gz.tmp'):
+        path = out / 'asm' / (sha256 + suffix)
+        if path.exists():
+            partial_bytes += path.stat().st_size
+            path.unlink()
+    state = dict(sha256=sha256, status='deferred', reason='assembly_disk_reserve',
+                 incomplete_bytes_removed=partial_bytes, retry_requires_export_strategy_change=True)
+    common.write_json(status, state)
+    return state
+
+
 def export_current(out, sha256, cfg_extractor_sha256):
     """Publish only complete ASM artifacts to the independent transfer controller."""
     out = common.check_out(out)
     for folder in ('asm', 'status', 'combined_errors'):
         (out / folder).mkdir(exist_ok=True)
     status = out / 'status' / (sha256 + '.json')
-    if status.exists() and json.loads(status.read_text()).get('status') == 'ok':
+    if status.exists() and json.loads(status.read_text()).get('status') in ('ok', 'deferred'):
         return
     started = time.monotonic()
     try:
@@ -166,6 +186,10 @@ def run_job(row, out, timeout=3600, retry_timeout=14400):
             result.pop('reason', None)
             break
         result['reason'] = reason
+        if reason == 'disk_reserve' and Path(str(output) + '.asm.tmp').exists():
+            state = defer_disk_limited_assembly(out, sha)
+            if shutil.disk_usage(str(out)).free >= 3 * 1024**3:
+                return state
         # A killed worker cannot run its finally block; discard only its derived partials.
         for suffix in ('', '.asm.tmp', '.tmp', '.meta.json'):
             partial = Path(str(output) + suffix)
