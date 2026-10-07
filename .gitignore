@@ -67,6 +67,15 @@ tests/fixtures/
 !meetings/
 !meetings/**
 
+# IDAPython static CFG research pipeline (source and documentation only)
+!CT_GAT/
+!CT_GAT/README.md
+!CT_GAT/IDA_CFG_PLAN.md
+!CT_GAT/IDA_CFG_QUALITY_REVIEW.md
+!CT_GAT/IDA_CFG_RUNBOOK.md
+!CT_GAT/preprocessing/
+!CT_GAT/preprocessing/*.py
+!CT_GAT/preprocessing/*.ps1
 # never
 **/__pycache__/
 **/.pytest_cache/
