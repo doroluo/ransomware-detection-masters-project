@@ -1,3 +1,13 @@
+## Using the Mendeley dataset for GNNs
+
+Start with [the portable dataset guide](GNN_DATASET_GUIDE.md). It explains the
+sample index, explicit train/test lists, block/edge format, architecture filters,
+and Python/PyG loading examples. `preprocessing/build_gnn_bundle.py` packages
+the raw exports without re-extraction; `preprocessing/gnn_dataset.py` provides
+the dependency-free reader. The default manifests include 1,950 training and
+484 test binaries with recovered native CFGs and accepted cohort identities;
+the full 2,670-sample inventory and original occurrence metadata are retained.
+
 ## Research dataset: IDAPython CFG extraction
 
 The current VM pipeline uses `preprocessing/ida_cfg_research.py` and

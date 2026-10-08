@@ -105,3 +105,6 @@ manifests/imports/*.json
 **/__pycache__/
 **/.pytest_cache/
 *.pyc
+
+# Portable GNN dataset reader documentation
+!CT_GAT/GNN_DATASET_GUIDE.md
