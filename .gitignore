@@ -10,3 +10,6 @@
 !CT_GAT/README.md
 !CT_GAT/preprocessing/
 !CT_GAT/preprocessing/*.py
+!CT_GAT/graph_transformer/
+!CT_GAT/graph_transformer/*.py
+!CT_GAT/graph_transformer/*.md
