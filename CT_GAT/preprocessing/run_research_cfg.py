@@ -17,7 +17,7 @@ import tarfile
 import tempfile
 import time
 
-import ida_cfg_research as rich
+import extract_cfg_with_ida as rich
 import vm_ida_cfg as common
 
 META = ['inventory.json', 'cohort_membership.json', 'split_audit.json', 'manifest.csv', 'mendeley_samples.csv', 'summary.json', 'policy.json', 'source_labels.json']

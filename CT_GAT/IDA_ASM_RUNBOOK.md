@@ -78,7 +78,7 @@ acknowledged derived VM files are removed; statuses and original samples remain.
 ## Starting and resuming
 
 Copy the script and its local imports (`vm_ida_cfg.py`, `run_research_cfg.py`,
-`ida_cfg_research.py`) to the VM tools directory. Use the existing IDA-enabled
+`extract_cfg_with_ida.py`) to the VM tools directory. Use the existing IDA-enabled
 Python environment, not a sample executable. Do not install packages.
 
 ```sh

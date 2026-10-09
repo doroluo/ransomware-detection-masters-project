@@ -105,7 +105,7 @@ revisited without another IDA pass.
 
 ## Implementation and operation
 
-- `ida_cfg_research.py`: IDAPython extraction and streaming validator; current
+- `extract_cfg_with_ida.py`: IDAPython extraction and streaming validator; current
   schema `ida-cfg-research/2.1`. Header records include extractor SHA-256, IDA
   version and analysis flags. No instruction/block truncation is performed.
 - `run_research_cfg.py`: single-worker controller, retries, resource monitoring,

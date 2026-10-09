@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import ida_cfg_research as rich
+import extract_cfg_with_ida as rich
 import run_research_cfg as runner
 import vm_ida_cfg as common
 

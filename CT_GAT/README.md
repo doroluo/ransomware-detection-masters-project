@@ -1,3 +1,12 @@
+## Script names
+
+- Extract CFGs from binaries inside the VM: `preprocessing/extract_cfg_with_ida.py` (IDA required).
+- Read existing downloaded CFGs for ML: `preprocessing/gnn_dataset.py` (no IDA required).
+  Use `functions(sample)` for every function, or `sample_graph(sample)` to combine their CFGs as separate components.
+- `preprocessing/ida_cfg_research.py` remains a compatibility alias for existing imports and commands.
+
+The extractor code is unchanged by this rename. Running jobs use their existing frozen VM tools.
+
 ## Using the Mendeley dataset for GNNs
 
 Start with [the portable dataset guide](GNN_DATASET_GUIDE.md). It explains the
@@ -10,7 +19,7 @@ the full 2,670-sample inventory and original occurrence metadata are retained.
 
 ## Research dataset: IDAPython CFG extraction
 
-The current VM pipeline uses `preprocessing/ida_cfg_research.py` and
+The current VM pipeline uses `preprocessing/extract_cfg_with_ida.py` and
 `preprocessing/run_research_cfg.py` (Python 3.8, IDA Pro 9.4). It preserves
 uncapped recovered CFGs, structured operands, API references, symbols, strings,
 and PE features, with isolated static analysis, resource monitoring, resumable
