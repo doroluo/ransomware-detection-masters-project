@@ -45,10 +45,12 @@ def main():
             continue
         yv, pv, yt, pt = load(run_dir)
         t = max(GRID, key=lambda g: macro_f1(yv, pv, g))
-        groups[cfg.group].append((cfg, t, yt, pt))
+        key = f'{cfg.group}_s{cfg.seed}' if cfg.protocol == 'kfold' else cfg.group
+        groups[key].append((cfg, t, yt, pt))
 
     print('| config | unit | n | threshold | macro-F1 @0.5 | macro-F1 @val thr | R / G @val thr | AUC |')
     print('|---|---|---|---|---|---|---|---|')
+    pooled_by_group = defaultdict(list)
     for group, runs in sorted(groups.items()):
         at_half = [scores(yt, pt, 0.5) for _, _, yt, pt in runs]
         at_val = [scores(yt, pt, t) for _, t, yt, pt in runs]
@@ -64,6 +66,16 @@ def main():
             pooled_val = f1_score(yt, pred, average='macro')
             print(f"| {group} | pooled | {len(yt)} | per fold | {macro_f1(yt, half, 0.5):.3f} | {pooled_val:.3f} "
                   f"| {pred[yt == 1].mean():.3f} / {1 - pred[yt == 0].mean():.3f} | {roc_auc_score(yt, half):.3f} |")
+            if len(runs) == 5:
+                pooled_by_group[runs[0][0].group].append(
+                    (macro_f1(yt, half, 0.5), pooled_val, roc_auc_score(yt, half)))
+
+    if pooled_by_group:
+        print('\n| kfold config | seeds | pooled macro-F1 @0.5 | pooled macro-F1 @val thr | pooled AUC |')
+        print('|---|---|---|---|---|')
+        for group, seeds in sorted(pooled_by_group.items()):
+            cols = list(zip(*seeds))
+            print(f'| {group} | {len(seeds)} | {fmt(cols[0])} | {fmt(cols[1])} | {fmt(cols[2])} |')
 
 
 if __name__ == '__main__':
