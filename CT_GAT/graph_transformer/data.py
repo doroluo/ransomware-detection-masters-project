@@ -1,6 +1,7 @@
 """Manifests, validation carve, per-run vocabulary cut, and per-binary tensors built from the cache."""
 import csv
 import json
+import zlib
 from dataclasses import dataclass
 
 import numpy as np
@@ -67,28 +68,47 @@ def make_manifest(cfg: RunConfig, index):
 def load_sample(sample_id):
     with np.load(CACHE / 'samples' / f'{sample_id}.npz') as z:
         return {k: z[k] for k in ('mn', 'sig', 'beh', 'api', 'blk_insn_ptr', 'blk_api_ptr', 'blk_feat',
-                                  'fn_blk_ptr', 'fn_flags', 'cfg_edges', 'call_edges')}
+                                  'fn_blk_ptr', 'fn_flags', 'cfg_edges', 'call_edges', 'edge_kind', 'edge_back')
+                if k in z.files}
 
 
 class TokenVocab:
-    """Global vocab id -> run id; 0 is UNK. A token survives if it occurs in >= min_df training binaries."""
+    """Global vocab id -> run id; 0 is UNK. A token survives if it occurs in >= min_df training binaries.
 
-    def __init__(self, train_rows, min_df):
+    For gnn configs, a [MASK] id per kind is appended after the kinds' ranges (`mask_id`, counted in `total`) and
+    `idf[run id] = ln((1 + N) / (1 + df)) + 1` over the training binaries (UNK and MASK get 1)."""
+
+    def __init__(self, train_rows, cfg: RunConfig):
+        gnn = cfg.model == 'gnn'
         sizes = {k: len(v) for k, v in json.loads((CACHE / 'vocab.json').read_text(encoding='utf-8')).items()}
         df = {k: np.zeros(sizes[k], dtype=np.int64) for k in ('mn', 'sig', 'api')}
+        df_beh = np.zeros(sizes['beh'], dtype=np.int64)
         for r in train_rows:
             with np.load(CACHE / 'samples' / f"{r['sample_id']}.npz") as z:
                 for k in df:
                     df[k][z[f'{k}_u']] += 1
+                if gnn:
+                    df_beh[np.unique(z['beh'])] += 1
         self.lut, self.size = {}, {}
+        kept_df = {}
         for k, counts in df.items():
-            keep = counts >= min_df
+            keep = counts >= cfg.min_df
             self.lut[k] = np.where(keep, np.cumsum(keep), 0).astype(np.int64)
             self.size[k] = int(keep.sum()) + 1
+            kept_df[k] = counts[keep]
         self.lut['beh'] = np.arange(sizes['beh'], dtype=np.int64)
         self.size['beh'] = sizes['beh']
         self.offset = dict(zip(TOKEN_KINDS, np.cumsum([0] + [self.size[k] for k in TOKEN_KINDS[:-1]]).tolist()))
         self.total = sum(self.size.values())
+        self.idf = self.mask_id = None
+        if gnn:
+            kept_df['beh'] = df_beh
+            self.idf = np.ones(self.total + len(TOKEN_KINDS), dtype=np.float32)
+            for k, counts in kept_df.items():
+                lo = self.offset[k] + (k != 'beh')
+                self.idf[lo:lo + len(counts)] = np.log((1 + len(train_rows)) / (1 + counts)) + 1
+            self.mask_id = {k: self.total + j for j, k in enumerate(TOKEN_KINDS)}
+            self.total += len(TOKEN_KINDS)
 
     def summary(self):
         return {'sizes_with_unk': self.size, 'total': self.total}
@@ -131,7 +151,141 @@ def select_segments(length, n_api, library, limit, rng):
     return np.sort(np.argpartition(-keys, limit - 1)[:limit])
 
 
-def encode_binary(z, vocab: TokenVocab, cfg: RunConfig, rng):
+def token_table(z, vocab, blk):
+    """Run-id tokens of the blocks in the order [mn | sig | beh | api] within each block, with each token's kind."""
+    insn_ptr, api_ptr = z['blk_insn_ptr'].astype(np.int64), z['blk_api_ptr'].astype(np.int64)
+    n_ins, n_apis = insn_ptr[blk + 1] - insn_ptr[blk], api_ptr[blk + 1] - api_ptr[blk]
+    ins, apis = ranges(insn_ptr[blk], n_ins), ranges(api_ptr[blk], n_apis)
+    per_block = 3 * n_ins + n_apis
+    tok_offsets = np.cumsum(per_block) - per_block
+    ins_base = np.repeat(tok_offsets, n_ins) + np.arange(len(ins)) - np.repeat(np.cumsum(n_ins) - n_ins, n_ins)
+    ins_len = np.repeat(n_ins, n_ins)
+    api_pos = (np.repeat(tok_offsets + 3 * n_ins, n_apis) + np.arange(len(apis))
+               - np.repeat(np.cumsum(n_apis) - n_apis, n_apis))
+    tokens = np.empty(int(per_block.sum()), dtype=np.int64)
+    kind = np.empty(len(tokens), dtype=np.int64)
+    ins_pos = [ins_base + j * ins_len for j in range(3)]
+    for j, k in enumerate(('mn', 'sig', 'beh')):
+        tokens[ins_pos[j]] = vocab.lut[k][z[k][ins]] + vocab.offset[k]
+        kind[ins_pos[j]] = j
+    tokens[api_pos] = vocab.lut['api'][z['api'][apis]] + vocab.offset['api']
+    kind[api_pos] = 3
+    return tokens, kind, tok_offsets, per_block, ins_pos, api_pos
+
+
+def token_weights(tokens, per_block, vocab, encoder):
+    """'mean': 1 / tokens in the block. 'tfidf': per block, run id t with count c gets idf[t] (1 + ln c) / c / norm,
+    so the occurrences of t sum to the L2-normalised sublinear-tf x idf entry."""
+    if encoder == 'mean':
+        return np.repeat(1.0 / np.maximum(per_block, 1), per_block).astype(np.float32)
+    n_vocab = len(vocab.idf)
+    idf = vocab.idf.astype(np.float64)
+    blk_of = np.repeat(np.arange(len(per_block)), per_block)
+    uniq, inv, count = np.unique(blk_of * n_vocab + tokens, return_inverse=True, return_counts=True)
+    value = idf[uniq % n_vocab] * (1 + np.log(count))
+    norm = np.sqrt(np.bincount(uniq // n_vocab, weights=value ** 2, minlength=len(per_block)))
+    c = count[inv.reshape(-1)]
+    return (idf[tokens] * (1 + np.log(c)) / c / norm[blk_of]).astype(np.float32)
+
+
+def keep_functions(fn_flags, sizes, cfg, rng):
+    """Mask over functions: non-empty ones, minus the training-time drops (at least one function stays).
+    `drop_library` replaces `drop_functions` as the rate of FLIRT/thunk functions (`fn_flags & 3`) when set."""
+    keep = sizes > 0
+    if rng is None or not (cfg.drop_functions or cfg.drop_library):
+        return keep
+    library_rate = cfg.drop_library or cfg.drop_functions
+    u = rng.random(len(sizes))
+    drop = (u < np.where((fn_flags & 3) > 0, library_rate, cfg.drop_functions)) & keep
+    if keep.any() and not (keep & ~drop).any():
+        drop[np.argmax(np.where(keep, u, -1.0))] = False
+    return keep & ~drop
+
+
+def permute_within(seg, values, rng):
+    """`values` shuffled among the entries that share a `seg`."""
+    out = np.empty_like(values)
+    out[np.argsort(seg, kind='stable')] = values[np.lexsort((rng.random(len(seg)), seg))]
+    return out
+
+
+def encode_binary_gnn(z, vocab, cfg, rng, sample_id):
+    """Batch contract: one segment per kept function, edge types, tf-idf weights, controls and masking."""
+    if 'edge_kind' not in z:
+        raise KeyError('sample lacks edge_kind/edge_back; point config.CACHE at the v2 cache')
+    fn_ptr = z['fn_blk_ptr'].astype(np.int64)
+    sizes = np.diff(fn_ptr)
+    fn = np.flatnonzero(keep_functions(z['fn_flags'], sizes, cfg, rng))
+    length, n_seg = sizes[fn], len(fn)
+    library = (z['fn_flags'][fn] & 1).astype(np.int64)
+
+    blk = ranges(fn_ptr[fn], length)
+    n_blk = len(blk)
+    blk_seg = np.repeat(np.arange(n_seg), length)
+    blk_pos = np.arange(n_blk) - np.repeat(np.cumsum(length) - length, length)
+
+    tokens, kind, tok_offsets, per_block, ins_pos, api_pos = token_table(z, vocab, blk)
+    blk_feat = z['blk_feat'][blk].astype(np.float32)
+    mask_of_kind = np.array([vocab.mask_id[k] for k in TOKEN_KINDS])
+    if rng is not None and cfg.mask_tokens > 0:
+        hit = rng.random(len(ins_pos[0])) < cfg.mask_tokens
+        for j in range(3):
+            tokens[ins_pos[j][hit]] = mask_of_kind[j]
+        tokens[api_pos[rng.random(len(api_pos)) < cfg.mask_tokens]] = mask_of_kind[3]
+    if rng is not None and cfg.mask_blocks > 0:
+        hit = rng.random(n_blk) < cfg.mask_blocks
+        in_hit = np.repeat(hit, per_block)
+        tokens[in_hit] = mask_of_kind[kind[in_hit]]
+        blk_feat[hit] = 0
+    tok_weights = token_weights(tokens, per_block, vocab, cfg.block_encoder)
+
+    n_total_blocks = len(z['blk_feat'])
+    e = z['cfg_edges'].astype(np.int64)
+    seg_of = np.full(n_total_blocks, -1, dtype=np.int64)
+    pos_of = np.zeros(n_total_blocks, dtype=np.int64)
+    seg_of[blk], pos_of[blk] = blk_seg, blk_pos
+    s, t = seg_of[e[:, 0]], seg_of[e[:, 1]]
+    keep = (s >= 0) & (s == t)
+    clip = cfg.degree_clip
+    deg_in = np.minimum(np.bincount(e[:, 1], minlength=n_total_blocks)[blk], clip)
+    deg_out = np.minimum(np.bincount(e[:, 0], minlength=n_total_blocks)[blk], clip)
+    edge_seg, edge_src, edge_dst = s[keep], pos_of[e[keep, 0]], pos_of[e[keep, 1]]
+    edge_type = z['edge_kind'].astype(np.int64)[keep] * 2 + z['edge_back'].astype(np.int64)[keep]
+    if cfg.control:
+        crng = rng if rng is not None else np.random.default_rng(zlib.crc32(sample_id.encode()))
+        if cfg.control == 'permute_types':
+            edge_type = permute_within(edge_seg, edge_type, crng)
+        elif cfg.control == 'chain':
+            first = blk_pos < length[blk_seg] - 1
+            edge_seg, edge_src = blk_seg[first], blk_pos[first]
+            edge_dst = edge_src + 1
+            edge_type = np.zeros(len(edge_seg), dtype=np.int64)
+        elif cfg.control == 'shuffle':
+            edge_dst = permute_within(edge_seg, edge_dst, crng)
+            edge_type = np.zeros(len(edge_seg), dtype=np.int64)
+
+    fn_local = np.full(len(z['fn_flags']), -1, dtype=np.int64)
+    fn_local[fn] = np.arange(n_seg)
+    c = z['call_edges'].astype(np.int64).reshape(-1, 2)
+    cs, ct = fn_local[c[:, 0]], fn_local[c[:, 1]]
+    ckeep = (cs >= 0) & (ct >= 0) & (cs != ct)
+    pairs = np.unique(cs[ckeep] * n_seg + ct[ckeep])
+
+    return {
+        'tokens': tokens, 'tok_offsets': tok_offsets, 'tok_weights': tok_weights, 'blk_feat': blk_feat,
+        'deg_in': deg_in, 'deg_out': deg_out, 'blk_seg': blk_seg, 'blk_pos': blk_pos,
+        'seg_len': length, 'seg_feat': np.stack([np.log1p(length), library], 1).astype(np.float32),
+        'seg_fn': np.arange(n_seg), 'n_fn': n_seg,
+        'edge_seg': edge_seg, 'edge_src': edge_src, 'edge_dst': edge_dst, 'edge_type': edge_type,
+        'call_src': pairs // max(n_seg, 1), 'call_dst': pairs % max(n_seg, 1),
+        'bin_feat': np.log1p([n_total_blocks, len(z['fn_flags']), len(z['mn']), len(e), len(c)]).astype(np.float32),
+        'n_segments_total': int((sizes > 0).sum()),
+    }
+
+
+def encode_binary(z, vocab: TokenVocab, cfg: RunConfig, rng, sample_id=None):
+    if cfg.model == 'gnn':
+        return encode_binary_gnn(z, vocab, cfg, rng, sample_id)
     fn, start, length, n_api, library = segment_table(z, cfg.max_segment_blocks)
     n_segments_total = len(length)
     sel = select_segments(length, n_api, library, cfg.max_segments, rng)
@@ -214,7 +368,7 @@ class BinaryDataset(torch.utils.data.Dataset):
         i, epoch = item
         row = self.rows[i]
         rng = None if epoch is None else np.random.default_rng([self.cfg.seed, epoch, i])
-        out = encode_binary(load_sample(row['sample_id']), self.vocab, self.cfg, rng)
+        out = encode_binary(load_sample(row['sample_id']), self.vocab, self.cfg, rng, row['sample_id'])
         out['label'], out['sample_id'] = row['label'], row['sample_id']
         return out
 
@@ -226,7 +380,7 @@ def collate(items):
     seg_shift = np.cumsum([0] + [len(it['seg_len']) for it in items[:-1]])
     fn_shift = np.cumsum([0] + [it['n_fn'] for it in items[:-1]])
     shifted = lambda key, shifts: torch.from_numpy(np.concatenate([it[key] + s for it, s in zip(items, shifts)])).long()
-    return {
+    batch = {
         'tokens': cat('tokens'), 'tok_offsets': shifted('tok_offsets', tok_shift),
         'blk_feat': cat('blk_feat', torch.float32), 'deg_in': cat('deg_in'), 'deg_out': cat('deg_out'),
         'blk_seg': shifted('blk_seg', seg_shift), 'blk_pos': cat('blk_pos'),
@@ -239,10 +393,40 @@ def collate(items):
         'sample_id': [it['sample_id'] for it in items],
         'n_segments_total': [it['n_segments_total'] for it in items],
     }
+    if 'tok_weights' in items[0]:
+        batch['tok_weights'] = cat('tok_weights', torch.float32)
+        batch['edge_type'] = cat('edge_type')
+        batch['bin_feat'] = torch.from_numpy(np.stack([it['bin_feat'] for it in items])).float()
+    return batch
+
+
+class BlockBudgetSampler:
+    """Batches of up to batch_size binaries in sampler order, closed early when the next binary would push the
+    batch past `budget` blocks; a binary over budget on its own forms a batch."""
+
+    def __init__(self, sampler, blocks, batch_size, budget):
+        self.sampler, self.blocks, self.batch_size, self.budget = sampler, blocks, batch_size, budget
+
+    def __iter__(self):
+        batch, total = [], 0
+        for item in self.sampler:
+            n = self.blocks[item[0]]
+            if batch and (len(batch) == self.batch_size or total + n > self.budget):
+                yield batch
+                batch, total = [], 0
+            batch.append(item)
+            total += n
+        if batch:
+            yield batch
 
 
 def loader(rows, vocab, cfg, train):
     sampler = EpochSampler(len(rows), cfg.seed, train)
+    if cfg.model == 'gnn':
+        batches = BlockBudgetSampler(sampler, [int(r['num_blocks']) for r in rows], cfg.batch_size, cfg.batch_blocks)
+        return torch.utils.data.DataLoader(
+            BinaryDataset(rows, vocab, cfg), batch_sampler=batches, collate_fn=collate,
+            num_workers=cfg.num_workers, persistent_workers=cfg.num_workers > 0, pin_memory=True)
     return torch.utils.data.DataLoader(
         BinaryDataset(rows, vocab, cfg), batch_size=cfg.batch_size, sampler=sampler, collate_fn=collate,
         num_workers=cfg.num_workers, persistent_workers=cfg.num_workers > 0, pin_memory=True)
