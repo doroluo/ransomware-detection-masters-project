@@ -20,20 +20,33 @@ from metrics import family_recall, floors, scores
 from model import GraphTransformer
 
 
-def parse_config():
+def parse_config(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--protocol', choices=['bundle', 'kfold'], default='bundle')
     ap.add_argument('--fold', type=int)
     ap.add_argument('--arch', choices=['x86', 'all'], default='x86')
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--no-graph', action='store_true')
+    ap.add_argument('--model', choices=['transformer', 'gnn'], default='transformer')
+    ap.add_argument('--encoder', choices=['mean', 'tfidf'], default=None)
+    ap.add_argument('--readout', choices=['fixed', 'gated'], default='fixed')
+    ap.add_argument('--control', choices=['', 'no_edges', 'chain', 'shuffle', 'permute_types'], default='')
     ap.add_argument('--out', help='run directory name override (default: derived from the config)')
+    done = {a.dest for a in ap._actions}
     for f in fields(RunConfig):
-        if f.name not in ('protocol', 'fold', 'arch', 'seed', 'no_graph'):
-            ap.add_argument('--' + f.name.replace('_', '-'), type=type(f.default), default=f.default)
-    args = vars(ap.parse_args())
+        if f.name in done:
+            continue
+        flag = '--' + f.name.replace('_', '-')
+        if isinstance(f.default, bool):
+            ap.add_argument(flag, action='store_true')
+        else:
+            ap.add_argument(flag, type=type(f.default), default=f.default)
+    args = vars(ap.parse_args(argv))
     out = args.pop('out')
-    return RunConfig(**args), out
+    try:
+        return RunConfig(**args), out
+    except ValueError as e:
+        ap.error(str(e))
 
 
 def to_device(batch, device):
