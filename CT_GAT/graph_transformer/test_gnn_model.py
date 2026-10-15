@@ -189,7 +189,7 @@ def test_readouts():
     assert got.shape == (4, D) and torch.isfinite(got).all()
     for s in range(3):
         x = h[index == s]
-        want = F.gelu(fixed.proj(torch.cat([x.sum(0), x.mean(0), x.max(0).values])))
+        want = F.gelu(fixed.proj(torch.cat([x.sum(0) / len(x) ** 0.5, x.mean(0), x.max(0).values])))
         assert torch.allclose(got[s], want, atol=1e-5)
     gated = GatedReadout(D)
     got = gated(h, index, 4)
@@ -199,6 +199,21 @@ def test_readouts():
         alpha = torch.softmax(gated.w(torch.tanh(gated.v(x))).squeeze(-1), 0)
         assert torch.allclose(got[s], (alpha[:, None] * x).sum(0), atol=1e-5)
     assert torch.equal(got[3], torch.zeros(D))
+
+
+def test_readout_scale_bounded():
+    gen = torch.Generator().manual_seed(0)
+    big, small = torch.randn(200_000, D, generator=gen), torch.randn(10, D, generator=gen)
+    h = torch.cat([big, small]).to(DEV)
+    index = torch.cat([torch.zeros(len(big)), torch.ones(len(small))]).long().to(DEV)
+    feats = FixedReadout.pool(h, index, 2)
+    assert torch.isfinite(feats).all() and feats[0].abs().max().item() < 50
+    assert feats[1].abs().max().item() < 50
+    bins = make_bins(sizes=((50_000, 3, 2),))
+    model = model_for()
+    with torch.no_grad(), torch.autocast(DEV, torch.bfloat16):
+        out = model(collate(bins))
+    assert out.shape == (1,) and torch.isfinite(out).all()
 
 
 def test_dirgine_layer():

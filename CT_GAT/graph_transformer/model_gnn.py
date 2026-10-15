@@ -24,18 +24,22 @@ def segment_sum(x, index, n):
 
 
 class FixedReadout(nn.Module):
-    """GELU(Linear(3d -> d)([sum ; mean ; max])) per segment."""
+    """GELU(Linear(3d -> d)([sum / sqrt(n) ; mean ; max])) per segment."""
 
     def __init__(self, d):
         super().__init__()
         self.proj = nn.Linear(3 * d, d)
 
-    def forward(self, h, index, n):
+    @staticmethod
+    def pool(h, index, n):
         x = h.float()
         total = segment_sum(x, index, n)
-        mean = total / segment_sum(torch.ones_like(x[:, :1]), index, n).clamp(min=1)
+        count = segment_sum(torch.ones_like(x[:, :1]), index, n).clamp(min=1)
         top = x.new_zeros(n, x.shape[1]).scatter_reduce(0, index[:, None].expand_as(x), x, 'amax', include_self=False)
-        return F.gelu(self.proj(torch.cat([total, mean, top], 1).to(h.dtype)))
+        return torch.cat([total / count.sqrt(), total / count, top], 1)
+
+    def forward(self, h, index, n):
+        return F.gelu(self.proj(self.pool(h, index, n).to(h.dtype)))
 
 
 class GatedReadout(nn.Module):
