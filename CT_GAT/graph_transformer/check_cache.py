@@ -1,6 +1,9 @@
 """Check cache invariants for every built sample, and compare a few samples against the bundle's own reader.
 
-python check_cache.py [--reference N]
+python check_cache.py [--reference N] [--compare-v1 N]
+
+Every built sample is checked. --compare-v1 also requires N random samples' v1 arrays (and vocab.json) to be
+byte-identical to the v1 cache.
 """
 import argparse
 import csv
@@ -10,7 +13,30 @@ import json
 
 import numpy as np
 
-from build_cache import BUNDLE, CACHE, COUNT_FIELDS, TOKEN_KINDS, npz_path
+from build_cache import (BUNDLE, CACHE, CACHE_VERSION, COUNT_FIELDS, EDGE_KINDS, FCB_EXTERN, TOKEN_KINDS,
+                         npz_path)
+
+V1_CACHE = CACHE.with_name('graph_transformer_cache')
+V1_ARRAYS = ('mn', 'sig', 'beh', 'api', 'blk_insn_ptr', 'blk_api_ptr', 'blk_feat', 'fn_blk_ptr', 'fn_flags',
+             'cfg_edges', 'call_edges', 'mn_u', 'sig_u', 'api_u')
+
+
+def is_acyclic(n, edges):
+    """Kahn's algorithm, one frontier at a time."""
+    indeg = np.bincount(edges[:, 1], minlength=n)
+    order = np.argsort(edges[:, 0], kind='stable')
+    dst = edges[order, 1]
+    ptr = np.zeros(n + 1, dtype=np.int64)
+    np.cumsum(np.bincount(edges[:, 0], minlength=n), out=ptr[1:])
+    frontier, done = np.flatnonzero(indeg == 0), 0
+    while len(frontier):
+        done += len(frontier)
+        counts = ptr[frontier + 1] - ptr[frontier]
+        take = np.repeat(ptr[frontier] - np.cumsum(counts) + counts, counts) + np.arange(counts.sum())
+        hit, times = np.unique(dst[take], return_counts=True)
+        indeg[hit] -= times
+        frontier = hit[indeg[hit] == 0]
+    return done == n
 
 
 def check_sample(z, row, vocab_sizes, vocab_sha):
@@ -45,7 +71,34 @@ def check_sample(z, row, vocab_sizes, vocab_sha):
                      np.log1p(np.bincount(e[:, 1], minlength=B)), np.log1p(np.bincount(e[:, 0], minlength=B))], 1)
     need(np.allclose(feat[:, [0, 2, 4, 5]], want, atol=1e-2), 'blk_feat disagrees with ptrs/edges')
     need(np.all(np.diff(fn_of_block) >= 0), 'blocks not grouped by function')
+
+    need(int(z['cache_version']) == CACHE_VERSION, 'cache_version')
+    kind, back, back_addr, btype, rva = z['edge_kind'], z['edge_back'], z['edge_back_addr'], z['blk_type'], z['blk_rva']
+    E = len(e)
+    need(rva.shape == (B, 2) and rva.dtype == np.uint32 and len(btype) == B, 'blk_rva/blk_type shape')
+    need(all(len(a) == E for a in (kind, back, back_addr)), 'edge array length')
+    need(len(kind) == 0 or (kind.min() >= 0 and kind.max() < len(EDGE_KINDS)), 'edge_kind out of range')
+    need(np.isin(back, (0, 1)).all() and np.isin(back_addr, (0, 1)).all(), 'edge_back values not 0/1')
+    if errors:
+        return errors
+    src, dst = e[:, 0], e[:, 1]
+    need(np.array_equal(kind == EDGE_KINDS.index('extern'), btype[dst] == FCB_EXTERN), 'extern edges != edges into type 6')
+    adjacent = rva[dst, 0] == rva[src, 1]
+    need(np.array_equal(kind == EDGE_KINDS.index('fallthrough'), adjacent & (btype[dst] != FCB_EXTERN)),
+         'fallthrough edges != RVA-adjacent non-extern edges')
+    need(np.array_equal(back_addr.astype(bool), rva[dst, 0] <= rva[src, 0]), 'edge_back_addr != RVA order')
+    need(np.all(rva[:, 0] <= rva[:, 1]), 'blk_rva start > end')
+    need(np.all((np.diff(rva[:, 0].astype(np.int64)) > 0) | (np.diff(fn_of_block) > 0)),
+         'blocks not address-sorted within function')
+    need(is_acyclic(B, e[back == 0].astype(np.int64)), 'cycle remains after removing back edges')
     return errors
+
+
+def compare_v1(sample_id):
+    """Names of v1 arrays that are not byte-identical between the v1 cache and this one."""
+    with np.load(V1_CACHE / 'samples' / f'{sample_id}.npz') as old, np.load(npz_path(sample_id)) as new:
+        return [k for k in V1_ARRAYS if old[k].dtype != new[k].dtype or old[k].shape != new[k].shape
+                or old[k].tobytes() != new[k].tobytes()]
 
 
 def reference_compare(row, vocab):
@@ -74,6 +127,7 @@ def reference_compare(row, vocab):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--reference', type=int, default=3, help='samples to compare against the bundle reader')
+    ap.add_argument('--compare-v1', type=int, default=0, help='random samples to compare byte-for-byte with the v1 cache')
     args = ap.parse_args()
     text = (CACHE / 'vocab.json').read_text(encoding='utf-8')
     vocab, vocab_sha = json.loads(text), hashlib.sha256(text.encode('utf-8')).hexdigest()
@@ -89,6 +143,14 @@ def main():
         if errors:
             bad[r['sample_id']] = errors
     print(json.dumps({'checked': len(index), 'failed': len(bad), 'failures': dict(list(bad.items())[:20])}, indent=2))
+    if args.compare_v1:
+        same_vocab = (hashlib.sha256((V1_CACHE / 'vocab.json').read_bytes()).hexdigest()
+                      == hashlib.sha256((CACHE / 'vocab.json').read_bytes()).hexdigest())
+        picks_v1 = np.random.default_rng(0).choice(len(index), min(args.compare_v1, len(index)), replace=False)
+        differ = {index[i]['sample_id']: d for i in picks_v1 if (d := compare_v1(index[i]['sample_id']))}
+        print(json.dumps({'compare_v1': len(picks_v1), 'vocab_sha256_equal': same_vocab, 'differing': differ}, indent=2))
+        if differ or not same_vocab:
+            bad['compare_v1'] = ['v1 mismatch']
     smallest = sorted(index, key=lambda r: int(r['num_blocks']))
     picks = [smallest[0], smallest[len(smallest) // 2]] + [r for r in smallest if r['label'] != smallest[0]['label']][:1]
     for r in picks[:args.reference]:

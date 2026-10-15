@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Literal, Optional
 
-CACHE = Path('C:/Users/chaoa/Downloads/graph_transformer_cache')
+CACHE = Path('C:/Users/chaoa/Downloads/graph_transformer_cache_v2')
 RUNS = Path('C:/Users/chaoa/Downloads/graph_transformer_runs')
 
 

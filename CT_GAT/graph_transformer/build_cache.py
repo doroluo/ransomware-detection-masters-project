@@ -36,6 +36,9 @@ OPERAND_ABBREV = {'register': 'r', 'immediate': 'i', 'phrase': 'p', 'displacemen
                   'memory': 'm', 'code_target': 'c', 'processor_specific': 's'}
 TOKEN_KINDS = ('mn', 'sig', 'api')
 COUNT_FIELDS = ('num_functions', 'num_blocks', 'num_edges', 'num_instructions')
+CACHE_VERSION = 2
+EDGE_KINDS = ('fallthrough', 'cond_taken', 'jmp', 'indirect', 'extern', 'other')
+FCB_INDJUMP, FCB_EXTERN = 1, 6
 INDEX_FIELDS = ('sample_id', 'label', 'split', 'arch', 'family', 'identity_group', 'fold', 'fold_sha256',
                 *COUNT_FIELDS, 'num_api', 'num_call_edges', 'status', 'error')
 
@@ -73,7 +76,8 @@ def verified(row, want_kind=None):
         return False
     try:
         with np.load(path) as z:
-            return stored_counts(z) == expected_counts(row) and (want_kind is None or str(z['ids_kind']) == want_kind)
+            return (int(z['cache_version']) == CACHE_VERSION and stored_counts(z) == expected_counts(row)
+                    and (want_kind is None or str(z['ids_kind']) == want_kind))
     except Exception:
         return False
 
@@ -106,12 +110,79 @@ def api_string(symbol):
     return symbol['dll'].lower() + '!' + (name if name else '#' + str(symbol.get('ordinal')))
 
 
+def is_cond(mnemonic):
+    """Conditional branch: j* other than jmp, or loop*."""
+    m = mnemonic.lower()
+    return (m.startswith('j') and m != 'jmp') or m.startswith('loop')
+
+
+def classify_edge_kind(src_block, dst_block):
+    """Index into EDGE_KINDS for one CFG edge, by precedence: extern, fallthrough, cond_taken, jmp/indirect, other."""
+    if dst_block['type'] == FCB_EXTERN:
+        return EDGE_KINDS.index('extern')
+    if dst_block['start_rva'] == src_block['end_rva']:
+        return EDGE_KINDS.index('fallthrough')
+    insns = src_block['instructions']
+    last = insns[-1]['mnemonic'].lower() if insns else ''
+    if is_cond(last):
+        return EDGE_KINDS.index('cond_taken')
+    if last == 'jmp':
+        return EDGE_KINDS.index('indirect' if src_block['type'] == FCB_INDJUMP else 'jmp')
+    return EDGE_KINDS.index('other')
+
+
+def dfs_back_edges(n_blocks, edges_local, entry):
+    """Edges whose target is on the DFS stack. Iterative; starts at entry, then restarts at the lowest unvisited block."""
+    edges = np.asarray(edges_local, dtype=np.int64).reshape(-1, 2)
+    back = np.zeros(len(edges), dtype=bool)
+    if n_blocks == 0:
+        return back
+    order = np.argsort(edges[:, 0], kind='stable')
+    ptr = np.zeros(n_blocks + 1, dtype=np.int64)
+    np.cumsum(np.bincount(edges[:, 0], minlength=n_blocks), out=ptr[1:])
+    dst, order, end, nxt = edges[order, 1].tolist(), order.tolist(), ptr[1:].tolist(), ptr[:-1].tolist()
+    state = [0] * n_blocks
+    for root in (entry, *range(n_blocks)):
+        if state[root]:
+            continue
+        state[root] = 1
+        stack = [root]
+        while stack:
+            u = stack[-1]
+            i = nxt[u]
+            if i == end[u]:
+                state[u] = 2
+                stack.pop()
+                continue
+            nxt[u] = i + 1
+            v = dst[i]
+            if state[v] == 1:
+                back[order[i]] = True
+            elif state[v] == 0:
+                state[v] = 1
+                stack.append(v)
+    return back
+
+
+def function_edge_arrays(blocks, edges_local, entry_rva):
+    """edge_kind, edge_back, edge_back_addr (int8, aligned with edges_local) for one function's address-sorted blocks."""
+    edges = np.asarray(edges_local, dtype=np.int64).reshape(-1, 2)
+    kind = np.array([classify_edge_kind(blocks[a], blocks[b]) for a, b in edges.tolist()], dtype=np.int8)
+    start = np.array([b['start_rva'] for b in blocks], dtype=np.int64)
+    entry = next((i for i, b in enumerate(blocks) if b['start_rva'] == entry_rva), 0)
+    back = dfs_back_edges(len(blocks), edges, entry)
+    back_addr = start[edges[:, 1]] <= start[edges[:, 0]]
+    return kind, back.astype(np.int8), back_addr.astype(np.int8)
+
+
 def encode_sample(row):
     """Stream one export, one function record at a time, into flat arrays."""
     sample_id = row['sample_id']
     mn, sig, beh, api = array.array('i'), array.array('i'), array.array('b'), array.array('i')
     blk_insn_ptr, blk_api_ptr, blk_feat = array.array('i', [0]), array.array('i', [0]), array.array('f')
     fn_blk_ptr, fn_flags, cfg_edges = array.array('i', [0]), array.array('b'), array.array('i')
+    edge_kind, edge_back, edge_back_addr = array.array('b'), array.array('b'), array.array('b')
+    blk_type, blk_rva = array.array('b'), array.array('I')
     pending_calls = array.array('q')
     fn_index_by_rva = {}
     mn_ids, sig_ids, api_ids = Interner(), Interner(), Interner()
@@ -146,12 +217,19 @@ def encode_sample(row):
             if len(local) != len(blocks):
                 raise ValueError(f'duplicate block id in function {fn_index}')
             indeg, outdeg = [0] * len(blocks), [0] * len(blocks)
+            fn_edges = []
             for src, dst in record['edges']:
                 a, b = local[src], local[dst]
                 cfg_edges.append(a)
                 cfg_edges.append(b)
                 outdeg[a - base] += 1
                 indeg[b - base] += 1
+                fn_edges.append((a - base, b - base))
+            for arr, new in zip((edge_kind, edge_back, edge_back_addr), function_edge_arrays(blocks, fn_edges, record['rva'])):
+                arr.extend(new.tolist())
+            for block in blocks:
+                blk_type.append(block['type'])
+                blk_rva.extend((block['start_rva'], block['end_rva']))
             for i, block in enumerate(blocks):
                 calls = refs = 0
                 for insn in block['instructions']:
@@ -201,6 +279,9 @@ def encode_sample(row):
         blk_feat=np.frombuffer(blk_feat, dtype=np.float32).reshape(-1, 6).astype(np.float16),
         fn_blk_ptr=np.frombuffer(fn_blk_ptr, dtype=np.int32), fn_flags=np.frombuffer(fn_flags, dtype=np.int8),
         cfg_edges=np.frombuffer(cfg_edges, dtype=np.int32).reshape(-1, 2), call_edges=call_edges,
+        edge_kind=np.frombuffer(edge_kind, dtype=np.int8), edge_back=np.frombuffer(edge_back, dtype=np.int8),
+        edge_back_addr=np.frombuffer(edge_back_addr, dtype=np.int8), blk_type=np.frombuffer(blk_type, dtype=np.int8),
+        blk_rva=np.frombuffer(blk_rva, dtype=np.uint32).reshape(-1, 2), cache_version=np.array(CACHE_VERSION),
     )
     for kind, interner, as_string in (('mn', mn_ids, str), ('sig', sig_ids, sig_string), ('api', api_ids, str)):
         table, remap = interner.sorted_table(as_string)
@@ -268,6 +349,19 @@ def finalize(rows):
     return {k: len(vocab[k]) for k in vocab}, vocab_sha, rewritten
 
 
+def edge_stats(rows):
+    kinds, back, agree, total = np.zeros(len(EDGE_KINDS), dtype=np.int64), 0, 0, 0
+    for r in rows:
+        with np.load(npz_path(r['sample_id'])) as z:
+            kind, eb, ea = z['edge_kind'], z['edge_back'], z['edge_back_addr']
+        kinds += np.bincount(kind, minlength=len(EDGE_KINDS))
+        back += int(eb.sum())
+        agree += int((eb == ea).sum())
+        total += len(kind)
+    return {'edge_kind_counts': dict(zip(EDGE_KINDS, kinds.tolist())), 'back_edges': back,
+            'back_addr_agreement': round(agree / total, 6) if total else None}
+
+
 def write_index(rows, results):
     out = []
     for r in rows:
@@ -315,8 +409,9 @@ def main():
     sizes, vocab_sha, rewritten = finalize([r for r in rows if results[r['sample_id']][0] == 'ok'])
     write_index(rows, results)
     failed = {s: e for s, (st, e) in results.items() if st != 'ok'}
+    stats = edge_stats([r for r in rows if r['sample_id'] not in failed])
     summary = {'eligible': len(rows), 'ok': len(rows) - len(failed), 'failed': failed, 'vocab_sizes': sizes,
-               'vocab_sha': vocab_sha, 'npz_rewritten': rewritten, 'build_seconds': round(build_secs, 1),
+               'vocab_sha': vocab_sha, **stats, 'npz_rewritten': rewritten, 'build_seconds': round(build_secs, 1),
                'total_seconds': round(time.time() - start, 1),
                'disk_bytes': sum(p.stat().st_size for p in (CACHE / 'samples').glob('*.npz'))}
     (CACHE / 'build_summary.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
