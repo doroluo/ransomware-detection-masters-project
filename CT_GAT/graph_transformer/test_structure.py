@@ -43,7 +43,7 @@ def test_shortest_paths():
 def test_no_graph_ignores_structure():
     base = RunConfig(num_workers=0, dropout=0.0)
     manifest = make_manifest(base, load_index())
-    vocab = TokenVocab(manifest.train[:100], 2)
+    vocab = TokenVocab(manifest.train[:100], base)
     rows = manifest.train[:4]
     for no_graph in (True, False):
         cfg = RunConfig(num_workers=0, dropout=0.0, no_graph=no_graph)

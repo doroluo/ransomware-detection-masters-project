@@ -84,7 +84,7 @@ def run(cfg: RunConfig, out_name=None):
 
     manifest = make_manifest(cfg, load_index())
     manifest.save(out / 'manifest.json')
-    vocab = TokenVocab(manifest.train, cfg.min_df)
+    vocab = TokenVocab(manifest.train, cfg)
     (out / 'vocab.json').write_text(json.dumps(vocab.summary(), indent=2), encoding='utf-8')
 
     model = GraphTransformer(cfg, vocab.total).to(device)
