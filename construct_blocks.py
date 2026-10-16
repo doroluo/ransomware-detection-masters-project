@@ -202,6 +202,7 @@ class MendeleyCFGDataset(Dataset):
 def preprocess_and_save_dataset(root_dir: str = ".", output_dir: str = "processed_graphs"):
     """
     Pre-processes all graphs across splits (train/test) and saves them to disk as PyTorch .pt files.
+    Skips files that have already been processed and saved.
     """
     for split in ["train", "test"]:
         split_out_dir = Path(output_dir) / split
@@ -211,17 +212,28 @@ def preprocess_and_save_dataset(root_dir: str = ".", output_dir: str = "processe
         dataset = MendeleyCFGDataset(root_dir=root_dir, split=split, max_blocks_per_binary=500)
         
         num_graphs = len(dataset)
-        print(f"    Found {num_graphs} graph(s) to process in '{split}' split.")
+        print(f"    Found {num_graphs} graph(s) indexed in '{split}' split.")
         
+        skipped_count = 0
+        processed_count = 0
+
         for i in range(num_graphs):
-            data = dataset[i]
             save_path = split_out_dir / f"graph_{i}.pt"
+
+            # Check existence BEFORE dataset[i] to avoid running CodeBERT
+            if save_path.exists():
+                skipped_count += 1
+                continue
+
+            data = dataset[i]
             torch.save(data, save_path)
+            processed_count += 1
             
-            # Print progress every 50 graphs
+            # Print progress every 50 newly processed graphs or at completion
             if (i + 1) % 50 == 0 or (i + 1) == num_graphs:
                 print(f"    Saved [{i + 1}/{num_graphs}] graphs to {split_out_dir}")
-
+                
+        print(f"✓ Summary for '{split}': {processed_count} new graphs saved, {skipped_count} existing graphs skipped.")
 
 if __name__ == "__main__":
     # 1. Print Dataset Graph Breakdown
