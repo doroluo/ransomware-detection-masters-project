@@ -50,11 +50,18 @@ class Preds:
     pred: np.ndarray
     cluster: np.ndarray
     arch: np.ndarray = None
+    truncated: np.ndarray = None
 
 
 def read_rows(path, method=None):
     with path.open(encoding='utf-8', newline='') as f:
         return [r for r in csv.DictReader(f) if r.get('split', 'test') == 'test' and r.get('method') == method]
+
+
+def truncation(row):
+    """1 if the binary kept fewer blocks than it has, 0 if all, -1 when the predictions file has no such columns."""
+    kept, total = row.get('n_blocks_kept'), row.get('n_blocks_total')
+    return -1 if kept in (None, '') or total in (None, '') else int(int(kept) < int(total))
 
 
 def pool(rows_by_fold, thresholds=None):
@@ -66,7 +73,7 @@ def pool(rows_by_fold, thresholds=None):
     y = np.array([int(r['label']) for _, r in rows])
     cluster = np.array([f"fam:{r['family']}" if r['label'] == '1' else f"id:{r['sample_id']}" for _, r in rows])
     return Preds(np.array([r['sample_id'] for _, r in rows]), y, prob, pred, cluster,
-                 np.array([r.get('arch', '') for _, r in rows]))
+                 np.array([r.get('arch', '') for _, r in rows]), np.array([truncation(r) for _, r in rows]))
 
 
 def group_scope(group):

@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import scipy.sparse as sp
+import torch
 from sklearn.feature_extraction.text import TfidfTransformer
 
 import data
@@ -618,3 +619,190 @@ def test_v3_manifests_on_the_combined_cache(arch):
         assert not {r['family'] for r in m.test if r['label']} & {r['family'] for r in m.train + m.val if r['label']}
         assert not ({r['identity_group'] for r in m.test if not r['label']}
                     & {r['identity_group'] for r in m.train + m.val if not r['label']})
+
+
+# step 6b: per-binary block cap on the gnn path
+
+def fn_sizes(z):
+    return np.diff(z['fn_blk_ptr'].astype(np.int64))
+
+
+def expected_eval_kept(z, cap):
+    """Independent reading of the eval rule: non-library first, API references desc, size desc, index asc; the longest
+    prefix whose blocks fit."""
+    sizes = fn_sizes(z)
+    cand = np.flatnonzero(sizes > 0)
+    api = z['blk_api_ptr'].astype(np.int64)
+    ptr = z['fn_blk_ptr'].astype(np.int64)
+    n_api = api[ptr[cand + 1]] - api[ptr[cand]]
+    library = (z['fn_flags'][cand] & 1).astype(int)
+    order = sorted(range(len(cand)), key=lambda k: (library[k], -n_api[k], -sizes[cand[k]], k))
+    kept, total = [], 0
+    for k in order:
+        if total + sizes[cand[k]] > cap:
+            break
+        kept.append(int(cand[k]))
+        total += int(sizes[cand[k]])
+    return sorted(kept)
+
+
+@pytest.fixture
+def small_cap(monkeypatch):
+    monkeypatch.setattr(data, 'MAX_BINARY_BLOCKS', 150)
+    return 150
+
+
+def synth(vocab, seed=7):
+    return synth_binary(np.random.default_rng(seed), vocab)
+
+
+def test_cap_constant_and_untouched_binaries(vocab):
+    assert data.MAX_BINARY_BLOCKS == 500_000
+    z = synth(vocab)
+    out = encode(z, vocab, gnn(), 's')
+    assert out['n_blocks_kept'] == out['n_blocks_total'] == int(fn_sizes(z).sum()) == len(out['blk_seg'])
+
+
+def test_cap_respected_whole_functions_in_eval_and_train(vocab, small_cap):
+    z = synth(vocab)
+    sizes = fn_sizes(z)
+    assert sizes.sum() > small_cap
+    for epoch in (None, 1, 2, 3):
+        out = encode(z, vocab, gnn(), 's', epoch)
+        assert 0 < out['n_blocks_kept'] <= small_cap and out['n_blocks_kept'] == len(out['blk_seg'])
+        assert out['n_blocks_kept'] == out['seg_len'].sum() and out['n_blocks_total'] == sizes.sum()
+        assert out['n_fn'] >= 1 and out['n_segments_total'] == (sizes > 0).sum()
+        left = Counter(sizes[sizes > 0].tolist())
+        assert not (Counter(out['seg_len'].tolist()) - left)
+        assert out['call_src'].size == 0 or max(out['call_src'].max(), out['call_dst'].max()) < out['n_fn']
+        assert out['edge_seg'].size == 0 or out['edge_seg'].max() < out['n_fn']
+
+
+def test_cap_eval_selection_is_deterministic_and_ordered(vocab, small_cap):
+    z = synth(vocab)
+    a, b = encode(z, vocab, gnn(), 's'), encode(z, vocab, gnn(), 's')
+    assert all(np.array_equal(a[k], b[k]) for k in a if isinstance(a[k], np.ndarray))
+    keep = data.cap_functions(z['fn_blk_ptr'], z['fn_flags'], z['blk_api_ptr'], fn_sizes(z) > 0, None, small_cap)
+    assert np.flatnonzero(keep).tolist() == expected_eval_kept(z, small_cap)
+    assert np.array_equal(keep, data.cap_functions(z['fn_blk_ptr'], z['fn_flags'], z['blk_api_ptr'], fn_sizes(z) > 0,
+                                                   None, small_cap))
+    assert sorted(a['seg_len'].tolist()) == sorted(fn_sizes(z)[expected_eval_kept(z, small_cap)].tolist())
+
+
+def test_cap_train_selection_varies_across_epochs_and_is_reproducible(vocab, small_cap):
+    z = synth(vocab)
+    kept = []
+    for epoch in range(1, 7):
+        out = encode(z, vocab, gnn(), 's', epoch)
+        assert out['n_blocks_kept'] <= small_cap
+        kept.append(tuple(out['seg_len'].tolist()))
+        assert kept[-1] == tuple(encode(z, vocab, gnn(), 's', epoch)['seg_len'].tolist())
+    assert len(set(kept)) >= 4
+    eval_kept = tuple(encode(z, vocab, gnn(), 's')['seg_len'].tolist())
+    assert any(k != eval_kept for k in kept)
+
+
+def test_cap_edge_cases():
+    ptr = np.array([0, 40, 50, 60, 70])
+    flags = np.zeros(4, dtype=np.int8)
+    api = np.arange(71)
+    keep = np.ones(4, dtype=bool)
+    assert data.cap_functions(ptr, flags, api, keep, None, 50).tolist() == [True, True, False, False]
+    first_too_big = data.cap_functions(ptr, flags, api, keep, None, 30)
+    assert first_too_big.tolist() == [False, True, False, False]
+    huge = data.cap_functions(np.array([0, 90]), flags[:1], np.arange(91), np.ones(1, dtype=bool), None, 30)
+    assert huge.tolist() == [True]
+    sub = np.array([True, False, True, True])
+    for rng in (None, np.random.default_rng(0)):
+        got = data.cap_functions(ptr, flags, api, sub, rng, 25)
+        assert not (got & ~sub).any() and got.any() and (np.diff(ptr)[got]).sum() <= 25
+    assert data.cap_functions(ptr, flags, api, keep, None, 10 ** 9) is keep
+
+
+def test_function_dropping_happens_before_the_cap(vocab, small_cap):
+    z = synth(vocab)
+    cfg = gnn(drop_functions=0.5)
+    for epoch in (1, 2, 3):
+        rng = np.random.default_rng([cfg.seed, epoch, 0])
+        survivors = data.keep_functions(z['fn_flags'], fn_sizes(z), cfg, rng)
+        out = encode(z, vocab, cfg, 's', epoch)
+        assert out['n_blocks_kept'] <= small_cap
+        assert out['n_blocks_kept'] <= fn_sizes(z)[survivors].sum()
+        assert out['n_blocks_total'] == fn_sizes(z).sum()
+        assert not (Counter(out['seg_len'].tolist()) - Counter(fn_sizes(z)[survivors].tolist()))
+
+
+def test_bin_feat_counts_the_full_binary(vocab, small_cap, monkeypatch):
+    z = synth(vocab)
+    capped = encode(z, vocab, gnn(), 's')
+    want = np.log1p([len(z['blk_feat']), len(z['fn_flags']), len(z['mn']), len(z['cfg_edges']),
+                     len(z['call_edges'])]).astype(np.float32)
+    assert np.array_equal(capped['bin_feat'], want)
+    monkeypatch.setattr(data, 'MAX_BINARY_BLOCKS', 10 ** 9)
+    assert np.array_equal(encode(z, vocab, gnn(), 's')['bin_feat'], want)
+
+
+def test_collate_and_loader_carry_the_block_counts(vocab, small_cap):
+    z = synth(vocab)
+    items = [{**encode(z, vocab, gnn(), 's'), 'label': 1, 'sample_id': 'a'},
+             {**encode(z, vocab, RunConfig(num_workers=0), 's'), 'label': 0, 'sample_id': 'b'}]
+    batch = collate(items[:1])
+    assert batch['n_blocks_kept'] == [items[0]['n_blocks_kept']] and batch['n_blocks_total'] == [fn_sizes(z).sum()]
+    assert 'n_blocks_kept' not in collate(items[1:]) and 'tok_weights' not in collate(items[1:])
+    rows = [{'sample_id': 'x', 'label': 0, 'num_blocks': '8000000'}, {'sample_id': 'y', 'label': 0, 'num_blocks': '10'}]
+    sampler = loader(rows, vocab, gnn(), train=False).batch_sampler
+    assert sampler.blocks == [small_cap, 10]
+
+
+def test_v2_batches_are_unchanged_by_the_cap(index, vocab, monkeypatch):
+    rows = sorted((r for r in index if int(r['num_blocks']) <= 500_000), key=lambda r: -int(r['num_blocks']))[:4]
+    assert len(rows) == 4 and all(int(r['num_blocks']) <= data.MAX_BINARY_BLOCKS for r in rows)
+    if 'edge_kind' not in load_real(rows[0]['sample_id']):
+        pytest.skip('cache has no edge_kind/edge_back (v1)')
+    cfgs = [gnn(), gnn(control='shuffle', mask_tokens=0.15, drop_functions=0.1, drop_edges=0.2)]
+    numeric = lambda out: {k: v for k, v in out.items() if isinstance(v, np.ndarray)}
+    for cfg in cfgs:
+        for epoch in (None, 1):
+            for i, r in enumerate(rows):
+                z = load_real(r['sample_id'])
+                monkeypatch.setattr(data, 'MAX_BINARY_BLOCKS', 500_000)
+                capped = encode(z, vocab, cfg, r['sample_id'], epoch, i)
+                monkeypatch.setattr(data, 'MAX_BINARY_BLOCKS', 10 ** 9)
+                free = encode(z, vocab, cfg, r['sample_id'], epoch, i)
+                assert (capped['n_blocks_kept'], capped['n_blocks_total']) == (free['n_blocks_kept'],
+                                                                               free['n_blocks_total'])
+                assert cfg.drop_functions or capped['n_blocks_kept'] == capped['n_blocks_total']
+                assert capped.keys() == free.keys()
+                for k, v in numeric(capped).items():
+                    assert np.array_equal(v, free[k]) and v.dtype == free[k].dtype, k
+    for train in (False, True):
+        monkeypatch.setattr(data, 'MAX_BINARY_BLOCKS', 500_000)
+        a = list(loader(rows, vocab, gnn(), train=train))
+        monkeypatch.setattr(data, 'MAX_BINARY_BLOCKS', 10 ** 9)
+        b = list(loader(rows, vocab, gnn(), train=train))
+        assert len(a) == len(b) and [x['sample_id'] for x in a] == [x['sample_id'] for x in b]
+        for x, y in zip(a, b):
+            for k, v in x.items():
+                if torch.is_tensor(v):
+                    assert torch.equal(v, y[k]) and v.dtype == y[k].dtype, k
+                else:
+                    assert v == y[k], k
+
+
+COMBINED_CACHE = Path('C:/Users/chaoa/Downloads/graph_transformer_cache_combined')
+
+
+@pytest.mark.skipif(not (COMBINED_CACHE / 'index.csv').exists(), reason='needs the combined cache')
+def test_the_8m_block_goodware_fits_the_cap(monkeypatch):
+    monkeypatch.setattr(data, 'CACHE', COMBINED_CACHE)
+    index = load_index(COMBINED_CACHE)
+    big = max(index, key=lambda r: int(r['num_blocks']))
+    assert big['sample_id'].startswith('a1a05c00ab707554') and int(big['num_blocks']) == 7_991_293
+    cfg = gnn(protocol='kfold_v3', fold=0, arch='all')
+    vocab = TokenVocab([r for r in make_manifest(cfg, index).train][:40], cfg)
+    z = load_sample(big['sample_id'])
+    out = encode_binary(z, vocab, cfg, None, big['sample_id'])
+    assert 0 < out['n_blocks_kept'] <= 500_000 and out['n_blocks_total'] == 7_991_293
+    assert out['n_blocks_kept'] > 400_000 and len(out['blk_seg']) == out['n_blocks_kept']
+    assert out['bin_feat'][0] == np.float32(np.log1p(7_991_293))
+    assert out['call_src'].size == 0 or out['call_src'].max() < out['n_fn']

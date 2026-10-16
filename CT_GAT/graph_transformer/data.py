@@ -10,6 +10,7 @@ import torch
 from config import CACHE, RunConfig
 
 TOKEN_KINDS = ('mn', 'sig', 'beh', 'api')
+MAX_BINARY_BLOCKS = 500_000
 
 
 def load_index(cache=None):
@@ -247,6 +248,37 @@ def keep_functions(fn_flags, sizes, cfg, rng):
     return keep & ~drop
 
 
+def cap_functions(fn_blk_ptr, fn_flags, blk_api_ptr, keep, rng, cap=None):
+    """Whole functions of `keep` whose blocks sum to at most `cap` (default MAX_BINARY_BLOCKS), at least one. Unchanged
+    when they already fit. Order of preference as in `select_segments`: evaluation (rng None) takes non-library
+    first, then API references, then size, ties by index; training draws the same Efraimidis-Spirakis keys from `rng`.
+    The longest prefix of that order that fits is kept; if even the first function is over the cap, the first one in
+    order that fits is kept (else the smallest)."""
+    cap = MAX_BINARY_BLOCKS if cap is None else cap
+    fn_ptr = np.asarray(fn_blk_ptr, dtype=np.int64)
+    cand = np.flatnonzero(keep)
+    length = (fn_ptr[cand + 1] - fn_ptr[cand])
+    if length.sum() <= cap:
+        return keep
+    api_ptr = np.asarray(blk_api_ptr, dtype=np.int64)
+    n_api = api_ptr[fn_ptr[cand + 1]] - api_ptr[fn_ptr[cand]]
+    library = (np.asarray(fn_flags)[cand] & 1).astype(np.int64)
+    if rng is None:
+        order = np.lexsort((np.arange(len(cand)), -length, -n_api, library))
+    else:
+        weight = (1.0 + 9.0 * (1 - library)) * (1.0 + np.log1p(n_api)) * (1.0 + np.log1p(length))
+        order = np.argsort(-(np.log(rng.random(len(cand))) / weight), kind='stable')
+    fits = np.cumsum(length[order]) <= cap
+    n_keep = int(fits.sum()) if fits.all() else int(np.argmin(fits))
+    if n_keep == 0:
+        small = np.flatnonzero(length[order] <= cap)
+        order = order[[small[0] if len(small) else np.argmin(length[order])]]
+        n_keep = 1
+    capped = np.zeros(len(keep), dtype=bool)
+    capped[cand[order[:n_keep]]] = True
+    return capped
+
+
 def permute_within(seg, values, rng):
     """`values` shuffled among the entries that share a `seg`."""
     out = np.empty_like(values)
@@ -256,12 +288,14 @@ def permute_within(seg, values, rng):
 
 def encode_binary_gnn(z, vocab, cfg, rng, sample_id):
     """Batch contract: one segment per kept function, edge types, tf-idf weights, controls, masking and, in training,
-CFG edge drop and flip (after the control)."""
+CFG edge drop and flip (after the control). A binary over MAX_BINARY_BLOCKS keeps a subset of whole functions
+(`cap_functions`, after function dropping); `bin_feat` counts the full binary."""
     if 'edge_kind' not in z:
         raise KeyError('sample lacks edge_kind/edge_back; point config.CACHE at the v2 cache')
     fn_ptr = z['fn_blk_ptr'].astype(np.int64)
     sizes = np.diff(fn_ptr)
-    fn = np.flatnonzero(keep_functions(z['fn_flags'], sizes, cfg, rng))
+    keep = keep_functions(z['fn_flags'], sizes, cfg, rng)
+    fn = np.flatnonzero(cap_functions(fn_ptr, z['fn_flags'], z['blk_api_ptr'], keep, rng))
     length, n_seg = sizes[fn], len(fn)
     library = (z['fn_flags'][fn] & 1).astype(np.int64)
 
@@ -333,6 +367,7 @@ CFG edge drop and flip (after the control)."""
         'call_src': pairs // max(n_seg, 1), 'call_dst': pairs % max(n_seg, 1),
         'bin_feat': np.log1p([n_total_blocks, len(z['fn_flags']), len(z['mn']), len(e), len(c)]).astype(np.float32),
         'n_segments_total': int((sizes > 0).sum()),
+        'n_blocks_kept': n_blk, 'n_blocks_total': int(sizes.sum()),
     }
 
 
@@ -446,6 +481,9 @@ def collate(items):
         'sample_id': [it['sample_id'] for it in items],
         'n_segments_total': [it['n_segments_total'] for it in items],
     }
+    if 'n_blocks_kept' in items[0]:
+        batch['n_blocks_kept'] = [it['n_blocks_kept'] for it in items]
+        batch['n_blocks_total'] = [it['n_blocks_total'] for it in items]
     if 'tok_weights' in items[0]:
         batch['tok_weights'] = cat('tok_weights', torch.float32)
         batch['edge_type'] = cat('edge_type')
@@ -476,7 +514,8 @@ class BlockBudgetSampler:
 def loader(rows, vocab, cfg, train):
     sampler = EpochSampler(len(rows), cfg.seed, train)
     if cfg.model == 'gnn':
-        batches = BlockBudgetSampler(sampler, [int(r['num_blocks']) for r in rows], cfg.batch_size, cfg.batch_blocks)
+        blocks = [min(int(r['num_blocks']), MAX_BINARY_BLOCKS) for r in rows]
+        batches = BlockBudgetSampler(sampler, blocks, cfg.batch_size, cfg.batch_blocks)
         return torch.utils.data.DataLoader(
             BinaryDataset(rows, vocab, cfg), batch_sampler=batches, collate_fn=collate,
             num_workers=cfg.num_workers, persistent_workers=cfg.num_workers > 0, pin_memory=True)

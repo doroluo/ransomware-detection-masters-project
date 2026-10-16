@@ -65,14 +65,15 @@ def to_device(batch, device):
 @torch.no_grad()
 def predict(model, data, device):
     model.eval()
-    ids, probs, n_seg = [], [], []
+    ids, probs, sizes = [], [], []
     for batch in data:
         with torch.autocast('cuda', dtype=torch.bfloat16):
             logits = model(to_device(batch, device))
         probs.append(torch.sigmoid(logits).cpu().numpy())
         ids += batch['sample_id']
-        n_seg += batch['n_segments_total']
-    return ids, np.concatenate(probs), n_seg
+        none = [None] * len(batch['sample_id'])
+        sizes += zip(batch['n_segments_total'], batch.get('n_blocks_kept', none), batch.get('n_blocks_total', none))
+    return ids, np.concatenate(probs), sizes
 
 
 def evaluate(rows, ids, probs, threshold):
@@ -113,11 +114,19 @@ def write_predictions(path, rows, by_split, threshold):
     by_id = {r['sample_id']: r for r in rows}
     with path.open('w', newline='', encoding='utf-8') as f:
         w = csv.writer(f)
-        w.writerow(['sample_id', 'split', 'label', 'prob', 'pred', 'arch', 'family', 'fold', 'n_segments_total'])
-        for split, (ids, probs, n_seg) in by_split.items():
-            for i, p, s in zip(ids, probs, n_seg):
+        w.writerow(['sample_id', 'split', 'label', 'prob', 'pred', 'arch', 'family', 'fold', 'n_segments_total',
+                    'n_blocks_kept', 'n_blocks_total'])
+        for split, (ids, probs, sizes) in by_split.items():
+            for i, p, (n_seg, kept, total) in zip(ids, probs, sizes):
                 r = by_id[i]
-                w.writerow([i, split, r['label'], f'{p:.6f}', int(p >= threshold), r['arch'], r['family'], r['fold'], s])
+                w.writerow([i, split, r['label'], f'{p:.6f}', int(p >= threshold), r['arch'], r['family'], r['fold'],
+                            n_seg, '' if kept is None else kept, '' if total is None else total])
+
+
+def truncated_count(sizes):
+    """Binaries whose kept blocks are fewer than their blocks; `sizes` are (n_segments_total, kept, total) triples
+    (kept and total are None on the transformer path, which does not record them)."""
+    return sum(kept is not None and kept < total for _, kept, total in sizes)
 
 
 def run(cfg: RunConfig, out_name=None):
@@ -214,6 +223,7 @@ def run(cfg: RunConfig, out_name=None):
     thr_f1, thr_auc = chosen['f1'][1], chosen['auc'][1]
     metrics = {
         'run': cfg.name, 'best_epoch': best_f1_epoch, 'epochs_run': len(history), 'val_macro_f1': best_f1,
+        'truncated_test': truncated_count(chosen['f1'][0]['test'][2]),
         'test': test_scores('f1', cfg.threshold),
         'floors': floors(labels, [by_id[i]['label'] for i in ids], [by_id[i]['arch'] for i in ids]),
         'family_recall': test_family_recall('f1', cfg.threshold),

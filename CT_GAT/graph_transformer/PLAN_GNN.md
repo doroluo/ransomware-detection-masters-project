@@ -296,7 +296,11 @@ GT_CACHE=... python check_cache.py --compare-v1 200 --compare-base C:/Users/chao
 - **Memory risk.** 71 combined binaries exceed v2's largest (235,331 blocks); 68 of them have a v3 fold, 33 of those
   are in the matched subset. The largest five by blocks are 7,991,293, 7,190,784, 4,438,416, 3,002,869 and 2,729,833
   (all `x64` goodware from `Balanced_Goodware`; the fifth has no v3 fold). `smoke_gnn_memory.py` with `GT_CACHE` set must
-  pass on the GPU before the v3 queue starts.
+  pass on the GPU before the v3 queue starts. Step 6b caps the gnn data path at `data.MAX_BINARY_BLOCKS` = 500,000
+  blocks per binary: a binary over the cap keeps whole functions (evaluation: non-library first, API references,
+  size; training: the same weighted random keys, redrawn each epoch), `bin_feat` still counts the full binary, and
+  `predictions*.csv` gain `n_blocks_kept` / `n_blocks_total` (`metrics.json`: `truncated_test`). No v2 binary
+  reaches the cap, so existing gnn runs are unchanged.
 - **TF-IDF baselines (seed 0, pooled over folds 0-4).** Logistic regression on sig+api counts; macro-F1 at 0.5 /
   at each fold's validation threshold.
 

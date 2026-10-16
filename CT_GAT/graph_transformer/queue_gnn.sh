@@ -6,8 +6,10 @@
 # "stopped before <name>" and skipped; a stale RUNS/STOP is removed at start. --dry prints what would run
 # (DRY_RUN_MIN=<min> charges that many minutes per run to try the guard).
 # GT_PY / GT_RUNS override the interpreter / runs directory, GT_TRAIN_PATTERN the regex that finds a live train.py
-# (testing). Stage v3 (kfold_v3 on the combined cache, arch all then matched, folds 0-4, seed 0) exports GT_CACHE for every
-# python call.
+# (testing). Every python call runs with PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True (the GPU is shared). A run
+# that exits non-zero is retried once, logged as "retry <name>" (the first log is kept as <name>.log.try1); no retry
+# when RUNS/STOP exists, so stop_queue.sh --now does not restart the run it killed. Stage v3 (kfold_v3 on the combined
+# cache, arch all then matched, folds 0-4, seed 0) exports GT_CACHE for every python call.
 cd "$(dirname "$0")"
 PY=/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe
 R=/c/Users/chaoa/Downloads/graph_transformer_runs
@@ -17,6 +19,7 @@ while [ $# -gt 0 ]; do
   case $1 in --stage) STAGE=$2; shift;; --dry) DRY=1;; *) STAGE=;; esac; shift
 done
 [ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3 [--dry]"; exit 2; }
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 [ $STAGE = v3 ] && export GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined
 if [ $STAGE = day1 ]; then GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-290}; else GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-600}; fi
 DRY_RUN_MIN=${DRY_RUN_MIN:-0}
@@ -38,6 +41,8 @@ run() { name=$1; shift
   if [ $DRY = 1 ]; then echo "run $name $*"; GPU_SECS=$((GPU_SECS + DRY_RUN_MIN * 60)); return; fi
   echo "start $name $(date +%T)"; t0=$SECONDS
   $PY train.py "$@" > $R/logs/$name.log 2>&1; rc=$?
+  if [ $rc != 0 ] && [ ! -f $R/STOP ]; then echo "retry $name"; mv -f $R/logs/$name.log $R/logs/$name.log.try1
+    $PY train.py "$@" > $R/logs/$name.log 2>&1; rc=$?; fi
   GPU_SECS=$((GPU_SECS + SECONDS - t0))
   echo "finished $name rc=$rc $(date +%T) gpu_min=$((GPU_SECS / 60))"; }
 

@@ -23,6 +23,7 @@ import numpy as np
 import report
 import stats
 from config import RunConfig
+from data import MAX_BINARY_BLOCKS
 
 SEED = 0
 ARMS = (('R0 TF-IDF', 'tfidf'), ('R2 tfidf', 'kfold_x86_gnn-noedges'), ('R2 mean', 'kfold_x86_gnn-noedges-enc-mean'),
@@ -207,6 +208,27 @@ def beats(r):
     return all(r[k]['diff'] >= m and r[k]['lo'] > 0 for k, m in (('auc', MIN_AUC), ('macro_f1', MIN_F1)))
 
 
+def v3_truncation(arch):
+    """One line: R7's test binaries cut by the per-binary block cap (AUC checkpoint, validation threshold) and the
+    ransomware / goodware recall on the cut and the uncut ones."""
+    group = v3_group(arch, 'gnn')
+    complete, partial = stats.load_group(group, 'auc', ('kfold_v3', arch))
+    if SEED not in complete:
+        return f"- Arch {arch}: truncation not assessed, R7 ({group}) has no complete seed {SEED}."
+    p = complete[SEED]
+    if (p.truncated < 0).any():
+        return (f"- Arch {arch}: truncation not assessed, R7 predictions lack n_blocks_kept / n_blocks_total "
+                "(run predates the cap).")
+
+    def cell(mask):
+        r, g = mask & (p.y == 1), mask & (p.y == 0)
+        recall = lambda m, label: f'{np.mean(p.pred[m] == label):.3f} (n={int(m.sum())})' if m.any() else 'n/a (n=0)'
+        return f"R recall {recall(r, 1)}, G recall {recall(g, 0)}"
+    cut = p.truncated == 1
+    return (f"- Arch {arch}: R7 truncated {int(cut.sum())} of {len(p.y)} test binaries (n_blocks_kept < n_blocks_total, "
+            f"cap {MAX_BINARY_BLOCKS}); truncated: {cell(cut)}; untruncated: {cell(~cut)}.")
+
+
 def v3_verdict(arch, results):
     parts, missing = [], []
     for ref in ('R2 no-edges', 'R4 shuffle'):
@@ -236,6 +258,7 @@ def v3(resamples):
         out += [f'## Arch {arch}: pooled table', ''] + v3_table(arch) + ['']
         out += ['x86-rule macro-F1 per fold: ' + ', '.join(f"{f['x86_rule']['macro_f1']:.3f}" for f in per_fold)
                 + f" (pooled {pooled_floors['x86_rule']['macro_f1']:.3f}).", '']
+        out += [v3_truncation(arch), '']
         out += [f'### Arch {arch}: paired differences, second minus first, AUC selection ({LABEL})', '']
         results = {}
         for a, b in V3_PAIRS:

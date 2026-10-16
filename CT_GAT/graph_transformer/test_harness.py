@@ -636,7 +636,7 @@ def test_v3_gates_beats_both_on_strong_signal(tmp_path, monkeypatch):
         write_v3_run(tmp_path, 'all', fold, 1.2, control='shuffle')
     gates.v3_cell.cache_clear()
     text = '\n'.join(gates.v3(100))
-    line = next(l for l in text.splitlines() if l.startswith('- Arch all'))
+    line = next(l for l in text.split('## Verdict')[1].splitlines() if l.startswith('- Arch all'))
     assert line.startswith('- Arch all: R7 beats both R2 and R4: beats R2 no-edges') and 'beats R4 shuffle' in line
 
 
@@ -775,3 +775,142 @@ def test_queue_v3_exports_the_combined_cache_and_keeps_stop_and_skip(tmp_path):
                                                    'val_threshold.py'}
     assert all(c.endswith(combined) for c in calls), calls
     assert (runs / 'gates_v3.md').exists() and out[-1].startswith('queue done')
+
+
+# step 6b: truncation columns, the v3 truncation line, queue env and retry
+
+def test_write_predictions_adds_trailing_block_columns_and_readers_still_work(tmp_path):
+    import train
+    rows = [{'sample_id': s, 'label': y, 'arch': a, 'family': 'f', 'fold': 1}
+            for s, y, a in (('a', 1, 'x86'), ('b', 0, 'x64'), ('c', 1, 'x64'))]
+    by_split = {'val': (['a'], np.array([0.9]), [(5, 10, 10)]),
+                'test': (['b', 'c'], np.array([0.2, 0.7]), [(7, 400, 900), (3, None, None)])}
+    path = tmp_path / 'predictions.csv'
+    train.write_predictions(path, rows, by_split, 0.5)
+    with path.open(newline='') as f:
+        read = list(csv.DictReader(f))
+    assert list(read[0]) == ['sample_id', 'split', 'label', 'prob', 'pred', 'arch', 'family', 'fold',
+                             'n_segments_total', 'n_blocks_kept', 'n_blocks_total']
+    assert [(r['n_segments_total'], r['n_blocks_kept'], r['n_blocks_total']) for r in read] == [
+        ('5', '10', '10'), ('7', '400', '900'), ('3', '', '')]
+    assert train.truncated_count(by_split['test'][2]) == 1 and train.truncated_count([(1, 5, 5)]) == 0
+    assert [stats.truncation(r) for r in read] == [0, 1, -1]
+    assert len(report.read_predictions(path)) == 2
+    import val_threshold
+    assert val_threshold.load(tmp_path)[2].tolist() == [0, 1]
+
+
+def test_stats_pool_reads_truncation_by_column_name():
+    rows = [{'sample_id': 'a', 'label': '1', 'prob': '0.9', 'pred': '1', 'family': 'f', 'arch': 'x86'},
+            {'sample_id': 'b', 'label': '0', 'prob': '0.1', 'pred': '0', 'family': 'g', 'arch': 'x64',
+             'n_blocks_kept': '5', 'n_blocks_total': '9'}]
+    assert stats.pool({0: rows}).truncated.tolist() == [-1, 1]
+    old = stats.pool({0: rows[:1]})
+    assert old.truncated.tolist() == [-1] and old.ids.tolist() == ['a']
+
+
+def write_truncated_v3_run(root, arch, truncated_ids):
+    for fold in range(5):
+        d = write_v3_run(root, arch, fold, 1.5)
+        for fname in ('predictions.csv', 'predictions_auc.csv'):
+            with (d / fname).open(newline='') as f:
+                rows = list(csv.DictReader(f))
+            with (d / fname).open('w', newline='') as f:
+                w = csv.DictWriter(f, fieldnames=[*rows[0], 'n_blocks_kept', 'n_blocks_total'])
+                w.writeheader()
+                for r in rows:
+                    cut = r['sample_id'] in truncated_ids
+                    w.writerow({**r, 'n_blocks_kept': 100 if cut else 50, 'n_blocks_total': 900 if cut else 50})
+
+
+def test_v3_gates_truncation_line(tmp_path, monkeypatch):
+    build_v3_fake(tmp_path, monkeypatch)
+    for d in tmp_path.glob('v3kfold*_matched_gnn_s0'):
+        shutil.rmtree(d)
+    cut = {f'f{fold}_{i}' for fold in range(5) for i in range(0, 120, 10)}
+    write_truncated_v3_run(tmp_path, 'matched', cut)
+    gates.v3_cell.cache_clear()
+    text = '\n'.join(gates.v3(30))
+    lines = {l.split(':')[0]: l for l in text.splitlines() if 'truncat' in l and l.startswith('- Arch')}
+    assert 'truncation not assessed, R7 predictions lack n_blocks_kept' in lines['- Arch all']
+    line = lines['- Arch matched']
+    assert f'R7 truncated {5 * 12} of 600 test binaries' in line and 'cap 500000' in line
+    assert 'truncated: R recall' in line and '; untruncated: R recall' in line
+    p = stats.load_group('kfold_v3_matched_gnn', 'auc', ('kfold_v3', 'matched'))[0][0]
+    m = p.truncated == 1
+    assert m.sum() == 60 and f"G recall {np.mean(p.pred[m & (p.y == 0)] == 0):.3f} (n={int((m & (p.y == 0)).sum())})" in line
+
+
+STAGE_STUB = """#!/bin/bash
+echo "$* ALLOC=$PYTORCH_CUDA_ALLOC_CONF" >> "$GT_RUNS/calls.txt"
+if [ "$1" = train.py ]; then
+  case " $* " in *" --fold $FAIL_ALWAYS_FOLD "*) exit 1;; esac
+  case " $* " in *" --fold $FAIL_ONCE_FOLD "*) [ -f "$GT_RUNS/failed_once" ] || { touch "$GT_RUNS/failed_once"; exit 1; };; esac
+fi
+exit 0
+"""
+
+
+def run_stub_queue(tmp_path, stage, **env):
+    runs = tmp_path / 'runs'
+    (runs / 'logs').mkdir(parents=True)
+    stub = tmp_path / 'stub.sh'
+    stub.write_text(STAGE_STUB.replace('grep -c "^train.py.*fold $FAIL_ONCE_FOLD "', 'grep -c "^train.py.*--fold $FAIL_ONCE_FOLD "'),
+                    newline='\n')
+    stub.chmod(0o755)
+    e = {**os.environ, 'GT_PY': stub.as_posix(), 'GT_RUNS': runs.as_posix(),
+         'GT_TRAIN_PATTERN': 'gtqueue_never_matches_train[.]py', 'FAIL_ONCE_FOLD': 'none', 'FAIL_ALWAYS_FOLD': 'none',
+         **env}
+    r = subprocess.run([BASH, 'queue_gnn.sh', '--stage', stage], cwd=HERE, capture_output=True, text=True, env=e)
+    assert r.returncode == 0, r.stderr + r.stdout
+    return runs, r.stdout.splitlines()
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+@pytest.mark.parametrize('stage', ['day1', 'day1b', 'v3'])
+def test_queue_sets_expandable_segments_for_every_python_call(tmp_path, stage):
+    runs, out = run_stub_queue(tmp_path, stage, PYTORCH_CUDA_ALLOC_CONF='something_else')
+    calls = (runs / 'calls.txt').read_text().splitlines()
+    assert calls and all(c.endswith('ALLOC=expandable_segments:True') for c in calls), calls
+    assert any(c.startswith('train.py') for c in calls) and not any(l.startswith('retry') for l in out)
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_retries_a_failed_run_once(tmp_path):
+    runs, out = run_stub_queue(tmp_path, 'v3', FAIL_ONCE_FOLD='2')
+    calls = (runs / 'calls.txt').read_text().splitlines()
+    name = 'v3kfold2_all_gnn-noedges_s0'
+    assert [l for l in out if l.startswith('retry')][0] == f'retry {name}' and out.count(f'retry {name}') == 1
+    i = out.index(f'retry {name}')
+    assert out[i - 1].startswith(f'start {name}') and out[i + 1].startswith(f'finished {name} rc=0')
+    assert sum(c.startswith('train.py') and '--fold 2 --arch all' in c and '--control no_edges' in c for c in calls) == 2
+    assert (runs / 'logs' / f'{name}.log.try1').exists() and (runs / 'logs' / f'{name}.log').exists()
+    assert out[-1].startswith('queue done')
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_retry_is_a_single_attempt_and_the_queue_goes_on(tmp_path):
+    runs, out = run_stub_queue(tmp_path, 'day1b', FAIL_ALWAYS_FOLD='1')
+    retries = [l for l in out if l.startswith('retry')]
+    assert len(retries) == 13 and all(l.split()[1].startswith('kfold1_x86_') for l in retries)
+    bad = [l for l in out if l.startswith('finished kfold1_')]
+    assert len(bad) == 13 and all(' rc=1 ' in l for l in bad)
+    calls = (runs / 'calls.txt').read_text().splitlines()
+    assert sum(c.startswith('train.py') for c in calls) == 65 + 13
+    assert sum(l.startswith('finished kfold') and ' rc=0 ' in l for l in out) == 52 and out[-1].startswith('queue done')
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_does_not_retry_after_stop(tmp_path):
+    stub = STAGE_STUB.replace('exit 0\n', 'exit 0\n')
+    runs = tmp_path / 'runs'
+    (runs / 'logs').mkdir(parents=True)
+    killer = tmp_path / 'killer.sh'
+    killer.write_text('#!/bin/bash\necho "$1" >> "$GT_RUNS/calls.txt"\n'
+                      '[ "$1" = train.py ] && { touch "$GT_RUNS/STOP"; exit 1; }\nexit 0\n', newline='\n')
+    killer.chmod(0o755)
+    r = subprocess.run([BASH, 'queue_gnn.sh', '--stage', 'day1b'], cwd=HERE, capture_output=True, text=True,
+                       env={**os.environ, 'GT_PY': killer.as_posix(), 'GT_RUNS': runs.as_posix(),
+                            'GT_TRAIN_PATTERN': 'gtqueue_never_matches_train[.]py'})
+    assert r.returncode == 0, r.stderr
+    assert 'retry' not in r.stdout and (runs / 'calls.txt').read_text().count('train.py') == 1
