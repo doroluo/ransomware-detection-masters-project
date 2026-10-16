@@ -1,12 +1,14 @@
-"""python test_structure.py: shortest-path buckets against BFS, and the ablation's blindness to graph structure."""
+"""python -m pytest tests/test_structure.py: shortest-path buckets against BFS, and the ablation blind to graph structure."""
 from collections import deque
 
 import numpy as np
 import torch
 
 from common.config import RunConfig
-from pipeline.batching import TokenVocab, load_index, loader, make_manifest
+from common.manifests import load_index, make_manifest
 from legacy.graph_transformer.model import GraphTransformer, shortest_path_buckets
+from pipeline.batching import loader
+from pipeline.s03_tokenizer.vocab import TokenVocab
 from training.train import to_device
 
 

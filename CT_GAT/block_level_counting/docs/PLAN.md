@@ -135,12 +135,12 @@ macro-F1 with patience 8, threshold 0.5.
 
 | file | role |
 |---|---|
-| `build_cache.py` | export to cache |
-| `data.py` | manifests, filters, folds, vocab cut, per-binary tensors |
-| `model.py` | the hierarchical graph transformer and the ablation switch |
-| `train.py` | one run: protocol, arch filter, seed, ablation; writes predictions and metrics |
-| `baselines.py` | TF-IDF and structural logistic regressions on the same manifests |
-| `report.py` | aggregates runs into `RESULTS.md` |
+| `pipeline/s02_build_cfg_cache/build_cache.py` | export to cache |
+| `common/manifests.py`, `pipeline/s03_tokenizer/`, `legacy/graph_transformer/encode.py` | manifests, filters, folds; vocab cut; per-binary tensors |
+| `legacy/graph_transformer/model.py` | the hierarchical graph transformer and the ablation switch |
+| `training/train.py` | one run: protocol, arch filter, seed, ablation; writes predictions and metrics |
+| `evaluation/baselines.py` | TF-IDF and structural logistic regressions on the same manifests |
+| `evaluation/report.py` | aggregates runs into `RESULTS.md` |
 
 ## Results (2026-10-08)
 

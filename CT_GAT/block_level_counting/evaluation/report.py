@@ -22,7 +22,7 @@ import numpy as np
 from sklearn.metrics import average_precision_score
 
 from common.config import RUNS, RunConfig, cache_for
-from pipeline.batching import load_index, make_manifest
+from common.manifests import load_index, make_manifest
 from evaluation.metrics import family_recall, floors, scores
 
 HERE = Path(__file__).resolve().parents[1] / 'docs'

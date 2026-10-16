@@ -6,11 +6,11 @@ import json
 import numpy as np
 import pytest
 
-from experiments.side_arrays import build_side
+from common.config import RunConfig
 from evaluation import report
 from evaluation import stats
+from experiments.side_arrays import build_side
 from experiments.side_arrays import wl_baseline as wl
-from common.config import RunConfig
 from experiments.side_arrays.side_common import sample_rng, shuffle_edges, tag_control
 from experiments.side_arrays.side_defuse import defuse_edges, semantics
 from experiments.side_arrays.side_tags import TAG_NAMES, api_tag, function_tags

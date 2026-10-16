@@ -23,12 +23,14 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common.config import DIRECTIONS, RUNS, RunConfig
-from pipeline.batching import CACHE, TokenVocab, load_index, loader, make_manifest
+from common.config import CACHE, DIRECTIONS, RUNS, RunConfig
+from common.manifests import load_index, make_manifest
 from evaluation.metrics import cell_weights, family_recall, floors, scores
-from legacy.graph_transformer.model import GraphTransformer
-from pipeline.model import HierGNN
 from evaluation.val_threshold import GRID, macro_f1
+from legacy.graph_transformer.model import GraphTransformer
+from pipeline.batching import loader
+from pipeline.model import HierGNN
+from pipeline.s03_tokenizer.vocab import TokenVocab
 
 
 def parse_config(argv=None):

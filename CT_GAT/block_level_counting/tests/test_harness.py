@@ -1,4 +1,4 @@
-"""python -m pytest test_harness.py: PR-AUC, stopping rules, the paired bootstrap, gates, report tables, baselines with
+"""python -m pytest tests/test_harness.py: PR-AUC, stopping rules, the paired bootstrap, gates, report tables, baselines with
 validation predictions, and the day-1 queue (`--dry` names against RunConfig, budget guard).
 
 Run directories are synthetic (tmp_path) except the baselines test, which reads the cache.
@@ -15,13 +15,13 @@ import numpy as np
 import pytest
 from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
 
+from common.config import RunConfig
 from evaluation import gates
 from evaluation import report
 from evaluation import stats
-from common.config import RunConfig
 from evaluation.metrics import ARCHES, cell_balanced, cell_weights, floors, scores
-from training.train import check_supported, loss_weight_fn, parse_config, should_stop, val_threshold_of
 from evaluation.val_threshold import GRID
+from training.train import check_supported, loss_weight_fn, parse_config, should_stop, val_threshold_of
 
 ROOT = Path(__file__).resolve().parents[1]
 BASH = next((p for p in ('C:/Program Files/Git/bin/bash.exe', shutil.which('bash')) if p and Path(p).exists()), None)
@@ -343,7 +343,7 @@ def test_report_labels_new_arms():
 
 def test_baselines_train_fraction(tmp_path):
     from evaluation import baselines
-    from pipeline.batching import load_index, make_manifest
+    from common.manifests import load_index, make_manifest
     sizes = {k: len(v) for k, v in json.loads((baselines.CACHE / 'vocab.json').read_text(encoding='utf-8')).items()}
     baselines.run(RunConfig(protocol='kfold', fold=1, seed=0, train_fraction=0.25), sizes, tmp_path)
     d = tmp_path / 'kfold1_x86_s0_tf25'
@@ -985,7 +985,7 @@ def test_loss_weights_arch_balance_and_default():
 
 @needs_combined
 def test_cell_weights_on_a_real_v3_manifest():
-    from pipeline.batching import load_index, make_manifest
+    from common.manifests import load_index, make_manifest
     m = make_manifest(RunConfig(protocol='kfold_v3', fold=0, arch='all'), load_index(COMBINED))
     y, arch = np.array([r['label'] for r in m.train]), np.array([r['arch'] for r in m.train])
     w = cell_weights(y, arch)

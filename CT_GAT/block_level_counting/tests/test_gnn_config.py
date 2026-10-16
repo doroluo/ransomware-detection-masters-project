@@ -1,4 +1,4 @@
-"""python -m pytest test_gnn_config.py: RunConfig fields, naming, validation and the CLI."""
+"""python -m pytest tests/test_gnn_config.py: RunConfig fields, naming, validation and the CLI."""
 import subprocess
 import sys
 from pathlib import Path
@@ -238,13 +238,12 @@ needs_combined = pytest.mark.skipif(not (COMBINED_CACHE / 'index.csv').exists(),
 PROBE = """
 import sys
 sys.argv = ['train.py'] + sys.argv[1:]
-from common import config
-from pipeline import batching as data
+from common import config, manifests
 from training import train
 cfg, _ = train.parse_config()
-manifest = data.make_manifest(cfg, data.load_index())
+manifest = manifests.make_manifest(cfg, manifests.load_index())
 ids = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test]
-print(config.CACHE, data.CACHE, cfg.protocol, cfg.arch, len(ids), len(set(r['corpus'] for r in manifest.test)))
+print(config.CACHE, manifests.CACHE, cfg.protocol, cfg.arch, len(ids), len(set(r['corpus'] for r in manifest.test)))
 """
 
 

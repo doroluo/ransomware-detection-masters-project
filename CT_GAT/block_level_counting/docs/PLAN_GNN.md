@@ -4,8 +4,12 @@ Draft 2026-10-15, grounded in the literature review
 `Downloads/Ransomware Combined Structural Feature Dataset/reports/CFG GNN pooling and masking.md`
 (notes in `research_notes/CFG GNN pooling and masking/`). Evidence tiers follow the review: A measured on
 malware code/CFGs, B generic graph/ML benchmarks, C the notes' inference, D the review's own inference;
-"team" = measurements already in PLAN.md/RESULTS.md. Paths are relative to this directory; `RUNS` =
-`C:/Users/chaoa/Downloads/graph_transformer_runs`.
+"team" = measurements already in PLAN.md/RESULTS.md. Paths are relative to `CT_GAT/block_level_counting/`; `RUNS` =
+`C:/Users/chaoa/Downloads/graph_transformer_runs`. Since step 9 the code is grouped by pipeline step (see `../README.md`);
+the sections below name modules as they were when written: `data.py` is now `common/manifests.py`, `pipeline/s03_tokenizer/`,
+`pipeline/s04_select_subgraph/` and `pipeline/batching.py`, `model_gnn.py` is `pipeline/model.py` and the stage packages,
+`model.py` is `legacy/graph_transformer/model.py`, and the scripts keep their names (root shims call
+`training/`, `evaluation/` and `pipeline/s02_build_cfg_cache/`).
 
 ## 0. What changed and why
 
@@ -73,7 +77,7 @@ Verified facts the plan rests on:
 Model type id = `edge_kind * 2 + edge_back` (12 ids). Untyped arms (R3, R4, R5) use id 0 everywhere; types
 enter only at R6 and R7. Under any shuffle or rewiring the type stays with the source edge slot.
 
-## 3. Architecture (`model_gnn.py`)
+## 3. Architecture (`pipeline/model.py`)
 
 ```
 h0_b = EmbeddingBag_sum(tokens_b, per_sample_weights = w_t) + Linear(6->d)(blk_feat_b)

@@ -22,9 +22,9 @@ from functools import lru_cache
 
 import numpy as np
 
-from evaluation import metrics, report, stats
 from common.config import RunConfig
-from pipeline.batching import MAX_BINARY_BLOCKS
+from evaluation import metrics, report, stats
+from pipeline.s04_select_subgraph.subgraph import MAX_BINARY_BLOCKS
 
 SEED = 0
 ARMS = (('R0 TF-IDF', 'tfidf'), ('R2 tfidf', 'kfold_x86_gnn-noedges'), ('R2 mean', 'kfold_x86_gnn-noedges-enc-mean'),

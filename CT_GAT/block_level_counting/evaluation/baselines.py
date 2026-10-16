@@ -29,7 +29,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from common.config import CACHE, RUNS, RunConfig
-from pipeline.batching import load_index, make_manifest
+from common.manifests import load_index, make_manifest
 from evaluation.metrics import cell_weights, family_recall, floors, scores
 from evaluation.val_threshold import GRID, macro_f1
 

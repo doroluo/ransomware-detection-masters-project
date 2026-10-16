@@ -1,4 +1,4 @@
-"""python -m pytest test_gnn_model.py: HierGNN pieces and arms on synthetic batches that follow the batch contract."""
+"""python -m pytest tests/test_gnn_model.py: HierGNN pieces and arms on synthetic batches that follow the batch contract."""
 import copy
 
 import numpy as np
@@ -7,7 +7,9 @@ import torch
 import torch.nn.functional as F
 
 from common.config import RunConfig
-from pipeline.model import DirGINELayer, FixedReadout, GatedReadout, HierGNN, segment_softmax, segment_sum
+from pipeline.model import HierGNN
+from pipeline.s06_gnn_block_cfg.layers import DirGINELayer, segment_softmax, segment_sum
+from pipeline.s07_pool_blocks_to_functions.readout import FixedReadout, GatedReadout
 
 DEV = 'cuda' if torch.cuda.is_available() else 'cpu'
 N_TOKENS = 40

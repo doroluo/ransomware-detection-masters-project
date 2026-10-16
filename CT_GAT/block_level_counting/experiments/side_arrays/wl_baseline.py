@@ -23,10 +23,10 @@ from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.linear_model import LogisticRegression
 
 from common.config import CACHE, RUNS, RunConfig
-from pipeline.batching import load_index, make_manifest
+from common.manifests import load_index, make_manifest
 from evaluation.metrics import cell_weights, family_recall, floors, scores
-from experiments.side_arrays.side_common import sample_rng, shuffle_edges
 from evaluation.val_threshold import GRID, macro_f1
+from experiments.side_arrays.side_common import sample_rng, shuffle_edges
 
 METHODS = ('wl_h0_lr', 'wl_h2_lr', 'wl_h2_shuffle_lr')
 N_FEATURES = 2 ** 18

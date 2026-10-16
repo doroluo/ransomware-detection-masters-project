@@ -1,0 +1,2 @@
+"""Step 11, final classifier: `head.make_head` is a 2-layer MLP over [binary vector ; bin_feat], bin_feat being the log1p
+counts of the full binary (`head.bin_feat`). Out: one logit. RunConfig: dropout, stack_tfidf (deferred)."""

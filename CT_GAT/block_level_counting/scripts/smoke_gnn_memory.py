@@ -14,7 +14,9 @@ import torch
 import torch.nn.functional as F
 
 from common.config import RunConfig
-from pipeline.batching import TokenVocab, collate, encode_binary, load_index, load_sample, make_manifest
+from common.manifests import load_index, load_sample, make_manifest
+from pipeline.batching import collate, encode_binary
+from pipeline.s03_tokenizer.vocab import TokenVocab
 from training.train import build_model, to_device
 
 LIMIT_GB = 13

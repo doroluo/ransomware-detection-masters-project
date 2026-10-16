@@ -1,34 +1,10 @@
 """One run's configuration, saved as config.json in every run directory."""
 import json
-import os
-import sys
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Literal, Optional
 
-DEFAULT_CACHE = Path('C:/Users/chaoa/Downloads/graph_transformer_cache_v2')
-COMBINED_CACHE = Path('C:/Users/chaoa/Downloads/graph_transformer_cache_combined')
-
-
-def cache_for(protocol, env=None):
-    """GT_CACHE when set; otherwise the combined cache for kfold_v3 and the v2 cache for every other protocol."""
-    env = os.environ if env is None else env
-    if env.get('GT_CACHE'):
-        return Path(env['GT_CACHE'])
-    return COMBINED_CACHE if protocol == 'kfold_v3' else DEFAULT_CACHE
-
-
-def protocol_in(argv):
-    """The value of --protocol in a command line, or None."""
-    for i, a in enumerate(argv):
-        if a.startswith('--protocol='):
-            return a.partition('=')[2]
-        if a == '--protocol' and i + 1 < len(argv):
-            return argv[i + 1]
-
-
-CACHE = cache_for(protocol_in(sys.argv[1:]))
-RUNS = Path('C:/Users/chaoa/Downloads/graph_transformer_runs')
+from common.paths import CACHE, COMBINED_CACHE, DEFAULT_CACHE, RUNS, cache_for, protocol_in  # noqa: F401
 
 DIRECTIONS = ('both', 'forward', 'backward', 'undirected')
 DIRECTION_SUFFIX = {'forward': 'fwd', 'backward': 'bwd', 'undirected': 'undir'}

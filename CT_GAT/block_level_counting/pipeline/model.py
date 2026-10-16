@@ -1,89 +1,19 @@
 """Edge-typed hierarchical message-passing network: blocks -> function vectors -> binary logit, plain torch.
-`RunConfig.control == 'no_edges'`, `untyped` and `no_call_mp` are read only in `HierGNN.structure`."""
+`RunConfig.control == 'no_edges'`, `untyped` and `no_call_mp` are read only in `HierGNN.structure`.
+Stage order: s05 block vectors, s06 block-CFG layers, s07 blocks -> functions, s08 call-graph layers,
+s09 functions -> binary, s11 head. Attribute names are the checkpoint keys."""
 from dataclasses import dataclass
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from common.config import RunConfig
-
-N_EDGE_TYPES = 12
-
-
-def segment_softmax(score, index, n):
-    """score [M] -> softmax within each of n segments (index [M]), float32. Unused segments stay finite."""
-    score = score.float()
-    top = score.new_zeros(n).scatter_reduce(0, index, score, 'amax', include_self=False)
-    e = torch.exp(score - top[index])
-    return e / score.new_zeros(n).index_add_(0, index, e)[index]
-
-
-def segment_sum(x, index, n):
-    return x.new_zeros(n, *x.shape[1:]).index_add_(0, index, x)
-
-
-class FixedReadout(nn.Module):
-    """GELU(Linear(3d -> d)([sum / sqrt(n) ; mean ; max])) per segment."""
-
-    def __init__(self, d):
-        super().__init__()
-        self.proj = nn.Linear(3 * d, d)
-
-    @staticmethod
-    def pool(h, index, n):
-        x = h.float()
-        total = segment_sum(x, index, n)
-        count = segment_sum(torch.ones_like(x[:, :1]), index, n).clamp(min=1)
-        top = x.new_zeros(n, x.shape[1]).scatter_reduce(0, index[:, None].expand_as(x), x, 'amax', include_self=False)
-        return torch.cat([total / count.sqrt(), total / count, top], 1)
-
-    def forward(self, h, index, n):
-        return F.gelu(self.proj(self.pool(h, index, n).to(h.dtype)))
-
-
-class GatedReadout(nn.Module):
-    """Attention pooling: score w.tanh(V h), softmax within each segment, weighted sum."""
-
-    def __init__(self, d):
-        super().__init__()
-        self.v, self.w = nn.Linear(d, d), nn.Linear(d, 1, bias=False)
-
-    def forward(self, h, index, n):
-        alpha = segment_softmax(self.w(torch.tanh(self.v(h))).squeeze(-1), index, n)
-        return segment_sum(alpha[:, None] * h.float(), index, n).to(h.dtype)
-
-
-class DirGINELayer(nn.Module):
-    """h + MLP(LN((1 + eps) h + W [m_in ; m_out])) with m_in = sum over in-edges of relu(h_src + E_in[type]) and
-    m_out = sum over out-edges of relu(h_dst + E_out[type]); messages are accumulated in float32.
-    `direction` 'forward' zeroes the m_out half (messages from predecessors only), 'backward' the m_in half, and
-    'undirected' feeds m_in + m_out, both computed with the e_in bank, into both halves."""
-
-    def __init__(self, d, n_types, dropout, direction='both'):
-        super().__init__()
-        self.direction = direction
-        self.e_in, self.e_out = nn.Embedding(n_types, d), nn.Embedding(n_types, d)
-        self.eps = nn.Parameter(torch.zeros(1))
-        self.mix = nn.Linear(2 * d, d)
-        self.norm = nn.LayerNorm(d)
-        self.mlp = nn.Sequential(nn.Linear(d, 2 * d), nn.GELU(), nn.Dropout(dropout), nn.Linear(2 * d, d))
-        self.drop = nn.Dropout(dropout)
-
-    def forward(self, h, src, dst, etype):
-        x = h.float()
-        n = len(h)
-        if self.direction == 'undirected':
-            e_in = self.e_in(etype).float()
-            m_in = m_out = (segment_sum(F.relu(x[src] + e_in), dst, n) + segment_sum(F.relu(x[dst] + e_in), src, n))
-        else:
-            m_in = m_out = x.new_zeros(x.shape)
-            if self.direction != 'backward':
-                m_in = segment_sum(F.relu(x[src] + self.e_in(etype).float()), dst, n)
-            if self.direction != 'forward':
-                m_out = segment_sum(F.relu(x[dst] + self.e_out(etype).float()), src, n)
-        z = self.norm(((1 + self.eps) * x + self.mix(torch.cat([m_in, m_out], 1).to(h.dtype))).to(h.dtype))
-        return h + self.drop(self.mlp(z))
+from pipeline.s05_block_counting.encoder import BlockEncoder
+from pipeline.s06_gnn_block_cfg.edges import N_EDGE_TYPES
+from pipeline.s06_gnn_block_cfg.layers import DirGINELayer
+from pipeline.s07_pool_blocks_to_functions.readout import READOUTS
+from pipeline.s08_gnn_call_graph.calls import call_layers, run_call_layers
+from pipeline.s11_final_classifier.head import make_head
 
 
 @dataclass
@@ -100,17 +30,16 @@ class HierGNN(nn.Module):
     def __init__(self, cfg: RunConfig, n_tokens):
         super().__init__()
         d = cfg.d_model
-        readout = {'fixed': FixedReadout, 'gated': GatedReadout}[cfg.readout]
+        readout = READOUTS[cfg.readout]
         self.cfg = cfg
-        self.tokens = nn.EmbeddingBag(n_tokens, d, mode='sum')
-        self.blk_feat = nn.Linear(6, d)
+        encoder = BlockEncoder(n_tokens, d)
+        self.tokens, self.blk_feat, self.encode_blocks = encoder.tokens, encoder.blk_feat, encoder.forward
         self.fn_layers = nn.ModuleList(DirGINELayer(d, N_EDGE_TYPES, cfg.dropout, cfg.direction)
                                       for _ in range(cfg.gnn_fn_layers))
         self.fn_readout, self.seg_feat = readout(d), nn.Linear(2, d)
-        self.bin_layers = nn.ModuleList(DirGINELayer(d, 1, cfg.dropout) for _ in range(cfg.gnn_bin_layers))
+        self.bin_layers = call_layers(d, cfg)
         self.bin_readout = readout(d)
-        self.head = nn.Sequential(nn.Linear(d + 5 + cfg.stack_tfidf, d), nn.GELU(), nn.Dropout(cfg.dropout),
-                                  nn.Linear(d, 1))
+        self.head = make_head(d, cfg)
 
     def structure(self, batch):
         """Every structural input of the network, with block edge endpoints made batch-global. no_edges empties both
@@ -135,14 +64,11 @@ class HierGNN(nn.Module):
         n_seg = len(batch['seg_len'])
         assert batch['n_fn'] == n_seg, f"one segment per function expected: {n_seg} segments, {batch['n_fn']} functions"
         st = self.structure(batch)
-        h = self.tokens(batch['tokens'], batch['tok_offsets'], per_sample_weights=batch['tok_weights'])
-        h = h + self.blk_feat(st.blk_feat)
+        h = self.encode_blocks(batch, st.blk_feat)
         for layer in self.fn_layers:
             h = layer(h, st.src, st.dst, st.etype)
         f = self.fn_readout(h, batch['blk_seg'], n_seg) + self.seg_feat(batch['seg_feat']).to(h.dtype)
-        call_type = torch.zeros_like(st.call_src)
-        for layer in self.bin_layers:
-            f = layer(f, st.call_src, st.call_dst, call_type)
+        f = run_call_layers(self.bin_layers, f, st.call_src, st.call_dst)
         n_bin = len(batch['label'])
         z = [self.bin_readout(f, batch['seg_bin'], n_bin), batch['bin_feat']]
         if self.cfg.stack_tfidf:
