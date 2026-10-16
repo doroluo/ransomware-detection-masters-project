@@ -5,14 +5,15 @@
 !stratified_split.py
 !model_train.py
 
-# CT_GAT transformer pipeline (code + docs only; not data/processed)
+# CT_GAT pipelines (code + docs only; not data/processed)
 !CT_GAT/
 !CT_GAT/README.md
 !CT_GAT/preprocessing/
 !CT_GAT/preprocessing/*.py
-!CT_GAT/graph_transformer/
-!CT_GAT/graph_transformer/*.py
-!CT_GAT/graph_transformer/*.md
-!CT_GAT/graph_transformer/*.sh
+!CT_GAT/block_level_counting/
+!CT_GAT/block_level_counting/**/
+!CT_GAT/block_level_counting/**/*.py
+!CT_GAT/block_level_counting/**/*.md
+!CT_GAT/block_level_counting/**/*.sh
 !.gitattributes
-!CT_GAT/graph_transformer/SIDE_VALIDATION.json
+!CT_GAT/block_level_counting/experiments/side_arrays/SIDE_VALIDATION.json
