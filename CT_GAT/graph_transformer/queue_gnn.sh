@@ -1,12 +1,13 @@
 #!/bin/bash
-# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b [--dry]
-# A run is skipped when RUNS/<name>/metrics.json exists. GPU_BUDGET_MIN (default 290 for day1, 600 for day1b) caps the
+# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3 [--dry]
+# A run is skipped when RUNS/<name>/metrics.json exists. GPU_BUDGET_MIN (default 290 for day1, 600 for day1b and v3) caps the
 # cumulative GPU wall time: once it is spent, remaining GPU runs are logged as "skipped (budget)" and only the
 # CPU/report steps still run. If RUNS/STOP exists before a run (stop_queue.sh creates it), the run is logged as
 # "stopped before <name>" and skipped; a stale RUNS/STOP is removed at start. --dry prints what would run
 # (DRY_RUN_MIN=<min> charges that many minutes per run to try the guard).
 # GT_PY / GT_RUNS override the interpreter / runs directory, GT_TRAIN_PATTERN the regex that finds a live train.py
-# (testing).
+# (testing). Stage v3 (kfold_v3 on the combined cache, arch all then matched, folds 0-4, seed 0) exports GT_CACHE for every
+# python call.
 cd "$(dirname "$0")"
 PY=/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe
 R=/c/Users/chaoa/Downloads/graph_transformer_runs
@@ -15,7 +16,8 @@ STAGE=; DRY=0
 while [ $# -gt 0 ]; do
   case $1 in --stage) STAGE=$2; shift;; --dry) DRY=1;; *) STAGE=;; esac; shift
 done
-[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b [--dry]"; exit 2; }
+[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3 [--dry]"; exit 2; }
+[ $STAGE = v3 ] && export GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined
 if [ $STAGE = day1 ]; then GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-290}; else GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-600}; fi
 DRY_RUN_MIN=${DRY_RUN_MIN:-0}
 GPU_SECS=0
@@ -43,6 +45,17 @@ run() { name=$1; shift
 arm() { variant=$1; shift
   for f in 0 1 2 3 4; do run kfold${f}_x86_${variant}_s0 --protocol kfold --fold $f --arch x86 --seed 0 "$@"; done; }
 
+# arm_v3 <arch> <variant> <train.py args>: kfold_v3 folds 0-4, seed 0
+arm_v3() { arch=$1; variant=$2; shift; shift
+  for f in 0 1 2 3 4; do run v3kfold${f}_${arch}_${variant}_s0 --protocol kfold_v3 --fold $f --arch $arch --seed 0 "$@"; done; }
+
+# baselines_v3 <arch>: CPU baselines for kfold_v3 seed 0, skipped when all five folds already have validation thresholds
+baselines_v3() { arch=$1
+  BASE_ARGS="--protocol kfold_v3 --fold 0 1 2 3 4 --arch $arch --seed 0"
+  if [ $DRY = 1 ]; then echo "cpu baselines $BASE_ARGS"
+  elif [ "$(grep -l threshold_val $R/baselines/v3kfold[0-4]_${arch}_s0/metrics.json 2>/dev/null | wc -l)" = 5 ]; then echo "skip baselines v3 $arch"
+  else echo "start baselines v3 $arch $(date +%T)"; $PY baselines.py $BASE_ARGS > $R/logs/baselines_v3kfold_${arch}_s0.log 2>&1; echo "finished baselines v3 $arch rc=$? $(date +%T)"; fi; }
+
 # baselines <train.py-style suffix> <extra baselines.py args>: CPU baselines for kfold x86 seed 0, skipped when all five
 # folds already have validation thresholds
 baselines() { sfx=$1; shift
@@ -51,7 +64,18 @@ baselines() { sfx=$1; shift
   elif [ "$(grep -l threshold_val $R/baselines/kfold[0-4]_x86_s0$sfx/metrics.json 2>/dev/null | wc -l)" = 5 ]; then echo "skip baselines$sfx"
   else echo "start baselines$sfx $(date +%T)"; $PY baselines.py $BASE_ARGS > $R/logs/baselines_kfold_x86_s0$sfx.log 2>&1; echo "finished baselines$sfx rc=$? $(date +%T)"; fi; }
 
-if [ $STAGE = day1b ]; then
+if [ $STAGE = v3 ]; then
+baselines_v3 all                                                      # 1. CPU baselines
+baselines_v3 matched
+arm_v3 all gnn-noedges --model gnn --control no_edges                 # 2. R2, arch all
+arm_v3 all gnn --model gnn                                            # 3. R7
+arm_v3 all gnn-shuffle --model gnn --control shuffle                  # 4. R4
+arm_v3 all gnn-untyped --model gnn --untyped                          # 5. R5
+arm_v3 matched gnn-noedges --model gnn --control no_edges             # 6. R2, arch matched
+arm_v3 matched gnn --model gnn                                        # 7. R7
+arm_v3 matched gnn-shuffle --model gnn --control shuffle              # 8. R4
+arm_v3 matched gnn-untyped --model gnn --untyped                      # 9. R5
+elif [ $STAGE = day1b ]; then
 baselines _tf50 --train-fraction 0.5                                  # 1. learning-curve TF-IDF
 baselines _tf25 --train-fraction 0.25
 arm gnn-mtok15 --model gnn --mask-tokens 0.15                         # 2.

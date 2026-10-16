@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from config import RUNS, RunConfig
+from config import COMBINED_CACHE, RUNS, RunConfig
 from train import parse_config
 
 HERE = Path(__file__).parent
@@ -193,3 +193,103 @@ def test_help_exits_zero():
     for flag in ('--model', '--encoder', '--control', '--untyped', '--mask-tokens', '--tag', '--direction',
                  '--drop-edges', '--flip-edges', '--train-fraction'):
         assert flag in r.stdout
+
+
+# step 6: kfold_v3 on the combined cache, arch matched, the cache field
+
+def test_matched_arch_names_and_groups():
+    for protocol, fold in (('bundle', None), ('kfold', 1), ('kfold_v3', 2)):
+        assert RunConfig(protocol=protocol, fold=fold, arch='matched').arch == 'matched'
+    assert gnn(protocol='kfold_v3', fold=0, arch='matched').name == 'v3kfold0_matched_gnn_s0'
+    assert gnn(protocol='kfold_v3', fold=2, arch='all', control='no_edges').name == 'v3kfold2_all_gnn-noedges_s0'
+    assert gnn(protocol='kfold_v3', fold=4, arch='matched', untyped=True).group == 'kfold_v3_matched_gnn-untyped'
+    assert RunConfig(protocol='kfold_v3', fold=1, arch='matched').name == 'v3kfold1_matched_graph_s0'
+    with pytest.raises(ValueError):
+        RunConfig(arch='matching')
+
+
+def test_cache_field_is_not_part_of_names_or_groups(tmp_path):
+    base = gnn(protocol='kfold_v3', fold=3, arch='all')
+    assert base.cache == ''
+    tagged = RunConfig(model='gnn', protocol='kfold_v3', fold=3, arch='all', cache='C:/elsewhere')
+    assert (tagged.name, tagged.group) == (base.name, base.group)
+    tagged.save(tmp_path / 'config.json')
+    assert RunConfig.load(tmp_path / 'config.json').cache == 'C:/elsewhere'
+    (tmp_path / 'old.json').write_text('{"protocol": "bundle", "arch": "x86"}')
+    assert RunConfig.load(tmp_path / 'old.json') == RunConfig()
+    import report
+    assert 'cache' in report.LABELLED
+
+
+def test_cache_for_resolution():
+    from config import DEFAULT_CACHE, cache_for, protocol_in
+    assert cache_for('kfold_v3', {}) == COMBINED_CACHE
+    for protocol in ('bundle', 'kfold', None):
+        assert cache_for(protocol, {}) == DEFAULT_CACHE
+    for protocol in ('bundle', 'kfold', 'kfold_v3'):
+        assert cache_for(protocol, {'GT_CACHE': 'X:/mine'}) == Path('X:/mine')
+    assert cache_for('kfold_v3', {'GT_CACHE': ''}) == COMBINED_CACHE
+    assert protocol_in(['--fold', '1', '--protocol', 'kfold_v3']) == 'kfold_v3'
+    assert protocol_in(['--protocol=kfold']) == 'kfold' and protocol_in(['--protocol']) is None and protocol_in([]) is None
+
+
+needs_combined = pytest.mark.skipif(not (COMBINED_CACHE / 'index.csv').exists(), reason='needs the combined cache')
+
+PROBE = """
+import sys
+sys.argv = ['train.py'] + sys.argv[1:]
+import config, data, train
+cfg, _ = train.parse_config()
+manifest = data.make_manifest(cfg, data.load_index())
+ids = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test]
+print(config.CACHE, data.CACHE, cfg.protocol, cfg.arch, len(ids), len(set(r['corpus'] for r in manifest.test)))
+"""
+
+
+def probe(argv, cache=None):
+    import os
+    env = {k: v for k, v in os.environ.items() if k != 'GT_CACHE'}
+    env.update({'GT_CACHE': cache} if cache else {}, CUDA_VISIBLE_DEVICES='-1')
+    r = subprocess.run([sys.executable, '-c', PROBE, *argv], cwd=HERE, capture_output=True, text=True, env=env)
+    return r
+
+
+@needs_combined
+def test_kfold_v3_without_env_reads_the_combined_cache():
+    r = probe(['--protocol', 'kfold_v3', '--fold', '0', '--arch', 'all'])
+    assert r.returncode == 0, r.stderr
+    config_cache, data_cache, protocol, arch, n, _ = r.stdout.split()
+    assert Path(config_cache) == Path(data_cache) == COMBINED_CACHE and (protocol, arch) == ('kfold_v3', 'all')
+    assert int(n) == 5652
+    matched = probe(['--protocol=kfold_v3', '--fold', '0', '--arch', 'matched'])
+    assert matched.returncode == 0, matched.stderr
+    assert int(matched.stdout.split()[4]) == 4850
+
+
+@needs_combined
+def test_gt_cache_wins_and_other_protocols_keep_v2():
+    from config import DEFAULT_CACHE
+    r = probe(['--protocol', 'kfold_v3', '--fold', '0'], cache=str(COMBINED_CACHE))
+    assert r.returncode == 0 and Path(r.stdout.split()[0]) == COMBINED_CACHE, r.stderr
+    r = probe(['--protocol', 'kfold_v3', '--fold', '0'], cache=str(DEFAULT_CACHE))
+    assert Path(r.stdout.split()[0] if r.stdout else '.') != COMBINED_CACHE and r.returncode != 0
+    assert 'no fold_v3 column' in r.stderr
+    r = probe(['--protocol', 'kfold', '--fold', '0'])
+    assert r.returncode == 0 and Path(r.stdout.split()[0]) == DEFAULT_CACHE, r.stderr
+
+
+def test_cli_kfold_v3_and_matched():
+    cfg, _ = parse_config(['--protocol', 'kfold_v3', '--fold', '4', '--arch', 'matched', '--model', 'gnn',
+                           '--control', 'shuffle'])
+    assert cfg == gnn(protocol='kfold_v3', fold=4, arch='matched', control='shuffle')
+    assert cfg.name == 'v3kfold4_matched_gnn-shuffle_s0'
+    with pytest.raises(SystemExit):
+        parse_config(['--protocol', 'kfold_v3'])
+    with pytest.raises(SystemExit):
+        parse_config(['--protocol', 'kfold_v4', '--fold', '1'])
+
+
+def test_train_refuses_a_config_for_another_cache():
+    import train
+    with pytest.raises(ValueError, match='cache'):
+        train.run(RunConfig(cache='C:/not/this/cache'))

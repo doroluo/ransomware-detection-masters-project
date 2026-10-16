@@ -285,8 +285,25 @@ GT_CACHE=... python check_cache.py --compare-v1 200 --compare-base C:/Users/chao
   groups are disjoint from train+val. The v3 folds are a different partition from the day-1 Mendeley folds
   (1,655 of 2,509 Mendeley rows share a fold number), so v3 numbers do not compare fold-by-fold with day 1.
   `folds_all.csv` also has 1,462 `hostgood` x86 goodware with no IDA export; they are not in this cache.
-- **Not wired yet.** `train.py` and `baselines.py` accept only `--protocol bundle|kfold`. `stats.py`,
-  `val_threshold.py` and `gates.py` test `protocol == 'kfold'`. All of these need `kfold_v3` before a v3 run.
+- **Wiring (step 6).** `train.py` and `baselines.py` take `--protocol kfold_v3 --fold k --arch all|matched`. With
+  `GT_CACHE` unset, a kfold_v3 process reads the combined cache (an explicit `GT_CACHE` wins), and `config.json`
+  records the path in `cache`. `arch matched` keeps the rows with `arch_matched = 1`, any architecture. `report.py`,
+  `stats.py`, `val_threshold.py` and `gates.py` pool kfold_v3 like kfold; `stats.py` resolves the `tfidf` /
+  `structural` baseline groups to the other group's protocol and arch (`--protocol` / `--arch` override).
+  `gates.py --stage v3` and `queue_gnn.sh --stage v3` (CPU baselines, then R2, R7, R4, R5 for all and for matched,
+  folds 0-4, seed 0) run the v3 protocol. Run names are `v3kfold{k}_{all|matched}_{variant}_s{seed}`; baselines are
+  `baselines/v3kfold{k}_{arch}_s{seed}`.
+- **Memory risk.** 71 combined binaries exceed v2's largest (235,331 blocks); 68 of them have a v3 fold, 33 of those
+  are in the matched subset. The largest five by blocks are 7,991,293, 7,190,784, 4,438,416, 3,002,869 and 2,729,833
+  (all `x64` goodware from `Balanced_Goodware`; the fifth has no v3 fold). `smoke_gnn_memory.py` with `GT_CACHE` set must
+  pass on the GPU before the v3 queue starts.
+- **TF-IDF baselines (seed 0, pooled over folds 0-4).** Logistic regression on sig+api counts; macro-F1 at 0.5 /
+  at each fold's validation threshold.
+
+| arch | n | AUC | PR-AUC | macro-F1 @0.5 | macro-F1 @val thr | x86-rule macro-F1 |
+|---|---:|---:|---:|---:|---:|---:|
+| all | 5652 | 0.973 | 0.979 | 0.917 | 0.885 | 0.690 |
+| matched | 4850 | 0.970 | 0.984 | 0.905 | 0.894 | 0.606 |
 
 Built rows per v3 fold (R ransomware, G goodware). The x86 rule predicts ransomware iff x86; its macro-F1 is the
 floor every all-arch result must beat. The arch-matched subset is the 4,850 rows with `arch_matched = 1`.

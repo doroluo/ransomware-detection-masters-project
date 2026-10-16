@@ -566,3 +566,55 @@ def test_train_fraction(index, protocol, fold):
     assert make_manifest(RunConfig(train_fraction=1.0, **kw), index).train == full.train
     assert make_manifest(RunConfig(model='gnn', train_fraction=0.5, **kw), index).train == \
         make_manifest(RunConfig(train_fraction=0.5, **kw), index).train
+
+
+# step 6: arch matched
+
+def matched_rows():
+    return [{'sample_id': f'{i:03d}', 'label': i % 2, 'arch': ('x86', 'x64')[i % 3 == 0], 'family': f'fam{i % 6}',
+             'identity_group': f'g{i}', 'split': '', 'fold': None, 'fold_v3': i % 5, 'corpus': 'n',
+             'arch_matched': '1' if i % 4 else ''} for i in range(80)]
+
+
+def test_arch_matched_selects_flagged_rows_of_any_arch():
+    rows = matched_rows()
+    m = make_manifest(RunConfig(protocol='kfold_v3', fold=1, arch='matched', val_fraction=0.0), rows)
+    used = m.train + m.val + m.test
+    assert {r['sample_id'] for r in used} == {r['sample_id'] for r in rows if r['arch_matched'] == '1'}
+    assert {r['arch'] for r in used} == {'x86', 'x64'}
+    every = make_manifest(RunConfig(protocol='kfold_v3', fold=1, arch='all', val_fraction=0.0), rows)
+    assert len(every.train + every.val + every.test) == 80
+    x86 = make_manifest(RunConfig(protocol='kfold_v3', fold=1, arch='x86', val_fraction=0.0), rows)
+    assert {r['arch'] for r in x86.train + x86.val + x86.test} == {'x86'}
+    ints = [{**r, 'arch_matched': 1 if r['arch_matched'] else 0} for r in rows]
+    again = make_manifest(RunConfig(protocol='kfold_v3', fold=1, arch='matched', val_fraction=0.0), ints)
+    assert [r['sample_id'] for r in again.test] == [r['sample_id'] for r in m.test]
+
+
+def test_arch_matched_without_the_column_raises():
+    rows = [{k: v for k, v in r.items() if k != 'arch_matched'} for r in matched_rows()]
+    for protocol, fold in (('kfold_v3', 0), ('kfold', 0), ('bundle', None)):
+        cfg = RunConfig(protocol=protocol, fold=fold, arch='matched')
+        with pytest.raises(ValueError, match='arch_matched'):
+            make_manifest(cfg, rows)
+    with pytest.raises(ValueError, match='arch_matched'):
+        make_manifest(RunConfig(protocol='kfold_v3', fold=0, arch='matched'), [])
+
+
+COMBINED = Path('C:/Users/chaoa/Downloads/graph_transformer_cache_combined')
+V3_TEST_SIZES = {'all': [1039, 1116, 1126, 1136, 1235], 'matched': [884, 924, 974, 1007, 1061]}
+
+
+@pytest.mark.skipif(not (COMBINED / 'index.csv').exists(), reason='needs the combined cache')
+@pytest.mark.parametrize('arch', ['all', 'matched'])
+def test_v3_manifests_on_the_combined_cache(arch):
+    index = load_index(COMBINED)
+    assert load_index(COMBINED)[0]['arch_matched'] in ('0', '1', '')
+    for fold, n_test in enumerate(V3_TEST_SIZES[arch]):
+        m = make_manifest(RunConfig(protocol='kfold_v3', fold=fold, arch=arch), index)
+        assert len(m.test) == n_test and {r['fold'] for r in m.test} == {fold}
+        if arch == 'matched':
+            assert all(r['arch_matched'] == '1' for r in m.train + m.val + m.test)
+        assert not {r['family'] for r in m.test if r['label']} & {r['family'] for r in m.train + m.val if r['label']}
+        assert not ({r['identity_group'] for r in m.test if not r['label']}
+                    & {r['identity_group'] for r in m.train + m.val if not r['label']})

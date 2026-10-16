@@ -1,13 +1,14 @@
 """TF-IDF and structural logistic regressions on the graph transformer's manifests.
 
 python baselines.py --protocol bundle --arch x86 --seed 0 1 2 | --protocol kfold --fold 0 1 2 3 4 --arch all
+| --protocol kfold_v3 --fold 0 1 2 3 4 --arch all|matched (combined cache unless GT_CACHE is set)
 [--train-fraction 0.5]
 
 Fit on the run's training manifest (validation families held out, as for the model), scored on its validation and
 test sets. Writes <out-root>/<protocol[fold]>_<arch>_s<seed>/{metrics.json, predictions.csv} with out-root
-graph_transformer_runs/baselines by default (`_tf<pct>` appended with --train-fraction < 1); metrics.json adds the
-validation threshold (val_threshold.GRID rule) and the test scores at it, and predictions.csv has val and test rows
-told apart by the split column.
+graph_transformer_runs/baselines by default (`_tf<pct>` appended with --train-fraction < 1); metrics.json records
+the cache path, adds the validation threshold (val_threshold.GRID rule) and the test scores at it, and predictions.csv
+has val and test rows told apart by the split column.
 """
 import argparse
 import csv
@@ -65,8 +66,8 @@ def run(cfg: RunConfig, sizes, out_root=None):
     out = Path(out_root or RUNS / 'baselines') / (replace(cfg, train_fraction=1.0).name.replace('_graph', '') + tf)
     out.mkdir(parents=True, exist_ok=True)
     metrics = {'protocol': cfg.protocol, 'fold': cfg.fold, 'arch': cfg.arch, 'seed': cfg.seed,
-               'train_fraction': cfg.train_fraction, 'n_train': len(train), 'n_val': len(val), 'n_test': len(test),
-               'tfidf_features': int(keep.sum()),
+               'train_fraction': cfg.train_fraction, 'cache': str(CACHE), 'n_train': len(train), 'n_val': len(val),
+               'n_test': len(test), 'tfidf_features': int(keep.sum()),
                'floors': floors(y_train, y_test, arch), 'methods': {}}
     probs, val_probs = {}, {}
     for name, (model, xtr, xva, xte) in models.items():
@@ -94,9 +95,9 @@ def run(cfg: RunConfig, sizes, out_root=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--protocol', choices=['bundle', 'kfold'], default='bundle')
+    ap.add_argument('--protocol', choices=['bundle', 'kfold', 'kfold_v3'], default='bundle')
     ap.add_argument('--fold', type=int, nargs='*', default=[None])
-    ap.add_argument('--arch', choices=['x86', 'all'], default='x86')
+    ap.add_argument('--arch', choices=['x86', 'all', 'matched'], default='x86')
     ap.add_argument('--seed', type=int, nargs='*', default=[0])
     ap.add_argument('--train-fraction', type=float, default=1.0)
     ap.add_argument('--out-root', help='default: graph_transformer_runs/baselines')

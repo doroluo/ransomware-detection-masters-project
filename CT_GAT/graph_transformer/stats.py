@@ -1,9 +1,12 @@
 """Paired cluster bootstrap between two kfold arms.
 
 python stats.py --a kfold_x86_gnn-noedges --b kfold_x86_gnn [--selection f1|auc] [--resamples 2000]
+[--protocol kfold|kfold_v3] [--arch x86|all|matched]
 
-A group is a RunConfig.group of kfold runs, or `tfidf` / `structural` for the kfold x86 baselines (`tfidf-tf50`
-for those trained on a train-fraction subset). Per seed present
+A group is a RunConfig.group of kfold or kfold_v3 runs, or `tfidf` / `structural` for the baselines (`tfidf-tf50`
+for those trained on a train-fraction subset). A baseline group takes the protocol and arch of the other group
+(`kfold_v3_all_gnn` -> the kfold_v3 all baselines); --protocol / --arch override that, and two baseline groups
+without an override mean kfold x86. Per seed present
 (with all five folds) in both groups, the pooled out-of-fold test predictions are matched by sample_id. Clusters are
 ransomware families and single goodware binaries; every resample draws clusters with replacement and is applied to
 every seed and both groups. Prints the mean difference (b - a) over seeds and its 95% percentile interval for AUC,
@@ -23,6 +26,9 @@ from config import RUNS, RunConfig
 METRICS = (('auc', 'AUC'), ('pr_auc', 'PR-AUC'), ('macro_f1', 'macro-F1'))
 BASELINES = {'tfidf': 'tfidf_sig_api_lr', 'structural': 'structural_lr'}
 FOLDS = range(5)
+KFOLD_PROTOCOLS = ('kfold', 'kfold_v3')
+BASELINE_PREFIX = {'kfold': 'kfold', 'kfold_v3': 'v3kfold'}
+GROUP_SCOPE = re.compile(r'(kfold_v3|kfold)_(x86|all|matched)_')
 
 
 def baseline_method(group):
@@ -43,6 +49,7 @@ class Preds:
     prob: np.ndarray
     pred: np.ndarray
     cluster: np.ndarray
+    arch: np.ndarray = None
 
 
 def read_rows(path, method=None):
@@ -58,31 +65,51 @@ def pool(rows_by_fold, thresholds=None):
             else (prob >= np.array([thresholds[f] for f, _ in rows])).astype(int))
     y = np.array([int(r['label']) for _, r in rows])
     cluster = np.array([f"fam:{r['family']}" if r['label'] == '1' else f"id:{r['sample_id']}" for _, r in rows])
-    return Preds(np.array([r['sample_id'] for _, r in rows]), y, prob, pred, cluster)
+    return Preds(np.array([r['sample_id'] for _, r in rows]), y, prob, pred, cluster,
+                 np.array([r.get('arch', '') for _, r in rows]))
 
 
-def folds_by_seed(group):
-    """{seed: {fold: (path of the run or baseline directory)}} for a group name."""
+def group_scope(group):
+    """(protocol, arch) of a RunConfig.group name such as `kfold_v3_all_gnn`, else None."""
+    m = GROUP_SCOPE.match(group)
+    return (m[1], m[2]) if m else None
+
+
+def baseline_scopes(group_a, group_b, protocol=None, arch=None):
+    """{group: (protocol, arch)} for the baseline groups among the two: the override, else the other group's, else
+    kfold x86."""
+    scopes = {}
+    for g, other in ((group_a, group_b), (group_b, group_a)):
+        if baseline_method(g):
+            from_other = group_scope(other) if not baseline_method(other) else None
+            p, a = from_other or ('kfold', 'x86')
+            scopes[g] = (protocol or p, arch or a)
+    return scopes
+
+
+def folds_by_seed(group, scope=('kfold', 'x86')):
+    """{seed: {fold: (path of the run or baseline directory)}} for a group name. `scope` = (protocol, arch) picks
+    the baseline directories of a baseline group."""
     out = {}
     if base := baseline_method(group):
-        tf = base[1]
-        for d in (RUNS / 'baselines').glob('kfold*_x86_s*'):
-            m = re.fullmatch(rf'kfold(\d)_x86_s(\d+){tf}', d.name)
+        tf, (protocol, arch) = base[1], scope
+        for d in (RUNS / 'baselines').glob(f'{BASELINE_PREFIX[protocol]}*_{arch}_s*'):
+            m = re.fullmatch(rf'{BASELINE_PREFIX[protocol]}(\d)_{arch}_s(\d+){tf}', d.name)
             if m and (d / 'metrics.json').exists():
                 out.setdefault(int(m[2]), {})[int(m[1])] = d
         return out
     for d in sorted(p for p in RUNS.iterdir() if (p / 'config.json').exists()):
         cfg = RunConfig.load(d / 'config.json')
-        if cfg.protocol == 'kfold' and cfg.group == group and d.name == cfg.name:
+        if cfg.protocol in KFOLD_PROTOCOLS and cfg.group == group and d.name == cfg.name:
             out.setdefault(cfg.seed, {})[cfg.fold] = d
     return out
 
 
-def load_group(group, selection):
+def load_group(group, selection, scope=('kfold', 'x86')):
     """({seed: Preds} for the seeds with all five folds, {seed: folds present} for the others)."""
     files = {'f1': 'predictions.csv', 'auc': 'predictions_auc.csv'}[selection]
     complete, partial = {}, {}
-    for seed, by_fold in sorted(folds_by_seed(group).items()):
+    for seed, by_fold in sorted(folds_by_seed(group, scope).items()):
         rows, thresholds = {}, {}
         for fold, d in by_fold.items():
             if base := baseline_method(group):
@@ -146,10 +173,12 @@ def paired_bootstrap(a, b, resamples=2000, seed=0):
                    'lo': lo[j], 'hi': hi[j]} for j, (name, _) in enumerate(METRICS)}, len(clusters)
 
 
-def compare(group_a, group_b, selection='f1', resamples=2000, seed=0, seeds=None):
+def compare(group_a, group_b, selection='f1', resamples=2000, seed=0, seeds=None, protocol=None, arch=None):
     """Loads both groups, keeps the seeds complete in both (and in `seeds`, if given), and returns (result, info).
+    Baseline groups resolve to the other group's protocol and arch unless `protocol` / `arch` say otherwise.
     Raises MissingGroup."""
-    loaded = {g: load_group(g, selection) for g in (group_a, group_b)}
+    scopes = baseline_scopes(group_a, group_b, protocol, arch)
+    loaded = {g: load_group(g, selection, scopes.get(g, ('kfold', 'x86'))) for g in (group_a, group_b)}
     wanted = None if seeds is None else set(seeds)
     for g, (complete, partial) in loaded.items():
         if not set(complete) & (wanted if wanted is not None else set(complete)):
@@ -190,9 +219,11 @@ def main():
     ap.add_argument('--b', required=True)
     ap.add_argument('--selection', choices=['f1', 'auc'], default='f1')
     ap.add_argument('--resamples', type=int, default=2000)
+    ap.add_argument('--protocol', choices=KFOLD_PROTOCOLS, help='baseline groups: default from the other group')
+    ap.add_argument('--arch', choices=['x86', 'all', 'matched'], help='baseline groups: default from the other group')
     args = ap.parse_args()
     try:
-        result, info = compare(args.a, args.b, args.selection, args.resamples)
+        result, info = compare(args.a, args.b, args.selection, args.resamples, protocol=args.protocol, arch=args.arch)
     except MissingGroup as e:
         raise SystemExit(f'missing: {e}')
     print(fmt_block(args.a, args.b, args.selection, args.resamples, result, info))

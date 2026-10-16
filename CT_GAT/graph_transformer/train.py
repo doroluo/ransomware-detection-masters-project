@@ -1,10 +1,11 @@
 """One run: python train.py --protocol bundle --arch x86 --seed 0 [--no-graph] | --protocol kfold --fold 2
+| --protocol kfold_v3 --fold 2 --arch all|matched (reads the combined cache unless GT_CACHE is set)
 [--model gnn --control no_edges --encoder mean --untyped --fixed-epochs N --direction forward --drop-edges 0.2
 --flip-edges 0.2] [--train-fraction 0.5]
 
-Writes config.json, manifest.json, vocab.json (sizes), history.csv, val_probs.csv, best.pt (best validation macro-F1
-at cfg.threshold), best_auc.pt (best validation AUC), predictions.csv (F1 checkpoint, pred at cfg.threshold),
-predictions_auc.csv (AUC checkpoint, pred at its validation threshold) and metrics.json to
+Writes config.json (with the cache path used), manifest.json, vocab.json (sizes), history.csv, val_probs.csv, best.pt
+(best validation macro-F1 at cfg.threshold), best_auc.pt (best validation AUC), predictions.csv (F1 checkpoint, pred at
+cfg.threshold), predictions_auc.csv (AUC checkpoint, pred at its validation threshold) and metrics.json to
 graph_transformer_runs/<run name>/.
 """
 import argparse
@@ -12,14 +13,15 @@ import csv
 import json
 import random
 import time
-from dataclasses import fields
+from dataclasses import fields, replace
+from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
 from config import DIRECTIONS, RUNS, RunConfig
-from data import TokenVocab, load_index, loader, make_manifest
+from data import CACHE, TokenVocab, load_index, loader, make_manifest
 from metrics import family_recall, floors, scores
 from model import GraphTransformer
 from model_gnn import HierGNN
@@ -28,9 +30,9 @@ from val_threshold import GRID, macro_f1
 
 def parse_config(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument('--protocol', choices=['bundle', 'kfold'], default='bundle')
+    ap.add_argument('--protocol', choices=['bundle', 'kfold', 'kfold_v3'], default='bundle')
     ap.add_argument('--fold', type=int)
-    ap.add_argument('--arch', choices=['x86', 'all'], default='x86')
+    ap.add_argument('--arch', choices=['x86', 'all', 'matched'], default='x86')
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--no-graph', action='store_true')
     ap.add_argument('--model', choices=['transformer', 'gnn'], default='transformer')
@@ -120,6 +122,9 @@ def write_predictions(path, rows, by_split, threshold):
 
 def run(cfg: RunConfig, out_name=None):
     check_supported(cfg)
+    if cfg.cache and Path(cfg.cache) != CACHE:
+        raise ValueError(f'config says cache {cfg.cache} but this process reads {CACHE}')
+    cfg = replace(cfg, cache=str(CACHE))
     out = RUNS / (out_name or cfg.name)
     out.mkdir(parents=True, exist_ok=True)
     cfg.save(out / 'config.json')

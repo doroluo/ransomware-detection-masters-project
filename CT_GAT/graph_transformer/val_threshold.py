@@ -10,6 +10,7 @@ from sklearn.metrics import f1_score, roc_auc_score
 from config import RUNS, RunConfig
 
 GRID = np.linspace(0.02, 0.98, 49)
+KFOLD = ('kfold', 'kfold_v3')
 
 
 def load(run_dir):
@@ -45,7 +46,7 @@ def main():
             continue
         yv, pv, yt, pt = load(run_dir)
         t = max(GRID, key=lambda g: macro_f1(yv, pv, g))
-        key = f'{cfg.group}_s{cfg.seed}' if cfg.protocol == 'kfold' else cfg.group
+        key = f'{cfg.group}_s{cfg.seed}' if cfg.protocol in KFOLD else cfg.group
         groups[key].append((cfg, t, yt, pt))
 
     print('| config | unit | n | threshold | macro-F1 @0.5 | macro-F1 @val thr | R / G @val thr | AUC |')
@@ -54,7 +55,7 @@ def main():
     for group, runs in sorted(groups.items()):
         at_half = [scores(yt, pt, 0.5) for _, _, yt, pt in runs]
         at_val = [scores(yt, pt, t) for _, t, yt, pt in runs]
-        unit = 'folds' if runs[0][0].protocol == 'kfold' else 'seeds'
+        unit = 'folds' if runs[0][0].protocol in KFOLD else 'seeds'
         print(f"| {group} | {unit} | {len(runs)} | {fmt([t for _, t, _, _ in runs])} "
               f"| {fmt([s['macro_f1'] for s in at_half])} | {fmt([s['macro_f1'] for s in at_val])} "
               f"| {fmt([s['recall_R'] for s in at_val])} / {fmt([s['recall_G'] for s in at_val])} "

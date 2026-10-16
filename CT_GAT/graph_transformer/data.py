@@ -12,10 +12,11 @@ from config import CACHE, RunConfig
 TOKEN_KINDS = ('mn', 'sig', 'beh', 'api')
 
 
-def load_index():
-    """Built rows. `fold` (Mendeley family holdout) and `fold_v3` (family_holdout_v3 folds_all, every corpus) are
-    ints, or None where the row has none; a cache without the corpus columns reads as all-Mendeley."""
-    with (CACHE / 'index.csv').open(encoding='utf-8', newline='') as f:
+def load_index(cache=None):
+    """Built rows of `cache` (default: the run's cache). `fold` (Mendeley family holdout) and `fold_v3`
+    (family_holdout_v3 folds_all, every corpus) are ints, or None where the row has none; a cache without the corpus
+    columns reads as all-Mendeley."""
+    with ((cache or CACHE) / 'index.csv').open(encoding='utf-8', newline='') as f:
         rows = [r for r in csv.DictReader(f) if r['status'] == 'ok']
     for r in rows:
         r['label'] = int(r['label'])
@@ -80,10 +81,20 @@ def subsample_train(train, fraction, seed):
     return [r for r in train if r['sample_id'] in kept]
 
 
+def arch_rows(arch, index):
+    """'all': every row. 'matched': rows with arch_matched == 1, any architecture; the cache must have the column.
+    Otherwise the rows of that architecture."""
+    if arch == 'matched':
+        if not any('arch_matched' in r for r in index):
+            raise ValueError(f'{CACHE} has no arch_matched column; set GT_CACHE to the combined cache')
+        return [r for r in index if r.get('arch_matched') in (1, '1', True)]
+    return [r for r in index if arch == 'all' or r['arch'] == arch]
+
+
 def make_manifest(cfg: RunConfig, index):
     """Rows without a fold under the run's protocol are left out of train, val and test alike. kfold_v3 rows are
     copies whose `fold` is their v3 fold, so everything downstream reports the fold the run used."""
-    rows = [r for r in index if cfg.arch == 'all' or r['arch'] == cfg.arch]
+    rows = arch_rows(cfg.arch, index)
     if cfg.protocol == 'bundle':
         pool, test = [r for r in rows if r['split'] == 'train'], [r for r in rows if r['split'] == 'test']
     else:

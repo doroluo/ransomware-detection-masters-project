@@ -1,6 +1,6 @@
 """Gate summary from the runs on disk.
 
-python gates.py --stage day1|day1b [--resamples 2000]
+python gates.py --stage day1|day1b|v3 [--resamples 2000]
 
 Day 1 reads seed 0 of the kfold x86 arms (R0 TF-IDF baseline, R2 tfidf / mean, R4 shuffle, R5 untyped, R7 typed GNN):
 a pooled table, the preliminary gate-A verdict of PLAN_GNN.md section 5, and the stats.py paired differences. An arm
@@ -9,12 +9,18 @@ with missing folds is reported as missing with the folds that are present; nothi
 Day 1b reads the extra arms of step 5b (direction, augmentation, masking, depth, train fraction): the pooled table of
 every kfold x86 GNN group on disk, the AUC-selection paired differences of each new arm against R7 and R2 tfidf, and
 the learning curve (train fraction 0.25 / 0.5 / 1.0 for R7 and TF-IDF).
+
+Stage v3 reads seed 0 of the kfold_v3 arms (R0, R2, R4, R5, R7) on the combined cache for arch all and arch matched: the
+pooled table under both checkpoint rules with per-architecture recall at the validation threshold and both floors
+(majority, x86 rule), the paired AUC-selection differences R2-R7, R4-R7, R5-R7 and R0-R2, and a one-line verdict per
+arch on whether R7 beats R2 and R4 under the pre-registered rule.
 """
 import argparse
 from functools import lru_cache
 
 import numpy as np
 
+import report
 import stats
 from config import RunConfig
 
@@ -31,6 +37,13 @@ NEW_ARMS = tuple(f'kfold_x86_gnn-{v}' for v in ('mtok15', 'dfn5-dlib40', 'undir'
                                                 'mblk15', 'dedge20', 'flip20', 'mtok50', 'bwd', 'L8'))
 REFERENCES = (('R7 typed', 'kfold_x86_gnn'), ('R2 tfidf', 'kfold_x86_gnn-noedges'))
 CURVE = ((0.25, 'tf25'), (0.5, 'tf50'), (1.0, ''))
+V3_ARCHES = ('all', 'matched')
+V3_ARMS = (('R0 TF-IDF', 'tfidf'), ('R2 no-edges', 'gnn-noedges'), ('R4 shuffle', 'gnn-shuffle'),
+           ('R5 untyped', 'gnn-untyped'), ('R7 typed', 'gnn'))
+V3_PAIRS = (('R2 no-edges', 'R7 typed'), ('R4 shuffle', 'R7 typed'), ('R5 untyped', 'R7 typed'),
+            ('R0 TF-IDF', 'R2 no-edges'))
+V3_RECALLS = (('R x86', 1, 'x86'), ('R x64', 1, 'x64'), ('G x86', 0, 'x86'), ('G x64', 0, 'x64'))
+MIN_AUC, MIN_F1 = 0.01, 0.02
 
 
 @lru_cache(maxsize=None)
@@ -143,12 +156,111 @@ def day1b(resamples):
     return out
 
 
+def v3_group(arch, variant):
+    return variant if stats.baseline_method(variant) else f'kfold_v3_{arch}_{variant}'
+
+
+@lru_cache(maxsize=None)
+def v3_cell(group, selection, arch):
+    """[AUC, PR-AUC, macro-F1, R x86, R x64, G x86, G x64] of the seed-0 pooled kfold_v3 predictions, or a string saying
+    what is missing. A baseline group resolves to the kfold_v3 baselines of `arch`."""
+    complete, partial = stats.load_group(group, selection, ('kfold_v3', arch))
+    if SEED not in complete:
+        present = partial.get(SEED, [])
+        other = f'; complete seeds {sorted(complete)}' if complete else ''
+        return f'missing (seed {SEED} folds present {present} of 0-4{other})'
+    p = complete[SEED]
+    order, grp = stats.ranking(p)
+    recalls = []
+    for _, label, a in V3_RECALLS:
+        mask = (p.y == label) & (p.arch == a)
+        recalls.append(float(np.mean(p.pred[mask] == label)) if mask.any() else float('nan'))
+    return [*stats.metrics_weighted(p, order, grp, np.ones(len(p.y))), *recalls]
+
+
+def v3_floor_cells(arch):
+    keys = ('auc', 'pr_auc', 'macro_f1', 'recall_R_x86', 'recall_R_x64', 'recall_G_x86', 'recall_G_x64')
+    return {name: [s[k] for k in keys] for name, s in report.v3_floors(arch)[0].items()}
+
+
+def v3_table(arch):
+    metrics = ('AUC', 'PR-AUC', 'macro-F1')
+    head = ['| arm | group | ' + ' | '.join(f'{rule} {m}' for rule in ('F1 ckpt, 0.5', 'AUC ckpt, val thr') for m in metrics)
+            + ' | ' + ' | '.join(f'{t} recall' for t, _, _ in V3_RECALLS) + ' |',
+            '|' + '---|' * (2 + 6 + len(V3_RECALLS))]
+    fmt = lambda cells: [c if isinstance(c, str) else f'{c:.3f}' for c in cells]
+    rows = []
+    for arm, variant in V3_ARMS:
+        group = v3_group(arch, variant)
+        f1, auc = v3_cell(group, 'f1', arch), v3_cell(group, 'auc', arch)
+        cells = (f1[:3] if not isinstance(f1, str) else [f1, '', '']) + (auc if not isinstance(auc, str)
+                                                                         else [auc] + [''] * 6)
+        rows.append(f'| {arm} | {group} | ' + ' | '.join(fmt(cells)) + ' |')
+    for name, cells in v3_floor_cells(arch).items():
+        rows.append(f'| floor: {name} | - | ' + ' | '.join(fmt(cells[:3] + cells)) + ' |')
+    return head + rows
+
+
+def beats(r):
+    """The pre-registered minimum effect on one paired comparison (b - a): dAUC >= 0.01 and dmacro-F1 >= 0.02 with
+    both 95% intervals above zero."""
+    return all(r[k]['diff'] >= m and r[k]['lo'] > 0 for k, m in (('auc', MIN_AUC), ('macro_f1', MIN_F1)))
+
+
+def v3_verdict(arch, results):
+    parts, missing = [], []
+    for ref in ('R2 no-edges', 'R4 shuffle'):
+        r = results[ref, 'R7 typed']
+        if isinstance(r, str):
+            missing.append(f'{ref}: {r}')
+            continue
+        parts.append(f"{'beats' if beats(r) else 'does not beat'} {ref} (dAUC {r['auc']['diff']:+.3f} "
+                     f"[{r['auc']['lo']:+.3f}, {r['auc']['hi']:+.3f}], dmacro-F1 {r['macro_f1']['diff']:+.3f} "
+                     f"[{r['macro_f1']['lo']:+.3f}, {r['macro_f1']['hi']:+.3f}])")
+    if missing:
+        return f"- Arch {arch}: cannot assess, missing: {'; '.join(missing)} ({LABEL})."
+    both = all(p.startswith('beats') for p in parts)
+    return (f"- Arch {arch}: R7 {'beats both R2 and R4' if both else 'does not beat both R2 and R4'}: "
+            f"{'; '.join(parts)} ({LABEL}).")
+
+
+def v3(resamples):
+    out = [f'# Gate summary, stage v3 ({LABEL})', '',
+           'Combined cache, kfold_v3 (family-holdout v3 folds 0-4), seed 0 pooled over the five folds. The F1 checkpoint '
+           "is scored at 0.5; the AUC checkpoint at the threshold that maximises validation macro-F1 (TF-IDF at its own "
+           "per fold); recalls are at that threshold. A missing arm or fold is stated in its row. Floors: the majority "
+           "class of each fold's training manifest, and the x86 rule (ransomware iff x86).", '']
+    verdicts = []
+    for arch in V3_ARCHES:
+        pooled_floors, per_fold = report.v3_floors(arch)
+        out += [f'## Arch {arch}: pooled table', ''] + v3_table(arch) + ['']
+        out += ['x86-rule macro-F1 per fold: ' + ', '.join(f"{f['x86_rule']['macro_f1']:.3f}" for f in per_fold)
+                + f" (pooled {pooled_floors['x86_rule']['macro_f1']:.3f}).", '']
+        out += [f'### Arch {arch}: paired differences, second minus first, AUC selection ({LABEL})', '']
+        results = {}
+        for a, b in V3_PAIRS:
+            ga, gb = (v3_group(arch, dict(V3_ARMS)[x]) for x in (a, b))
+            try:
+                result, info = stats.compare(ga, gb, 'auc', resamples, seeds=[SEED], protocol='kfold_v3', arch=arch)
+                results[a, b] = result
+                out += [f'**{a} vs {b}**', '', stats.fmt_block(ga, gb, 'auc', resamples, result, info), '']
+            except stats.MissingGroup as e:
+                results[a, b] = str(e)
+                out += [f'**{a} vs {b}** (selection auc): missing: {e}', '']
+        verdicts.append(v3_verdict(arch, results))
+    out += ['## Verdict: does R7 beat R2 and R4?', '',
+            f'Pre-registered rule (PLAN_GNN.md section 5), applied to the AUC selection: dAUC >= {MIN_AUC} and '
+            f'dmacro-F1 >= {MIN_F1} pooled, both 95% intervals excluding zero. With one seed it cannot pass the rule; '
+            'these lines only say which way seed 0 points.', ''] + verdicts + ['']
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--stage', choices=['day1', 'day1b'], required=True)
+    ap.add_argument('--stage', choices=['day1', 'day1b', 'v3'], required=True)
     ap.add_argument('--resamples', type=int, default=2000)
     args = ap.parse_args()
-    print('\n'.join({'day1': day1, 'day1b': day1b}[args.stage](args.resamples)))
+    print('\n'.join({'day1': day1, 'day1b': day1b, 'v3': v3}[args.stage](args.resamples)))
 
 
 if __name__ == '__main__':

@@ -479,3 +479,299 @@ def test_stop_queue_script(tmp_path):
         for p in (victim, bystander):
             p.kill()
             p.wait()
+
+
+# step 6: kfold_v3 in report, stats, gates, val_threshold and the v3 queue
+
+COMBINED = Path('C:/Users/chaoa/Downloads/graph_transformer_cache_combined')
+needs_combined = pytest.mark.skipif(not (COMBINED / 'index.csv').exists(), reason='needs the combined cache')
+V3_X86_RULE = {'all': [0.607, 0.686, 0.685, 0.733, 0.715], 'matched': [0.535, 0.598, 0.588, 0.660, 0.628]}
+V3_X86_RULE_POOLED = {'all': 0.690, 'matched': 0.606}
+
+
+def v3_rows(fold, seed, signal):
+    """fake_fold_rows with an architecture per row (x86 for even ids)."""
+    return [(sid, y, p, fam, 'x86' if i % 2 == 0 else 'x64')
+            for i, (sid, y, p, fam) in enumerate(fake_fold_rows(fold, seed, signal))]
+
+
+def write_v3_run(root, arch, fold, signal, **kw):
+    cfg = gnn(protocol='kfold_v3', fold=fold, arch=arch, **kw)
+    d = root / cfg.name
+    d.mkdir(parents=True)
+    cfg.save(d / 'config.json')
+    head = ['sample_id', 'split', 'label', 'prob', 'pred', 'arch', 'family', 'fold', 'n_segments_total']
+    rows = v3_rows(fold, 0, signal)
+    for fname, thr in (('predictions.csv', 0.5), ('predictions_auc.csv', 0.4)):
+        with (d / fname).open('w', newline='') as f:
+            w = csv.writer(f)
+            w.writerow(head)
+            for sid, y, p, fam, a in rows:
+                w.writerow([sid, 'test', y, f'{p:.6f}', int(p >= thr), a, fam, fold, 5])
+    (d / 'manifest.json').write_text(json.dumps({'train': [f'tr{fold}_{i}' for i in range(10)]}))
+    (d / 'metrics.json').write_text('{}')
+    return d
+
+
+def write_v3_baseline(root, arch, fold, signal, threshold=0.4):
+    d = root / 'baselines' / f'v3kfold{fold}_{arch}_s0'
+    d.mkdir(parents=True)
+    methods = {m: {'threshold_val': threshold, 'family_recall': {}, 'test': {}, 'test_at_val_threshold': {}}
+               for m in ('tfidf_sig_api_lr', 'structural_lr')}
+    (d / 'metrics.json').write_text(json.dumps({'protocol': 'kfold_v3', 'fold': fold, 'arch': arch, 'seed': 0,
+                                                'train_fraction': 1.0, 'floors': {}, 'methods': methods}))
+    with (d / 'predictions.csv').open('w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['sample_id', 'split', 'method', 'label', 'prob', 'pred', 'arch', 'family', 'fold'])
+        for sid, y, p, fam, a in v3_rows(fold, 0, signal):
+            for method in methods:
+                w.writerow([sid, 'test', method, y, f'{p:.6f}', int(p >= 0.5), a, fam, fold])
+                w.writerow([sid + 'v', 'val', method, y, f'{p:.6f}', int(p >= 0.5), a, fam, fold])
+
+
+FAKE_FLOORS = {'majority': {'auc': 0.5, 'pr_auc': 0.6, 'macro_f1': 0.4, 'recall_R_x86': 1.0, 'recall_R_x64': 1.0,
+                            'recall_G_x86': 0.0, 'recall_G_x64': 0.0},
+               'x86_rule': {'auc': 0.7, 'pr_auc': 0.8, 'macro_f1': 0.69, 'recall_R_x86': 1.0, 'recall_R_x64': 0.0,
+                            'recall_G_x86': 0.0, 'recall_G_x64': 1.0}}
+V3_KW = {'gnn': {}, 'gnn-noedges': dict(control='no_edges'), 'gnn-shuffle': dict(control='shuffle'),
+         'gnn-untyped': dict(untyped=True)}
+
+
+def build_v3_fake(tmp_path, monkeypatch):
+    """arch all: R7 stronger than R2 = R4 (R4 has folds 0-2 only), no R5; arch matched: every arm equal."""
+    monkeypatch.setattr(stats, 'RUNS', tmp_path)
+    monkeypatch.setattr(report, 'RUNS', tmp_path)
+    monkeypatch.setattr(report, 'v3_floors', lambda arch, seed=0: (FAKE_FLOORS, [FAKE_FLOORS] * 5))
+    gates.pooled.cache_clear()
+    gates.v3_cell.cache_clear()
+    plan = {'all': {'gnn-noedges': (1.2, 5), 'gnn': (1.7, 5), 'gnn-shuffle': (1.2, 3)},
+            'matched': {v: (1.2, 5) for v in V3_KW}}
+    for arch, arms in plan.items():
+        for variant, (signal, n_folds) in arms.items():
+            for fold in range(n_folds):
+                write_v3_run(tmp_path, arch, fold, signal, **V3_KW[variant])
+        for fold in range(5):
+            write_v3_baseline(tmp_path, arch, fold, 1.3 if arch == 'all' else 0.6)
+
+
+def test_v3_groups_and_baseline_scopes(tmp_path, monkeypatch):
+    monkeypatch.setattr(stats, 'RUNS', tmp_path)
+    assert stats.group_scope('kfold_v3_matched_gnn-noedges') == ('kfold_v3', 'matched')
+    assert stats.group_scope('kfold_x86_gnn') == ('kfold', 'x86') and stats.group_scope('tfidf') is None
+    assert stats.baseline_scopes('tfidf', 'kfold_v3_all_gnn') == {'tfidf': ('kfold_v3', 'all')}
+    assert stats.baseline_scopes('kfold_v3_matched_gnn', 'structural') == {'structural': ('kfold_v3', 'matched')}
+    assert stats.baseline_scopes('tfidf', 'kfold_x86_gnn') == {'tfidf': ('kfold', 'x86')}
+    assert stats.baseline_scopes('tfidf', 'structural') == {'tfidf': ('kfold', 'x86'), 'structural': ('kfold', 'x86')}
+    assert stats.baseline_scopes('tfidf', 'kfold_x86_gnn', 'kfold_v3', 'all') == {'tfidf': ('kfold_v3', 'all')}
+    for arch, signal in (('all', 1.3), ('matched', 0.6)):
+        for fold in range(5):
+            write_v3_baseline(tmp_path, arch, fold, signal)
+    for fold in range(5):
+        write_baseline(tmp_path, fold, 1.0)
+    dirs = {a: stats.folds_by_seed('tfidf', ('kfold_v3', a))[0] for a in ('all', 'matched')}
+    assert dirs['all'][2].name == 'v3kfold2_all_s0' and dirs['matched'][2].name == 'v3kfold2_matched_s0'
+    assert stats.folds_by_seed('tfidf')[0][2].name == 'kfold2_x86_s0'
+    assert stats.folds_by_seed('tfidf', ('kfold', 'all')) == {}
+    all_, _ = stats.load_group('tfidf', 'auc', ('kfold_v3', 'all'))
+    matched, _ = stats.load_group('tfidf', 'auc', ('kfold_v3', 'matched'))
+    assert len(all_[0].ids) == len(matched[0].ids) == 600 and not np.array_equal(all_[0].prob, matched[0].prob)
+    assert set(all_[0].arch) == {'x86', 'x64'}
+    for fold in range(5):
+        write_v3_run(tmp_path, 'all', fold, 1.0)
+    auto, _ = stats.compare('tfidf', 'kfold_v3_all_gnn', 'auc', 50)
+    forced, _ = stats.compare('tfidf', 'kfold_v3_all_gnn', 'auc', 50, protocol='kfold_v3', arch='all')
+    assert auto == forced
+    other, _ = stats.compare('tfidf', 'kfold_v3_all_gnn', 'auc', 50, protocol='kfold_v3', arch='matched')
+    assert other['auc']['a'] != auto['auc']['a']
+
+
+def test_stats_cli_has_protocol_and_arch():
+    r = subprocess.run([sys.executable, 'stats.py', '--help'], cwd=HERE, capture_output=True, text=True)
+    assert r.returncode == 0 and '--protocol' in r.stdout and '--arch' in r.stdout and 'matched' in r.stdout
+
+
+def test_v3_gates_from_disk(tmp_path, monkeypatch):
+    build_v3_fake(tmp_path, monkeypatch)
+    text = '\n'.join(gates.v3(50))
+    assert 'stage v3' in text and gates.LABEL in text
+    all_part, matched_part = text.split('## Arch matched: pooled table')
+    head = all_part.split('### Arch all')[0]
+    row = {l.split(' | ')[0].lstrip('| '): l for l in head.splitlines() if l.startswith('| ')}
+    assert 'R x86 recall' in head and 'AUC ckpt, val thr AUC' in head
+    assert row['R0 TF-IDF'].split(' | ')[1] == 'tfidf' and 'missing' not in row['R0 TF-IDF']
+    assert 'missing (seed 0 folds present [0, 1, 2] of 0-4)' in row['R4 shuffle']
+    assert 'missing (seed 0 folds present [] of 0-4)' in row['R5 untyped']
+    cells = row['R7 typed'].split(' | ')
+    assert len(cells) == 12 and 'missing' not in row['R7 typed']
+    assert all(0 <= float(c.strip(' |')) <= 1 for c in cells[2:])
+    assert '| floor: majority | - | 0.500 | 0.600 | 0.400 | 0.500 | 0.600 | 0.400 | 1.000 | 1.000 | 0.000 | 0.000 |' in head
+    assert 'floor: x86_rule' in head and 'x86-rule macro-F1 per fold: 0.690, 0.690, 0.690, 0.690, 0.690' in head
+    for pair in ('R2 no-edges vs R7 typed', 'R4 shuffle vs R7 typed', 'R5 untyped vs R7 typed',
+                 'R0 TF-IDF vs R2 no-edges'):
+        assert f'**{pair}**' in all_part and f'**{pair}**' in matched_part
+    assert '(selection auc): missing: kfold_v3_all_gnn-shuffle' in all_part
+    assert 'kfold_v3_all_gnn-noedges minus tfidf' in all_part
+    assert 'kfold_v3_matched_gnn-noedges minus tfidf' in matched_part
+    lines = [l for l in text.split('## Verdict')[1].splitlines() if l.startswith('- Arch')]
+    assert len(lines) == 2 and all(gates.LABEL in l for l in lines)
+    assert lines[0].startswith('- Arch all: cannot assess, missing: R4 shuffle')
+    assert lines[1].startswith('- Arch matched: R7 does not beat both R2 and R4')
+
+
+def test_v3_verdict_rule():
+    def res(auc, f1, lo=0.001):
+        return {'auc': {'diff': auc, 'lo': lo, 'hi': auc + 0.1}, 'macro_f1': {'diff': f1, 'lo': lo, 'hi': f1 + 0.1}}
+    assert gates.beats(res(0.01, 0.02)) and not gates.beats(res(0.009, 0.05)) and not gates.beats(res(0.05, 0.019))
+    assert not gates.beats(res(0.05, 0.05, lo=-0.001)) and not gates.beats(res(0.05, 0.05, lo=0.0))
+    both = {('R2 no-edges', 'R7 typed'): res(0.05, 0.05), ('R4 shuffle', 'R7 typed'): res(0.05, 0.05)}
+    assert 'R7 beats both R2 and R4: beats R2 no-edges' in gates.v3_verdict('all', both)
+    one = {**both, ('R4 shuffle', 'R7 typed'): res(0.0, 0.0, lo=-0.1)}
+    line = gates.v3_verdict('matched', one)
+    assert 'does not beat both' in line and 'does not beat R4 shuffle' in line and 'seed 0 only' in line
+
+
+def test_v3_gates_beats_both_on_strong_signal(tmp_path, monkeypatch):
+    build_v3_fake(tmp_path, monkeypatch)
+    for fold in (3, 4):
+        write_v3_run(tmp_path, 'all', fold, 1.2, control='shuffle')
+    gates.v3_cell.cache_clear()
+    text = '\n'.join(gates.v3(100))
+    line = next(l for l in text.splitlines() if l.startswith('- Arch all'))
+    assert line.startswith('- Arch all: R7 beats both R2 and R4: beats R2 no-edges') and 'beats R4 shuffle' in line
+
+
+def test_v3_report_rows_and_floors(tmp_path, monkeypatch):
+    build_v3_fake(tmp_path, monkeypatch)
+    labels = {sid: y for fold in range(5) for sid, y, *_ in fake_fold_rows(fold, 0, 1.0)}
+    for fold in range(5):
+        labels.update({f'tr{fold}_{i}': i % 2 for i in range(10)})
+    results, notes = report.collect(labels)
+    keys = {k for k, _ in results}
+    assert ('kfold_v3', 'all', 'GNN no-edges') in keys and ('kfold_v3', 'matched', 'edge-typed GNN') in keys
+    assert ('kfold_v3', 'all', 'tfidf_sig_api_lr') in keys and ('kfold_v3', 'matched', 'structural_lr') in keys
+    assert any('GNN shuffle, kfold_v3, all, seed 0: only folds [0, 1, 2] present' in n for n in notes)
+    s, _, fl = dict(results)[('kfold_v3', 'all', 'edge-typed GNN')][0]
+    assert s['n'] == 600 and set(fl) == {'majority', 'x86_rule'} and s['recall_R_x64'] >= 0
+    auc_results, _ = report.collect(labels, auc=True)
+    assert ('kfold_v3', 'matched', 'tfidf_sig_api_lr') in {k for k, _ in auc_results}
+    assert not any(k[0] == 'kfold' for k in keys)
+
+
+def test_v3_val_threshold_pools_like_kfold(tmp_path, monkeypatch, capsys):
+    import val_threshold
+    monkeypatch.setattr(val_threshold, 'RUNS', tmp_path)
+    for fold in range(5):
+        d = write_v3_run(tmp_path, 'all', fold, 1.5)
+        with (d / 'predictions.csv').open('a', newline='') as f:
+            w = csv.writer(f)
+            for sid, y, p, fam, a in v3_rows(fold, 3, 1.5):
+                w.writerow([sid + 'v', 'val', y, f'{p:.6f}', int(p >= 0.5), a, fam, fold, 5])
+    val_threshold.main()
+    out = capsys.readouterr().out
+    assert out.count('| kfold_v3_all_gnn_s0 | folds | 5 |') == 1 and '| kfold_v3_all_gnn_s0 | pooled | 600 |' in out
+    assert '| kfold_v3_all_gnn | 1 |' in out
+
+
+@needs_combined
+@pytest.mark.parametrize('arch', ['all', 'matched'])
+def test_v3_floors_reproduce_the_plan_table(arch):
+    report.v3_floors.cache_clear()
+    pooled_floors, per_fold = report.v3_floors(arch)
+    assert [round(f['x86_rule']['macro_f1'], 3) for f in per_fold] == V3_X86_RULE[arch]
+    assert round(pooled_floors['x86_rule']['macro_f1'], 3) == V3_X86_RULE_POOLED[arch]
+    assert pooled_floors['x86_rule']['n'] == (5652 if arch == 'all' else 4850)
+    assert set(pooled_floors) == {'majority', 'x86_rule'}
+
+
+@needs_combined
+def test_v3_floor_rows_in_the_report_tables(tmp_path, monkeypatch):
+    monkeypatch.setattr(report, 'RUNS', tmp_path)
+    monkeypatch.setattr(report, 'HERE', tmp_path)
+    report.main()
+    floors_part = (tmp_path / 'RESULTS.md').read_text(encoding='utf-8').split(
+        '## Floors on the same test manifests')[1].split('## AUC-selected')[0]
+    for arch in ('all', 'matched'):
+        for name in ('x86_rule', 'majority'):
+            assert f'| floor: {name} | kfold_v3 | {arch} | 1 |' in floors_part
+
+
+V3_QUEUE_ARMS = ['gnn-noedges', 'gnn', 'gnn-shuffle', 'gnn-untyped']
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_v3_dry_names_match_run_configs():
+    lines = queue('--stage', 'v3', '--dry')
+    runs = [l.split()[1:] for l in lines if l.startswith('run ')]
+    assert len(runs) == 40
+    for name, *argv in runs:
+        cfg, _ = parse_config(argv)
+        assert cfg.name == name, (name, cfg.name)
+        assert cfg.protocol == 'kfold_v3' and cfg.seed == 0 and cfg.model == 'gnn'
+    names = [n for n, *_ in runs]
+    assert [n.split('_')[0] for n in names[:5]] == [f'v3kfold{f}' for f in range(5)]
+    assert [tuple(n.split('_')[1:3]) for n in names[::5]] == [(a, v) for a in ('all', 'matched')
+                                                              for v in V3_QUEUE_ARMS]
+    arms = {tuple(n.split('_')[1:3]): parse_config(a)[0] for (n, *a) in runs[::5]}
+    assert arms['all', 'gnn-noedges'].control == 'no_edges' and arms['all', 'gnn'].group == 'kfold_v3_all_gnn'
+    assert arms['matched', 'gnn-shuffle'].control == 'shuffle' and arms['matched', 'gnn-untyped'].untyped
+    assert arms['matched', 'gnn'].arch == 'matched' and arms['all', 'gnn-untyped'].arch == 'all'
+    assert lines[:2] == ['cpu baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0',
+                         'cpu baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch matched --seed 0']
+    assert lines[-3:] == ['cpu report.py', 'cpu gates.py --stage v3 > RUNS/gates_v3.md',
+                          'cpu val_threshold.py > RUNS/val_threshold.md']
+    assert not any(l.startswith(('skipped', 'stopped')) for l in lines)
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_v3_budget_guard_and_usage():
+    lines = queue('--stage', 'v3', '--dry', GPU_BUDGET_MIN='290', DRY_RUN_MIN='100')
+    assert sum(l.startswith('run ') for l in lines) == 3
+    assert sum(l.startswith('skipped (budget) ') for l in lines) == 37
+    assert lines[-1] == 'cpu val_threshold.py > RUNS/val_threshold.md'
+    assert not any(l.startswith('skipped') for l in queue('--stage', 'v3', '--dry'))
+    r = subprocess.run([BASH, 'queue_gnn.sh', '--stage', 'v4', '--dry'], cwd=HERE, capture_output=True, text=True)
+    assert r.returncode == 2 and 'day1|day1b|v3' in r.stdout
+
+
+CACHE_STUB = """#!/bin/bash
+echo "$1 GT_CACHE=$GT_CACHE" >> "$GT_RUNS/calls.txt"
+case $1 in
+  train.py) n=$(grep -c '^train.py' "$GT_RUNS/calls.txt"); [ "$n" = "$STOP_AFTER" ] && touch "$GT_RUNS/STOP";;
+esac
+exit 0
+"""
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_v3_exports_the_combined_cache_and_keeps_stop_and_skip(tmp_path):
+    """A stub interpreter records GT_CACHE for every call, whatever the caller exported. Its 2nd train.py call creates
+    RUNS/STOP, so one run finishes after it; baselines with all five thresholds and finished runs are skipped."""
+    runs = tmp_path / 'runs'
+    (runs / 'logs').mkdir(parents=True)
+    stub = tmp_path / 'stub.sh'
+    stub.write_text(CACHE_STUB, newline='\n')
+    stub.chmod(0o755)
+    for fold in range(5):
+        d = runs / 'baselines' / f'v3kfold{fold}_all_s0'
+        d.mkdir(parents=True)
+        (d / 'metrics.json').write_text('{"methods": {"m": {"threshold_val": 0.4}}}')
+    for fold in range(2):
+        d = runs / f'v3kfold{fold}_all_gnn-noedges_s0'
+        d.mkdir()
+        (d / 'metrics.json').write_text('{}')
+    env = dict(GT_PY=stub.as_posix(), GT_RUNS=runs.as_posix(), GT_TRAIN_PATTERN='gtqueue_never_matches_train[.]py',
+               STOP_AFTER='2', GT_CACHE='C:/somewhere/else')
+    r = subprocess.run([BASH, 'queue_gnn.sh', '--stage', 'v3'], cwd=HERE, capture_output=True, text=True,
+                       env={**os.environ, **env})
+    assert r.returncode == 0, r.stderr + r.stdout
+    out = r.stdout.splitlines()
+    assert 'skip baselines v3 all' in out and any(l.startswith('start baselines v3 matched') for l in out)
+    assert [l.split()[1] for l in out if l.startswith('start v3kfold')] == [
+        f'v3kfold{f}_all_gnn-noedges_s0' for f in (2, 3)]
+    assert [l for l in out if l.startswith('stopped before ')][0] == 'stopped before v3kfold4_all_gnn-noedges_s0'
+    calls = (runs / 'calls.txt').read_text().splitlines()
+    combined = 'GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined'
+    assert {c.split(' ', 1)[0] for c in calls} == {'-c', 'baselines.py', 'train.py', 'report.py', 'gates.py',
+                                                   'val_threshold.py'}
+    assert all(c.endswith(combined) for c in calls), calls
+    assert (runs / 'gates_v3.md').exists() and out[-1].startswith('queue done')
