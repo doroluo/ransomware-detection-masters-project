@@ -15,3 +15,4 @@
 !CT_GAT/graph_transformer/*.md
 !CT_GAT/graph_transformer/*.sh
 !.gitattributes
+!CT_GAT/graph_transformer/SIDE_VALIDATION.json

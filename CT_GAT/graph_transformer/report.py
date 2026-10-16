@@ -188,11 +188,10 @@ def summarize_model_group(protocol, members, labels, auc=False):
 def baseline_runs(auc=False):
     """(protocol, arch, method) -> {seed: (scores, family recall, floors)} and {(key, seed): reason} for the rest.
     With `auc`, test scores at each baseline's validation threshold; kfold pools each fold at its own."""
-    root = RUNS / 'baselines'
+    roots = (RUNS / 'baselines', RUNS / 'baselines_wl')
     groups, kfold, left_out = defaultdict(dict), defaultdict(lambda: defaultdict(dict)), {}
-    if not root.exists():
-        return groups, left_out
-    for d in sorted(p for p in root.iterdir() if (p / 'metrics.json').exists()):
+    for d in sorted(p for root in roots if root.exists() for p in root.iterdir()
+                    if '.pending-' not in p.name and (p / 'metrics.json').exists()):
         m = json.loads((d / 'metrics.json').read_text(encoding='utf-8'))
         for method, v in m['methods'].items():
             tf = f" tf{round(100 * m['train_fraction'])}" if m.get('train_fraction', 1) < 1 else ''
