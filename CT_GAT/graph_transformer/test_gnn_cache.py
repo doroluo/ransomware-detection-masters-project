@@ -1,6 +1,9 @@
-"""Edge kind and DFS back-edge rules of cache v2, on synthetic blocks (no cache needed)."""
+"""Edge kind and DFS back-edge rules of cache v2, and the append-only vocab, on synthetic data (no cache needed)."""
+import json
+
 import numpy as np
 
+import build_cache
 from build_cache import EDGE_KINDS, FCB_EXTERN, FCB_INDJUMP, classify_edge_kind, dfs_back_edges, is_cond
 
 KIND = {name: i for i, name in enumerate(EDGE_KINDS)}
@@ -56,3 +59,35 @@ def test_dfs_back_edges():
     # parallel edges are each classified; no edges is fine
     assert back(2, [(0, 1), (0, 1), (1, 0)]) == [False, False, True]
     assert back(3, []) == []
+
+
+def local_npz(path, mn):
+    strings = np.array(sorted(set(mn)), dtype=np.str_)
+    ids = np.searchsorted(strings, np.array(mn, dtype=np.str_)).astype(np.int32)
+    empty = np.zeros(0, dtype=np.int32)
+    build_cache.write_npz(path, {'mn': ids, 'mn_strings': strings, 'sig': empty, 'sig_strings': np.array([], dtype=np.str_),
+                                 'api': empty, 'api_strings': np.array([], dtype=np.str_),
+                                 'ids_kind': 'local', 'vocab_sha': ''})
+
+
+def test_finalize_appends_and_keeps_earlier_ids(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_cache, 'CACHE', tmp_path)
+    (tmp_path / 'samples').mkdir()
+    a, b = {'sample_id': 'a'}, {'sample_id': 'b'}
+    local_npz(build_cache.npz_path('a'), ['push', 'mov', 'mov'])
+    build_cache.finalize([a])
+    first = build_cache.npz_path('a').read_bytes()
+    local_npz(build_cache.npz_path('b'), ['xor', 'add', 'mov'])
+    sizes, sha, rewritten = build_cache.finalize([a, b])
+    vocab = json.loads((tmp_path / 'vocab.json').read_text(encoding='utf-8'))
+    assert vocab['mn'] == ['mov', 'push', 'add', 'xor'] and rewritten == 1
+    assert build_cache.npz_path('a').read_bytes() == first
+    with np.load(build_cache.npz_path('b')) as z:
+        assert [vocab['mn'][i] for i in z['mn']] == ['xor', 'add', 'mov']
+        assert z['mn_u'].tolist() == [0, 2, 3] and z['mn_strings'].tolist() == ['mov', 'add', 'xor']
+        assert str(z['vocab_sha']) == sha
+    generations = json.loads((tmp_path / 'vocab_generations.json').read_text(encoding='utf-8'))
+    with np.load(build_cache.npz_path('a')) as z:
+        assert [g['vocab_sha'] for g in generations] == [str(z['vocab_sha']), sha]
+    assert [g['sizes']['mn'] for g in generations] == [2, 4]
+    assert build_cache.finalize([a, b])[2] == 0

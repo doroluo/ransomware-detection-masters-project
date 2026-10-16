@@ -1,10 +1,12 @@
 """One run's configuration, saved as config.json in every run directory."""
 import json
+import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Literal, Optional
 
-CACHE = Path('C:/Users/chaoa/Downloads/graph_transformer_cache_v2')
+DEFAULT_CACHE = Path('C:/Users/chaoa/Downloads/graph_transformer_cache_v2')
+CACHE = Path(os.environ.get('GT_CACHE', DEFAULT_CACHE))
 RUNS = Path('C:/Users/chaoa/Downloads/graph_transformer_runs')
 
 CONTROLS = {'': '', 'no_edges': 'noedges', 'chain': 'chain', 'shuffle': 'shuffle', 'permute_types': 'permtypes'}
@@ -12,7 +14,7 @@ CONTROLS = {'': '', 'no_edges': 'noedges', 'chain': 'chain', 'shuffle': 'shuffle
 
 @dataclass(frozen=True)
 class RunConfig:
-    protocol: Literal['bundle', 'kfold'] = 'bundle'
+    protocol: Literal['bundle', 'kfold', 'kfold_v3'] = 'bundle'
     fold: Optional[int] = None
     arch: Literal['x86', 'all'] = 'x86'
     seed: int = 0
@@ -59,11 +61,11 @@ class RunConfig:
     tag: str = ''
 
     def __post_init__(self):
-        if self.protocol not in ('bundle', 'kfold'):
+        if self.protocol not in ('bundle', 'kfold', 'kfold_v3'):
             raise ValueError(f'protocol {self.protocol}')
         if self.arch not in ('x86', 'all'):
             raise ValueError(f'arch {self.arch}')
-        if (self.protocol == 'kfold') != (self.fold is not None):
+        if (self.protocol != 'bundle') != (self.fold is not None):
             raise ValueError('kfold needs --fold and bundle must not have one')
         if self.fold is not None and not 0 <= self.fold < 5:
             raise ValueError(f'fold {self.fold}')
@@ -121,7 +123,7 @@ class RunConfig:
 
     @property
     def name(self):
-        split = 'bundle' if self.protocol == 'bundle' else f'kfold{self.fold}'
+        split = {'bundle': 'bundle', 'kfold': f'kfold{self.fold}', 'kfold_v3': f'v3kfold{self.fold}'}[self.protocol]
         return f"{split}_{self.arch}_{self.variant}_s{self.seed}" + (f'_{self.tag}' if self.tag else '')
 
     @property

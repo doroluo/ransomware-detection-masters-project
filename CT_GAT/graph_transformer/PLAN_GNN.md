@@ -246,3 +246,74 @@ Day-2 data change, agreed with the user: the Oct-8 collection zips `Mendeley_Ran
 `Mendeley_Goodware` are byte-identical to Mendeley_GNN_v1 (checked on all 2,670 sha256s, the metadata and
 the CFG file hashes). `Ransomware_Balanced` (2,326) and `Balanced_Goodware` (1,527) are new and become the
 all-architecture evaluation.
+
+## Combined cache for the all-architecture evaluation (2026-10-15)
+
+`Downloads/graph_transformer_cache_combined` (18.7 GB, built on CPU) holds Mendeley, `Ransomware_Balanced`
+and `Balanced_Goodware`. Point the code at it with `GT_CACHE`; `config.CACHE` still defaults to
+`graph_transformer_cache_v2`, which is unchanged.
+
+```
+GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined python build_cache.py \
+    --corpora mendeley ransomware_balanced balanced_goodware --base-cache C:/Users/chaoa/Downloads/graph_transformer_cache_v2
+GT_CACHE=... python check_cache.py --compare-v1 200 --compare-base C:/Users/chaoa/Downloads/graph_transformer_cache_v2
+```
+
+- **Inputs.** Both zips matched their `.zip.sha256` and were extracted to `Downloads/ida_collections_balanced/`.
+  Every CFG file matches `cfg_sha256` and `SHA256SUMS.txt`. Every eligible export is `ida-cfg-research/2.1`,
+  with header sha256 equal to `sample_id` and a complete footer (2,107 + 1,346).
+- **Filters.** Mendeley keeps its v2 rule (recommended split, not `upx_packed`); the selected rows are identical
+  to v2's 2,411. The collections keep `eligible_for_gnn == 1` with an x86/x64 architecture. UPX stubs are
+  dropped: 6 `Ransomware_Balanced` rows whose identity alias is a Mendeley `upx_packed` stub (the same sha256s
+  are in the Mendeley bundle), and 19 `Balanced_Goodware` rows under `_upx_packed`. One babuk sample was
+  exported with IDA's CLI processor (a managed binary whose functions are CIL methods with negative RVAs). The
+  builder now rejects any export whose processor is not `metapc`; it is the only one in the three corpora.
+  Built: Mendeley 2,411, Ransomware_Balanced 2,100, Balanced_Goodware 1,327 (5,838).
+- **Byte identity.** Mendeley npz are copied from v2 and stay byte-identical, and so do v2's index.csv values
+  (checked on all 2,411). The vocab is append-only: v2's `vocab.json` is a prefix of the combined vocab, new
+  tokens follow it in sorted order, and `vocab_generations.json` records each vocab's sha and sizes, so Mendeley npz keep
+  v2's `vocab_sha`. Combined vocab: mn 1,321, sig 3,379, api 88,913 (v2: 609 / 1,337 / 14,509).
+- **index.csv** adds `corpus`, `fold_v3`, `fold_v3_sha256` and `arch_matched` after the v2 columns. `fold_v3`
+  joins `rdmp-llm/results/family_holdout_v3/folds_all.csv` by sha256 (all joins were direct; none needed an
+  identity alias). Label and arch agree with the fold file on every joined row. Joined collection rows take
+  `family` and `identity_group` from the fold file (`play` becomes `playcrypt`; goodware groups such as
+  `proj:system_local` replace the per-sha256 group), so the validation carve keeps related goodware
+  together. Collection rows have empty `split`, `fold` and `fold_sha256`. `arch_matched` is `keep` from
+  `arch_matched.csv`.
+- **Protocol.** `RunConfig(protocol='kfold_v3', fold=k)` tests on v3 fold k (run names `v3kfold{k}_...`). Rows
+  without a v3 fold are left out of train, validation and test alike. On every fold, test families and goodware
+  groups are disjoint from train+val. The v3 folds are a different partition from the day-1 Mendeley folds
+  (1,655 of 2,509 Mendeley rows share a fold number), so v3 numbers do not compare fold-by-fold with day 1.
+  `folds_all.csv` also has 1,462 `hostgood` x86 goodware with no IDA export; they are not in this cache.
+- **Not wired yet.** `train.py` and `baselines.py` accept only `--protocol bundle|kfold`. `stats.py`,
+  `val_threshold.py` and `gates.py` test `protocol == 'kfold'`. All of these need `kfold_v3` before a v3 run.
+
+Built rows per v3 fold (R ransomware, G goodware). The x86 rule predicts ransomware iff x86; its macro-F1 is the
+floor every all-arch result must beat. The arch-matched subset is the 4,850 rows with `arch_matched = 1`.
+
+| fold | R x86 | R x64 | G x86 | G x64 | total | x86-rule mF1 | arch-matched n | arch-matched x86-rule mF1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 318 | 182 | 226 | 313 | 1039 | 0.607 | 884 | 0.535 |
+| 1 | 412 | 157 | 193 | 354 | 1116 | 0.686 | 924 | 0.598 |
+| 2 | 520 | 143 | 194 | 269 | 1126 | 0.685 | 974 | 0.588 |
+| 3 | 602 | 126 | 150 | 258 | 1136 | 0.733 | 1007 | 0.660 |
+| 4 | 569 | 133 | 205 | 328 | 1235 | 0.715 | 1061 | 0.628 |
+| all | 2421 | 741 | 968 | 1522 | 5652 | 0.690 | 4850 | 0.606 |
+
+| fold | mendeley R | mendeley G | ransomware_balanced R | balanced_goodware G |
+|---|---:|---:|---:|---:|
+| 0 | 191 | 202 | 309 | 337 |
+| 1 | 205 | 262 | 364 | 285 |
+| 2 | 233 | 262 | 430 | 201 |
+| 3 | 261 | 197 | 467 | 211 |
+| 4 | 352 | 246 | 350 | 287 |
+
+Rows without a v3 fold: 186.
+
+- balanced_goodware G x64: 5 (hard_negative 4, system 1)
+- balanced_goodware G x86: 1 (everyday 1)
+- ransomware_balanced R x64: 44 (magniber 12, lockbit 6, akira 4, hive 4, rook 4, stop 3, pandora 3, conti 2)
+- ransomware_balanced R x86: 136 (stop 32, lockbit 29, revil 14, teslacrypt 9, legionlocker 6, astralocker 5, petya 4, avaddon 3)
+
+These 186 rows are built but carry no v3 fold, so every kfold_v3 manifest leaves them out. They are not assigned
+by family, because folds_all.csv did not place them (stop, lockbit and revil all have folds).

@@ -82,6 +82,10 @@ def test_names_and_groups():
     assert RunConfig(tag='t').name == 'bundle_x86_graph_s0_t'
     assert RunConfig(tag='t').group == 'bundle_x86_graph_t'
     assert gnn(tag='t', seed=2).name == 'bundle_x86_gnn_s2_t'
+    assert gnn(protocol='kfold_v3', fold=3, arch='all').name == 'v3kfold3_all_gnn_s0'
+    assert gnn(protocol='kfold_v3', fold=3, arch='all').group == 'kfold_v3_all_gnn'
+    with pytest.raises(ValueError):
+        gnn(protocol='kfold_v3')
 
 
 def test_existing_run_names_unchanged():

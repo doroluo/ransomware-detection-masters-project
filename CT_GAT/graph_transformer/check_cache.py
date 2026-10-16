@@ -1,20 +1,21 @@
 """Check cache invariants for every built sample, and compare a few samples against the bundle's own reader.
 
-python check_cache.py [--reference N] [--compare-v1 N]
+python check_cache.py [--reference N] [--compare-v1 N] [--compare-base DIR]
 
-Every built sample is checked. --compare-v1 also requires N random samples' v1 arrays (and vocab.json) to be
-byte-identical to the v1 cache.
+Every built sample is checked against its corpus's samples.csv and the vocab generation its ids belong to.
+--compare-v1 also requires N random Mendeley samples' v1 arrays to be byte-identical to the v1 cache, whose
+vocab.json must be a prefix of this one. --compare-base requires every npz file that DIR built to be
+byte-identical here, and its index.csv rows to reappear with the same values.
 """
 import argparse
-import csv
-import hashlib
 import importlib.util
 import json
+from pathlib import Path
 
 import numpy as np
 
 from build_cache import (BUNDLE, CACHE, CACHE_VERSION, COUNT_FIELDS, EDGE_KINDS, FCB_EXTERN, TOKEN_KINDS,
-                         npz_path)
+                         corpus_samples, npz_path, read_csv, read_vocab)
 
 V1_CACHE = CACHE.with_name('graph_transformer_cache')
 V1_ARRAYS = ('mn', 'sig', 'beh', 'api', 'blk_insn_ptr', 'blk_api_ptr', 'blk_feat', 'fn_blk_ptr', 'fn_flags',
@@ -39,7 +40,8 @@ def is_acyclic(n, edges):
     return done == n
 
 
-def check_sample(z, row, vocab_sizes, vocab_sha):
+def check_sample(z, row, vocab, generations):
+    """generations: vocab_sha -> sizes of each vocab this cache's vocab.json grew through."""
     errors = []
 
     def need(ok, what):
@@ -49,7 +51,10 @@ def check_sample(z, row, vocab_sizes, vocab_sha):
     B, F, I, A = len(z['blk_feat']), len(z['fn_flags']), len(z['mn']), len(z['api'])
     got = (F, B, len(z['cfg_edges']), I)
     need(got == tuple(int(row[k]) for k in COUNT_FIELDS), f'counts {got} vs samples.csv')
-    need(str(z['ids_kind']) == 'global' and str(z['vocab_sha']) == vocab_sha, 'ids not global for current vocab')
+    vocab_sizes = generations.get(str(z['vocab_sha']))
+    need(str(z['ids_kind']) == 'global' and vocab_sizes is not None, 'ids not global for a vocab of this cache')
+    if errors:
+        return errors
     for name, ptr, end in (('blk_insn_ptr', z['blk_insn_ptr'], I), ('blk_api_ptr', z['blk_api_ptr'], A),
                            ('fn_blk_ptr', z['fn_blk_ptr'], B)):
         n = F if name == 'fn_blk_ptr' else B
@@ -59,6 +64,7 @@ def check_sample(z, row, vocab_sizes, vocab_sha):
         ids = z[k]
         need(len(ids) == 0 or (ids.min() >= 0 and ids.max() < vocab_sizes[k]), f'{k} ids out of vocab')
         need(np.array_equal(np.unique(ids), z[f'{k}_u']), f'{k}_u != unique({k})')
+        need(z[f'{k}_strings'].tolist() == [vocab[k][i] for i in z[f'{k}_u'].tolist()], f'{k}_strings != vocab[{k}_u]')
     need(len(z['beh']) == 0 or (z['beh'].min() >= 0 and z['beh'].max() < vocab_sizes['beh']), 'beh out of range')
     e, c = z['cfg_edges'], z['call_edges']
     need(e.shape[1:] == (2,) and (len(e) == 0 or (e.min() >= 0 and e.max() < B)), 'cfg edge index out of range')
@@ -94,6 +100,23 @@ def check_sample(z, row, vocab_sizes, vocab_sha):
     return errors
 
 
+def vocab_prefix(old, new):
+    """Every kind of `old` is a prefix of the same kind of `new`."""
+    return all(new[k][:len(v)] == v for k, v in old.items())
+
+
+def compare_base(base, index):
+    """Rows of base's index.csv that are missing here or differ in any of base's columns, and built npz whose
+    bytes differ."""
+    here = {r['sample_id']: r for r in index}
+    rows = read_csv(base / 'index.csv')
+    row_diff = [r['sample_id'] for r in rows if r['sample_id'] not in here
+                or any(here[r['sample_id']][k] != v for k, v in r.items())]
+    file_diff = [r['sample_id'] for r in rows if r['status'] == 'ok'
+                 and (base / 'samples' / f"{r['sample_id']}.npz").read_bytes() != npz_path(r['sample_id']).read_bytes()]
+    return len(rows), row_diff, file_diff
+
+
 def compare_v1(sample_id):
     """Names of v1 arrays that are not byte-identical between the v1 cache and this one."""
     with np.load(V1_CACHE / 'samples' / f'{sample_id}.npz') as old, np.load(npz_path(sample_id)) as new:
@@ -127,31 +150,42 @@ def reference_compare(row, vocab):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--reference', type=int, default=3, help='samples to compare against the bundle reader')
-    ap.add_argument('--compare-v1', type=int, default=0, help='random samples to compare byte-for-byte with the v1 cache')
+    ap.add_argument('--compare-v1', type=int, default=0,
+                    help='random Mendeley samples to compare byte-for-byte with the v1 cache')
+    ap.add_argument('--compare-base', type=Path, help='cache whose npz and index rows must reappear unchanged')
     args = ap.parse_args()
-    text = (CACHE / 'vocab.json').read_text(encoding='utf-8')
-    vocab, vocab_sha = json.loads(text), hashlib.sha256(text.encode('utf-8')).hexdigest()
-    sizes = {k: len(v) for k, v in vocab.items()}
-    with (BUNDLE / 'samples.csv').open(encoding='utf-8', newline='') as f:
-        samples = {r['sample_id']: r for r in csv.DictReader(f)}
-    with (CACHE / 'index.csv').open(encoding='utf-8', newline='') as f:
-        index = [r for r in csv.DictReader(f) if r['status'] == 'ok']
+    vocab, generations = read_vocab()
+    generations = {g['vocab_sha']: g['sizes'] for g in generations}
+    full_index = read_csv(CACHE / 'index.csv')
+    index = [r for r in full_index if r['status'] == 'ok']
+    corpora = dict.fromkeys(r.get('corpus', 'mendeley') for r in index)
+    samples = {r['sample_id']: r for c in corpora for r in corpus_samples(c)}
     bad = {}
     for r in index:
         with np.load(npz_path(r['sample_id'])) as z:
-            errors = check_sample(z, samples[r['sample_id']], sizes, vocab_sha)
+            errors = check_sample(z, samples[r['sample_id']], vocab, generations)
         if errors:
             bad[r['sample_id']] = errors
-    print(json.dumps({'checked': len(index), 'failed': len(bad), 'failures': dict(list(bad.items())[:20])}, indent=2))
+    print(json.dumps({'checked': len(index), 'corpora': {c: sum(r.get('corpus', 'mendeley') == c for r in index)
+                                                         for c in corpora},
+                      'vocab_generations': len(generations), 'failed': len(bad),
+                      'failures': dict(list(bad.items())[:20])}, indent=2))
+    mendeley = [r for r in index if r.get('corpus', 'mendeley') == 'mendeley']
     if args.compare_v1:
-        same_vocab = (hashlib.sha256((V1_CACHE / 'vocab.json').read_bytes()).hexdigest()
-                      == hashlib.sha256((CACHE / 'vocab.json').read_bytes()).hexdigest())
-        picks_v1 = np.random.default_rng(0).choice(len(index), min(args.compare_v1, len(index)), replace=False)
-        differ = {index[i]['sample_id']: d for i in picks_v1 if (d := compare_v1(index[i]['sample_id']))}
-        print(json.dumps({'compare_v1': len(picks_v1), 'vocab_sha256_equal': same_vocab, 'differing': differ}, indent=2))
-        if differ or not same_vocab:
+        v1_prefix = vocab_prefix(json.loads((V1_CACHE / 'vocab.json').read_text(encoding='utf-8')), vocab)
+        picks_v1 = np.random.default_rng(0).choice(len(mendeley), min(args.compare_v1, len(mendeley)), replace=False)
+        differ = {mendeley[i]['sample_id']: d for i in picks_v1 if (d := compare_v1(mendeley[i]['sample_id']))}
+        print(json.dumps({'compare_v1': len(picks_v1), 'v1_vocab_is_prefix': v1_prefix, 'differing': differ}, indent=2))
+        if differ or not v1_prefix:
             bad['compare_v1'] = ['v1 mismatch']
-    smallest = sorted(index, key=lambda r: int(r['num_blocks']))
+    if args.compare_base:
+        n, row_diff, file_diff = compare_base(args.compare_base, full_index)
+        base_prefix = vocab_prefix(json.loads((args.compare_base / 'vocab.json').read_text(encoding='utf-8')), vocab)
+        print(json.dumps({'compare_base': str(args.compare_base), 'rows': n, 'rows_differing': row_diff[:20],
+                          'npz_bytes_differing': file_diff[:20], 'base_vocab_is_prefix': base_prefix}, indent=2))
+        if row_diff or file_diff or not base_prefix:
+            bad['compare_base'] = ['base mismatch']
+    smallest = sorted(mendeley, key=lambda r: int(r['num_blocks']))
     picks = [smallest[0], smallest[len(smallest) // 2]] + [r for r in smallest if r['label'] != smallest[0]['label']][:1]
     for r in picks[:args.reference]:
         print('reference match', r['sample_id'], r['label'], reference_compare(samples[r['sample_id']], vocab), 'blocks')

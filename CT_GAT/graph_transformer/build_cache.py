@@ -1,10 +1,15 @@
-"""Stream the Mendeley_GNN_v1 IDA CFG exports into one npz per sample, plus index.csv and vocab.json.
+"""Stream IDA CFG exports (the Mendeley_GNN_v1 bundle and the collection-cfg-asm/1 collections) into one npz
+per sample, plus index.csv and vocab.json.
 
-python build_cache.py [--limit N] [--workers 4]
+python build_cache.py [--corpora mendeley ...] [--base-cache DIR] [--limit N] [--workers 4]
 
 Idempotent: a sample whose npz loads and whose counts match samples.csv is skipped. Workers write
-ids into a sorted per-sample string table; the finalize pass merges the tables into vocab.json
-(sorted, so deterministic) and rewrites every npz to global ids.
+ids into a sorted per-sample string table; the finalize pass appends the strings vocab.json lacks
+(sorted among themselves) and rewrites the new npz to global ids. vocab.json only grows, so global ids
+of npz built against an earlier vocab stay valid; vocab_generations.json lists every vocab's sha and sizes.
+
+Corpora other than mendeley go into a new cache (GT_CACHE), never the default one. --base-cache copies
+that cache's vocab.json and the npz of rows it already holds, so those files stay byte-identical.
 """
 import argparse
 import array
@@ -14,6 +19,7 @@ import hashlib
 import json
 import math
 import os
+import shutil
 import sys
 import time
 from multiprocessing import Pool
@@ -21,7 +27,7 @@ from pathlib import Path
 
 import numpy as np
 
-from config import CACHE
+from config import CACHE, DEFAULT_CACHE
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / 'preprocessing'))
@@ -29,7 +35,11 @@ from token_mapping import BEHAVIOR_MAP, _match_api_in_operands, categorize_behav
 
 DOWNLOADS = Path('C:/Users/chaoa/Downloads')
 BUNDLE = DOWNLOADS / 'ransomware-detection-masters-project/reports/google_drive_upload/2026-10-07/Mendeley_GNN_v1'
+COLLECTIONS = DOWNLOADS / 'ida_collections_balanced'
+CORPUS_ROOTS = {'mendeley': BUNDLE, 'ransomware_balanced': COLLECTIONS / 'Ransomware_Balanced',
+                'balanced_goodware': COLLECTIONS / 'Balanced_Goodware'}
 FOLDS = DOWNLOADS / 'rdmp-llm/results/family_holdout/folds_mendeley.csv'
+FOLDS_V3 = DOWNLOADS / 'rdmp-llm/results/family_holdout_v3'
 SCHEMA = 'ida-cfg-research/2.1'
 
 OPERAND_ABBREV = {'register': 'r', 'immediate': 'i', 'phrase': 'p', 'displacement': 'd',
@@ -40,22 +50,92 @@ CACHE_VERSION = 2
 EDGE_KINDS = ('fallthrough', 'cond_taken', 'jmp', 'indirect', 'extern', 'other')
 FCB_INDJUMP, FCB_EXTERN = 1, 6
 INDEX_FIELDS = ('sample_id', 'label', 'split', 'arch', 'family', 'identity_group', 'fold', 'fold_sha256',
-                *COUNT_FIELDS, 'num_api', 'num_call_edges', 'status', 'error')
+                *COUNT_FIELDS, 'num_api', 'num_call_edges', 'status', 'error',
+                'corpus', 'fold_v3', 'fold_v3_sha256', 'arch_matched')
 
 
-def eligible_rows():
-    with (BUNDLE / 'samples.csv').open(encoding='utf-8', newline='') as f:
-        rows = [r for r in csv.DictReader(f) if r['recommended_split'] and r['representation'] != 'upx_packed']
-    with FOLDS.open(encoding='utf-8', newline='') as f:
-        folds = {r['sha256']: r for r in csv.DictReader(f)}
-    with (BUNDLE / 'provenance/identity_aliases.csv').open(encoding='utf-8', newline='') as f:
-        aliases = {r['sha256']: r['cohort_sha256'] for r in csv.DictReader(f)}
+def read_csv(path):
+    with path.open(encoding='utf-8', newline='') as f:
+        return list(csv.DictReader(f))
+
+
+def read_aliases(root):
+    """sha256 -> alias record (cohort_sha256, current_representation, ...) from the bundle's csv or a collection's json."""
+    path = root / 'provenance/identity_aliases.csv'
+    rows = read_csv(path) if path.exists() else json.loads((root / 'provenance/identity_aliases.json').read_text(encoding='utf-8'))
+    return {r['sha256']: r for r in rows}
+
+
+def corpus_samples(corpus):
+    rows = read_csv(CORPUS_ROOTS[corpus] / 'samples.csv')
     for r in rows:
-        key = r['sample_id'] if r['sample_id'] in folds else aliases.get(r['sample_id'])
+        r['corpus'] = corpus
+    return rows
+
+
+def exclusion(r, alias):
+    """Why a samples.csv row stays out of the cache, or '' if it goes in. UPX stubs are flagged by representation
+    in the bundle, by alias current_representation (stubs of bundle samples) or by the _upx_packed folder elsewhere."""
+    if r['corpus'] == 'mendeley':
+        if not r['recommended_split']:
+            return 'no recommended split'
+    elif r['eligible_for_gnn'] != '1' or r['architecture'] not in ('x86', 'x64'):
+        return 'ineligible'
+    if r['corpus'] == 'mendeley' and r['representation'] == 'upx_packed':
+        return 'upx stub'
+    if r['corpus'] != 'mendeley' and (r['family'] == '_upx_packed' or alias.get('current_representation') == 'upx_packed'):
+        return 'upx stub'
+    return ''
+
+
+def join_v3(rows, aliases):
+    """fold_v3, fold_v3_sha256 and arch_matched from folds_all.csv, by sha256 or the identity alias's cohort_sha256.
+    Joined non-mendeley rows take family and identity group from the fold file, which spans all corpora."""
+    folds = {r['sha256']: r for r in read_csv(FOLDS_V3 / 'folds_all.csv')}
+    matched = {r['sha256']: r['keep'] for r in read_csv(FOLDS_V3 / 'arch_matched.csv')}
+    for r in rows:
+        sid = r['sample_id']
+        key = sid if sid in folds else aliases[r['corpus']].get(sid, {}).get('cohort_sha256')
+        r['fold_v3'] = r['fold_v3_sha256'] = r['arch_matched'] = ''
+        if key not in folds:
+            continue
+        f = folds[key]
+        if (f['label'], f['arch']) != (r['label'], r['architecture']):
+            raise SystemExit(f"{sid}: label/arch {r['label']}/{r['architecture']} vs folds_all {f['label']}/{f['arch']}")
+        r['fold_v3'], r['fold_v3_sha256'], r['arch_matched'] = f['fold'], key, matched[key]
+        if r['corpus'] != 'mendeley':
+            r['family'], r['identity_group'] = f['family'], f['group']
+
+
+def eligible_rows(corpora=('mendeley',)):
+    """Cache rows of the corpora in order, and {(corpus, reason): sample_ids} for the rows left out. A sample_id
+    already taken by an earlier corpus is left out as a duplicate."""
+    rows, dropped, seen, aliases = [], {}, set(), {}
+    for corpus in corpora:
+        aliases[corpus] = read_aliases(CORPUS_ROOTS[corpus])
+        for r in corpus_samples(corpus):
+            alias = aliases[corpus].get(r['sample_id'], {})
+            why = exclusion(r, alias)
+            if not why and r['sample_id'] in seen:
+                why = 'duplicate sample_id'
+            if not why and corpus != 'mendeley' and alias.get('cohort_sha256') in seen:
+                why = 'duplicate identity'
+            if why:
+                dropped.setdefault((corpus, why), []).append(r['sample_id'])
+            else:
+                seen.add(r['sample_id'])
+                rows.append(r)
+    folds = {r['sha256']: r for r in read_csv(FOLDS)}
+    for r in rows:
+        r['fold'] = r['fold_sha256'] = ''
+        if r['corpus'] != 'mendeley':
+            continue
+        key = r['sample_id'] if r['sample_id'] in folds else aliases['mendeley'].get(r['sample_id'], {}).get('cohort_sha256')
         if key not in folds:
             raise SystemExit(f"{r['sample_id']} joins neither folds_mendeley.csv nor identity_aliases.csv")
         r['fold'], r['fold_sha256'] = folds[key]['fold'], key
-    return rows
+    join_v3(rows, aliases)
+    return rows, dropped
 
 
 def npz_path(sample_id):
@@ -190,12 +270,15 @@ def encode_sample(row):
     import_beh = {}
     footer = None
 
-    with gzip.open(BUNDLE / row['cfg_path'], 'rt', encoding='utf-8') as stream:
+    with gzip.open(CORPUS_ROOTS[row['corpus']] / row['cfg_path'], 'rt', encoding='utf-8') as stream:
         header = json.loads(stream.readline())
         if header.get('record') != 'header' or header.get('sha256') != sample_id:
             raise ValueError('header identity mismatch')
         if header.get('schema') != SCHEMA:
             raise ValueError(f"schema {header.get('schema')}")
+        processor = header.get('analysis_options', {}).get('processor')
+        if processor != 'metapc':
+            raise ValueError(f'IDA processor {processor}: not x86 code (a managed binary exports CIL methods)')
         imports = header.get('pe', {}).get('imports', [])
         import_strings = [api_string(s) for s in imports]
         import_names = [s.get('name') or '' for s in imports]
@@ -312,41 +395,81 @@ def build_one(row):
         return row['sample_id'], 'failed', f'{type(exc).__name__}: {exc}', time.time() - start
 
 
+def vocab_sha256(text):
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def read_vocab(cache=None):
+    """vocab.json and the generations it grew through, oldest first; an empty vocab and [] for a new cache."""
+    cache = cache or CACHE
+    if not (cache / 'vocab.json').exists():
+        return {k: [] for k in TOKEN_KINDS}, []
+    text = (cache / 'vocab.json').read_text(encoding='utf-8')
+    vocab = json.loads(text)
+    path = cache / 'vocab_generations.json'
+    if path.exists():
+        return vocab, json.loads(path.read_text(encoding='utf-8'))
+    return vocab, [{'vocab_sha': vocab_sha256(text), 'sizes': {k: len(v) for k, v in vocab.items()}}]
+
+
+def seed_from_base(base, rows):
+    """Copy base's vocab into a cache that has none, and base's npz for rows it built that this cache lacks."""
+    if not (CACHE / 'vocab.json').exists():
+        for name in ('vocab.json', 'vocab_generations.json'):
+            if (base / name).exists():
+                shutil.copyfile(base / name, CACHE / name)
+    built = {r['sample_id'] for r in read_csv(base / 'index.csv') if r['status'] == 'ok'}
+    copied = 0
+    for r in rows:
+        if r['sample_id'] in built and not npz_path(r['sample_id']).exists():
+            shutil.copyfile(base / 'samples' / f"{r['sample_id']}.npz", npz_path(r['sample_id']))
+            copied += 1
+    return copied
+
+
 def finalize(rows):
-    """Merge per-sample string tables into vocab.json and rewrite ids to global, skipping npz already current."""
-    built = [r for r in rows if npz_path(r['sample_id']).exists()]
-    tables = {k: set() for k in TOKEN_KINDS}
-    for r in built:
-        with np.load(npz_path(r['sample_id'])) as z:
-            for k in TOKEN_KINDS:
-                tables[k].update(z[f'{k}_strings'].tolist())
-    vocab = {k: sorted(tables[k]) for k in TOKEN_KINDS}
-    vocab['beh'] = sorted(BEHAVIOR_MAP, key=BEHAVIOR_MAP.get)
-    text = json.dumps(vocab, indent=0, ensure_ascii=False)
-    vocab_sha = hashlib.sha256(text.encode('utf-8')).hexdigest()
-    tmp = CACHE / 'vocab.json.tmp'
-    tmp.write_text(text, encoding='utf-8')
-    os.replace(tmp, CACHE / 'vocab.json')
-    lookup = {k: {s: i for i, s in enumerate(vocab[k])} for k in TOKEN_KINDS}
-    rewritten = 0
-    for r in built:
+    """Append the strings of locally numbered npz to vocab.json and rewrite those npz to global ids. npz numbered
+    against an earlier generation of this vocab are left alone, since appending keeps their ids."""
+    prior, generations = read_vocab()
+    known = {g['vocab_sha'] for g in generations}
+    local, new = [], {k: set() for k in TOKEN_KINDS}
+    for r in rows:
         path = npz_path(r['sample_id'])
+        if not path.exists():
+            continue
         with np.load(path) as z:
-            if str(z['ids_kind']) == 'global' and str(z['vocab_sha']) == vocab_sha:
+            if str(z['ids_kind']) == 'global':
+                if str(z['vocab_sha']) not in known:
+                    raise SystemExit(f"{r['sample_id']}: ids belong to vocab {z['vocab_sha']}, not one of this cache's")
                 continue
+            for k in TOKEN_KINDS:
+                new[k].update(z[f'{k}_strings'].tolist())
+        local.append(path)
+    vocab = {k: prior[k] + sorted(new[k].difference(prior[k])) for k in TOKEN_KINDS}
+    vocab['beh'] = sorted(BEHAVIOR_MAP, key=BEHAVIOR_MAP.get)
+    if prior.get('beh', vocab['beh']) != vocab['beh']:
+        raise SystemExit('behavior categories differ from vocab.json')
+    text = json.dumps(vocab, indent=0, ensure_ascii=False)
+    vocab_sha = vocab_sha256(text)
+    if vocab_sha not in known:
+        generations.append({'vocab_sha': vocab_sha, 'sizes': {k: len(v) for k, v in vocab.items()}})
+    for name, body in (('vocab.json', text), ('vocab_generations.json', json.dumps(generations, indent=1))):
+        tmp = CACHE / f'{name}.tmp'
+        tmp.write_text(body, encoding='utf-8')
+        os.replace(tmp, CACHE / name)
+    lookup = {k: {s: i for i, s in enumerate(vocab[k])} for k in TOKEN_KINDS}
+    for path in local:
+        with np.load(path) as z:
             arrays = {k: z[k] for k in z.files}
         for k in TOKEN_KINDS:
-            ids = arrays[k]
-            if str(arrays['ids_kind']) == 'global':
-                # Sorted vocab and sorted per-sample tables share one order, so rank among present ids recovers the local id.
-                ids = np.searchsorted(np.unique(ids), ids).astype(np.int32)
-            to_global = np.array([lookup[k][s] for s in arrays[f'{k}_strings'].tolist()], dtype=np.int32)
+            ids, strings = arrays[k], arrays[f'{k}_strings']
+            to_global = np.array([lookup[k][s] for s in strings.tolist()], dtype=np.int32)
+            order = np.argsort(to_global, kind='stable')
             arrays[k] = to_global[ids] if len(ids) else ids
-            arrays[f'{k}_u'] = to_global
+            arrays[f'{k}_u'], arrays[f'{k}_strings'] = to_global[order], strings[order]
         arrays['ids_kind'], arrays['vocab_sha'] = 'global', vocab_sha
         write_npz(path, arrays)
-        rewritten += 1
-    return {k: len(vocab[k]) for k in vocab}, vocab_sha, rewritten
+    return {k: len(vocab[k]) for k in vocab}, vocab_sha, len(local)
 
 
 def edge_stats(rows):
@@ -368,7 +491,9 @@ def write_index(rows, results):
         status, error = results.get(r['sample_id'], ('missing', 'not built'))
         entry = {'sample_id': r['sample_id'], 'label': r['label'], 'split': r['recommended_split'],
                  'arch': r['architecture'], 'family': r['family'], 'identity_group': r['identity_group'],
-                 'fold': r['fold'], 'fold_sha256': r['fold_sha256'], 'status': status, 'error': error}
+                 'fold': r['fold'], 'fold_sha256': r['fold_sha256'], 'status': status, 'error': error,
+                 'corpus': r['corpus'], 'fold_v3': r['fold_v3'], 'fold_v3_sha256': r['fold_v3_sha256'],
+                 'arch_matched': r['arch_matched']}
         for k in COUNT_FIELDS:
             entry[k] = r[k]
         entry['num_api'] = entry['num_call_edges'] = ''
@@ -382,23 +507,69 @@ def write_index(rows, results):
         w.writeheader()
         w.writerows(out)
     os.replace(tmp, CACHE / 'index.csv')
+    return out
+
+
+def x86_rule_macro_f1(n):
+    """Macro-F1 of 'ransomware iff x86' from counts keyed (label, arch)."""
+    tp, fn, fp, tn = n[('1', 'x86')], n[('1', 'x64')], n[('0', 'x86')], n[('0', 'x64')]
+    f1 = lambda a, b, c: 2 * a / (2 * a + b + c) if a else 0.0
+    return (f1(tp, fp, fn) + f1(tn, fn, fp)) / 2
+
+
+def fold_table(index):
+    """Markdown tables of the built rows: per v3 fold, class x architecture with the x86-rule floor (all rows and
+    the arch-matched subset), per fold x corpus, and the rows without a v3 fold."""
+    ok = [r for r in index if r['status'] == 'ok']
+    cells = (('1', 'x86'), ('1', 'x64'), ('0', 'x86'), ('0', 'x64'))
+    out = ['| fold | R x86 | R x64 | G x86 | G x64 | total | x86-rule mF1 | arch-matched n | arch-matched x86-rule mF1 |',
+           '|---|---:|---:|---:|---:|---:|---:|---:|---:|']
+    for fold in ('0', '1', '2', '3', '4', None):
+        sel = [r for r in ok if r['fold_v3'] != '' and (fold is None or r['fold_v3'] == fold)]
+        n = {c: sum((r['label'], r['arch']) == c for r in sel) for c in cells}
+        am = {c: sum((r['label'], r['arch']) == c and r['arch_matched'] == '1' for r in sel) for c in cells}
+        out.append(f"| {fold or 'all'} | " + ' | '.join(str(n[c]) for c in cells)
+                   + f' | {len(sel)} | {x86_rule_macro_f1(n):.3f} | {sum(am.values())} | {x86_rule_macro_f1(am):.3f} |')
+    parts = list(dict.fromkeys((r['corpus'], r['label']) for r in ok))
+    out += ['', '| fold | ' + ' | '.join(f"{c} {'R' if y == '1' else 'G'}" for c, y in parts) + ' |',
+            '|---|' + '---:|' * len(parts)]
+    for fold in ('0', '1', '2', '3', '4'):
+        sel = [r for r in ok if r['fold_v3'] == fold]
+        out.append(f'| {fold} | ' + ' | '.join(str(sum((r['corpus'], r['label']) == p for r in sel)) for p in parts) + ' |')
+    unjoined = [r for r in ok if r['fold_v3'] == '']
+    groups = {}
+    for r in unjoined:
+        groups.setdefault((r['corpus'], r['label'], r['arch']), []).append(r['family'])
+    out += ['', f'Rows without a v3 fold: {len(unjoined)}.', '']
+    for (corpus, label, arch), fams in sorted(groups.items()):
+        top = ', '.join(f'{f} {c}' for f, c in sorted(((f, fams.count(f)) for f in set(fams)), key=lambda t: -t[1])[:8])
+        out.append(f"- {corpus} {'R' if label == '1' else 'G'} {arch}: {len(fams)} ({top})")
+    return '\n'.join(out) + '\n'
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--limit', type=int, help='build only N samples, half of each class')
     ap.add_argument('--workers', type=int, default=4)
+    ap.add_argument('--corpora', nargs='+', choices=list(CORPUS_ROOTS), default=['mendeley'])
+    ap.add_argument('--base-cache', type=Path, help='cache whose vocab.json and npz to start from')
     args = ap.parse_args()
     if args.workers > 4:
         raise SystemExit('at most 4 workers')
+    if args.corpora != ['mendeley'] and CACHE.resolve() == DEFAULT_CACHE.resolve():
+        raise SystemExit('set GT_CACHE to a new directory before adding corpora; the default cache stays Mendeley-only')
+    if args.base_cache and args.base_cache.resolve() == CACHE.resolve():
+        raise SystemExit('--base-cache must differ from the cache being built')
     (CACHE / 'samples').mkdir(parents=True, exist_ok=True)
-    rows = eligible_rows()
+    rows, dropped = eligible_rows(args.corpora)
     if args.limit:
         by_class = {c: sorted((r for r in rows if r['label'] == c), key=lambda r: r['sample_id']) for c in ('0', '1')}
         rows = by_class['0'][:args.limit // 2] + by_class['1'][:args.limit - args.limit // 2]
+    copied = seed_from_base(args.base_cache, rows) if args.base_cache else 0
     todo = sorted((r for r in rows if not verified(r)), key=lambda r: -int(r['num_instructions']))
     todo_ids = {r['sample_id'] for r in todo}
-    print(f'{len(rows)} eligible, {len(rows) - len(todo)} already built, {len(todo)} to build', flush=True)
+    print(f'{len(rows)} eligible, {copied} copied from base, {len(rows) - len(todo)} already built, {len(todo)} to build',
+          flush=True)
     results = {r['sample_id']: ('ok', '') for r in rows if r['sample_id'] not in todo_ids}
     start = time.time()
     with Pool(args.workers) as pool:
@@ -407,10 +578,15 @@ def main():
             print(f'[{n}/{len(todo)}] {time.time() - start:7.0f}s {sample_id} {status} {secs:.1f}s {error}', flush=True)
     build_secs = time.time() - start
     sizes, vocab_sha, rewritten = finalize([r for r in rows if results[r['sample_id']][0] == 'ok'])
-    write_index(rows, results)
+    index = write_index(rows, results)
+    (CACHE / 'folds_v3.md').write_text(fold_table(index), encoding='utf-8')
     failed = {s: e for s, (st, e) in results.items() if st != 'ok'}
     stats = edge_stats([r for r in rows if r['sample_id'] not in failed])
-    summary = {'eligible': len(rows), 'ok': len(rows) - len(failed), 'failed': failed, 'vocab_sizes': sizes,
+    summary = {'corpora': args.corpora, 'base_cache': str(args.base_cache or ''), 'copied_from_base': copied,
+               'eligible': {c: sum(r['corpus'] == c for r in rows) for c in args.corpora},
+               'dropped': {f'{c}: {why}': len(ids) for (c, why), ids in dropped.items()},
+               'no_fold_v3': {c: sum(r['corpus'] == c and not r['fold_v3'] for r in rows) for c in args.corpora},
+               'ok': len(rows) - len(failed), 'failed': failed, 'vocab_sizes': sizes,
                'vocab_sha': vocab_sha, **stats, 'npz_rewritten': rewritten, 'build_seconds': round(build_secs, 1),
                'total_seconds': round(time.time() - start, 1),
                'disk_bytes': sum(p.stat().st_size for p in (CACHE / 'samples').glob('*.npz'))}

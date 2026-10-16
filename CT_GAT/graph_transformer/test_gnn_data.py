@@ -455,3 +455,19 @@ def test_gnn_loader_end_to_end(vocab, train_rows):
     for b in batches:
         assert b['tok_weights'].shape == b['tokens'].shape and b['bin_feat'].shape == (len(b['sample_id']), 5)
         assert b['n_fn'] == len(b['seg_len'])
+
+
+def test_kfold_v3_manifest_uses_v3_folds_and_drops_unassigned():
+    rows = [{'sample_id': f'{c}{i}', 'label': i % 2, 'arch': 'x86', 'family': f'fam{i % 6}', 'identity_group': f'g{i}',
+             'split': 'train' if c == 'm' else '', 'fold': i % 5 if c == 'm' else None,
+             'fold_v3': None if i == 7 else (i + 1) % 5, 'corpus': c}
+            for c in ('m', 'n') for i in range(40)]
+    m = make_manifest(RunConfig(protocol='kfold_v3', fold=2, arch='all', val_fraction=0.0), rows)
+    used = m.train + m.val + m.test
+    assert {r['sample_id'] for r in used} == {r['sample_id'] for r in rows if r['fold_v3'] is not None}
+    assert {r['fold'] for r in m.test} == {2} and all(r['fold'] != 2 for r in m.train + m.val)
+    assert all(r['fold'] == r['fold_v3'] for r in used) and rows[0]['fold'] == 0
+    m1 = make_manifest(RunConfig(protocol='kfold', fold=2, arch='all', val_fraction=0.0), rows)
+    assert all(r['corpus'] == 'm' for r in m1.train + m1.val + m1.test)
+    with pytest.raises(ValueError):
+        make_manifest(RunConfig(protocol='kfold_v3', fold=0), [{**r, 'fold_v3': None} for r in rows])

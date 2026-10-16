@@ -13,10 +13,15 @@ TOKEN_KINDS = ('mn', 'sig', 'beh', 'api')
 
 
 def load_index():
+    """Built rows. `fold` (Mendeley family holdout) and `fold_v3` (family_holdout_v3 folds_all, every corpus) are
+    ints, or None where the row has none; a cache without the corpus columns reads as all-Mendeley."""
     with (CACHE / 'index.csv').open(encoding='utf-8', newline='') as f:
         rows = [r for r in csv.DictReader(f) if r['status'] == 'ok']
     for r in rows:
-        r['label'], r['fold'] = int(r['label']), int(r['fold'])
+        r['label'] = int(r['label'])
+        r.setdefault('corpus', 'mendeley')
+        for k in ('fold', 'fold_v3'):
+            r[k] = int(r[k]) if r.get(k) else None
     return rows
 
 
@@ -56,10 +61,17 @@ def carve_validation(rows, fraction, seed):
 
 
 def make_manifest(cfg: RunConfig, index):
+    """Rows without a fold under the run's protocol are left out of train, val and test alike. kfold_v3 rows are
+    copies whose `fold` is their v3 fold, so everything downstream reports the fold the run used."""
     rows = [r for r in index if cfg.arch == 'all' or r['arch'] == cfg.arch]
     if cfg.protocol == 'bundle':
         pool, test = [r for r in rows if r['split'] == 'train'], [r for r in rows if r['split'] == 'test']
     else:
+        if cfg.protocol == 'kfold_v3':
+            if not any(r['fold_v3'] is not None for r in index):
+                raise ValueError(f'{CACHE} has no fold_v3 column; set GT_CACHE to the combined cache')
+            rows = [{**r, 'fold': r['fold_v3']} for r in rows]
+        rows = [r for r in rows if r['fold'] is not None]
         pool, test = [r for r in rows if r['fold'] != cfg.fold], [r for r in rows if r['fold'] == cfg.fold]
     train, val, val_families = carve_validation(pool, cfg.val_fraction, cfg.seed)
     return Manifest(train, val, test, val_families)
