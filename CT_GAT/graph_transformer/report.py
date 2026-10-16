@@ -28,14 +28,16 @@ COLUMNS = (('accuracy', 'Acc'), ('precision', 'P'), ('recall', 'R'), ('f1', 'F1'
 DEFAULTS = asdict(RunConfig())
 LABELLED = ('protocol', 'fold', 'arch', 'seed', 'no_graph', 'num_workers', 'model', 'encoder', 'readout', 'control',
             'untyped', 'no_call_mp', 'stack_tfidf', 'mask_tokens', 'drop_functions', 'drop_library', 'mask_blocks',
-            'aux_recon', 'aux_edge')
+            'aux_recon', 'aux_edge', 'direction', 'drop_edges', 'flip_edges', 'gnn_fn_layers', 'gnn_bin_layers',
+            'train_fraction')
 CONTROL_LABELS = {'no_edges': 'no-edges', 'shuffle': 'shuffle', 'chain': 'chain', 'permute_types': 'permuted types'}
 
 
 def model_label(cfg):
     """Readable arm name; every field in LABELLED that affects the arm shows up here, so overrides skip them."""
+    tf = [f'train {round(100 * cfg.train_fraction)}%'] if cfg.train_fraction < 1 else []
     if cfg.model == 'transformer':
-        return f"{'no-graph' if cfg.no_graph else 'graph'} transformer"
+        return ' '.join([f"{'no-graph' if cfg.no_graph else 'graph'} transformer"] + tf)
     ablate = [CONTROL_LABELS[cfg.control]] if cfg.control else []
     ablate += [s for s, on in (('untyped', cfg.untyped), ('no call-MP', cfg.no_call_mp)) if on]
     parts = ['GNN'] if ablate else ['edge-typed GNN']
@@ -44,6 +46,10 @@ def model_label(cfg):
     parts += [f'{s} {round(100 * p)}%' for s, p in (('mask-tok', cfg.mask_tokens), ('drop-fn', cfg.drop_functions),
                                                     ('drop-lib', cfg.drop_library), ('mask-blk', cfg.mask_blocks)) if p]
     parts += ['aux'] if cfg.aux_recon > 0 or cfg.aux_edge > 0 else []
+    parts += [cfg.direction] if cfg.direction != 'both' else []
+    parts += [f'{s} {round(100 * p)}%' for s, p in (('drop-edge', cfg.drop_edges), ('flip-edge', cfg.flip_edges)) if p]
+    parts += [f'{s}{n}' for s, n, default in (('L', cfg.gnn_fn_layers, 3), ('B', cfg.gnn_bin_layers, 2)) if n != default]
+    parts += tf
     parts += ['enc-mean'] if cfg.block_encoder == 'mean' else []
     parts += ['gated'] if cfg.readout == 'gated' else []
     return ' '.join(parts)
@@ -155,7 +161,8 @@ def baseline_runs(auc=False):
     for d in sorted(p for p in root.iterdir() if (p / 'metrics.json').exists()):
         m = json.loads((d / 'metrics.json').read_text(encoding='utf-8'))
         for method, v in m['methods'].items():
-            key, seed = (m['protocol'], m['arch'], method), m['seed']
+            tf = f" tf{round(100 * m['train_fraction'])}" if m.get('train_fraction', 1) < 1 else ''
+            key, seed = (m['protocol'], m['arch'], method + tf), m['seed']
             if auc and 'test_at_val_threshold' not in v:
                 left_out[(key, seed)] = 'no validation threshold (baseline predates it)'
             elif m['protocol'] == 'bundle':
@@ -164,14 +171,15 @@ def baseline_runs(auc=False):
                     test = {**test, 'pr_auc': pr_auc_of(read_predictions(d / 'predictions.csv', method=method))}
                 groups[key][seed] = (test, v['family_recall'], m['floors'])
             else:
-                kfold[key][seed][m['fold']] = (d, v.get('threshold_val'))
+                kfold[key][seed][m['fold']] = (d, v.get('threshold_val'), method)
     for key, seeds in kfold.items():
         for seed, by_fold in seeds.items():
             if len(by_fold) < 5:
                 left_out[(key, seed)] = f'only folds {sorted(by_fold)} present'
                 continue
-            thresholds = {str(f): t for f, (_, t) in by_fold.items()} if auc else None
-            rows = [r for d, _ in by_fold.values() for r in read_predictions(d / 'predictions.csv', method=key[2])]
+            thresholds = {str(f): t for f, (_, t, _) in by_fold.items()} if auc else None
+            rows = [r for d, _, method in by_fold.values()
+                    for r in read_predictions(d / 'predictions.csv', method=method)]
             s, fam = pooled(rows, thresholds)
             groups[key][seed] = (s, fam, {})
     return groups, left_out

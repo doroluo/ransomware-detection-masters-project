@@ -7,6 +7,8 @@ from typing import Literal, Optional
 CACHE = Path('C:/Users/chaoa/Downloads/graph_transformer_cache_v2')
 RUNS = Path('C:/Users/chaoa/Downloads/graph_transformer_runs')
 
+DIRECTIONS = ('both', 'forward', 'backward', 'undirected')
+DIRECTION_SUFFIX = {'forward': 'fwd', 'backward': 'bwd', 'undirected': 'undir'}
 CONTROLS = {'': '', 'no_edges': 'noedges', 'chain': 'chain', 'shuffle': 'shuffle', 'permute_types': 'permtypes'}
 
 
@@ -54,6 +56,10 @@ class RunConfig:
     aux_weight: float = 0.3
     gnn_fn_layers: int = 3
     gnn_bin_layers: int = 2
+    direction: str = 'both'
+    drop_edges: float = 0.0
+    flip_edges: float = 0.0
+    train_fraction: float = 1.0
     batch_blocks: int = 300000
     fixed_epochs: int = 0
     tag: str = ''
@@ -79,6 +85,12 @@ class RunConfig:
                  self.aux_recon, self.aux_edge)
         if any(not 0 <= r < 1 for r in rates):
             raise ValueError(f'rates must be in [0, 1): {rates}')
+        if self.direction not in DIRECTIONS:
+            raise ValueError(f'direction {self.direction}')
+        if any(not 0 <= r < 1 for r in (self.drop_edges, self.flip_edges)):
+            raise ValueError(f'edge rates must be in [0, 1): {self.drop_edges}, {self.flip_edges}')
+        if not 0 < self.train_fraction <= 1:
+            raise ValueError(f'train_fraction must be in (0, 1]: {self.train_fraction}')
         if self.model == 'gnn':
             if self.no_graph:
                 raise ValueError('no_graph applies to the transformer only')
@@ -87,7 +99,9 @@ class RunConfig:
         else:
             gnn_only = {'encoder': self.encoder is not None, 'readout': self.readout != 'fixed',
                         'control': bool(self.control), 'untyped': self.untyped, 'no_call_mp': self.no_call_mp,
-                        'stack_tfidf': self.stack_tfidf, 'mask/drop/aux rate': any(r > 0 for r in rates)}
+                        'stack_tfidf': self.stack_tfidf, 'mask/drop/aux rate': any(r > 0 for r in rates),
+                        'direction': self.direction != 'both',
+                        'drop/flip edges': bool(self.drop_edges or self.flip_edges)}
             used = [k for k, v in gnn_only.items() if v]
             if used:
                 raise ValueError(f"{', '.join(used)} need model='gnn'")
@@ -102,8 +116,9 @@ class RunConfig:
 
     @property
     def variant(self):
+        tf = [f'tf{round(100 * self.train_fraction)}'] if self.train_fraction < 1 else []
         if self.model == 'transformer':
-            return 'nograph' if self.no_graph else 'graph'
+            return '-'.join(['nograph' if self.no_graph else 'graph'] + tf)
         parts = ['gnn']
         if self.control:
             parts.append(CONTROLS[self.control])
@@ -113,6 +128,11 @@ class RunConfig:
                                                       ('dlib', self.drop_library), ('mblk', self.mask_blocks)) if p]
         if self.aux_recon > 0 or self.aux_edge > 0:
             parts.append('aux')
+        parts += [DIRECTION_SUFFIX[self.direction]] if self.direction != 'both' else []
+        parts += [f'{s}{round(100 * p)}' for s, p in (('dedge', self.drop_edges), ('flip', self.flip_edges)) if p]
+        parts += [f'{s}{n}' for s, n, default in (('L', self.gnn_fn_layers, 3), ('B', self.gnn_bin_layers, 2))
+                  if n != default]
+        parts += tf
         if self.block_encoder == 'mean':
             parts.append('enc-mean')
         if self.readout == 'gated':

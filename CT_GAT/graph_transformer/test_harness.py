@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -159,12 +160,13 @@ def test_stats_and_gates_from_disk(tmp_path, monkeypatch):
     gates.pooled.cache_clear()
 
 
-def write_baseline(root, fold, signal, threshold=0.4):
-    d = root / 'baselines' / f'kfold{fold}_x86_s0'
+def write_baseline(root, fold, signal, threshold=0.4, tf=None):
+    d = root / 'baselines' / (f'kfold{fold}_x86_s0' + (f'_tf{tf}' if tf else ''))
     d.mkdir(parents=True)
     methods = {'tfidf_sig_api_lr': {'threshold_val': threshold}}
     (d / 'metrics.json').write_text(json.dumps({'protocol': 'kfold', 'fold': fold, 'arch': 'x86', 'seed': 0,
-                                                'methods': methods}))
+                                                'methods': methods,
+                                                'train_fraction': tf / 100 if tf else 1.0}))
     with (d / 'predictions.csv').open('w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['sample_id', 'split', 'method', 'label', 'prob', 'pred', 'arch', 'family', 'fold'])
@@ -274,3 +276,206 @@ def test_queue_budget_guard():
     assert lines[-1] == 'cpu val_threshold.py > RUNS/val_threshold.md'
     assert not any(l.startswith('skipped') for l in queue('--stage', 'day1', '--dry', GPU_BUDGET_MIN='290'))
     assert queue('--stage', 'day1', '--dry', GPU_BUDGET_MIN='0')[1].startswith('skipped (budget) kfold0_x86_gnn-noedges')
+
+
+# step 5b: day1b gates, train-fraction baselines, labels, the day1b queue and the stop script
+
+def test_day1b_gates_from_disk(tmp_path, monkeypatch):
+    monkeypatch.setattr(stats, 'RUNS', tmp_path)
+    gates.pooled.cache_clear()
+    build_fake(tmp_path, {(('control', 'no_edges'),): (1.2, range(5)), (): (1.6, range(5)),
+                          (('direction', 'forward'),): (1.5, range(5)), (('train_fraction', 0.5),): (1.3, range(5)),
+                          (('drop_edges', 0.2),): (1.4, [0, 1, 4])})
+    for fold in range(5):
+        write_baseline(tmp_path, fold, 1.0)
+        write_baseline(tmp_path, fold, 0.8, tf=50)
+    assert gates.gnn_groups() == ['kfold_x86_gnn', 'kfold_x86_gnn-dedge20', 'kfold_x86_gnn-fwd',
+                                  'kfold_x86_gnn-noedges', 'kfold_x86_gnn-tf50']
+    text = '\n'.join(gates.day1b(50))
+    assert 'stage day1b' in text and gates.LABEL in text
+    table = text.split('## Paired differences')[0]
+    assert '| kfold_x86_gnn-dedge20 | missing (seed 0 folds present [0, 1, 4] of 0-4)' in table
+    assert '| kfold_x86_gnn-fwd | 0.' in table and 'AUC checkpoint' in table
+    assert '**kfold_x86_gnn-fwd vs R7 typed**' in text and '**kfold_x86_gnn-fwd vs R2 tfidf**' in text
+    assert 'selection auc' in text and 'kfold_x86_gnn-fwd minus kfold_x86_gnn ' in text
+    assert '**kfold_x86_gnn-dedge20 vs R7 typed** (selection auc): missing: kfold_x86_gnn-dedge20' in text
+    assert '**kfold_x86_gnn-bwd vs R7 typed** (selection auc): missing' in text
+    curve = text.split('## Learning curve')[1]
+    rows = [l for l in curve.splitlines() if l.startswith('| ') and 'train fraction' not in l]
+    assert [l.split(' | ')[:3] for l in rows] == [
+        ['| 0.25', 'R7 typed', 'kfold_x86_gnn-tf25'], ['| 0.25', 'TF-IDF', 'tfidf-tf25'],
+        ['| 0.5', 'R7 typed', 'kfold_x86_gnn-tf50'], ['| 0.5', 'TF-IDF', 'tfidf-tf50'],
+        ['| 1.0', 'R7 typed', 'kfold_x86_gnn'], ['| 1.0', 'TF-IDF', 'tfidf']]
+    assert 'missing' in rows[0] and 'missing' in rows[1] and 'missing' not in ''.join(rows[2:])
+    gates.pooled.cache_clear()
+
+
+def test_train_fraction_baseline_groups(tmp_path, monkeypatch):
+    monkeypatch.setattr(stats, 'RUNS', tmp_path)
+    monkeypatch.setattr(report, 'RUNS', tmp_path)
+    for fold in range(5):
+        write_baseline(tmp_path, fold, 1.2)
+        write_baseline(tmp_path, fold, 0.9, tf=25)
+    assert stats.baseline_method('tfidf') == ('tfidf_sig_api_lr', '')
+    assert stats.baseline_method('structural-tf50') == ('structural_lr', '_tf50')
+    assert stats.baseline_method('kfold_x86_gnn-tf50') is None and stats.baseline_method('tfidf-tfx') is None
+    full, _ = stats.load_group('tfidf', 'auc')
+    quarter, _ = stats.load_group('tfidf-tf25', 'auc')
+    assert list(full) == list(quarter) == [0] and len(full[0].ids) == len(quarter[0].ids) == 600
+    assert not np.array_equal(full[0].prob, quarter[0].prob)
+    assert stats.load_group('tfidf-tf50', 'auc') == ({}, {})
+    assert {k[2] for k in report.baseline_runs()[0]} == {'tfidf_sig_api_lr', 'tfidf_sig_api_lr tf25'}
+
+
+def test_report_labels_new_arms():
+    labels = {report.model_label(gnn(**kw)) for kw in (
+        {}, dict(direction='forward'), dict(direction='backward'), dict(direction='undirected'),
+        dict(drop_edges=0.2), dict(flip_edges=0.2), dict(gnn_fn_layers=8), dict(gnn_bin_layers=4),
+        dict(train_fraction=0.5), dict(train_fraction=0.25))}
+    assert len(labels) == 10
+    assert report.model_label(gnn(direction='forward')) == 'edge-typed GNN forward'
+    assert report.model_label(gnn(drop_edges=0.2, gnn_fn_layers=8)) == 'edge-typed GNN drop-edge 20% L8'
+    assert report.model_label(RunConfig(train_fraction=0.5)) == 'graph transformer train 50%'
+    labelled = set(report.LABELLED)
+    cfg = gnn(direction='forward', drop_edges=0.2, flip_edges=0.1, gnn_fn_layers=8, train_fraction=0.5)
+    assert not {k for k, v in report.asdict(cfg).items() if k not in labelled and v != report.DEFAULTS[k]}
+
+
+def test_baselines_train_fraction(tmp_path):
+    import baselines
+    from data import load_index, make_manifest
+    sizes = {k: len(v) for k, v in json.loads((baselines.CACHE / 'vocab.json').read_text(encoding='utf-8')).items()}
+    baselines.run(RunConfig(protocol='kfold', fold=1, seed=0, train_fraction=0.25), sizes, tmp_path)
+    d = tmp_path / 'kfold1_x86_s0_tf25'
+    m = json.loads((d / 'metrics.json').read_text())
+    full = make_manifest(RunConfig(protocol='kfold', fold=1, seed=0), load_index())
+    assert m['train_fraction'] == 0.25 and m['n_val'] == len(full.val) and m['n_test'] == len(full.test)
+    assert 0.2 * len(full.train) < m['n_train'] < 0.3 * len(full.train)
+    for v in m['methods'].values():
+        assert v['threshold_val'] in [float(g) for g in GRID] and 'pr_auc' in v['test']
+    with (d / 'predictions.csv').open() as f:
+        assert {r['split'] for r in csv.DictReader(f)} == {'val', 'test'}
+    assert [p.name for p in tmp_path.iterdir()] == ['kfold1_x86_s0_tf25']
+
+
+DAY1B_ARMS = ['gnn-mtok15', 'gnn-dfn5-dlib40', 'gnn-undir', 'gnn-fwd', 'gnn-dfn15', 'gnn-tf50', 'gnn-tf25',
+              'gnn-mblk15', 'gnn-dedge20', 'gnn-flip20', 'gnn-mtok50', 'gnn-bwd', 'gnn-L8']
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_day1b_dry_names_match_run_configs():
+    lines = queue('--stage', 'day1b', '--dry')
+    runs = [l.split()[1:] for l in lines if l.startswith('run ')]
+    assert len(runs) == 65
+    for name, *argv in runs:
+        cfg, _ = parse_config(argv)
+        assert cfg.name == name, (name, cfg.name)
+        assert cfg.protocol == 'kfold' and cfg.arch == 'x86' and cfg.seed == 0 and cfg.model == 'gnn'
+    names = [n for n, *_ in runs]
+    assert [n.split('_')[2] for n in names[::5]] == DAY1B_ARMS
+    assert [n.split('_')[0] for n in names[:5]] == [f'kfold{f}' for f in range(5)]
+    assert lines[:2] == ['cpu baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --train-fraction 0.5',
+                         'cpu baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --train-fraction 0.25']
+    assert lines[-3:] == ['cpu report.py', 'cpu gates.py --stage day1b > RUNS/gates_day1b.md',
+                          'cpu val_threshold.py > RUNS/val_threshold.md']
+    assert not any(l.startswith(('skipped', 'stopped')) for l in lines)
+    by_arm = {n.split('_')[2]: parse_config(a)[0] for (n, *a) in runs[::5]}
+    assert by_arm['gnn-undir'].direction == 'undirected' and by_arm['gnn-fwd'].direction == 'forward'
+    assert by_arm['gnn-bwd'].direction == 'backward' and by_arm['gnn-L8'].gnn_fn_layers == 8
+    assert (by_arm['gnn-dedge20'].drop_edges, by_arm['gnn-flip20'].flip_edges) == (0.2, 0.2)
+    assert (by_arm['gnn-tf50'].train_fraction, by_arm['gnn-tf25'].train_fraction) == (0.5, 0.25)
+    assert (by_arm['gnn-mtok15'].mask_tokens, by_arm['gnn-mtok50'].mask_tokens) == (0.15, 0.5)
+    assert (by_arm['gnn-dfn5-dlib40'].drop_functions, by_arm['gnn-dfn5-dlib40'].drop_library) == (0.05, 0.4)
+    assert (by_arm['gnn-dfn15'].drop_functions, by_arm['gnn-mblk15'].mask_blocks) == (0.15, 0.15)
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_day1b_budget_guard():
+    lines = queue('--stage', 'day1b', '--dry', DRY_RUN_MIN='100')
+    assert sum(l.startswith('run ') for l in lines) == 6
+    assert sum(l.startswith('skipped (budget) ') for l in lines) == 59
+    assert sum(l.startswith('run ') for l in queue('--stage', 'day1b', '--dry', DRY_RUN_MIN='100',
+                                                   GPU_BUDGET_MIN='290')) == 3
+    assert queue('--stage', 'day1b', '--dry', GPU_BUDGET_MIN='0')[2].startswith('skipped (budget) kfold0_x86_gnn-mtok15')
+
+
+STUB = """#!/bin/bash
+echo "$@" >> "$GT_RUNS/calls.txt"
+case $1 in
+  train.py) n=$(grep -c '^train.py' "$GT_RUNS/calls.txt"); [ "$n" = "$STOP_AFTER" ] && touch "$GT_RUNS/STOP";;
+  baselines.py) mkdir -p "$GT_RUNS/baselines";;
+esac
+exit 0
+"""
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_stop_file_with_stub_interpreter(tmp_path):
+    """A scratch RUNS and a stub interpreter that creates RUNS/STOP during its 3rd train.py call, as stop_queue.sh
+    would. The 3rd run finishes, every later run is logged as stopped, the report steps still run; a stale STOP from
+    before the start is removed; runs with metrics.json (arms 2 and 3, 'run by the coordinator') are skipped."""
+    runs = tmp_path / 'runs'
+    (runs / 'logs').mkdir(parents=True)
+    stub = tmp_path / 'stub.sh'
+    stub.write_text(STUB, newline='\n')
+    stub.chmod(0o755)
+    (runs / 'STOP').write_text('')
+    done = {f'kfold{f}_x86_{arm}_s0' for f in range(5) for arm in ('gnn-mtok15', 'gnn-dfn5-dlib40')}
+    for name in done:
+        (runs / name).mkdir()
+        (runs / name / 'metrics.json').write_text('{}')
+    env = dict(GT_PY=stub.as_posix(), GT_RUNS=runs.as_posix(), GT_TRAIN_PATTERN='gtqueue_never_matches_train[.]py',
+               STOP_AFTER='3')
+    r = subprocess.run([BASH, 'queue_gnn.sh', '--stage', 'day1b'], cwd=HERE, capture_output=True, text=True,
+                       env={**os.environ, **env})
+    assert r.returncode == 0, r.stderr + r.stdout
+    out = r.stdout.splitlines()
+    assert {l for l in out if l.startswith('skip ')} == {f'skip {n}' for n in done}
+    started = [l.split()[1] for l in out if l.startswith('start kfold')]
+    assert started == [f'kfold{f}_x86_gnn-undir_s0' for f in range(3)]
+    assert [l for l in out if l.startswith('finished kfold')][-1].split()[1] == 'kfold2_x86_gnn-undir_s0'
+    stopped = [l.split(' ', 2)[2] for l in out if l.startswith('stopped before ')]
+    assert len(stopped) == 65 - len(done) - 3 and stopped[0] == 'kfold3_x86_gnn-undir_s0'
+    assert stopped[-1] == 'kfold4_x86_gnn-L8_s0' and not any(l.startswith('skipped') for l in out)
+    calls = (runs / 'calls.txt').read_text().splitlines()
+    assert sum(c.startswith('train.py') for c in calls) == 3
+    assert [c for c in calls if c.startswith(('report.py', 'gates.py', 'val_threshold.py'))] == [
+        'report.py', 'gates.py --stage day1b', 'val_threshold.py']
+    assert sum(c.startswith('baselines.py') for c in calls) == 2
+    assert (runs / 'gates_day1b.md').exists() and out[-1].startswith('queue done')
+    assert (runs / 'STOP').exists()
+
+    r = subprocess.run([BASH, 'queue_gnn.sh', '--stage', 'day1b'], cwd=HERE, capture_output=True, text=True,
+                       env={**os.environ, **env, 'STOP_AFTER': '0'})
+    assert r.returncode == 0, r.stderr
+    assert not (runs / 'STOP').exists()
+    assert sum(l.startswith('start kfold') for l in r.stdout.splitlines()) == 65 - len(done)
+
+
+def spawn_marked(marker):
+    return subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)', marker])
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_stop_queue_script(tmp_path):
+    """Without --now only RUNS/STOP appears; with --now the process whose command line matches the pattern dies and
+    an unrelated python process survives. The pattern is a test marker, never the real train.py (a live training
+    run on this machine must not be touched)."""
+    env = {**os.environ, 'GT_RUNS': (tmp_path / 'runs').as_posix(), 'GT_TRAIN_PATTERN': 'gtstop_marker_train[.]py'}
+    victim, bystander = spawn_marked('gtstop_marker_train.py'), spawn_marked('gtstop_bystander_train.py')
+    try:
+        r = subprocess.run([BASH, 'stop_queue.sh'], cwd=HERE, capture_output=True, text=True, env=env)
+        assert r.returncode == 0 and (tmp_path / 'runs' / 'STOP').exists() and 'killed' not in r.stdout
+        assert victim.poll() is None
+        (tmp_path / 'runs' / 'STOP').unlink()
+        r = subprocess.run([BASH, 'stop_queue.sh', '--now'], cwd=HERE, capture_output=True, text=True, env=env)
+        assert r.returncode == 0 and (tmp_path / 'runs' / 'STOP').exists()
+        assert 'created' in r.stdout and 'killed train.py process(es):' in r.stdout
+        assert victim.wait(timeout=20) is not None and bystander.poll() is None
+        r = subprocess.run([BASH, 'stop_queue.sh', '--now'], cwd=HERE, capture_output=True, text=True, env=env)
+        assert 'no train.py process was running' in r.stdout
+        assert subprocess.run([BASH, 'stop_queue.sh', '--bogus'], cwd=HERE, env=env, capture_output=True).returncode == 2
+    finally:
+        for p in (victim, bystander):
+            p.kill()
+            p.wait()

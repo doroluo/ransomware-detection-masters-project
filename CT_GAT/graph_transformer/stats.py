@@ -2,7 +2,8 @@
 
 python stats.py --a kfold_x86_gnn-noedges --b kfold_x86_gnn [--selection f1|auc] [--resamples 2000]
 
-A group is a RunConfig.group of kfold runs, or `tfidf` / `structural` for the kfold x86 baselines. Per seed present
+A group is a RunConfig.group of kfold runs, or `tfidf` / `structural` for the kfold x86 baselines (`tfidf-tf50`
+for those trained on a train-fraction subset). Per seed present
 (with all five folds) in both groups, the pooled out-of-fold test predictions are matched by sample_id. Clusters are
 ransomware families and single goodware binaries; every resample draws clusters with replacement and is applied to
 every seed and both groups. Prints the mean difference (b - a) over seeds and its 95% percentile interval for AUC,
@@ -12,6 +13,7 @@ PR-AUC and macro-F1: at 0.5 for `f1` (predictions.csv), at each run's validation
 import argparse
 import csv
 import json
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -21,6 +23,12 @@ from config import RUNS, RunConfig
 METRICS = (('auc', 'AUC'), ('pr_auc', 'PR-AUC'), ('macro_f1', 'macro-F1'))
 BASELINES = {'tfidf': 'tfidf_sig_api_lr', 'structural': 'structural_lr'}
 FOLDS = range(5)
+
+
+def baseline_method(group):
+    """(method, train-fraction suffix) for a baseline group such as `tfidf` or `structural-tf25`, else None."""
+    key, tf, pct = group.partition('-tf')
+    return (BASELINES[key], f'_tf{pct}' if tf else '') if key in BASELINES and (not tf or pct.isdigit()) else None
 
 
 class MissingGroup(Exception):
@@ -56,11 +64,12 @@ def pool(rows_by_fold, thresholds=None):
 def folds_by_seed(group):
     """{seed: {fold: (path of the run or baseline directory)}} for a group name."""
     out = {}
-    if group in BASELINES:
-        for fold in FOLDS:
-            for d in (RUNS / 'baselines').glob(f'kfold{fold}_x86_s*'):
-                if (d / 'metrics.json').exists():
-                    out.setdefault(int(d.name.rsplit('_s', 1)[1]), {})[fold] = d
+    if base := baseline_method(group):
+        tf = base[1]
+        for d in (RUNS / 'baselines').glob('kfold*_x86_s*'):
+            m = re.fullmatch(rf'kfold(\d)_x86_s(\d+){tf}', d.name)
+            if m and (d / 'metrics.json').exists():
+                out.setdefault(int(m[2]), {})[int(m[1])] = d
         return out
     for d in sorted(p for p in RUNS.iterdir() if (p / 'config.json').exists()):
         cfg = RunConfig.load(d / 'config.json')
@@ -76,8 +85,8 @@ def load_group(group, selection):
     for seed, by_fold in sorted(folds_by_seed(group).items()):
         rows, thresholds = {}, {}
         for fold, d in by_fold.items():
-            if group in BASELINES:
-                method = BASELINES[group]
+            if base := baseline_method(group):
+                method = base[0]
                 t = json.loads((d / 'metrics.json').read_text(encoding='utf-8'))['methods'][method].get('threshold_val')
                 if selection == 'auc' and t is None:
                     continue
@@ -85,7 +94,7 @@ def load_group(group, selection):
             elif (d / files).exists():
                 rows[fold] = read_rows(d / files)
         if len(rows) == 5:
-            complete[seed] = pool(rows, thresholds if group in BASELINES and selection == 'auc' else None)
+            complete[seed] = pool(rows, thresholds if baseline_method(group) and selection == 'auc' else None)
         else:
             partial[seed] = sorted(rows)
     return complete, partial

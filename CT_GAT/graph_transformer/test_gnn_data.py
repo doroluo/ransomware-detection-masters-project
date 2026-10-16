@@ -455,3 +455,98 @@ def test_gnn_loader_end_to_end(vocab, train_rows):
     for b in batches:
         assert b['tok_weights'].shape == b['tokens'].shape and b['bin_feat'].shape == (len(b['sample_id']), 5)
         assert b['n_fn'] == len(b['seg_len'])
+
+
+# step 5b: edge drop / flip and train fraction
+
+EDGE_KEYS = ('edge_seg', 'edge_src', 'edge_dst', 'edge_type')
+
+
+def edge_multiset(out):
+    return Counter(zip(*(out[k].tolist() for k in EDGE_KEYS)))
+
+
+def edge_epochs(n_edges):
+    return range(1, 1 + min(60, -(-30000 // max(n_edges, 1))))
+
+
+def test_drop_and_flip_rates(binaries, vocab):
+    z, sid = max(binaries, key=lambda b: len(b[0]['cfg_edges']))
+    clean = encode(z, vocab, gnn(), sid)
+    n = len(clean['edge_seg'])
+    assert n > 50
+    epochs = edge_epochs(n)
+    kept = flipped = loops = 0
+    for epoch in epochs:
+        out = encode(z, vocab, gnn(drop_edges=0.2), sid, epoch)
+        assert not (edge_multiset(out) - edge_multiset(clean))
+        kept += len(out['edge_seg'])
+        assert all(np.array_equal(out[k], clean[k]) for k in ('tokens', 'seg_len', 'call_src', 'call_dst'))
+        out = encode(z, vocab, gnn(flip_edges=0.2), sid, epoch)
+        assert len(out['edge_seg']) == n and np.array_equal(out['edge_seg'], clean['edge_seg'])
+        assert np.array_equal(out['edge_type'], clean['edge_type'])
+        assert Counter(out['edge_type'].tolist()) == Counter(clean['edge_type'].tolist())
+        move = out['edge_src'] != clean['edge_src']
+        assert np.array_equal(out['edge_src'][move], clean['edge_dst'][move])
+        assert np.array_equal(out['edge_dst'][move], clean['edge_src'][move])
+        flipped += int(move.sum())
+        loops += int((clean['edge_src'] == clean['edge_dst']).sum())
+    assert abs(kept / (n * len(epochs)) - 0.8) < 0.02
+    assert abs(flipped / (n * len(epochs) - loops) - 0.2) < 0.02
+
+
+def test_edge_augmentation_is_train_only_and_seeded(binaries, vocab):
+    z, sid = max(binaries, key=lambda b: len(b[0]['cfg_edges']))
+    clean = encode(z, vocab, gnn(), sid)
+    cfg = gnn(drop_edges=0.3, flip_edges=0.3)
+    ev = encode(z, vocab, cfg, sid)
+    assert all(np.array_equal(ev[k], clean[k]) for k in EDGE_KEYS)
+    a, b = encode(z, vocab, cfg, sid, epoch=1), encode(z, vocab, cfg, sid, epoch=1)
+    c = encode(z, vocab, cfg, sid, epoch=2)
+    assert all(np.array_equal(a[k], b[k]) for k in EDGE_KEYS)
+    assert any(not np.array_equal(a[k], c[k]) for k in EDGE_KEYS)
+    zero = encode(z, vocab, gnn(drop_edges=0.0, flip_edges=0.0), sid, epoch=1)
+    assert all(np.array_equal(zero[k], encode(z, vocab, gnn(), sid, epoch=1)[k]) for k in EDGE_KEYS)
+
+
+def test_edge_augmentation_after_controls(binaries, vocab):
+    z, sid = max(binaries, key=lambda b: len(b[0]['cfg_edges']))
+    chain = with_control(z, vocab, sid, 'chain')
+    ch_edges = edge_multiset(chain)
+    dropped = encode(z, vocab, gnn(control='chain', drop_edges=0.4), sid, epoch=1)
+    assert 0 < len(dropped['edge_seg']) < len(chain['edge_seg']) and not (edge_multiset(dropped) - ch_edges)
+    flipped = encode(z, vocab, gnn(control='chain', flip_edges=0.5), sid, epoch=1)
+    assert len(flipped['edge_seg']) == len(chain['edge_seg']) and not flipped['edge_type'].any()
+    assert np.abs(flipped['edge_dst'] - flipped['edge_src']).max() == 1
+    assert (flipped['edge_dst'] < flipped['edge_src']).any() and (flipped['edge_dst'] > flipped['edge_src']).any()
+    both = encode(z, vocab, gnn(control='shuffle', flip_edges=0.5, drop_edges=0.2), sid, epoch=1)
+    assert not both['edge_type'].any() and 0 < len(both['edge_seg']) < len(encode(z, vocab, gnn(), sid)['edge_seg'])
+
+
+@pytest.mark.parametrize('protocol,fold', [('kfold', f) for f in range(5)] + [('bundle', None)])
+def test_train_fraction(index, protocol, fold):
+    kw = dict(protocol=protocol, fold=fold, seed=0)
+    full = make_manifest(RunConfig(**kw), index)
+    key = {1: 'family', 0: 'identity_group'}
+    previous = None
+    for p in (0.25, 0.5):
+        cfg = RunConfig(train_fraction=p, **kw)
+        sub = make_manifest(cfg, index)
+        ids = {r['sample_id'] for r in sub.train}
+        assert ids < {r['sample_id'] for r in full.train}
+        assert previous is None or previous < ids
+        previous = ids
+        assert sub.val == full.val and sub.test == full.test and sub.val_families == full.val_families
+        for label in (0, 1):
+            members = [r for r in full.train if r['label'] == label]
+            kept = [r for r in members if r['sample_id'] in ids]
+            assert abs(len(kept) / len(members) - p) < 0.05, (label, p, len(kept), len(members))
+            groups = {r[key[label]] for r in members}
+            for g in groups:
+                inside = [r['sample_id'] in ids for r in members if r[key[label]] == g]
+                assert all(inside) or not any(inside), g
+        assert make_manifest(cfg, index).train == sub.train
+        assert make_manifest(RunConfig(train_fraction=p, **{**kw, 'seed': 1}), index).train != sub.train
+    assert make_manifest(RunConfig(train_fraction=1.0, **kw), index).train == full.train
+    assert make_manifest(RunConfig(model='gnn', train_fraction=0.5, **kw), index).train == \
+        make_manifest(RunConfig(train_fraction=0.5, **kw), index).train
