@@ -1,10 +1,11 @@
 """Paired cluster bootstrap between two kfold arms.
 
 python stats.py --a kfold_x86_gnn-noedges --b kfold_x86_gnn [--selection f1|auc] [--resamples 2000]
-[--protocol kfold|kfold_v3] [--arch x86|all|matched]
+[--protocol kfold|kfold_v3] [--arch x86|all|matched] [--balanced]
 
 A group is a RunConfig.group of kfold or kfold_v3 runs, or `tfidf` / `structural` for the baselines (`tfidf-tf50`
-for those trained on a train-fraction subset). A baseline group takes the protocol and arch of the other group
+for those trained on a train-fraction subset, `tfidf-ab` for the arch-balanced ones). A baseline group takes the
+protocol and arch of the other group
 (`kfold_v3_all_gnn` -> the kfold_v3 all baselines); --protocol / --arch override that, and two baseline groups
 without an override mean kfold x86. Per seed present
 (with all five folds) in both groups, the pooled out-of-fold test predictions are matched by sample_id. Clusters are
@@ -12,6 +13,10 @@ ransomware families and single goodware binaries; every resample draws clusters 
 every seed and both groups. Prints the mean difference (b - a) over seeds and its 95% percentile interval for AUC,
 PR-AUC and macro-F1: at 0.5 for `f1` (predictions.csv), at each run's validation threshold for `auc`
 (predictions_auc.csv; baselines are thresholded at their metrics.json threshold_val).
+
+--balanced weights every test sample by N / (C n_cell) (metrics.cell_weights, fixed per sample from the pooled test set
+of the first seed, since the cells are the same for every seed) times its bootstrap count, so the metrics are the
+cell-balanced ones: each non-empty class x arch cell weighs equally.
 """
 import argparse
 import csv
@@ -22,6 +27,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from config import RUNS, RunConfig
+from metrics import cell_weights
 
 METRICS = (('auc', 'AUC'), ('pr_auc', 'PR-AUC'), ('macro_f1', 'macro-F1'))
 BASELINES = {'tfidf': 'tfidf_sig_api_lr', 'structural': 'structural_lr'}
@@ -31,10 +37,14 @@ BASELINE_PREFIX = {'kfold': 'kfold', 'kfold_v3': 'v3kfold'}
 GROUP_SCOPE = re.compile(r'(kfold_v3|kfold)_(x86|all|matched)_')
 
 
+BASELINE_GROUP = re.compile(rf"({'|'.join(BASELINES)})(?:-tf(\d+))?(-ab)?")
+
+
 def baseline_method(group):
-    """(method, train-fraction suffix) for a baseline group such as `tfidf` or `structural-tf25`, else None."""
-    key, tf, pct = group.partition('-tf')
-    return (BASELINES[key], f'_tf{pct}' if tf else '') if key in BASELINES and (not tf or pct.isdigit()) else None
+    """(method, directory suffix) for a baseline group such as `tfidf`, `structural-tf25` or `tfidf-ab` (`_tf25`, `_ab`
+    and `_tf50_ab` are the suffixes), else None."""
+    m = BASELINE_GROUP.fullmatch(group)
+    return (BASELINES[m[1]], (f'_tf{m[2]}' if m[2] else '') + ('_ab' if m[3] else '')) if m else None
 
 
 class MissingGroup(Exception):
@@ -159,31 +169,33 @@ def ranking(p: Preds):
     return order, np.concatenate([[0], np.cumsum(sorted_prob[1:] != sorted_prob[:-1])])
 
 
-def paired_bootstrap(a, b, resamples=2000, seed=0):
+def paired_bootstrap(a, b, resamples=2000, seed=0, balanced=False):
     """a, b: {seed: Preds} over the same seeds and sample_ids. Returns {metric: dict(a, b, diff, lo, hi)} where
-    a and b are the observed means over seeds and diff/lo/hi describe b - a."""
+    a and b are the observed means over seeds and diff/lo/hi describe b - a. With `balanced`, every sample carries its
+    cell weight (arch is required) in the observed means and in each resample."""
     seeds = sorted(a)
     assert sorted(b) == seeds and all(np.array_equal(a[s].ids, b[s].ids) and np.array_equal(a[s].ids, a[seeds[0]].ids)
                                       for s in seeds), 'groups must cover the same seeds and sample_ids'
     clusters, cidx = np.unique(a[seeds[0]].cluster, return_inverse=True)
     arms = {name: {s: (p, *ranking(p)) for s, p in group.items()} for name, group in (('a', a), ('b', b))}
     mean_over_seeds = lambda name, w: np.mean([metrics_weighted(p, o, g, w) for p, o, g in arms[name].values()], 0)
-    ones = np.ones(len(cidx))
-    observed = {name: mean_over_seeds(name, ones) for name in arms}
+    base = cell_weights(a[seeds[0]].y, a[seeds[0]].arch) if balanced else np.ones(len(cidx))
+    observed = {name: mean_over_seeds(name, base) for name in arms}
     draws = np.random.default_rng(seed).integers(0, len(clusters), size=(resamples, len(clusters)))
     diffs = np.empty((resamples, len(METRICS)))
     for i, draw in enumerate(draws):
-        w = np.bincount(draw, minlength=len(clusters))[cidx].astype(float)
+        w = np.bincount(draw, minlength=len(clusters))[cidx] * base
         diffs[i] = mean_over_seeds('b', w) - mean_over_seeds('a', w)
     lo, hi = np.nanpercentile(diffs, [2.5, 97.5], axis=0)
     return {name: {'a': observed['a'][j], 'b': observed['b'][j], 'diff': observed['b'][j] - observed['a'][j],
                    'lo': lo[j], 'hi': hi[j]} for j, (name, _) in enumerate(METRICS)}, len(clusters)
 
 
-def compare(group_a, group_b, selection='f1', resamples=2000, seed=0, seeds=None, protocol=None, arch=None):
+def compare(group_a, group_b, selection='f1', resamples=2000, seed=0, seeds=None, protocol=None, arch=None,
+            balanced=False):
     """Loads both groups, keeps the seeds complete in both (and in `seeds`, if given), and returns (result, info).
     Baseline groups resolve to the other group's protocol and arch unless `protocol` / `arch` say otherwise.
-    Raises MissingGroup."""
+    `balanced`: cell-balanced weights (see paired_bootstrap). Raises MissingGroup."""
     scopes = baseline_scopes(group_a, group_b, protocol, arch)
     loaded = {g: load_group(g, selection, scopes.get(g, ('kfold', 'x86'))) for g in (group_a, group_b)}
     wanted = None if seeds is None else set(seeds)
@@ -197,10 +209,11 @@ def compare(group_a, group_b, selection='f1', resamples=2000, seed=0, seeds=None
         raise MissingGroup(f'{group_a} and {group_b} share no complete seed')
     ids = [set(loaded[g][0][s].ids.tolist()) for g in (group_a, group_b) for s in seeds]
     common = np.array(sorted(set.intersection(*ids)))
-    pick = lambda p: Preds(*(getattr(p, f)[np.isin(p.ids, common)] for f in ('ids', 'y', 'prob', 'pred', 'cluster')))
+    fields = ('ids', 'y', 'prob', 'pred', 'cluster', 'arch', 'truncated')
+    pick = lambda p: Preds(*(getattr(p, f)[np.isin(p.ids, common)] for f in fields))
     result, n_clusters = paired_bootstrap({s: pick(loaded[group_a][0][s]) for s in seeds},
-                                          {s: pick(loaded[group_b][0][s]) for s in seeds}, resamples, seed)
-    info = {'seeds': seeds, 'n': len(common), 'n_clusters': n_clusters,
+                                          {s: pick(loaded[group_b][0][s]) for s in seeds}, resamples, seed, balanced)
+    info = {'seeds': seeds, 'n': len(common), 'n_clusters': n_clusters, 'balanced': balanced,
             'skipped': {g: partial for g, (_, partial) in loaded.items() if partial}}
     return result, info
 
@@ -209,7 +222,9 @@ def fmt_block(group_a, group_b, selection, resamples, result, info):
     signed = lambda x: f'{x + 0.0:+.3f}'
     lines = [f'### {group_b} minus {group_a} (selection {selection}, {resamples} resamples)', '',
              f"a = {group_a}, b = {group_b}; seeds {info['seeds']}; {info['n']} test binaries in "
-             f"{info['n_clusters']} clusters. Differences are b - a, 95% percentile interval.", '']
+             f"{info['n_clusters']} clusters. Differences are b - a, 95% percentile interval."
+             + (' Cell-balanced: every test sample weighted N / (C n_cell) by its class x arch cell.'
+                if info.get('balanced') else ''), '']
     if info['skipped']:
         lines += [f"Seeds without all five folds are left out: {info['skipped']}.", '']
     lines += ['| metric | a | b | b - a | 95% CI |', '|---|---|---|---|---|']
@@ -228,9 +243,11 @@ def main():
     ap.add_argument('--resamples', type=int, default=2000)
     ap.add_argument('--protocol', choices=KFOLD_PROTOCOLS, help='baseline groups: default from the other group')
     ap.add_argument('--arch', choices=['x86', 'all', 'matched'], help='baseline groups: default from the other group')
+    ap.add_argument('--balanced', action='store_true', help='weight each class x arch cell equally')
     args = ap.parse_args()
     try:
-        result, info = compare(args.a, args.b, args.selection, args.resamples, protocol=args.protocol, arch=args.arch)
+        result, info = compare(args.a, args.b, args.selection, args.resamples, protocol=args.protocol, arch=args.arch,
+                               balanced=args.balanced)
     except MissingGroup as e:
         raise SystemExit(f'missing: {e}')
     print(fmt_block(args.a, args.b, args.selection, args.resamples, result, info))

@@ -19,8 +19,8 @@ import gates
 import report
 import stats
 from config import RunConfig
-from metrics import scores
-from train import check_supported, parse_config, should_stop, val_threshold_of
+from metrics import ARCHES, cell_balanced, cell_weights, floors, scores
+from train import check_supported, loss_weight_fn, parse_config, should_stop, val_threshold_of
 from val_threshold import GRID
 
 HERE = Path(__file__).parent
@@ -513,13 +513,14 @@ def write_v3_run(root, arch, fold, signal, **kw):
     return d
 
 
-def write_v3_baseline(root, arch, fold, signal, threshold=0.4):
-    d = root / 'baselines' / f'v3kfold{fold}_{arch}_s0'
+def write_v3_baseline(root, arch, fold, signal, threshold=0.4, suffix=''):
+    d = root / 'baselines' / f'v3kfold{fold}_{arch}_s0{suffix}'
     d.mkdir(parents=True)
     methods = {m: {'threshold_val': threshold, 'family_recall': {}, 'test': {}, 'test_at_val_threshold': {}}
                for m in ('tfidf_sig_api_lr', 'structural_lr')}
     (d / 'metrics.json').write_text(json.dumps({'protocol': 'kfold_v3', 'fold': fold, 'arch': arch, 'seed': 0,
-                                                'train_fraction': 1.0, 'floors': {}, 'methods': methods}))
+                                                'train_fraction': 1.0, 'arch_balance': bool(suffix), 'floors': {},
+                                                'methods': methods}))
     with (d / 'predictions.csv').open('w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['sample_id', 'split', 'method', 'label', 'prob', 'pred', 'arch', 'family', 'fold'])
@@ -530,9 +531,11 @@ def write_v3_baseline(root, arch, fold, signal, threshold=0.4):
 
 
 FAKE_FLOORS = {'majority': {'auc': 0.5, 'pr_auc': 0.6, 'macro_f1': 0.4, 'recall_R_x86': 1.0, 'recall_R_x64': 1.0,
-                            'recall_G_x86': 0.0, 'recall_G_x64': 0.0},
+                            'recall_G_x86': 0.0, 'recall_G_x64': 0.0,
+                            'cell_balanced': {'auc': 0.5, 'macro_f1': 0.33}},
                'x86_rule': {'auc': 0.7, 'pr_auc': 0.8, 'macro_f1': 0.69, 'recall_R_x86': 1.0, 'recall_R_x64': 0.0,
-                            'recall_G_x86': 0.0, 'recall_G_x64': 1.0}}
+                            'recall_G_x86': 0.0, 'recall_G_x64': 1.0,
+                            'cell_balanced': {'auc': 0.5, 'macro_f1': 0.5}}}
 V3_KW = {'gnn': {}, 'gnn-noedges': dict(control='no_edges'), 'gnn-shuffle': dict(control='shuffle'),
          'gnn-untyped': dict(untyped=True)}
 
@@ -597,14 +600,17 @@ def test_v3_gates_from_disk(tmp_path, monkeypatch):
     all_part, matched_part = text.split('## Arch matched: pooled table')
     head = all_part.split('### Arch all')[0]
     row = {l.split(' | ')[0].lstrip('| '): l for l in head.splitlines() if l.startswith('| ')}
-    assert 'R x86 recall' in head and 'AUC ckpt, val thr AUC' in head
+    assert 'R x86 recall' in head and 'AUC ckpt, val thr AUC' in head and 'F1 ckpt, 0.5 cell-bal AUC' in head
+    assert 'AUC ckpt, val thr cell-bal macro-F1' in head
     assert row['R0 TF-IDF'].split(' | ')[1] == 'tfidf' and 'missing' not in row['R0 TF-IDF']
     assert 'missing (seed 0 folds present [0, 1, 2] of 0-4)' in row['R4 shuffle']
     assert 'missing (seed 0 folds present [] of 0-4)' in row['R5 untyped']
     cells = row['R7 typed'].split(' | ')
-    assert len(cells) == 12 and 'missing' not in row['R7 typed']
+    assert len(cells) == 16 and 'missing' not in row['R7 typed']
     assert all(0 <= float(c.strip(' |')) <= 1 for c in cells[2:])
-    assert '| floor: majority | - | 0.500 | 0.600 | 0.400 | 0.500 | 0.600 | 0.400 | 1.000 | 1.000 | 0.000 | 0.000 |' in head
+    assert '| floor: majority | - | 0.500 | 0.600 | 0.400 | 0.500 | 0.600 | 0.400 | 1.000 | 1.000 | 0.000 | 0.000 '            '| 0.500 | 0.330 | 0.500 | 0.330 |' in head
+    assert '| floor: x86_rule | - | 0.700 | 0.800 | 0.690 | 0.700 | 0.800 | 0.690 | 1.000 | 0.000 | 0.000 | 1.000 '            '| 0.500 | 0.500 | 0.500 | 0.500 |' in head
+    assert 'missing' in row['R7 typed ab'] and 'kfold_v3_all_gnn-ab' in row['R7 typed ab']
     assert 'floor: x86_rule' in head and 'x86-rule macro-F1 per fold: 0.690, 0.690, 0.690, 0.690, 0.690' in head
     for pair in ('R2 no-edges vs R7 typed', 'R4 shuffle vs R7 typed', 'R5 untyped vs R7 typed',
                  'R0 TF-IDF vs R2 no-edges'):
@@ -613,9 +619,11 @@ def test_v3_gates_from_disk(tmp_path, monkeypatch):
     assert 'kfold_v3_all_gnn-noedges minus tfidf' in all_part
     assert 'kfold_v3_matched_gnn-noedges minus tfidf' in matched_part
     lines = [l for l in text.split('## Verdict')[1].splitlines() if l.startswith('- Arch')]
-    assert len(lines) == 2 and all(gates.LABEL in l for l in lines)
+    assert len(lines) == 6 and all(gates.LABEL in l for l in lines)
     assert lines[0].startswith('- Arch all: cannot assess, missing: R4 shuffle')
-    assert lines[1].startswith('- Arch matched: R7 does not beat both R2 and R4')
+    assert lines[3].startswith('- Arch matched: R7 does not beat both R2 and R4')
+    assert lines[4].startswith('- Arch matched: cell-balanced: R7 does not beat both R2 and R4')
+    assert lines[5].startswith('- Arch matched: cell-balanced: cannot assess, missing: R2 no-edges ab')
 
 
 def test_v3_verdict_rule():
@@ -696,27 +704,34 @@ def test_v3_floor_rows_in_the_report_tables(tmp_path, monkeypatch):
 
 
 V3_QUEUE_ARMS = ['gnn-noedges', 'gnn', 'gnn-shuffle', 'gnn-untyped']
+V3_QUEUE_ORDER = ([('all', f'{v}-ab') for v in V3_QUEUE_ARMS] + [('all', v) for v in V3_QUEUE_ARMS]
+                  + [('matched', v) for v in V3_QUEUE_ARMS])
 
 
 @pytest.mark.skipif(BASH is None, reason='needs bash')
 def test_queue_v3_dry_names_match_run_configs():
     lines = queue('--stage', 'v3', '--dry')
     runs = [l.split()[1:] for l in lines if l.startswith('run ')]
-    assert len(runs) == 40
+    assert len(runs) == 60
     for name, *argv in runs:
         cfg, _ = parse_config(argv)
         assert cfg.name == name, (name, cfg.name)
         assert cfg.protocol == 'kfold_v3' and cfg.seed == 0 and cfg.model == 'gnn'
+        assert cfg.arch_balance == name.split('_')[2].endswith('-ab') == ('--arch-balance' in argv)
     names = [n for n, *_ in runs]
     assert [n.split('_')[0] for n in names[:5]] == [f'v3kfold{f}' for f in range(5)]
-    assert [tuple(n.split('_')[1:3]) for n in names[::5]] == [(a, v) for a in ('all', 'matched')
-                                                              for v in V3_QUEUE_ARMS]
+    assert [tuple(n.split('_')[1:3]) for n in names[::5]] == V3_QUEUE_ORDER
     arms = {tuple(n.split('_')[1:3]): parse_config(a)[0] for (n, *a) in runs[::5]}
     assert arms['all', 'gnn-noedges'].control == 'no_edges' and arms['all', 'gnn'].group == 'kfold_v3_all_gnn'
+    assert arms['all', 'gnn-ab'].group == 'kfold_v3_all_gnn-ab' and arms['all', 'gnn-ab'].arch_balance
+    assert arms['all', 'gnn-noedges-ab'].control == 'no_edges' and arms['all', 'gnn-shuffle-ab'].control == 'shuffle'
+    assert arms['all', 'gnn-untyped-ab'].untyped and not arms['all', 'gnn-untyped'].arch_balance
     assert arms['matched', 'gnn-shuffle'].control == 'shuffle' and arms['matched', 'gnn-untyped'].untyped
     assert arms['matched', 'gnn'].arch == 'matched' and arms['all', 'gnn-untyped'].arch == 'all'
-    assert lines[:2] == ['cpu baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0',
-                         'cpu baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch matched --seed 0']
+    assert not any(a.arch_balance for (arch, v), a in arms.items() if arch == 'matched')
+    head = 'cpu baselines --protocol kfold_v3 --fold 0 1 2 3 4'
+    assert lines[:3] == [f'{head} --arch all --seed 0', f'{head} --arch matched --seed 0',
+                         f'{head} --arch all --seed 0 --arch-balance']
     assert lines[-3:] == ['cpu report.py', 'cpu gates.py --stage v3 > RUNS/gates_v3.md',
                           'cpu val_threshold.py > RUNS/val_threshold.md']
     assert not any(l.startswith(('skipped', 'stopped')) for l in lines)
@@ -726,7 +741,7 @@ def test_queue_v3_dry_names_match_run_configs():
 def test_queue_v3_budget_guard_and_usage():
     lines = queue('--stage', 'v3', '--dry', GPU_BUDGET_MIN='290', DRY_RUN_MIN='100')
     assert sum(l.startswith('run ') for l in lines) == 3
-    assert sum(l.startswith('skipped (budget) ') for l in lines) == 37
+    assert sum(l.startswith('skipped (budget) ') for l in lines) == 57
     assert lines[-1] == 'cpu val_threshold.py > RUNS/val_threshold.md'
     assert not any(l.startswith('skipped') for l in queue('--stage', 'v3', '--dry'))
     r = subprocess.run([BASH, 'queue_gnn.sh', '--stage', 'v4', '--dry'], cwd=HERE, capture_output=True, text=True)
@@ -756,7 +771,7 @@ def test_queue_v3_exports_the_combined_cache_and_keeps_stop_and_skip(tmp_path):
         d.mkdir(parents=True)
         (d / 'metrics.json').write_text('{"methods": {"m": {"threshold_val": 0.4}}}')
     for fold in range(2):
-        d = runs / f'v3kfold{fold}_all_gnn-noedges_s0'
+        d = runs / f'v3kfold{fold}_all_gnn-noedges-ab_s0'
         d.mkdir()
         (d / 'metrics.json').write_text('{}')
     env = dict(GT_PY=stub.as_posix(), GT_RUNS=runs.as_posix(), GT_TRAIN_PATTERN='gtqueue_never_matches_train[.]py',
@@ -767,8 +782,8 @@ def test_queue_v3_exports_the_combined_cache_and_keeps_stop_and_skip(tmp_path):
     out = r.stdout.splitlines()
     assert 'skip baselines v3 all' in out and any(l.startswith('start baselines v3 matched') for l in out)
     assert [l.split()[1] for l in out if l.startswith('start v3kfold')] == [
-        f'v3kfold{f}_all_gnn-noedges_s0' for f in (2, 3)]
-    assert [l for l in out if l.startswith('stopped before ')][0] == 'stopped before v3kfold4_all_gnn-noedges_s0'
+        f'v3kfold{f}_all_gnn-noedges-ab_s0' for f in (2, 3)]
+    assert [l for l in out if l.startswith('stopped before ')][0] == 'stopped before v3kfold4_all_gnn-noedges-ab_s0'
     calls = (runs / 'calls.txt').read_text().splitlines()
     combined = 'GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined'
     assert {c.split(' ', 1)[0] for c in calls} == {'-c', 'baselines.py', 'train.py', 'report.py', 'gates.py',
@@ -879,11 +894,12 @@ def test_queue_sets_expandable_segments_for_every_python_call(tmp_path, stage):
 def test_queue_retries_a_failed_run_once(tmp_path):
     runs, out = run_stub_queue(tmp_path, 'v3', FAIL_ONCE_FOLD='2')
     calls = (runs / 'calls.txt').read_text().splitlines()
-    name = 'v3kfold2_all_gnn-noedges_s0'
+    name = 'v3kfold2_all_gnn-noedges-ab_s0'
     assert [l for l in out if l.startswith('retry')][0] == f'retry {name}' and out.count(f'retry {name}') == 1
     i = out.index(f'retry {name}')
     assert out[i - 1].startswith(f'start {name}') and out[i + 1].startswith(f'finished {name} rc=0')
-    assert sum(c.startswith('train.py') and '--fold 2 --arch all' in c and '--control no_edges' in c for c in calls) == 2
+    assert sum(c.startswith('train.py') and '--fold 2 --arch all' in c and '--control no_edges' in c
+               and '--arch-balance' in c for c in calls) == 2
     assert (runs / 'logs' / f'{name}.log.try1').exists() and (runs / 'logs' / f'{name}.log').exists()
     assert out[-1].startswith('queue done')
 
@@ -914,3 +930,284 @@ def test_queue_does_not_retry_after_stop(tmp_path):
                             'GT_TRAIN_PATTERN': 'gtqueue_never_matches_train[.]py'})
     assert r.returncode == 0, r.stderr
     assert 'retry' not in r.stdout and (runs / 'calls.txt').read_text().count('train.py') == 1
+
+
+# step 7: arch-balanced training weights and cell-balanced metrics
+
+CELLS = [(1, 'x86'), (1, 'x64'), (0, 'x86'), (0, 'x64')]
+
+
+def cell_sample(counts):
+    """y, arch of a synthetic set with counts[i] samples in CELLS[i]."""
+    y, arch = [], []
+    for (label, a), n in zip(CELLS, counts):
+        y += [label] * n
+        arch += [a] * n
+    return np.array(y), np.array(arch)
+
+
+def test_cell_weights_on_a_synthetic_manifest():
+    y, arch = cell_sample([60, 10, 20, 30])
+    w = cell_weights(y, arch)
+    assert len(w) == 120 and w.mean() == pytest.approx(1.0)
+    assert w[0] == pytest.approx(120 / (4 * 60)) and w[60] == pytest.approx(120 / (4 * 10))
+    assert w[70] == pytest.approx(120 / (4 * 20)) and w[90] == pytest.approx(120 / (4 * 30))
+    for cell in CELLS:
+        mask = (y == cell[0]) & (arch == cell[1])
+        assert w[mask].sum() == pytest.approx(120 / 4)
+    y, arch = cell_sample([60, 0, 20, 30])
+    w = cell_weights(y, arch)
+    assert w.mean() == pytest.approx(1.0) and w[0] == pytest.approx(110 / (3 * 60))
+    y, arch = cell_sample([5, 0, 3, 0])
+    assert cell_weights(y, arch) == pytest.approx([8 / (2 * 5)] * 5 + [8 / (2 * 3)] * 3)
+    assert len(cell_weights([], [])) == 0
+
+
+def test_loss_weights_arch_balance_and_default():
+    import torch
+    cpu = torch.device('cpu')
+    y, arch = cell_sample([60, 10, 20, 30])
+    rows = [{'sample_id': f's{i}', 'label': int(l), 'arch': a} for i, (l, a) in enumerate(zip(y, arch))]
+    batch = {'sample_id': [r['sample_id'] for r in rows], 'label': torch.tensor(y, dtype=torch.float32)}
+    ab = loss_weight_fn(gnn(arch_balance=True), rows, cpu)(batch).numpy()
+    assert ab == pytest.approx(cell_weights(y, arch)) and ab.mean() == pytest.approx(1.0)
+    plain = loss_weight_fn(gnn(), rows, cpu)(batch).numpy()
+    n_pos = int(y.sum())
+    assert plain == pytest.approx(np.where(y == 1, 120 / (2 * n_pos), 120 / (2 * (120 - n_pos))), abs=0)
+    assert plain.mean() == pytest.approx(1.0) and not np.allclose(plain, ab)
+    flipped = {'sample_id': batch['sample_id'][::-1], 'label': batch['label'].flip(0)}
+    assert loss_weight_fn(gnn(arch_balance=True), rows, cpu)(flipped).numpy() == pytest.approx(ab[::-1])
+    x86 = [r for r in rows if r['arch'] == 'x86']
+    sub = {'sample_id': [r['sample_id'] for r in x86], 'label': torch.tensor([r['label'] for r in x86]).float()}
+    assert (loss_weight_fn(gnn(arch_balance=True), x86, cpu)(sub).numpy()
+            == pytest.approx(loss_weight_fn(gnn(), x86, cpu)(sub).numpy()))
+
+
+@needs_combined
+def test_cell_weights_on_a_real_v3_manifest():
+    from data import load_index, make_manifest
+    m = make_manifest(RunConfig(protocol='kfold_v3', fold=0, arch='all'), load_index(COMBINED))
+    y, arch = np.array([r['label'] for r in m.train]), np.array([r['arch'] for r in m.train])
+    w = cell_weights(y, arch)
+    assert w.mean() == pytest.approx(1.0)
+    for label, a in CELLS:
+        assert w[(y == label) & (arch == a)].sum() == pytest.approx(len(y) / 4)
+
+
+def test_cell_balanced_x86_rule_is_exactly_half():
+    y, arch = cell_sample([60, 10, 20, 30])
+    pred = (arch == 'x86').astype(int)
+    cb = cell_balanced(y, pred.astype(float), pred, arch)
+    assert cb['macro_f1'] == pytest.approx(0.5) and cb['accuracy'] == pytest.approx(0.5)
+    assert cb['auc'] == pytest.approx(0.5) and cb['n_cells'] == 4
+    assert [cb[f'n_{t}_{a}'] for t in 'RG' for a in ARCHES] == [60, 10, 20, 30]
+    ordinary = scores(y, pred.astype(float), pred, arch)
+    assert ordinary['accuracy'] != pytest.approx(0.5, abs=0.05) and ordinary['cell_balanced'] == cb
+    fl = floors([0, 1], y, arch)
+    assert fl['x86_rule']['cell_balanced']['macro_f1'] == pytest.approx(0.5)
+    assert fl['x86_rule']['cell_balanced']['accuracy'] == pytest.approx(0.5)
+    assert fl['majority']['cell_balanced']['accuracy'] == pytest.approx(0.5)
+    assert fl['majority']['cell_balanced']['auc'] == pytest.approx(0.5)
+
+
+def test_cell_balanced_hand_computed_one_inverted_cell():
+    """Perfect on R x86, R x64 and G x86, inverted on G x64; every cell weighs 1/4 whatever its size. Positives: weight
+    0.5 at prob 0.9; negatives: 0.25 at 0.1 and 0.25 at 0.9. Class 1: tp 0.5, fp 0.25, fn 0 -> F1 0.8. Class 0: tp 0.25,
+    fp 0, fn 0.25 -> F1 2/3. AUC (0.5 * 0.25 + 0.5 * 0.25 / 2) / (0.5 * 0.5) = 0.75. AP: one step at recall 1 with
+    precision 0.5 / 0.75."""
+    y, arch = cell_sample([30, 50, 70, 20])
+    pred = y.copy()
+    pred[(y == 0) & (arch == 'x64')] = 1
+    prob = np.where(pred == 1, 0.9, 0.1)
+    cb = cell_balanced(y, prob, pred, arch)
+    assert cb['accuracy'] == pytest.approx(0.75)
+    assert cb['macro_f1'] == pytest.approx((0.8 + 2 / 3) / 2)
+    assert cb['auc'] == pytest.approx(0.75)
+    assert cb['pr_auc'] == pytest.approx(2 / 3)
+    plain = scores(y, prob, pred, arch)
+    assert plain['accuracy'] == pytest.approx(1 - 20 / 170)
+
+
+def test_cell_balanced_with_an_empty_cell_and_one_class():
+    y, arch = cell_sample([40, 0, 10, 0])
+    pred = np.concatenate([np.ones(40, int), np.zeros(5, int), np.ones(5, int)])
+    cb = cell_balanced(y, np.where(pred == 1, 0.8, 0.2), pred, arch)
+    assert cb['n_cells'] == 2 and cb['n_R_x64'] == 0 and cb['n_G_x64'] == 0 and cb['n_R_x86'] == 40
+    assert cb['n_G_x86'] == 10 and cb['accuracy'] == pytest.approx(0.75)
+    y1, arch1 = cell_sample([5, 5, 0, 0])
+    one = cell_balanced(y1, np.full(10, 0.5), np.ones(10, int), arch1)
+    assert np.isnan(one['auc']) and np.isnan(one['pr_auc']) and one['n_cells'] == 2 and one['accuracy'] == 1.0
+    s = scores([1, 1, 1], [0.2, 0.9, 0.5], [0, 1, 1], ['x86'] * 3)
+    assert s['cell_balanced']['n_cells'] == 1 and np.isnan(s['cell_balanced']['auc'])
+    json.dumps(s)
+
+
+def arch_preds(n=400, seed=0, signal=1.0):
+    p = preds(n=n, seed=seed, signal=signal)
+    return stats.Preds(p.ids, p.y, p.prob, p.pred, p.cluster, np.where(np.arange(n) % 3 == 0, 'x64', 'x86'))
+
+
+def test_balanced_bootstrap_uses_cell_weights_and_self_comparison_is_zero():
+    a = {0: arch_preds(seed=0), 1: arch_preds(seed=1)}
+
+    def nudge(p):
+        prob = np.round(np.clip(p.prob + 0.1 * (2 * p.y - 1), 0, 1), 2)
+        return stats.Preds(p.ids, p.y, prob, (prob >= 0.5).astype(int), p.cluster, p.arch)
+    b = {s: nudge(p) for s, p in a.items()}
+    same, _ = stats.paired_bootstrap(a, a, resamples=100, balanced=True)
+    for key, _ in stats.METRICS:
+        assert same[key]['diff'] == 0 and same[key]['lo'] == 0 and same[key]['hi'] == 0
+    plain, _ = stats.paired_bootstrap(a, b, resamples=50)
+    bal, _ = stats.paired_bootstrap(a, b, resamples=50, balanced=True)
+    p = a[0]
+    want = cell_balanced(p.y, p.prob, p.pred, p.arch)
+    single, _ = stats.paired_bootstrap({0: p}, {0: p}, resamples=5, balanced=True)
+    for key in ('auc', 'macro_f1', 'pr_auc'):
+        assert single[key]['a'] == pytest.approx(want[key])
+    assert bal['auc']['a'] != pytest.approx(plain['auc']['a'])
+    ba, _ = stats.paired_bootstrap(a, b, resamples=60, balanced=True)
+    ab, _ = stats.paired_bootstrap(b, a, resamples=60, balanced=True)
+    for key, _ in stats.METRICS:
+        assert ba[key]['diff'] == pytest.approx(-ab[key]['diff']) and ba[key]['lo'] == pytest.approx(-ab[key]['hi'])
+
+
+def test_stats_balanced_from_disk_and_cli(tmp_path, monkeypatch):
+    monkeypatch.setattr(stats, 'RUNS', tmp_path)
+    for fold in range(5):
+        write_v3_run(tmp_path, 'all', fold, 1.0)
+        write_v3_run(tmp_path, 'all', fold, 1.6, arch_balance=True)
+        write_v3_baseline(tmp_path, 'all', fold, 1.0)
+        write_v3_baseline(tmp_path, 'all', fold, 1.3, suffix='_ab')
+    same, info = stats.compare('kfold_v3_all_gnn', 'kfold_v3_all_gnn', 'auc', 50, balanced=True)
+    assert info['balanced'] and all(same[k]['diff'] == 0 and same[k]['lo'] == 0 == same[k]['hi'] for k in same)
+    assert 'Cell-balanced' in stats.fmt_block('a', 'b', 'auc', 50, same, info)
+    plain, plain_info = stats.compare('kfold_v3_all_gnn', 'kfold_v3_all_gnn-ab', 'auc', 50)
+    bal, _ = stats.compare('kfold_v3_all_gnn', 'kfold_v3_all_gnn-ab', 'auc', 50, balanced=True)
+    assert not plain_info['balanced'] and bal['auc']['diff'] > 0 and bal['auc']['a'] != plain['auc']['a']
+    t, _ = stats.compare('tfidf', 'tfidf-ab', 'auc', 50, protocol='kfold_v3', arch='all', balanced=True)
+    assert t['auc']['diff'] != 0
+    mixed, _ = stats.compare('tfidf-ab', 'kfold_v3_all_gnn-ab', 'auc', 50, balanced=True)
+    assert set(mixed) == {'auc', 'pr_auc', 'macro_f1'}
+    r = subprocess.run([sys.executable, 'stats.py', '--help'], cwd=HERE, capture_output=True, text=True)
+    assert '--balanced' in r.stdout
+
+
+def test_baseline_group_names_for_arch_balance(tmp_path, monkeypatch):
+    assert stats.baseline_method('tfidf') == ('tfidf_sig_api_lr', '')
+    assert stats.baseline_method('structural-tf25') == ('structural_lr', '_tf25')
+    assert stats.baseline_method('tfidf-ab') == ('tfidf_sig_api_lr', '_ab')
+    assert stats.baseline_method('structural-tf50-ab') == ('structural_lr', '_tf50_ab')
+    for bad in ('tfidf-', 'tfidf-tf', 'tfidf-abc', 'kfold_v3_all_gnn-ab', 'gnn-ab'):
+        assert stats.baseline_method(bad) is None
+    assert stats.baseline_scopes('tfidf-ab', 'kfold_v3_all_gnn-ab') == {'tfidf-ab': ('kfold_v3', 'all')}
+    monkeypatch.setattr(stats, 'RUNS', tmp_path)
+    for fold in range(5):
+        write_v3_baseline(tmp_path, 'all', fold, 1.0)
+    write_v3_baseline(tmp_path, 'all', 0, 1.3, suffix='_ab')
+    scope = ('kfold_v3', 'all')
+    assert sorted(stats.folds_by_seed('tfidf', scope)[0]) == [0, 1, 2, 3, 4]
+    assert sorted(stats.folds_by_seed('tfidf-ab', scope)[0]) == [0]
+    assert stats.folds_by_seed('tfidf-ab', scope)[0][0].name == 'v3kfold0_all_s0_ab'
+    complete, partial = stats.load_group('tfidf-ab', 'auc', scope)
+    assert not complete and partial == {0: [0]}
+
+
+def test_report_labels_for_arch_balance():
+    assert report.model_label(gnn(arch_balance=True)) == 'edge-typed GNN arch-bal'
+    assert report.model_label(gnn(control='shuffle', arch_balance=True)) == 'GNN shuffle arch-bal'
+    assert report.model_label(RunConfig(arch_balance=True)) == 'graph transformer arch-bal'
+    assert report.model_label(gnn(arch_balance=True, encoder='mean')) == 'edge-typed GNN arch-bal enc-mean'
+    assert 'arch_balance' in report.LABELLED
+    overrides = {k for k, v in report.asdict(gnn(arch_balance=True)).items()
+                 if k not in set(report.LABELLED) and v != report.DEFAULTS[k]}
+    assert not overrides
+
+
+def build_v3_ab_fake(tmp_path, monkeypatch):
+    build_v3_fake(tmp_path, monkeypatch)
+    for fold in range(5):
+        write_v3_run(tmp_path, 'all', fold, 1.9, arch_balance=True)
+        write_v3_run(tmp_path, 'all', fold, 1.3, arch_balance=True, control='no_edges')
+        write_v3_run(tmp_path, 'all', fold, 1.1, arch_balance=True, control='shuffle')
+        write_v3_baseline(tmp_path, 'all', fold, 1.5, suffix='_ab')
+
+
+def test_gates_v3_cell_balanced_columns_ab_arms_and_twins(tmp_path, monkeypatch):
+    build_v3_ab_fake(tmp_path, monkeypatch)
+    text = '\n'.join(gates.v3(50))
+    all_part = text.split('## Arch matched: pooled table')[0]
+    row = {l.split(' | ')[0].lstrip('| '): l for l in all_part.splitlines() if l.startswith('| ')}
+    for arm in ('R7 typed', 'R7 typed ab', 'R2 no-edges ab', 'R4 shuffle ab', 'R0 TF-IDF ab'):
+        cells = row[arm].split(' | ')
+        assert len(cells) == 16 and 'missing' not in row[arm], arm
+        assert all(0 <= float(c.strip(' |')) <= 1 for c in cells[2:])
+    assert 'missing' in row['R5 untyped ab'] and 'kfold_v3_all_gnn-untyped-ab' in row['R5 untyped ab']
+    got = gates.v3_cell('kfold_v3_all_gnn', 'f1', 'all')
+    q = stats.load_group('kfold_v3_all_gnn', 'f1', ('kfold_v3', 'all'))[0][0]
+    want = cell_balanced(q.y, q.prob, q.pred, q.arch)
+    assert got[7] == pytest.approx(want['auc']) and got[8] == pytest.approx(want['macro_f1'])
+    assert '### Arch all: paired cell-balanced differences, second minus first' in all_part
+    assert 'Cell-balanced: every test sample weighted' in all_part
+    twin = all_part.split('each arch-balanced arm minus its unweighted twin')[1]
+    assert 'kfold_v3_all_gnn-ab minus kfold_v3_all_gnn' in twin and 'tfidf-ab minus tfidf' in twin
+    assert 'kfold_v3_all_gnn-noedges-ab minus kfold_v3_all_gnn-noedges' in twin
+    ab_pairs = all_part.split('arch-balanced arms, paired cell-balanced differences')[1].split('### Arch all: each')[0]
+    assert 'kfold_v3_all_gnn-ab minus kfold_v3_all_gnn-noedges-ab' in ab_pairs
+    assert 'kfold_v3_all_gnn-noedges-ab minus tfidf-ab' in ab_pairs
+    assert '(selection auc): missing: kfold_v3_all_gnn-untyped-ab' in ab_pairs
+    verdicts = [l for l in text.split('## Verdict')[1].splitlines() if l.startswith('- Arch all')]
+    assert len(verdicts) == 3 and verdicts[2].startswith('- Arch all: cell-balanced: R7 ab beats both R2 and R4')
+
+
+def test_report_cell_balanced_table_and_ab_rows(tmp_path, monkeypatch):
+    build_v3_ab_fake(tmp_path, monkeypatch)
+    labels = {sid: y for fold in range(5) for sid, y, *_ in fake_fold_rows(fold, 0, 1.0)}
+    for fold in range(5):
+        labels.update({f'tr{fold}_{i}': i % 2 for i in range(10)})
+    results, _ = report.collect(labels)
+    keys = {k for k, _ in results}
+    assert ('kfold_v3', 'all', 'edge-typed GNN arch-bal') in keys and ('kfold_v3', 'all', 'edge-typed GNN') in keys
+    assert ('kfold_v3', 'all', 'tfidf_sig_api_lr arch-bal') in keys and ('kfold_v3', 'all', 'tfidf_sig_api_lr') in keys
+    floor = {('kfold_v3', 'all', 'floor: x86_rule'): {0: (floors([0, 1], *cell_sample([60, 10, 20, 30]))['x86_rule'],
+                                                         {}, {})}}
+    lines = report.cell_table(results + sorted(floor.items()))
+    assert lines[0].startswith('| config | arch | seeds | Acc | macro-F1 | AUC | PR-AUC | cells |')
+    row = next(l for l in lines if l.startswith('| edge-typed GNN arch-bal | all | 1 |'))
+    assert row.split(' | ')[-5] == '4' and not any('bundle' in l for l in lines)
+    assert sum(l.startswith('| edge-typed GNN') for l in lines) == 3
+
+
+@needs_combined
+def test_report_main_writes_the_cell_balanced_section(tmp_path, monkeypatch):
+    build_v3_ab_fake(tmp_path, monkeypatch)
+    monkeypatch.setattr(report, 'HERE', tmp_path)
+    labels = {f'tr{fold}_{i}': i % 2 for fold in range(5) for i in range(10)}
+    monkeypatch.setattr(report, 'all_labels', lambda: labels)
+    report.main()
+    text = (tmp_path / 'RESULTS.md').read_text(encoding='utf-8')
+    head, section = text.split('## Cell-balanced (each class x arch weighted equally)')
+    for title in ('## Models and baselines', '## Floors on the same test manifests', '## AUC-selected checkpoint'):
+        assert title in head
+    assert '### F1 checkpoint at 0.5' in section and '### AUC checkpoint at the validation threshold' in section
+    assert '| edge-typed GNN arch-bal | all | 1 |' in section and '| tfidf_sig_api_lr arch-bal | all | 1 |' in section
+    assert section.count('| floor: x86_rule | all | 1 |') == 2 and section.count('| floor: majority | matched | 1 |') == 2
+    assert 'bundle' not in section
+
+
+def test_baselines_arch_balance_matches_class_weight_on_one_architecture(tmp_path):
+    """On an x86-only manifest the only cells are the two classes, so N / (C n_cell) is the 'balanced' class weight:
+    the arch-balanced fit must reproduce the default fit, and the output goes to a `_ab` directory."""
+    import baselines
+    sizes = {k: len(v) for k, v in json.loads((baselines.CACHE / 'vocab.json').read_text(encoding='utf-8')).items()}
+    baselines.run(RunConfig(protocol='kfold', fold=0, seed=0), sizes, tmp_path)
+    baselines.run(RunConfig(protocol='kfold', fold=0, seed=0, arch_balance=True), sizes, tmp_path)
+    plain, ab = tmp_path / 'kfold0_x86_s0', tmp_path / 'kfold0_x86_s0_ab'
+    m, mab = (json.loads((d / 'metrics.json').read_text()) for d in (plain, ab))
+    assert m['arch_balance'] is False and mab['arch_balance'] is True
+    for name, v in mab['methods'].items():
+        for key in ('test', 'test_at_val_threshold'):
+            cb = v[key]['cell_balanced']
+            assert cb['n_cells'] == 2 and cb['n_R_x64'] == 0 and cb['n_G_x64'] == 0 and cb['n_R_x86'] > 0
+        assert v['test']['auc'] == pytest.approx(m['methods'][name]['test']['auc'], abs=1e-9)
+    assert 'cell_balanced' in m['floors']['x86_rule'] and 'cell_balanced' in mab['floors']['majority']
+    assert report.read_predictions(ab / 'predictions.csv', method='tfidf_sig_api_lr')

@@ -6,7 +6,9 @@ Model runs are graph_transformer_runs/<RunConfig.name>/ (directories named other
 skipped). Bundle results are mean +/- sample sd over seeds; kfold and kfold_v3 results pool the out-of-fold test
 predictions of all five folds per seed first, and a seed with missing folds is left out. A second table repeats the
 runs that have an AUC-selected checkpoint at their validation threshold, and the baselines at theirs. kfold_v3
-floors (majority, x86 rule) for arch all and matched come from the combined cache's manifests.
+floors (majority, x86 rule) for arch all and matched come from the combined cache's manifests. Runs and baselines
+trained with --arch-balance are separate rows (`arch-bal` in the label, `ab` after a baseline method). A last table
+repeats the kfold_v3 rows (both selection rules, with the floors) with every class x arch cell weighted equally.
 """
 import csv
 import json
@@ -27,19 +29,22 @@ HERE = Path(__file__).resolve().parent
 COLUMNS = (('accuracy', 'Acc'), ('precision', 'P'), ('recall', 'R'), ('f1', 'F1'), ('macro_f1', 'macro-F1'),
            ('auc', 'AUC'), ('pr_auc', 'PR-AUC'), ('recall_R_x86', 'R x86'), ('recall_G_x86', 'G x86'),
            ('recall_R_x64', 'R x64'), ('recall_G_x64', 'G x64'))
+CELL_COLUMNS = (('accuracy', 'Acc'), ('macro_f1', 'macro-F1'), ('auc', 'AUC'), ('pr_auc', 'PR-AUC'))
+CELL_COUNTS = ('R_x86', 'R_x64', 'G_x86', 'G_x64')
 DEFAULTS = asdict(RunConfig())
 LABELLED = ('protocol', 'fold', 'arch', 'seed', 'no_graph', 'num_workers', 'model', 'encoder', 'readout', 'control',
             'untyped', 'no_call_mp', 'stack_tfidf', 'mask_tokens', 'drop_functions', 'drop_library', 'mask_blocks',
             'aux_recon', 'aux_edge', 'direction', 'drop_edges', 'flip_edges', 'gnn_fn_layers', 'gnn_bin_layers',
-            'train_fraction', 'cache')
+            'train_fraction', 'arch_balance', 'cache')
 CONTROL_LABELS = {'no_edges': 'no-edges', 'shuffle': 'shuffle', 'chain': 'chain', 'permute_types': 'permuted types'}
 
 
 def model_label(cfg):
     """Readable arm name; every field in LABELLED that affects the arm shows up here, so overrides skip them."""
     tf = [f'train {round(100 * cfg.train_fraction)}%'] if cfg.train_fraction < 1 else []
+    ab = ['arch-bal'] if cfg.arch_balance else []
     if cfg.model == 'transformer':
-        return ' '.join([f"{'no-graph' if cfg.no_graph else 'graph'} transformer"] + tf)
+        return ' '.join([f"{'no-graph' if cfg.no_graph else 'graph'} transformer"] + tf + ab)
     ablate = [CONTROL_LABELS[cfg.control]] if cfg.control else []
     ablate += [s for s, on in (('untyped', cfg.untyped), ('no call-MP', cfg.no_call_mp)) if on]
     parts = ['GNN'] if ablate else ['edge-typed GNN']
@@ -51,7 +56,7 @@ def model_label(cfg):
     parts += [cfg.direction] if cfg.direction != 'both' else []
     parts += [f'{s} {round(100 * p)}%' for s, p in (('drop-edge', cfg.drop_edges), ('flip-edge', cfg.flip_edges)) if p]
     parts += [f'{s}{n}' for s, n, default in (('L', cfg.gnn_fn_layers, 3), ('B', cfg.gnn_bin_layers, 2)) if n != default]
-    parts += tf
+    parts += tf + ab
     parts += ['enc-mean'] if cfg.block_encoder == 'mean' else []
     parts += ['gated'] if cfg.readout == 'gated' else []
     return ' '.join(parts)
@@ -191,7 +196,8 @@ def baseline_runs(auc=False):
         m = json.loads((d / 'metrics.json').read_text(encoding='utf-8'))
         for method, v in m['methods'].items():
             tf = f" tf{round(100 * m['train_fraction'])}" if m.get('train_fraction', 1) < 1 else ''
-            key, seed = (m['protocol'], m['arch'], method + tf), m['seed']
+            ab = ' arch-bal' if m.get('arch_balance') else ''
+            key, seed = (m['protocol'], m['arch'], method + tf + ab), m['seed']
             if auc and 'test_at_val_threshold' not in v:
                 left_out[(key, seed)] = 'no validation threshold (baseline predates it)'
             elif m['protocol'] == 'bundle':
@@ -220,6 +226,21 @@ def table(rows):
     for (protocol, arch, label), per_seed in rows:
         cells = [mean_sd([s[0].get(k, float('nan')) for s in per_seed.values()]) for k, _ in COLUMNS]
         lines.append(f"| {label} | {protocol} | {arch} | {len(per_seed)} | " + ' | '.join(cells) + ' |')
+    return lines
+
+
+def cell_table(rows):
+    """The kfold_v3 rows of `rows` with their cell-balanced metrics (mean ± sd over seeds) and the pooled cell counts."""
+    head = ('| config | arch | seeds | ' + ' | '.join(t for _, t in CELL_COLUMNS) + ' | cells | R x86 | R x64 | G x86 | G x64 |')
+    lines = [head, '|' + '---|' * (3 + len(CELL_COLUMNS) + 5)]
+    for (protocol, arch, label), per_seed in rows:
+        if protocol != 'kfold_v3':
+            continue
+        cb = [s[0]['cell_balanced'] for s in per_seed.values()]
+        first = cb[0]
+        lines.append(f"| {label} | {arch} | {len(per_seed)} | "
+                     + ' | '.join(mean_sd([c[k] for c in cb]) for k, _ in CELL_COLUMNS)
+                     + f" | {first['n_cells']} | " + ' | '.join(str(first[f'n_{t}']) for t in CELL_COUNTS) + ' |')
     return lines
 
 
@@ -279,6 +300,16 @@ def main():
             'Runs with a `selection` block in metrics.json, scored from their best-validation-AUC checkpoint at the '
             'threshold that maximises validation macro-F1 (grid of 49 values); kfold rows pool each fold at its own '
             'threshold. Baselines use the same rule on their validation split.', ''] + table(auc_results) + ['']
+
+    floor_results = sorted(floor_rows.items())
+    out += ['## Cell-balanced (each class x arch weighted equally)', '',
+            'kfold_v3 rows only. Every test sample is weighted 1 / (C n_cell), C the number of non-empty (label, arch) '
+            'cells of the pooled test set, so accuracy, macro-F1, AUC and PR-AUC treat ransomware x86, ransomware x64, '
+            'goodware x86 and goodware x64 alike; the x86 rule scores 0.5 on accuracy, macro-F1 and AUC when all four '
+            'cells are present. The cell counts are the pooled test samples per cell.', '',
+            '### F1 checkpoint at 0.5 (baselines at 0.5)', ''] + cell_table(results + floor_results) + [
+            '', '### AUC checkpoint at the validation threshold (baselines at theirs)', ''
+            ] + cell_table(auc_results + floor_results) + ['']
 
     bundle = [(k, v) for k, v in results if k[0] == 'bundle']
     if bundle:

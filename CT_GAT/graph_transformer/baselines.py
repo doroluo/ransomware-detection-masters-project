@@ -2,13 +2,18 @@
 
 python baselines.py --protocol bundle --arch x86 --seed 0 1 2 | --protocol kfold --fold 0 1 2 3 4 --arch all
 | --protocol kfold_v3 --fold 0 1 2 3 4 --arch all|matched (combined cache unless GT_CACHE is set)
-[--train-fraction 0.5]
+[--train-fraction 0.5] [--arch-balance]
 
 Fit on the run's training manifest (validation families held out, as for the model), scored on its validation and
 test sets. Writes <out-root>/<protocol[fold]>_<arch>_s<seed>/{metrics.json, predictions.csv} with out-root
 graph_transformer_runs/baselines by default (`_tf<pct>` appended with --train-fraction < 1); metrics.json records
 the cache path, adds the validation threshold (val_threshold.GRID rule) and the test scores at it, and predictions.csv
 has val and test rows told apart by the split column.
+
+--arch-balance replaces class_weight='balanced' by per-sample weights N / (C n_cell) over the non-empty (label, arch)
+cells of the training manifest (the weights train.py gives the loss), passed as sample_weight to both regressions; the
+output directory gets the suffix `_ab` and metrics.json records `arch_balance`. Every `test` block carries
+`cell_balanced` (each class x arch cell weighs equally).
 """
 import argparse
 import csv
@@ -25,7 +30,7 @@ from sklearn.preprocessing import StandardScaler
 
 from config import CACHE, RUNS, RunConfig
 from data import load_index, make_manifest
-from metrics import family_recall, floors, scores
+from metrics import cell_weights, family_recall, floors, scores
 from val_threshold import GRID, macro_f1
 
 
@@ -55,23 +60,29 @@ def run(cfg: RunConfig, sizes, out_root=None):
     y_test = np.array([r['label'] for r in test])
     arch, family = [r['arch'] for r in test], [r['family'] for r in test]
 
+    class_weight = None if cfg.arch_balance else 'balanced'
+    fit_args = ({'logisticregression__sample_weight': cell_weights(y_train, [r['arch'] for r in train])}
+                if cfg.arch_balance else {})
     models = {
         'tfidf_sig_api_lr': (make_pipeline(TfidfTransformer(sublinear_tf=True),
-                                           LogisticRegression(max_iter=5000, class_weight='balanced')),
+                                           LogisticRegression(max_iter=5000, class_weight=class_weight)),
                              x_train_tok[:, keep], x_val_tok[:, keep], x_test_tok[:, keep]),
-        'structural_lr': (make_pipeline(StandardScaler(), LogisticRegression(max_iter=5000, class_weight='balanced')),
+        'structural_lr': (make_pipeline(StandardScaler(),
+                                        LogisticRegression(max_iter=5000, class_weight=class_weight)),
                           x_train_st, x_val_st, x_test_st),
     }
     tf = f'_tf{round(100 * cfg.train_fraction)}' if cfg.train_fraction < 1 else ''
-    out = Path(out_root or RUNS / 'baselines') / (replace(cfg, train_fraction=1.0).name.replace('_graph', '') + tf)
+    ab = '_ab' if cfg.arch_balance else ''
+    out = Path(out_root or RUNS / 'baselines') / (
+        replace(cfg, train_fraction=1.0, arch_balance=False).name.replace('_graph', '') + tf + ab)
     out.mkdir(parents=True, exist_ok=True)
     metrics = {'protocol': cfg.protocol, 'fold': cfg.fold, 'arch': cfg.arch, 'seed': cfg.seed,
-               'train_fraction': cfg.train_fraction, 'cache': str(CACHE), 'n_train': len(train), 'n_val': len(val),
-               'n_test': len(test), 'tfidf_features': int(keep.sum()),
+               'train_fraction': cfg.train_fraction, 'arch_balance': cfg.arch_balance, 'cache': str(CACHE),
+               'n_train': len(train), 'n_val': len(val), 'n_test': len(test), 'tfidf_features': int(keep.sum()),
                'floors': floors(y_train, y_test, arch), 'methods': {}}
     probs, val_probs = {}, {}
     for name, (model, xtr, xva, xte) in models.items():
-        model.fit(xtr, y_train)
+        model.fit(xtr, y_train, **fit_args)
         probs[name], val_probs[name] = model.predict_proba(xte)[:, 1], model.predict_proba(xva)[:, 1]
         pred = (probs[name] >= 0.5).astype(int)
         threshold_val = float(max(GRID, key=lambda g: macro_f1(y_val, val_probs[name], g)))
@@ -100,13 +111,14 @@ def main():
     ap.add_argument('--arch', choices=['x86', 'all', 'matched'], default='x86')
     ap.add_argument('--seed', type=int, nargs='*', default=[0])
     ap.add_argument('--train-fraction', type=float, default=1.0)
+    ap.add_argument('--arch-balance', action='store_true')
     ap.add_argument('--out-root', help='default: graph_transformer_runs/baselines')
     args = ap.parse_args()
     sizes = {k: len(v) for k, v in json.loads((CACHE / 'vocab.json').read_text(encoding='utf-8')).items()}
     for fold in args.fold:
         for seed in args.seed:
             run(RunConfig(protocol=args.protocol, fold=fold, arch=args.arch, seed=seed,
-                          train_fraction=args.train_fraction), sizes, args.out_root)
+                          train_fraction=args.train_fraction, arch_balance=args.arch_balance), sizes, args.out_root)
 
 
 if __name__ == '__main__':

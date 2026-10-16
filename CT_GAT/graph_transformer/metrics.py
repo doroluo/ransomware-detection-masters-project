@@ -6,6 +6,37 @@ from sklearn.metrics import (accuracy_score, average_precision_score, f1_score, 
 ARCHES = ('x86', 'x64')
 
 
+def cell_weights(y, arch):
+    """N / (C * n_cell) per sample, C the number of non-empty (label, arch) cells: every non-empty cell carries the same
+    total weight and the mean weight is 1."""
+    cells = list(zip(np.asarray(y).tolist(), np.asarray(arch).tolist()))
+    if not cells:
+        return np.zeros(0)
+    counts = {c: cells.count(c) for c in set(cells)}
+    return np.array([len(cells) / (len(counts) * counts[c]) for c in cells])
+
+
+def cell_balanced(y, prob, pred, arch):
+    """Accuracy, macro-F1, AUC and PR-AUC with sample weights proportional to 1 / (C * n_cell) (cell_weights), so each
+    non-empty (label, arch) cell weighs the same (under it the x86 rule scores 0.5 when all four cells are non-empty),
+    and the cell counts. A cell with no test sample is left out of C."""
+    y, prob, pred, arch = np.asarray(y), np.asarray(prob, dtype=float), np.asarray(pred), np.asarray(arch)
+    w = cell_weights(y, arch)
+    two = len(set(y.tolist())) == 2
+    out = {
+        'accuracy': accuracy_score(y, pred, sample_weight=w),
+        'macro_f1': f1_score(y, pred, average='macro', zero_division=0, sample_weight=w),
+        'auc': roc_auc_score(y, prob, sample_weight=w) if two else float('nan'),
+        'pr_auc': average_precision_score(y, prob, sample_weight=w) if two else float('nan'),
+    }
+    out = {k: float(v) for k, v in out.items()}
+    out['n_cells'] = len({(a, b) for a, b in zip(y.tolist(), arch.tolist())})
+    for a in ARCHES:
+        for cls, tag in ((1, 'R'), (0, 'G')):
+            out[f'n_{tag}_{a}'] = int(((arch == a) & (y == cls)).sum())
+    return out
+
+
 def scores(y, prob, pred, arch):
     y, prob, pred, arch = np.asarray(y), np.asarray(prob, dtype=float), np.asarray(pred), np.asarray(arch)
     out = {
@@ -23,7 +54,9 @@ def scores(y, prob, pred, arch):
             mask = (arch == a) & (y == cls)
             out[f'recall_{tag}_{a}'] = float((pred[mask] == cls).mean()) if mask.any() else float('nan')
             out[f'n_{tag}_{a}'] = int(mask.sum())
-    return {k: float(v) if isinstance(v, (np.floating, float)) else v for k, v in out.items()}
+    out = {k: float(v) if isinstance(v, (np.floating, float)) else v for k, v in out.items()}
+    out['cell_balanced'] = cell_balanced(y, prob, pred, arch)
+    return out
 
 
 def floors(y_train, y_test, arch_test):

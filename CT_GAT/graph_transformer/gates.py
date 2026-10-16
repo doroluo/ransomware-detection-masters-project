@@ -11,15 +11,18 @@ every kfold x86 GNN group on disk, the AUC-selection paired differences of each 
 the learning curve (train fraction 0.25 / 0.5 / 1.0 for R7 and TF-IDF).
 
 Stage v3 reads seed 0 of the kfold_v3 arms (R0, R2, R4, R5, R7) on the combined cache for arch all and arch matched: the
-pooled table under both checkpoint rules with per-architecture recall at the validation threshold and both floors
-(majority, x86 rule), the paired AUC-selection differences R2-R7, R4-R7, R5-R7 and R0-R2, and a one-line verdict per
-arch on whether R7 beats R2 and R4 under the pre-registered rule.
+pooled table under both checkpoint rules with per-architecture recall at the validation threshold, cell-balanced AUC
+and macro-F1 (each class x arch cell weighted equally) and both floors (majority, x86 rule), the arch-balanced
+(`-ab`) arms beside their unweighted twins, the paired AUC-selection differences R2-R7, R4-R7, R5-R7 and R0-R2 (plain
+and cell-balanced, for the plain and for the `-ab` arms), the cell-balanced difference of each `-ab` arm against its
+unweighted twin, and one-line verdicts per arch on whether R7 beats R2 and R4 under the pre-registered rule.
 """
 import argparse
 from functools import lru_cache
 
 import numpy as np
 
+import metrics
 import report
 import stats
 from config import RunConfig
@@ -41,8 +44,11 @@ CURVE = ((0.25, 'tf25'), (0.5, 'tf50'), (1.0, ''))
 V3_ARCHES = ('all', 'matched')
 V3_ARMS = (('R0 TF-IDF', 'tfidf'), ('R2 no-edges', 'gnn-noedges'), ('R4 shuffle', 'gnn-shuffle'),
            ('R5 untyped', 'gnn-untyped'), ('R7 typed', 'gnn'))
+V3_AB_ARMS = tuple((f'{arm} ab', f'{variant}-ab') for arm, variant in V3_ARMS)
 V3_PAIRS = (('R2 no-edges', 'R7 typed'), ('R4 shuffle', 'R7 typed'), ('R5 untyped', 'R7 typed'),
             ('R0 TF-IDF', 'R2 no-edges'))
+V3_AB_PAIRS = tuple((f'{a} ab', f'{b} ab') for a, b in V3_PAIRS)
+V3_TWINS = tuple((arm, f'{arm} ab') for arm, _ in V3_ARMS)
 V3_RECALLS = (('R x86', 1, 'x86'), ('R x64', 1, 'x64'), ('G x86', 0, 'x86'), ('G x64', 0, 'x64'))
 MIN_AUC, MIN_F1 = 0.01, 0.02
 
@@ -163,8 +169,8 @@ def v3_group(arch, variant):
 
 @lru_cache(maxsize=None)
 def v3_cell(group, selection, arch):
-    """[AUC, PR-AUC, macro-F1, R x86, R x64, G x86, G x64] of the seed-0 pooled kfold_v3 predictions, or a string saying
-    what is missing. A baseline group resolves to the kfold_v3 baselines of `arch`."""
+    """[AUC, PR-AUC, macro-F1, R x86, R x64, G x86, G x64, cell-balanced AUC, cell-balanced macro-F1] of the seed-0
+    pooled kfold_v3 predictions, or a string saying what is missing. A baseline group resolves to the kfold_v3 baselines of `arch`."""
     complete, partial = stats.load_group(group, selection, ('kfold_v3', arch))
     if SEED not in complete:
         present = partial.get(SEED, [])
@@ -176,29 +182,35 @@ def v3_cell(group, selection, arch):
     for _, label, a in V3_RECALLS:
         mask = (p.y == label) & (p.arch == a)
         recalls.append(float(np.mean(p.pred[mask] == label)) if mask.any() else float('nan'))
-    return [*stats.metrics_weighted(p, order, grp, np.ones(len(p.y))), *recalls]
+    cb = metrics.cell_balanced(p.y, p.prob, p.pred, p.arch)
+    return [*stats.metrics_weighted(p, order, grp, np.ones(len(p.y))), *recalls, cb['auc'], cb['macro_f1']]
 
 
 def v3_floor_cells(arch):
     keys = ('auc', 'pr_auc', 'macro_f1', 'recall_R_x86', 'recall_R_x64', 'recall_G_x86', 'recall_G_x64')
-    return {name: [s[k] for k in keys] for name, s in report.v3_floors(arch)[0].items()}
+    return {name: [*(s[k] for k in keys), s['cell_balanced']['auc'], s['cell_balanced']['macro_f1']]
+            for name, s in report.v3_floors(arch)[0].items()}
 
 
 def v3_table(arch):
-    metrics = ('AUC', 'PR-AUC', 'macro-F1')
-    head = ['| arm | group | ' + ' | '.join(f'{rule} {m}' for rule in ('F1 ckpt, 0.5', 'AUC ckpt, val thr') for m in metrics)
-            + ' | ' + ' | '.join(f'{t} recall' for t, _, _ in V3_RECALLS) + ' |',
-            '|' + '---|' * (2 + 6 + len(V3_RECALLS))]
+    metric_names = ('AUC', 'PR-AUC', 'macro-F1')
+    rules = ('F1 ckpt, 0.5', 'AUC ckpt, val thr')
+    head = ['| arm | group | ' + ' | '.join(f'{rule} {m}' for rule in rules for m in metric_names)
+            + ' | ' + ' | '.join(f'{t} recall' for t, _, _ in V3_RECALLS)
+            + ' | ' + ' | '.join(f'{rule} cell-bal {m}' for rule in rules for m in ('AUC', 'macro-F1')) + ' |',
+            '|' + '---|' * (2 + 6 + len(V3_RECALLS) + 4)]
     fmt = lambda cells: [c if isinstance(c, str) else f'{c:.3f}' for c in cells]
     rows = []
-    for arm, variant in V3_ARMS:
+    for arm, variant in V3_ARMS + V3_AB_ARMS:
         group = v3_group(arch, variant)
         f1, auc = v3_cell(group, 'f1', arch), v3_cell(group, 'auc', arch)
-        cells = (f1[:3] if not isinstance(f1, str) else [f1, '', '']) + (auc if not isinstance(auc, str)
-                                                                         else [auc] + [''] * 6)
+        cells = ((f1[:3] if not isinstance(f1, str) else [f1, '', ''])
+                 + (auc[:7] if not isinstance(auc, str) else [auc] + [''] * 6)
+                 + (f1[7:] if not isinstance(f1, str) else ['', ''])
+                 + (auc[7:] if not isinstance(auc, str) else ['', '']))
         rows.append(f'| {arm} | {group} | ' + ' | '.join(fmt(cells)) + ' |')
     for name, cells in v3_floor_cells(arch).items():
-        rows.append(f'| floor: {name} | - | ' + ' | '.join(fmt(cells[:3] + cells)) + ' |')
+        rows.append(f'| floor: {name} | - | ' + ' | '.join(fmt(cells[:3] + cells[:7] + cells[7:] + cells[7:])) + ' |')
     return head + rows
 
 
@@ -229,10 +241,13 @@ def v3_truncation(arch):
             f"cap {MAX_BINARY_BLOCKS}); truncated: {cell(cut)}; untruncated: {cell(~cut)}.")
 
 
-def v3_verdict(arch, results):
+def v3_verdict(arch, results, suffix='', note=''):
+    """One line on whether R7 beats R2 and R4 in `results`; `suffix` ' ab' reads the arch-balanced arms and `note`
+    says which weighting the differences use."""
     parts, missing = [], []
-    for ref in ('R2 no-edges', 'R4 shuffle'):
-        r = results[ref, 'R7 typed']
+    for name in ('R2 no-edges', 'R4 shuffle'):
+        ref = name + suffix
+        r = results[ref, 'R7 typed' + suffix]
         if isinstance(r, str):
             missing.append(f'{ref}: {r}')
             continue
@@ -240,10 +255,26 @@ def v3_verdict(arch, results):
                      f"[{r['auc']['lo']:+.3f}, {r['auc']['hi']:+.3f}], dmacro-F1 {r['macro_f1']['diff']:+.3f} "
                      f"[{r['macro_f1']['lo']:+.3f}, {r['macro_f1']['hi']:+.3f}])")
     if missing:
-        return f"- Arch {arch}: cannot assess, missing: {'; '.join(missing)} ({LABEL})."
+        return f"- Arch {arch}: {note}cannot assess, missing: {'; '.join(missing)} ({LABEL})."
     both = all(p.startswith('beats') for p in parts)
-    return (f"- Arch {arch}: R7 {'beats both R2 and R4' if both else 'does not beat both R2 and R4'}: "
+    return (f"- Arch {arch}: {note}R7{suffix} {'beats both R2 and R4' if both else 'does not beat both R2 and R4'}: "
             f"{'; '.join(parts)} ({LABEL}).")
+
+
+def v3_pairs(arch, pairs, resamples, balanced):
+    """(markdown lines, {(a, b): result or the missing reason}) of the paired AUC-selection differences."""
+    out, results = [], {}
+    for a, b in pairs:
+        ga, gb = (v3_group(arch, dict(V3_ARMS + V3_AB_ARMS)[x]) for x in (a, b))
+        try:
+            result, info = stats.compare(ga, gb, 'auc', resamples, seeds=[SEED], protocol='kfold_v3', arch=arch,
+                                         balanced=balanced)
+            results[a, b] = result
+            out += [f'**{a} vs {b}**', '', stats.fmt_block(ga, gb, 'auc', resamples, result, info), '']
+        except stats.MissingGroup as e:
+            results[a, b] = str(e)
+            out += [f'**{a} vs {b}** (selection auc): missing: {e}', '']
+    return out, results
 
 
 def v3(resamples):
@@ -251,7 +282,9 @@ def v3(resamples):
            'Combined cache, kfold_v3 (family-holdout v3 folds 0-4), seed 0 pooled over the five folds. The F1 checkpoint '
            "is scored at 0.5; the AUC checkpoint at the threshold that maximises validation macro-F1 (TF-IDF at its own "
            "per fold); recalls are at that threshold. A missing arm or fold is stated in its row. Floors: the majority "
-           "class of each fold's training manifest, and the x86 rule (ransomware iff x86).", '']
+           "class of each fold's training manifest, and the x86 rule (ransomware iff x86). `ab` arms were trained with "
+           "--arch-balance (each class x arch cell weighted equally). Cell-bal columns weight each class x arch cell "
+           "of the pooled test set equally; under them the x86 rule scores 0.5.", '']
     verdicts = []
     for arch in V3_ARCHES:
         pooled_floors, per_fold = report.v3_floors(arch)
@@ -260,21 +293,26 @@ def v3(resamples):
                 + f" (pooled {pooled_floors['x86_rule']['macro_f1']:.3f}).", '']
         out += [v3_truncation(arch), '']
         out += [f'### Arch {arch}: paired differences, second minus first, AUC selection ({LABEL})', '']
-        results = {}
-        for a, b in V3_PAIRS:
-            ga, gb = (v3_group(arch, dict(V3_ARMS)[x]) for x in (a, b))
-            try:
-                result, info = stats.compare(ga, gb, 'auc', resamples, seeds=[SEED], protocol='kfold_v3', arch=arch)
-                results[a, b] = result
-                out += [f'**{a} vs {b}**', '', stats.fmt_block(ga, gb, 'auc', resamples, result, info), '']
-            except stats.MissingGroup as e:
-                results[a, b] = str(e)
-                out += [f'**{a} vs {b}** (selection auc): missing: {e}', '']
+        lines, results = v3_pairs(arch, V3_PAIRS, resamples, balanced=False)
+        out += lines
         verdicts.append(v3_verdict(arch, results))
+        out += [f'### Arch {arch}: paired cell-balanced differences, second minus first, AUC selection ({LABEL})', '']
+        lines, balanced = v3_pairs(arch, V3_PAIRS, resamples, balanced=True)
+        out += lines
+        verdicts.append(v3_verdict(arch, balanced, note='cell-balanced: '))
+        out += [f'### Arch {arch}: arch-balanced arms, paired cell-balanced differences ({LABEL})', '']
+        lines, balanced_ab = v3_pairs(arch, V3_AB_PAIRS, resamples, balanced=True)
+        out += lines
+        verdicts.append(v3_verdict(arch, balanced_ab, ' ab', 'cell-balanced: '))
+        out += [f'### Arch {arch}: each arch-balanced arm minus its unweighted twin, cell-balanced ({LABEL})', '']
+        lines, _ = v3_pairs(arch, V3_TWINS, resamples, balanced=True)
+        out += lines
     out += ['## Verdict: does R7 beat R2 and R4?', '',
             f'Pre-registered rule (PLAN_GNN.md section 5), applied to the AUC selection: dAUC >= {MIN_AUC} and '
             f'dmacro-F1 >= {MIN_F1} pooled, both 95% intervals excluding zero. With one seed it cannot pass the rule; '
-            'these lines only say which way seed 0 points.', ''] + verdicts + ['']
+            'these lines only say which way seed 0 points. Per arch, the first line uses the ordinary metrics on the '
+            'unweighted arms, the second the cell-balanced metrics on them, the third the cell-balanced metrics on the '
+            'arch-balanced arms.', ''] + verdicts + ['']
     return out
 
 

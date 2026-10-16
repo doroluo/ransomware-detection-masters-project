@@ -83,6 +83,7 @@ class RunConfig:
     drop_edges: float = 0.0
     flip_edges: float = 0.0
     train_fraction: float = 1.0
+    arch_balance: bool = False
     batch_blocks: int = 300000
     fixed_epochs: int = 0
     tag: str = ''
@@ -141,8 +142,9 @@ class RunConfig:
     @property
     def variant(self):
         tf = [f'tf{round(100 * self.train_fraction)}'] if self.train_fraction < 1 else []
+        ab = ['ab'] if self.arch_balance else []
         if self.model == 'transformer':
-            return '-'.join(['nograph' if self.no_graph else 'graph'] + tf)
+            return '-'.join(['nograph' if self.no_graph else 'graph'] + tf + ab)
         parts = ['gnn']
         if self.control:
             parts.append(CONTROLS[self.control])
@@ -156,7 +158,7 @@ class RunConfig:
         parts += [f'{s}{round(100 * p)}' for s, p in (('dedge', self.drop_edges), ('flip', self.flip_edges)) if p]
         parts += [f'{s}{n}' for s, n, default in (('L', self.gnn_fn_layers, 3), ('B', self.gnn_bin_layers, 2))
                   if n != default]
-        parts += tf
+        parts += tf + ab
         if self.block_encoder == 'mean':
             parts.append('enc-mean')
         if self.readout == 'gated':

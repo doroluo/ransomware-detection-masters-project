@@ -1,12 +1,15 @@
 """One run: python train.py --protocol bundle --arch x86 --seed 0 [--no-graph] | --protocol kfold --fold 2
 | --protocol kfold_v3 --fold 2 --arch all|matched (reads the combined cache unless GT_CACHE is set)
 [--model gnn --control no_edges --encoder mean --untyped --fixed-epochs N --direction forward --drop-edges 0.2
---flip-edges 0.2] [--train-fraction 0.5]
+--flip-edges 0.2] [--train-fraction 0.5] [--arch-balance]
 
 Writes config.json (with the cache path used), manifest.json, vocab.json (sizes), history.csv, val_probs.csv, best.pt
 (best validation macro-F1 at cfg.threshold), best_auc.pt (best validation AUC), predictions.csv (F1 checkpoint, pred at
 cfg.threshold), predictions_auc.csv (AUC checkpoint, pred at its validation threshold) and metrics.json to
 graph_transformer_runs/<run name>/.
+
+--arch-balance weights each training sample's loss by N / (C n_cell) over the non-empty (label, arch) cells of the
+training manifest instead of by its class weight; every metrics block gains `cell_balanced` (each cell weighs equally).
 """
 import argparse
 import csv
@@ -22,7 +25,7 @@ import torch.nn.functional as F
 
 from config import DIRECTIONS, RUNS, RunConfig
 from data import CACHE, TokenVocab, load_index, loader, make_manifest
-from metrics import family_recall, floors, scores
+from metrics import cell_weights, family_recall, floors, scores
 from model import GraphTransformer
 from model_gnn import HierGNN
 from val_threshold import GRID, macro_f1
@@ -81,6 +84,19 @@ def evaluate(rows, ids, probs, threshold):
     y = np.array([by_id[i]['label'] for i in ids])
     arch = np.array([by_id[i]['arch'] for i in ids])
     return scores(y, probs, (probs >= threshold).astype(int), arch)
+
+
+def loss_weight_fn(cfg: RunConfig, rows, device):
+    """batch -> per-sample loss weight. Default: the class weight N / (2 n_class). With cfg.arch_balance: N / (C n_cell)
+    over the non-empty (label, arch) cells of `rows` (the training manifest), which replaces the class weight; both
+    average 1 over `rows`."""
+    labels = np.array([r['label'] for r in rows])
+    if cfg.arch_balance:
+        by_id = dict(zip((r['sample_id'] for r in rows), cell_weights(labels, [r['arch'] for r in rows])))
+        return lambda batch: torch.tensor([by_id[i] for i in batch['sample_id']], dtype=torch.float32,
+                                          device=device)
+    class_weight = torch.tensor([len(labels) / (2 * max(1, (labels == c).sum())) for c in (0, 1)], device=device)
+    return lambda batch: class_weight[batch['label'].long()]
 
 
 def check_supported(cfg: RunConfig):
@@ -150,7 +166,7 @@ def run(cfg: RunConfig, out_name=None):
     model = build_model(cfg, vocab).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     labels = np.array([r['label'] for r in manifest.train])
-    class_weight = torch.tensor([len(labels) / (2 * max(1, (labels == c).sum())) for c in (0, 1)], device=device)
+    loss_weight = loss_weight_fn(cfg, manifest.train, device)
     train_data = loader(manifest.train, vocab, cfg, train=True)
     val_data = loader(manifest.val, vocab, cfg, train=False)
     print(f'{cfg.name}: train {len(manifest.train)} val {len(manifest.val)} test {len(manifest.test)} '
@@ -168,7 +184,7 @@ def run(cfg: RunConfig, out_name=None):
             with torch.autocast('cuda', dtype=torch.bfloat16):
                 logits = model(batch)
             loss = (F.binary_cross_entropy_with_logits(logits, batch['label'], reduction='none')
-                    * class_weight[batch['label'].long()]).mean()
+                    * loss_weight(batch)).mean()
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)

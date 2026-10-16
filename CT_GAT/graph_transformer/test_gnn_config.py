@@ -293,3 +293,34 @@ def test_train_refuses_a_config_for_another_cache():
     import train
     with pytest.raises(ValueError, match='cache'):
         train.run(RunConfig(cache='C:/not/this/cache'))
+
+
+def test_arch_balance_field_and_names():
+    assert RunConfig().arch_balance is False
+    assert gnn(arch_balance=True).variant == 'gnn-ab'
+    assert RunConfig(arch_balance=True).variant == 'graph-ab'
+    assert RunConfig(arch_balance=True, no_graph=True).variant == 'nograph-ab'
+    assert gnn(control='no_edges', arch_balance=True).variant == 'gnn-noedges-ab'
+    assert gnn(arch_balance=True, encoder='mean').variant == 'gnn-ab-enc-mean'
+    assert gnn(arch_balance=True, readout='gated').variant == 'gnn-ab-gated'
+    assert gnn(arch_balance=True, encoder='mean', readout='gated', train_fraction=0.5).variant == (
+        'gnn-tf50-ab-enc-mean-gated')
+    assert gnn(protocol='kfold_v3', fold=2, arch='all', arch_balance=True).name == 'v3kfold2_all_gnn-ab_s0'
+    assert gnn(protocol='kfold_v3', fold=2, arch='all', arch_balance=True).group == 'kfold_v3_all_gnn-ab'
+    assert gnn(arch_balance=True).group != gnn().group
+    for cfg in (RunConfig(), gnn(), gnn(control='shuffle'), RunConfig(no_graph=True), gnn(train_fraction=0.5)):
+        assert 'ab' not in cfg.variant.split('-')
+
+
+def test_arch_balance_cli_and_roundtrip(tmp_path):
+    cfg, _ = parse_config(['--model', 'gnn', '--arch-balance', '--protocol', 'kfold_v3', '--fold', '1', '--arch',
+                           'all'])
+    assert cfg == gnn(arch_balance=True, protocol='kfold_v3', fold=1, arch='all')
+    assert cfg.name == 'v3kfold1_all_gnn-ab_s0'
+    assert parse_config(['--no-graph', '--arch-balance'])[0].name == 'bundle_x86_nograph-ab_s0'
+    assert parse_config([])[0].arch_balance is False
+    cfg.save(tmp_path / 'config.json')
+    assert RunConfig.load(tmp_path / 'config.json') == cfg
+    old = tmp_path / 'old.json'
+    old.write_text('{"model": "gnn"}')
+    assert RunConfig.load(old).arch_balance is False

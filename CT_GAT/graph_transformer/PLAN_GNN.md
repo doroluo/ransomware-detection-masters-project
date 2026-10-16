@@ -338,3 +338,40 @@ Rows without a v3 fold: 186.
 
 These 186 rows are built but carry no v3 fold, so every kfold_v3 manifest leaves them out. They are not assigned
 by family, because folds_all.csv did not place them (stop, lockbit and revil all have folds).
+
+## Arch-balanced training and cell-balanced metrics (step 7, 2026-10-15)
+
+Goal: keep every binary and make architecture worth nothing. Ransomware is 77% x86 and goodware 39% x86 in the v3
+all-arch test pool (R x86 2,421, R x64 741, G x86 968, G x64 1,522), so the x86 rule already scores 0.690 macro-F1.
+
+- **Training.** `RunConfig.arch_balance` (`--arch-balance`, both models) gives each training sample the loss weight
+  `N / (C * n_cell)`, C the number of non-empty (label, arch) cells of the training manifest. It replaces the class
+  weight; the mean weight is 1 and every non-empty cell carries the same total weight. Variant suffix `-ab` (after
+  the train-fraction suffix, before `-enc-mean` / `-gated`): `gnn-ab`, `gnn-noedges-ab`, `graph-ab`, `nograph-ab`.
+  Without the flag the loss and every name are unchanged. `baselines.py --arch-balance` passes the same weights as
+  `sample_weight` to both logistic regressions instead of `class_weight='balanced'`; output dirs end in `_ab`
+  (`baselines/v3kfold0_all_s0_ab`); `stats.py` names them `tfidf-ab` / `structural-ab`.
+- **Metrics.** `metrics.cell_balanced(y, prob, pred, arch)` returns accuracy, macro-F1, AUC and PR-AUC with sample
+  weight `1 / (C_test * n_cell)` and the cell counts (`n_cells`, `n_R_x86`, ...). `scores()` adds it as the
+  `cell_balanced` block, so every `test`, `selection.*.test`, baseline `test` / `test_at_val_threshold` and floor carries it.
+  An empty cell (an x86-only manifest) is left out of C and its count is 0. Under it the x86 rule scores exactly 0.5
+  (accuracy, macro-F1, AUC) when all four cells are non-empty.
+- **Reports.** `report.py` adds "Cell-balanced (each class x arch weighted equally)" (kfold_v3 rows, both selection
+  rules, floors). `gates.py --stage v3` adds cell-balanced AUC / macro-F1 columns, the `-ab` arms and the paired
+  cell-balanced differences (R0-R2, R2-R7, R4-R7, R5-R7 for the plain and for the `-ab` arms, and each `-ab` arm
+  against its unweighted twin). `stats.py --balanced` bootstraps with the cell weights, fixed per test sample from the
+  pooled test set.
+- **Queue.** `queue_gnn.sh --stage v3`: CPU baselines all, matched, all `--arch-balance`; the `-ab` arms R2, R7, R4,
+  R5 on arch all (the main result); the unweighted arch-all arms; the arch-matched arms; then report, gates and
+  val_threshold. Matched has no `-ab` arms in the queue; it keeps all ransomware (77% x86) and 56% x86 of its goodware, so it is
+  less skewed than arch all but not cell-balanced.
+- **TF-IDF baselines, kfold_v3 arch all, seed 0, pooled over folds 0-4** (n = 5,652; accuracy / macro-F1 / AUC / PR-AUC):
+
+| TF-IDF LR | threshold | normal | cell-balanced |
+|---|---|---|---|
+| class weight (existing) | 0.5 | 0.918 / 0.917 / 0.974 / 0.979 | 0.902 / 0.902 / 0.960 / 0.959 |
+| class weight (existing) | validation | 0.886 / 0.885 / 0.974 / 0.979 | 0.847 / 0.846 / 0.960 / 0.959 |
+| arch-balanced | 0.5 | 0.910 / 0.909 / 0.969 / 0.976 | 0.909 / 0.909 / 0.967 / 0.968 |
+| arch-balanced | validation | 0.868 / 0.868 / 0.969 / 0.976 | 0.848 / 0.847 / 0.967 / 0.968 |
+| majority floor | - | 0.559 / 0.359 / 0.500 / 0.559 | 0.500 / 0.333 / 0.500 / 0.500 |
+| x86-rule floor | - | 0.698 / 0.690 / 0.688 / 0.678 | 0.500 / 0.500 / 0.500 / 0.500 |

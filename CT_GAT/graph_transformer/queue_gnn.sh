@@ -9,7 +9,9 @@
 # (testing). Every python call runs with PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True (the GPU is shared). A run
 # that exits non-zero is retried once, logged as "retry <name>" (the first log is kept as <name>.log.try1); no retry
 # when RUNS/STOP exists, so stop_queue.sh --now does not restart the run it killed. Stage v3 (kfold_v3 on the combined
-# cache, arch all then matched, folds 0-4, seed 0) exports GT_CACHE for every python call.
+# cache, folds 0-4, seed 0) exports GT_CACHE for every python call and runs, in order: the CPU baselines (all, matched,
+# all arch-balanced), the arch-balanced all-arch arms (--arch-balance, names end in -ab; the main result), the
+# unweighted all-arch arms, then the matched arms.
 cd "$(dirname "$0")"
 PY=/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe
 R=/c/Users/chaoa/Downloads/graph_transformer_runs
@@ -54,12 +56,13 @@ arm() { variant=$1; shift
 arm_v3() { arch=$1; variant=$2; shift; shift
   for f in 0 1 2 3 4; do run v3kfold${f}_${arch}_${variant}_s0 --protocol kfold_v3 --fold $f --arch $arch --seed 0 "$@"; done; }
 
-# baselines_v3 <arch>: CPU baselines for kfold_v3 seed 0, skipped when all five folds already have validation thresholds
-baselines_v3() { arch=$1
-  BASE_ARGS="--protocol kfold_v3 --fold 0 1 2 3 4 --arch $arch --seed 0"
+# baselines_v3 <arch> [--arch-balance]: CPU baselines for kfold_v3 seed 0 (directories end in _ab with --arch-balance),
+# skipped when all five folds already have validation thresholds
+baselines_v3() { arch=$1; shift; sfx=; [ "$*" = --arch-balance ] && sfx=_ab
+  BASE_ARGS="--protocol kfold_v3 --fold 0 1 2 3 4 --arch $arch --seed 0 $*"; BASE_ARGS=${BASE_ARGS% }
   if [ $DRY = 1 ]; then echo "cpu baselines $BASE_ARGS"
-  elif [ "$(grep -l threshold_val $R/baselines/v3kfold[0-4]_${arch}_s0/metrics.json 2>/dev/null | wc -l)" = 5 ]; then echo "skip baselines v3 $arch"
-  else echo "start baselines v3 $arch $(date +%T)"; $PY baselines.py $BASE_ARGS > $R/logs/baselines_v3kfold_${arch}_s0.log 2>&1; echo "finished baselines v3 $arch rc=$? $(date +%T)"; fi; }
+  elif [ "$(grep -l threshold_val $R/baselines/v3kfold[0-4]_${arch}_s0$sfx/metrics.json 2>/dev/null | wc -l)" = 5 ]; then echo "skip baselines v3 $arch$sfx"
+  else echo "start baselines v3 $arch$sfx $(date +%T)"; $PY baselines.py $BASE_ARGS > $R/logs/baselines_v3kfold_${arch}_s0$sfx.log 2>&1; echo "finished baselines v3 $arch$sfx rc=$? $(date +%T)"; fi; }
 
 # baselines <train.py-style suffix> <extra baselines.py args>: CPU baselines for kfold x86 seed 0, skipped when all five
 # folds already have validation thresholds
@@ -72,14 +75,19 @@ baselines() { sfx=$1; shift
 if [ $STAGE = v3 ]; then
 baselines_v3 all                                                      # 1. CPU baselines
 baselines_v3 matched
-arm_v3 all gnn-noedges --model gnn --control no_edges                 # 2. R2, arch all
-arm_v3 all gnn --model gnn                                            # 3. R7
-arm_v3 all gnn-shuffle --model gnn --control shuffle                  # 4. R4
-arm_v3 all gnn-untyped --model gnn --untyped                          # 5. R5
-arm_v3 matched gnn-noedges --model gnn --control no_edges             # 6. R2, arch matched
-arm_v3 matched gnn --model gnn                                        # 7. R7
-arm_v3 matched gnn-shuffle --model gnn --control shuffle              # 8. R4
-arm_v3 matched gnn-untyped --model gnn --untyped                      # 9. R5
+baselines_v3 all --arch-balance
+arm_v3 all gnn-noedges-ab --model gnn --control no_edges --arch-balance   # 2. arch-balanced, arch all: R2
+arm_v3 all gnn-ab --model gnn --arch-balance                          # 3. R7
+arm_v3 all gnn-shuffle-ab --model gnn --control shuffle --arch-balance  # 4. R4
+arm_v3 all gnn-untyped-ab --model gnn --untyped --arch-balance        # 5. R5
+arm_v3 all gnn-noedges --model gnn --control no_edges                 # 6. unweighted, arch all: R2
+arm_v3 all gnn --model gnn                                            # 7. R7
+arm_v3 all gnn-shuffle --model gnn --control shuffle                  # 8. R4
+arm_v3 all gnn-untyped --model gnn --untyped                          # 9. R5
+arm_v3 matched gnn-noedges --model gnn --control no_edges             # 10. arch matched: R2
+arm_v3 matched gnn --model gnn                                        # 11. R7
+arm_v3 matched gnn-shuffle --model gnn --control shuffle              # 12. R4
+arm_v3 matched gnn-untyped --model gnn --untyped                      # 13. R5
 elif [ $STAGE = day1b ]; then
 baselines _tf50 --train-fraction 0.5                                  # 1. learning-curve TF-IDF
 baselines _tf25 --train-fraction 0.25
