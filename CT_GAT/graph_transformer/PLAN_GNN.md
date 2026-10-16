@@ -415,3 +415,27 @@ Reading:
 5. **Next.** Block masking on the no-edge (R2) and shuffled (R4) arms decides whether edges matter once the
    model is regularised. After that, seeds 1-2 for R2/R4/R7 and the block-masking trio, then the v3
    all-architecture runs with `--arch-balance`.
+
+### Block-masking controls (2026-10-16, seed 0 only)
+
+Every arm below has 15% block masking. Kfold x86, AUC-selected checkpoint at the validation threshold; paired
+differences come from 2,000 cluster resamples.
+
+| arm, all with 15% block masking | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| typed real edges (R7) | 0.986 | 0.990 | 0.935 |
+| no edges (R2) | 0.977 | 0.983 | 0.941 |
+| shuffled edges (R4) | 0.974 | 0.982 | 0.901 |
+
+| comparison | dAUC [95% CI] | dPR-AUC | dmacro-F1 |
+|---|---|---|---|
+| typed - shuffled | +0.012 [+0.004, +0.021] | +0.009 [+0.002, +0.021] | +0.033 [-0.001, +0.081] |
+| typed - no edges | +0.009 [+0.001, +0.019] | +0.007 [-0.001, +0.017] | -0.007 [-0.075, +0.055] |
+| shuffled - no edges | -0.002 [-0.015, +0.008] | -0.001 | -0.040 [-0.100, -0.003] |
+| typed - TF-IDF | +0.004 [-0.005, +0.017] | +0.000 | -0.001 |
+
+Once the model is regularised, real wiring beats shuffled wiring on ranking: AUC and PR-AUC CIs are above zero,
+and dAUC passes the +0.01 bar. Macro-F1 misses the rule by a hair (CI lower bound -0.001). Against no edges, the
+AUC gain (+0.009) is just under the bar and macro-F1 does not follow. Shuffled wiring hurts macro-F1 against no
+edges. This is the first structure signal in the ladder, but it is seed 0 only. The pre-registered test needs
+seeds 1-2 of these three arms (30 runs, about 2.5 GPU h).
