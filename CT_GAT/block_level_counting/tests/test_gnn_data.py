@@ -814,3 +814,268 @@ def test_the_8m_block_goodware_fits_the_cap(monkeypatch):
     assert out['n_blocks_kept'] > 400_000 and len(out['blk_seg']) == out['n_blocks_kept']
     assert out['bin_feat'][0] == np.float32(np.log1p(7_991_293))
     assert out['call_src'].size == 0 or out['call_src'].max() < out['n_fn']
+
+
+# step 11: subgraph selection (step 4), count weightings (step 5), chain-merge measurement
+
+PRE_STEP11 = '8c479ba'
+
+
+def hand_binary(sizes, calls, flags=None, api=None):
+    """A binary of functions with the given block counts and call edges (caller, callee); nothing else is read by the
+    subgraph policies."""
+    ptr = np.concatenate([[0], np.cumsum(sizes)]).astype(np.int32)
+    n_api = np.zeros(int(ptr[-1]), dtype=np.int32) if api is None else np.asarray(api, dtype=np.int32)
+    return {'fn_blk_ptr': ptr, 'fn_flags': np.zeros(len(sizes), dtype=np.int8) if flags is None else flags,
+            'blk_api_ptr': np.concatenate([[0], np.cumsum(n_api)]).astype(np.int32),
+            'call_edges': np.array(calls, dtype=np.int32).reshape(-1, 2)}
+
+
+def test_select_subgraph_cap_is_cap_functions(vocab, binaries, small_cap):
+    for z, sid in binaries + [(synth(vocab, s), 's') for s in range(4)]:
+        sizes = fn_sizes(z)
+        for keep in (sizes > 0, (sizes > 0) & (np.arange(len(sizes)) % 3 != 0)):
+            for budget in (0, 40, 90, 10 ** 6):
+                for rng_seed in (None, 3):
+                    rng = None if rng_seed is None else np.random.default_rng(rng_seed)
+                    want = subgraph.cap_functions(z['fn_blk_ptr'], z['fn_flags'], z['blk_api_ptr'], keep,
+                                                  None if rng_seed is None else np.random.default_rng(rng_seed),
+                                                  budget or None)
+                    fn, blk = subgraph.select_subgraph(z, 'cap', budget, rng, sid, keep=keep)
+                    assert np.array_equal(fn, np.flatnonzero(want))
+                    assert np.array_equal(blk, ranges(z['fn_blk_ptr'][fn].astype(np.int64), sizes[fn]))
+                    assert (np.diff(fn) > 0).all() and (np.diff(blk) > 0).all() and keep[fn].all()
+
+
+def test_select_subgraph_default_keep_is_the_nonempty_functions(vocab):
+    z = synth(vocab)
+    fn, blk = subgraph.select_subgraph(z, 'cap', 10 ** 6, None)
+    assert np.array_equal(fn, np.flatnonzero(fn_sizes(z) > 0)) and len(blk) == fn_sizes(z).sum()
+    assert np.array_equal(subgraph.select_subgraph(z, 'lcc', 10 ** 6, None)[0], fn)
+    with pytest.raises(ValueError):
+        subgraph.select_subgraph(z, 'bfs', 10, None)
+
+
+def test_lcc_takes_whole_components_largest_first():
+    #  A = {0, 1, 2} (30 blocks), B = {3, 4} (10), C = {5} (8), D = {6} (3)
+    z = hand_binary([10, 10, 10, 5, 5, 8, 3], [[0, 1], [1, 2], [3, 4], [4, 3]])
+    pick = lambda budget: subgraph.select_subgraph(z, 'lcc', budget, None)[0].tolist()
+    assert pick(10 ** 6) == [0, 1, 2, 3, 4, 5, 6]
+    assert pick(51) == [0, 1, 2, 3, 4, 5, 6]
+    assert pick(48) == [0, 1, 2, 3, 4, 5]
+    assert pick(45) == [0, 1, 2, 3, 4]
+    assert pick(40) == [0, 1, 2, 3, 4]
+    assert pick(35) == [0, 1, 2, 3]
+    assert pick(30) == [0, 1, 2]
+    assert pick(20) == [0, 1]
+    assert subgraph.select_subgraph(z, 'lcc', 45, None)[1].tolist() == list(range(40))
+    # the cap policy at the same budget keeps functions by size and takes the lone 8-block function over B
+    assert subgraph.select_subgraph(z, 'cap', 40, None)[0].tolist() == [0, 1, 2, 5]
+
+
+def test_lcc_uses_the_call_graph_of_the_kept_functions_only():
+    z = hand_binary([10, 10, 10, 5, 5, 8, 3], [[0, 1], [1, 2], [3, 4]])
+    keep = np.array([True, False, True, True, True, True, True])
+    # function 1 is dropped, so it no longer joins 0 and 2: components {0} {2} {3, 4} {5} {6}, ties by lowest id
+    assert subgraph.select_subgraph(z, 'lcc', 20, None, keep=keep)[0].tolist() == [0, 2]
+    assert subgraph.select_subgraph(z, 'lcc', 30, None, keep=keep)[0].tolist() == [0, 2, 3, 4]
+    assert subgraph.select_subgraph(z, 'lcc', 10 ** 6, None, keep=keep)[0].tolist() == [0, 2, 3, 4, 5, 6]
+
+
+def test_lcc_partial_component_uses_cap_order_and_never_overshoots():
+    flags = np.array([1, 0, 0, 0, 0], dtype=np.int8)
+    z = hand_binary([4, 4, 4, 4, 4], [[0, 1], [1, 2], [2, 3], [3, 4]], flags=flags,
+                    api=[0] * 3 + [5] + [0] * 4 + [2] + [0] * 11)
+    # one component of 20 blocks; cap order is non-library, then more API references, then size, then index
+    lcc, cap = (subgraph.select_subgraph(z, p, 8, None)[0].tolist() for p in ('lcc', 'cap'))
+    assert lcc == cap == [1, 2]
+    z2 = hand_binary([6, 6, 3], [[0, 1]])
+    # the 12-block component is first and fits; the lone 3-block function does not fit the 2 blocks left
+    assert subgraph.select_subgraph(z2, 'lcc', 14, None)[0].tolist() == [0, 1]
+    # nothing fits the first component: one of its functions is still kept, as the cap policy keeps one
+    assert subgraph.select_subgraph(z2, 'lcc', 2, None)[0].tolist() == [0]
+    assert len(subgraph.select_subgraph(z2, 'cap', 2, None)[0]) == 1
+
+
+def test_lcc_random_invariants_and_determinism(vocab):
+    for seed in range(12):
+        z = synth_binary(np.random.default_rng(seed), vocab, n_fn=60)
+        sizes = fn_sizes(z)
+        keep = sizes > 0
+        local = np.full(len(sizes), -1)
+        local[keep] = np.arange(keep.sum())
+        parent = list(range(int(keep.sum())))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+        calls = z['call_edges'].astype(int)
+        for a, b in calls[keep[calls[:, 0]] & keep[calls[:, 1]]]:
+            parent[find(local[a])] = find(local[b])
+        comps = {}
+        for f in np.flatnonzero(keep):
+            comps.setdefault(find(local[f]), set()).add(int(f))
+        for budget in (20, 55, 120):
+            fn, blk = subgraph.select_subgraph(z, 'lcc', budget, None, keep=keep)
+            again = subgraph.select_subgraph(z, 'lcc', budget, None, keep=keep)
+            assert np.array_equal(fn, again[0]) and np.array_equal(blk, again[1])
+            assert (np.diff(fn) > 0).all() and keep[fn].all() and len(blk) == sizes[fn].sum()
+            assert sizes[fn].sum() <= budget or len(fn) == 1
+            partial = [m for m in comps.values() if 0 < len(set(fn.tolist()) & m) < len(m)]
+            assert len(partial) <= 1
+            for rng_seed in (0, 1):
+                a = subgraph.select_subgraph(z, 'lcc', budget, np.random.default_rng(rng_seed), keep=keep)
+                b = subgraph.select_subgraph(z, 'lcc', budget, np.random.default_rng(rng_seed), keep=keep)
+                assert np.array_equal(a[0], b[0]) and (sizes[a[0]].sum() <= budget or len(a[0]) == 1)
+
+
+def test_encode_binary_uses_the_policy_and_budget(vocab):
+    z = synth_binary(np.random.default_rng(5), vocab, n_fn=400)
+    total = int(fn_sizes(z).sum())
+    assert total > 1500
+    cap, lcc = gnn(budget=1000), gnn(subgraph='lcc', budget=1000)
+    for epoch in (None, 1):
+        rng = lambda: None if epoch is None else np.random.default_rng([0, epoch, 0])
+        for cfg in (cap, lcc):
+            out = encode_binary(z, vocab, cfg, rng(), 's')
+            keep = keep_functions(z['fn_flags'], fn_sizes(z), cfg, rng())
+            fn, blk = subgraph.select_subgraph(z, cfg.subgraph, cfg.budget, rng(), 's', keep=keep)
+            assert out['n_blocks_kept'] == len(blk) == len(out['blk_seg']) <= 1000
+            assert out['n_blocks_total'] == total
+            assert np.array_equal(out['seg_len'], fn_sizes(z)[fn]) and out['n_fn'] == len(fn)
+    a, b = encode_binary(z, vocab, cap, None, 's'), encode_binary(z, vocab, lcc, None, 's')
+    assert not np.array_equal(a['seg_len'], b['seg_len'])
+
+
+def test_cap_policy_with_a_budget_equals_the_global_cap(vocab, monkeypatch):
+    z = synth_binary(np.random.default_rng(5), vocab, n_fn=400)
+    via_budget = encode_binary(z, vocab, gnn(budget=1000), None, 's')
+    monkeypatch.setattr(subgraph, 'MAX_BINARY_BLOCKS', 1000)
+    via_cap = encode_binary(z, vocab, gnn(), None, 's')
+    assert via_budget.keys() == via_cap.keys()
+    for k, v in via_budget.items():
+        assert np.array_equal(v, via_cap[k]) if isinstance(v, np.ndarray) else v == via_cap[k], k
+
+
+def test_loader_sizes_binaries_by_the_budget(vocab):
+    rows = [{'sample_id': 'x', 'label': 0, 'num_blocks': '8000000'}, {'sample_id': 'y', 'label': 0, 'num_blocks': '10'},
+            {'sample_id': 'z', 'label': 0, 'num_blocks': '30000'}]
+    assert loader(rows, vocab, gnn(), train=False).batch_sampler.blocks == [500_000, 10, 30000]
+    assert loader(rows, vocab, gnn(budget=20000), train=False).batch_sampler.blocks == [20000, 10, 20000]
+    assert loader(rows, vocab, gnn(subgraph='lcc', budget=5000), train=False).batch_sampler.blocks == [5000, 10, 5000]
+
+
+def load_old_weights(tmp_path):
+    src = subprocess.run(['git', 'show', f'{PRE_STEP11}:CT_GAT/block_level_counting/pipeline/s05_block_counting/'
+                          'weights.py'], cwd=ROOT, check=True, capture_output=True).stdout
+    path = tmp_path / 'old_weights.py'
+    path.write_bytes(src)
+    spec = importlib.util.spec_from_file_location('old_weights', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def random_bags(seed, n_blk=300):
+    rng = np.random.default_rng(seed)
+    per_block = rng.integers(0, 14, n_blk)
+    return rng.integers(0, 40, per_block.sum()).astype(np.int64), per_block
+
+
+def bags_of(out):
+    return out['tokens'], np.diff(np.append(out['tok_offsets'], len(out['tokens'])))
+
+
+def test_tfidf_and_mean_weights_are_bit_identical_to_before(vocab, binaries, tmp_path):
+    from pipeline.s05_block_counting.weights import token_weights
+    old = load_old_weights(tmp_path)
+    cases = [random_bags(s) for s in range(3)] + [bags_of(encode(z, vocab, gnn(), sid)) for z, sid in binaries]
+    for tokens, per_block in cases:
+        for enc in ('mean', 'tfidf'):
+            want, got = old.token_weights(tokens, per_block, vocab, enc), token_weights(tokens, per_block, vocab, enc)
+            assert got.dtype == want.dtype == np.float32 and np.array_equal(got, want)
+
+
+def test_count_weightings(vocab, binaries):
+    from pipeline.s05_block_counting.weights import token_weights
+    cases = [random_bags(s) for s in range(3)] + [bags_of(encode(z, vocab, gnn(), sid)) for z, sid in binaries]
+    for tokens, per_block in cases:
+        n_blk, blk_of = len(per_block), np.repeat(np.arange(len(per_block)), per_block)
+        per = lambda w: np.bincount(blk_of, weights=w.astype(np.float64), minlength=n_blk)
+        raw, pres, rawlog = (token_weights(tokens, per_block, vocab, e) for e in ('raw', 'presence', 'rawlog'))
+        assert raw.dtype == pres.dtype == rawlog.dtype == np.float32
+        distinct = np.array([len(set(tokens[blk_of == b].tolist())) for b in range(n_blk)])
+        assert np.array_equal(per(raw), per_block) and set(np.unique(raw)) <= {1.0}
+        assert np.array_equal(per(pres), distinct) and set(np.unique(pres)) <= {0.0, 1.0}
+        for b in np.flatnonzero(per_block)[:60]:
+            t = tokens[blk_of == b]
+            for v in set(t.tolist()):
+                c = int((t == v).sum())
+                assert pres[blk_of == b][t == v].tolist() == [1.0] + [0.0] * (c - 1)
+                assert abs(float(rawlog[blk_of == b][t == v].sum()) - np.log1p(c)) < 1e-5
+
+
+def test_count_weightings_on_empty_and_single_token_blocks(vocab):
+    from pipeline.s05_block_counting.weights import token_weights
+    tokens, per_block = np.array([5, 5, 5, 9], dtype=np.int64), np.array([0, 3, 0, 1])
+    assert token_weights(tokens, per_block, vocab, 'raw').tolist() == [1, 1, 1, 1]
+    assert token_weights(tokens, per_block, vocab, 'presence').tolist() == [1, 0, 0, 1]
+    assert np.allclose(token_weights(tokens, per_block, vocab, 'rawlog'), [np.log(4) / 3] * 3 + [np.log(2)])
+    nothing = np.zeros(0, dtype=np.int64)
+    for enc in ('raw', 'presence', 'rawlog', 'mean', 'tfidf'):
+        assert len(token_weights(nothing, np.zeros(3, dtype=np.int64), vocab, enc)) == 0
+
+
+def test_encoder_option_reaches_the_batch(binaries, vocab):
+    z, sid = binaries[0]
+    base = encode(z, vocab, gnn(), sid)
+    for enc in ('raw', 'presence', 'rawlog'):
+        out = encode(z, vocab, gnn(encoder=enc), sid)
+        assert np.array_equal(out['tokens'], base['tokens'])
+        assert not np.array_equal(out['tok_weights'], base['tok_weights'])
+    assert (encode(z, vocab, gnn(encoder='raw'), sid)['tok_weights'] == 1).all()
+
+
+def chain_binary():
+    """Two functions (blocks 0-3 and 4-7) with CFG edges (src, dst, kind); the mergeable ones are marked."""
+    edges = [(0, 1, 0),   # mergeable
+             (1, 2, 0),   # out-degree of 1 is 2
+             (1, 3, 1),   # not a fallthrough
+             (2, 3, 0),   # in-degree of 3 is 3 (with the edge from block 1 and the edge from 2 itself)
+             (3, 4, 0),   # crosses into the next function
+             (4, 5, 0),   # mergeable
+             (5, 6, 2),   # not a fallthrough
+             (7, 7, 0)]   # a self loop
+    return {'blk_feat': np.zeros((8, 6), dtype=np.float16), 'fn_blk_ptr': np.array([0, 4, 8], dtype=np.int32),
+            'cfg_edges': np.array([e[:2] for e in edges], dtype=np.int32),
+            'edge_kind': np.array([e[2] for e in edges], dtype=np.int8)}
+
+
+def test_chain_edges_apply_each_condition():
+    assert subgraph.chain_edges(chain_binary()).tolist() == [True, False, False, False, False, True, False, False]
+    z = chain_binary()
+    z['cfg_edges'] = np.append(z['cfg_edges'], [[0, 1]], axis=0)
+    z['edge_kind'] = np.append(z['edge_kind'], 0).astype(np.int8)
+    assert not subgraph.chain_edges(z)[0] and not subgraph.chain_edges(z)[-1]
+
+
+def test_chain_reduction_counts_and_fraction(tmp_path):
+    (tmp_path / 'samples').mkdir()
+    z = chain_binary()
+    np.savez(tmp_path / 'samples' / 'a.npz', **z)
+    plain = {**z, 'cfg_edges': np.array([[0, 1], [2, 3]], dtype=np.int32), 'edge_kind': np.array([1, 2], dtype=np.int8)}
+    np.savez(tmp_path / 'samples' / 'b.npz', **plain)
+    out = subgraph.chain_reduction([{'sample_id': 'a'}, {'sample_id': 'b'}], tmp_path)
+    assert (out['n_binaries'], out['n_blocks'], out['n_chain_blocks']) == (2, 16, 2)
+    assert out['reduction'] == 2 / 16 and out['max_binary_reduction'] == 2 / 8 and out['mean_binary_reduction'] == 1 / 8
+    np.savez(tmp_path / 'samples' / 'c.npz', **{k: v for k, v in z.items() if k != 'edge_kind'})
+    with pytest.raises(KeyError, match='edge_kind'):
+        subgraph.chain_reduction([{'sample_id': 'c'}], tmp_path)
+
+
+def test_chain_reduction_on_real_binaries(index):
+    rows = [r for r in index if r['arch'] == 'x86' and int(r['num_blocks']) < 3000][:6]
+    out = subgraph.chain_reduction(rows, manifests.CACHE)
+    assert out['n_binaries'] == len(rows) and 0 <= out['n_chain_blocks'] < out['n_blocks'] and 0 <= out['reduction'] < 1

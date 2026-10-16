@@ -6,10 +6,10 @@ import torch
 from common.config import RunConfig
 from common.manifests import load_sample
 from legacy.graph_transformer.encode import encode_binary_transformer
-from pipeline.s03_tokenizer.block_tokens import ranges, token_table
+from pipeline.s03_tokenizer.block_tokens import token_table
 from pipeline.s03_tokenizer.vocab import TOKEN_KINDS, TokenVocab
 from pipeline.s04_select_subgraph import subgraph
-from pipeline.s04_select_subgraph.subgraph import cap_functions
+from pipeline.s04_select_subgraph.subgraph import select_subgraph
 from pipeline.s05_block_counting.weights import token_weights
 from pipeline.s06_gnn_block_cfg.edges import block_edges, control_edges, drop_and_flip_edges
 from pipeline.s08_gnn_call_graph.calls import call_pairs
@@ -33,17 +33,16 @@ def keep_functions(fn_flags, sizes, cfg, rng):
 def encode_binary_gnn(z, vocab, cfg, rng, sample_id):
     """Batch contract: one segment per kept function, edge types, tf-idf weights, controls, masking and, in training,
 CFG edge drop and flip (after the control). A binary over MAX_BINARY_BLOCKS keeps a subset of whole functions
-(`cap_functions`, after function dropping); `bin_feat` counts the full binary."""
+(`select_subgraph`, after function dropping; policy and budget from the config); `bin_feat` counts the full binary."""
     if 'edge_kind' not in z:
         raise KeyError('sample lacks edge_kind/edge_back; point config.CACHE at the v2 cache')
     fn_ptr = z['fn_blk_ptr'].astype(np.int64)
     sizes = np.diff(fn_ptr)
     keep = keep_functions(z['fn_flags'], sizes, cfg, rng)
-    fn = np.flatnonzero(cap_functions(fn_ptr, z['fn_flags'], z['blk_api_ptr'], keep, rng))
+    fn, blk = select_subgraph(z, cfg.subgraph, cfg.budget, rng, sample_id, keep=keep)
     length, n_seg = sizes[fn], len(fn)
     library = (z['fn_flags'][fn] & 1).astype(np.int64)
 
-    blk = ranges(fn_ptr[fn], length)
     n_blk = len(blk)
     blk_seg = np.repeat(np.arange(n_seg), length)
     blk_pos = np.arange(n_blk) - np.repeat(np.cumsum(length) - length, length)
@@ -175,7 +174,7 @@ class BlockBudgetSampler:
 def loader(rows, vocab, cfg, train):
     sampler = EpochSampler(len(rows), cfg.seed, train)
     if cfg.model == 'gnn':
-        blocks = [min(int(r['num_blocks']), subgraph.MAX_BINARY_BLOCKS) for r in rows]
+        blocks = [min(int(r['num_blocks']), cfg.budget or subgraph.MAX_BINARY_BLOCKS) for r in rows]
         batches = BlockBudgetSampler(sampler, blocks, cfg.batch_size, cfg.batch_blocks)
         return torch.utils.data.DataLoader(
             BinaryDataset(rows, vocab, cfg), batch_sampler=batches, collate_fn=collate,

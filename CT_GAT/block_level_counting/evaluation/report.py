@@ -35,7 +35,7 @@ DEFAULTS = asdict(RunConfig())
 LABELLED = ('protocol', 'fold', 'arch', 'seed', 'no_graph', 'num_workers', 'model', 'encoder', 'readout', 'control',
             'untyped', 'no_call_mp', 'stack_tfidf', 'mask_tokens', 'drop_functions', 'drop_library', 'mask_blocks',
             'aux_recon', 'aux_edge', 'direction', 'drop_edges', 'flip_edges', 'gnn_fn_layers', 'gnn_bin_layers',
-            'train_fraction', 'arch_balance', 'cache')
+            'train_fraction', 'arch_balance', 'select_on', 'subgraph', 'budget', 'cache')
 CONTROL_LABELS = {'no_edges': 'no-edges', 'shuffle': 'shuffle', 'chain': 'chain', 'permute_types': 'permuted types'}
 
 
@@ -44,7 +44,8 @@ def model_label(cfg):
     tf = [f'train {round(100 * cfg.train_fraction)}%'] if cfg.train_fraction < 1 else []
     ab = ['arch-bal'] if cfg.arch_balance else []
     if cfg.model == 'transformer':
-        return ' '.join([f"{'no-graph' if cfg.no_graph else 'graph'} transformer"] + tf + ab)
+        return ' '.join([f"{'no-graph' if cfg.no_graph else 'graph'} transformer"] + tf + ab
+                        + (['cell-select'] if cfg.select_on == 'cell' else []))
     ablate = [CONTROL_LABELS[cfg.control]] if cfg.control else []
     ablate += [s for s, on in (('untyped', cfg.untyped), ('no call-MP', cfg.no_call_mp)) if on]
     parts = ['GNN'] if ablate else ['edge-typed GNN']
@@ -57,8 +58,11 @@ def model_label(cfg):
     parts += [f'{s} {round(100 * p)}%' for s, p in (('drop-edge', cfg.drop_edges), ('flip-edge', cfg.flip_edges)) if p]
     parts += [f'{s}{n}' for s, n, default in (('L', cfg.gnn_fn_layers, 3), ('B', cfg.gnn_bin_layers, 2)) if n != default]
     parts += tf + ab
-    parts += ['enc-mean'] if cfg.block_encoder == 'mean' else []
+    parts += [f'enc-{cfg.block_encoder}'] if cfg.block_encoder != 'tfidf' else []
     parts += ['gated'] if cfg.readout == 'gated' else []
+    parts += ['cell-select'] if cfg.select_on == 'cell' else []
+    if cfg.subgraph != 'cap' or cfg.budget:
+        parts.append(f'{cfg.subgraph} {cfg.budget // 1000}k' if cfg.budget else f'{cfg.subgraph} full budget')
     return ' '.join(parts)
 
 

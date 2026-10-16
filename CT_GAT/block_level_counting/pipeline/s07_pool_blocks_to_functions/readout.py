@@ -1,4 +1,5 @@
-"""Segment readouts: fixed (sum/mean/max projection) or gated attention. Step 9 reuses them for functions -> binary."""
+"""Segment readouts: fixed (sum/sqrt(n), mean and max projection) or attention pooling (config value `gated`, kept
+because run names depend on it). Step 9 reuses them for functions -> binary."""
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -26,7 +27,8 @@ class FixedReadout(nn.Module):
 
 
 class GatedReadout(nn.Module):
-    """Attention pooling: score w.tanh(V h), softmax within each segment, weighted sum."""
+    """Attention pooling (Ilse et al., Eq. 8; not their gated variant): score w.tanh(V h), softmax within each segment,
+    weighted sum."""
 
     def __init__(self, d):
         super().__init__()

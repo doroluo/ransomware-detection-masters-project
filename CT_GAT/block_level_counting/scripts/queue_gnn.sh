@@ -1,6 +1,6 @@
 #!/bin/bash
-# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3 [--dry]
-# A run is skipped when RUNS/<name>/metrics.json exists. GPU_BUDGET_MIN (default 290 for day1, 600 for day1b and v3) caps the
+# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3|subgraph [--dry]
+# A run is skipped when RUNS/<name>/metrics.json exists. GPU_BUDGET_MIN (default 290 for day1, 600 for the other stages) caps the
 # cumulative GPU wall time: once it is spent, remaining GPU runs are logged as "skipped (budget)" and only the
 # CPU/report steps still run. If RUNS/STOP exists before a run (stop_queue.sh creates it), the run is logged as
 # "stopped before <name>" and skipped; a stale RUNS/STOP is removed at start. --dry prints what would run
@@ -9,9 +9,12 @@
 # (testing). Every python call runs with PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True (the GPU is shared). A run
 # that exits non-zero is retried once, logged as "retry <name>" (the first log is kept as <name>.log.try1); no retry
 # when RUNS/STOP exists, so stop_queue.sh --now does not restart the run it killed. Stage v3 (kfold_v3 on the combined
-# cache, folds 0-4, seed 0) exports GT_CACHE for every python call and runs, in order: the CPU baselines (all, matched,
-# all arch-balanced), the arch-balanced all-arch arms (--arch-balance, names end in -ab; the main result), the
-# unweighted all-arch arms, then the matched arms.
+# cache, folds 0-4, seed 0, 15% block masking and cell-balanced checkpoint selection, --select-on cell) exports GT_CACHE
+# for every python call and runs, in order: the CPU baselines (all, matched, all arch-balanced), the arch-balanced
+# all-arch arms (--arch-balance, names contain -ab; the main result) R2 no-edges, R7 typed, R4 shuffle, the same three
+# unweighted, then the matched arms. Stage subgraph (kfold x86, v2 cache, seed 0, 15% block masking) measures the chain
+# reduction (RUNS/subgraph_chain.json, CPU), then runs R7 typed with the cap and lcc subgraph policies at 20k and 5k blocks
+# and the no-edge arm with the raw, presence and rawlog block weightings.
 cd "$(dirname "$0")/.."
 PY=/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe
 R=/c/Users/chaoa/Downloads/graph_transformer_runs
@@ -20,7 +23,7 @@ STAGE=; DRY=0
 while [ $# -gt 0 ]; do
   case $1 in --stage) STAGE=$2; shift;; --dry) DRY=1;; *) STAGE=;; esac; shift
 done
-[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3 [--dry]"; exit 2; }
+[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || [ "$STAGE" = subgraph ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3|subgraph [--dry]"; exit 2; }
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 [ $STAGE = v3 ] && export GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined
 if [ $STAGE = day1 ]; then GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-290}; else GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-600}; fi
@@ -72,22 +75,36 @@ baselines() { sfx=$1; shift
   elif [ "$(grep -l threshold_val $R/baselines/kfold[0-4]_x86_s0$sfx/metrics.json 2>/dev/null | wc -l)" = 5 ]; then echo "skip baselines$sfx"
   else echo "start baselines$sfx $(date +%T)"; $PY baselines.py $BASE_ARGS > $R/logs/baselines_kfold_x86_s0$sfx.log 2>&1; echo "finished baselines$sfx rc=$? $(date +%T)"; fi; }
 
+# chain_measure: the chain-merge measurement over the kfold x86 pool (CPU), skipped when RUNS/subgraph_chain.json exists
+chain_measure() {
+  if [ $DRY = 1 ]; then echo "cpu subgraph_chain.py"
+  elif [ -f $R/subgraph_chain.json ]; then echo "skip subgraph_chain"
+  else echo "start subgraph_chain $(date +%T)"; $PY subgraph_chain.py > $R/logs/subgraph_chain.log 2>&1; echo "finished subgraph_chain rc=$? $(date +%T)"; fi; }
+
 if [ $STAGE = v3 ]; then
+M="--model gnn --mask-blocks 0.15 --select-on cell"
 baselines_v3 all                                                      # 1. CPU baselines
 baselines_v3 matched
 baselines_v3 all --arch-balance
-arm_v3 all gnn-noedges-ab --model gnn --control no_edges --arch-balance   # 2. arch-balanced, arch all: R2
-arm_v3 all gnn-ab --model gnn --arch-balance                          # 3. R7
-arm_v3 all gnn-shuffle-ab --model gnn --control shuffle --arch-balance  # 4. R4
-arm_v3 all gnn-untyped-ab --model gnn --untyped --arch-balance        # 5. R5
-arm_v3 all gnn-noedges --model gnn --control no_edges                 # 6. unweighted, arch all: R2
-arm_v3 all gnn --model gnn                                            # 7. R7
-arm_v3 all gnn-shuffle --model gnn --control shuffle                  # 8. R4
-arm_v3 all gnn-untyped --model gnn --untyped                          # 9. R5
-arm_v3 matched gnn-noedges --model gnn --control no_edges             # 10. arch matched: R2
-arm_v3 matched gnn --model gnn                                        # 11. R7
-arm_v3 matched gnn-shuffle --model gnn --control shuffle              # 12. R4
-arm_v3 matched gnn-untyped --model gnn --untyped                      # 13. R5
+arm_v3 all gnn-noedges-mblk15-ab-selcell $M --control no_edges --arch-balance  # 2. arch-balanced, arch all: R2
+arm_v3 all gnn-mblk15-ab-selcell $M --arch-balance                    # 3. R7
+arm_v3 all gnn-shuffle-mblk15-ab-selcell $M --control shuffle --arch-balance  # 4. R4
+arm_v3 all gnn-noedges-mblk15-selcell $M --control no_edges           # 5. unweighted, arch all: R2
+arm_v3 all gnn-mblk15-selcell $M                                      # 6. R7
+arm_v3 all gnn-shuffle-mblk15-selcell $M --control shuffle            # 7. R4
+arm_v3 matched gnn-noedges-mblk15-selcell $M --control no_edges       # 8. arch matched: R2
+arm_v3 matched gnn-mblk15-selcell $M                                  # 9. R7
+arm_v3 matched gnn-shuffle-mblk15-selcell $M --control shuffle        # 10. R4
+elif [ $STAGE = subgraph ]; then
+chain_measure                                                         # 1. chain reduction, CPU
+M="--model gnn --mask-blocks 0.15"
+arm gnn-mblk15-sg-cap20k $M --subgraph cap --budget 20000            # 2. R7, cap order at 20k and 5k blocks
+arm gnn-mblk15-sg-cap5k $M --subgraph cap --budget 5000
+arm gnn-mblk15-sg-lcc20k $M --subgraph lcc --budget 20000            # 3. R7, call-graph components
+arm gnn-mblk15-sg-lcc5k $M --subgraph lcc --budget 5000
+arm gnn-noedges-mblk15-enc-raw $M --control no_edges --encoder raw    # 4. R2 weightings
+arm gnn-noedges-mblk15-enc-presence $M --control no_edges --encoder presence
+arm gnn-noedges-mblk15-enc-rawlog $M --control no_edges --encoder rawlog
 elif [ $STAGE = day1b ]; then
 baselines _tf50 --train-fraction 0.5                                  # 1. learning-curve TF-IDF
 baselines _tf25 --train-fraction 0.25

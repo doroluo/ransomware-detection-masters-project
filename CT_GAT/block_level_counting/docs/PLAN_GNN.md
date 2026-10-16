@@ -83,11 +83,15 @@ enter only at R6 and R7. Under any shuffle or rewiring the type stays with the s
 h0_b = EmbeddingBag_sum(tokens_b, per_sample_weights = w_t) + Linear(6->d)(blk_feat_b)
    --encoder tfidf: w_t = idf[t] * (1 + log c_{t,b}) / c_{t,b} / ||tfidf_b||_2
    --encoder mean : w_t = 1 / n_b                      (the transformer's block encoder)
+   --encoder raw : w_t = 1 (a sum of counts)   presence : 1 on the first occurrence of each distinct token, 0 on repeats
+   --encoder rawlog : w_t = log1p(c_{t,b}) / c_{t,b}   (the count weightings of the step 11 arms)
 DirGINE layer x gnn_fn_layers (3), 12 types:
    m_in_i  = sum_{j->i} relu(h_j + E_in[type_ji]);  m_out_i = sum_{i->j} relu(h_j + E_out[type_ij])  (fp32)
    h_i <- h_i + MLP(LN((1 + eps) h_i + W [m_in_i ; m_out_i]))
 function vector f = Readout_fn(h over the function's blocks) + Linear(2->d)(log len, library)
-   --readout fixed: GELU(Linear(3d->d)([sum ; mean ; max]))   --readout gated: w·tanh(Vh) segment softmax
+   --readout fixed: GELU(Linear(3d->d)([sum/sqrt(n) ; mean ; max]))   --readout gated: w·tanh(Vh) segment softmax
+   (the `gated` readout is softmax(w·tanh(Vh)) attention pooling, Ilse et al. Eq. 8, not a gated variant; the config
+   value stays `gated` because run names depend on it)
 DirGINE layer x gnn_bin_layers (2), 1 type (caller->callee / callee->caller) over the call graph
 g = Readout_bin(f over functions);  z = [g ; log-size feats (5) ; TF-IDF logit if --stack-tfidf]
 logit = Linear(d->1)(Dropout(GELU(Linear(|z|->d)(z))))      (same head on every arm)

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
 
 from common.config import RunConfig
@@ -536,12 +537,15 @@ FAKE_FLOORS = {'majority': {'auc': 0.5, 'pr_auc': 0.6, 'macro_f1': 0.4, 'recall_
                'x86_rule': {'auc': 0.7, 'pr_auc': 0.8, 'macro_f1': 0.69, 'recall_R_x86': 1.0, 'recall_R_x64': 0.0,
                             'recall_G_x86': 0.0, 'recall_G_x64': 1.0,
                             'cell_balanced': {'auc': 0.5, 'macro_f1': 0.5}}}
-V3_KW = {'gnn': {}, 'gnn-noedges': dict(control='no_edges'), 'gnn-shuffle': dict(control='shuffle'),
-         'gnn-untyped': dict(untyped=True)}
+V3_MASKED = dict(mask_blocks=0.15, select_on='cell')
+V3_KW = {'gnn': {}, 'gnn-noedges': dict(control='no_edges'), 'gnn-shuffle': dict(control='shuffle')}
+V3 = {'gnn': 'gnn-mblk15-selcell', 'gnn-noedges': 'gnn-noedges-mblk15-selcell',
+      'gnn-shuffle': 'gnn-shuffle-mblk15-selcell'}
 
 
 def build_v3_fake(tmp_path, monkeypatch):
-    """arch all: R7 stronger than R2 = R4 (R4 has folds 0-2 only), no R5; arch matched: every arm equal."""
+    """arch all: R7 stronger than R2 = R4 (R4 has folds 0-2 only); arch matched: every arm equal. Every GNN arm is
+    block-masked with cell-balanced selection, as in the v3 queue."""
     monkeypatch.setattr(stats, 'RUNS', tmp_path)
     monkeypatch.setattr(report, 'RUNS', tmp_path)
     monkeypatch.setattr(report, 'v3_floors', lambda arch, seed=0: (FAKE_FLOORS, [FAKE_FLOORS] * 5))
@@ -552,7 +556,7 @@ def build_v3_fake(tmp_path, monkeypatch):
     for arch, arms in plan.items():
         for variant, (signal, n_folds) in arms.items():
             for fold in range(n_folds):
-                write_v3_run(tmp_path, arch, fold, signal, **V3_KW[variant])
+                write_v3_run(tmp_path, arch, fold, signal, **V3_KW[variant], **V3_MASKED)
         for fold in range(5):
             write_v3_baseline(tmp_path, arch, fold, 1.3 if arch == 'all' else 0.6)
 
@@ -604,26 +608,29 @@ def test_v3_gates_from_disk(tmp_path, monkeypatch):
     assert 'AUC ckpt, val thr cell-bal macro-F1' in head
     assert row['R0 TF-IDF'].split(' | ')[1] == 'tfidf' and 'missing' not in row['R0 TF-IDF']
     assert 'missing (seed 0 folds present [0, 1, 2] of 0-4)' in row['R4 shuffle']
-    assert 'missing (seed 0 folds present [] of 0-4)' in row['R5 untyped']
+    assert 'R5 untyped' not in head and 'selcell' in row['R7 typed'].split(' | ')[1] and 'mblk15' in row['R7 typed']
     cells = row['R7 typed'].split(' | ')
     assert len(cells) == 16 and 'missing' not in row['R7 typed']
     assert all(0 <= float(c.strip(' |')) <= 1 for c in cells[2:])
     assert '| floor: majority | - | 0.500 | 0.600 | 0.400 | 0.500 | 0.600 | 0.400 | 1.000 | 1.000 | 0.000 | 0.000 '            '| 0.500 | 0.330 | 0.500 | 0.330 |' in head
     assert '| floor: x86_rule | - | 0.700 | 0.800 | 0.690 | 0.700 | 0.800 | 0.690 | 1.000 | 0.000 | 0.000 | 1.000 '            '| 0.500 | 0.500 | 0.500 | 0.500 |' in head
-    assert 'missing' in row['R7 typed ab'] and 'kfold_v3_all_gnn-ab' in row['R7 typed ab']
+    assert 'missing' in row['R7 typed ab'] and 'kfold_v3_all_gnn-mblk15-ab-selcell' in row['R7 typed ab']
+    assert 'block-masked' in head and 'validation cell-balanced AUC' in head
     assert 'floor: x86_rule' in head and 'x86-rule macro-F1 per fold: 0.690, 0.690, 0.690, 0.690, 0.690' in head
-    for pair in ('R2 no-edges vs R7 typed', 'R4 shuffle vs R7 typed', 'R5 untyped vs R7 typed',
-                 'R0 TF-IDF vs R2 no-edges'):
+    for pair in ('R2 no-edges vs R7 typed', 'R4 shuffle vs R7 typed', 'R0 TF-IDF vs R2 no-edges'):
         assert f'**{pair}**' in all_part and f'**{pair}**' in matched_part
-    assert '(selection auc): missing: kfold_v3_all_gnn-shuffle' in all_part
-    assert 'kfold_v3_all_gnn-noedges minus tfidf' in all_part
-    assert 'kfold_v3_matched_gnn-noedges minus tfidf' in matched_part
+    assert '(selection auc): missing: kfold_v3_all_gnn-shuffle-mblk15-selcell' in all_part
+    assert 'kfold_v3_all_gnn-noedges-mblk15-selcell minus tfidf' in all_part
+    assert 'kfold_v3_matched_gnn-noedges-mblk15-selcell minus tfidf' in matched_part
+    assert 'kfold_v3_all_gnn-mblk15-selcell minus kfold_v3_all_gnn-noedges-mblk15-selcell' in all_part
+    assert all_part.count('Cell-balanced: every test sample weighted') >= 1
     lines = [l for l in text.split('## Verdict')[1].splitlines() if l.startswith('- Arch')]
-    assert len(lines) == 6 and all(gates.LABEL in l for l in lines)
+    assert len(lines) == 8 and all(gates.LABEL in l for l in lines)
     assert lines[0].startswith('- Arch all: cannot assess, missing: R4 shuffle')
-    assert lines[3].startswith('- Arch matched: R7 does not beat both R2 and R4')
-    assert lines[4].startswith('- Arch matched: cell-balanced: R7 does not beat both R2 and R4')
-    assert lines[5].startswith('- Arch matched: cell-balanced: cannot assess, missing: R2 no-edges ab')
+    assert lines[4].startswith('- Arch matched: R7 does not beat both R2 and R4')
+    assert lines[5].startswith('- Arch matched: cell-balanced: R7 does not beat both R2 and R4')
+    assert lines[6].startswith('- Arch matched: cannot assess, missing: R2 no-edges ab')
+    assert lines[7].startswith('- Arch matched: cell-balanced: cannot assess, missing: R2 no-edges ab')
 
 
 def test_v3_verdict_rule():
@@ -641,7 +648,7 @@ def test_v3_verdict_rule():
 def test_v3_gates_beats_both_on_strong_signal(tmp_path, monkeypatch):
     build_v3_fake(tmp_path, monkeypatch)
     for fold in (3, 4):
-        write_v3_run(tmp_path, 'all', fold, 1.2, control='shuffle')
+        write_v3_run(tmp_path, 'all', fold, 1.2, control='shuffle', **V3_MASKED)
     gates.v3_cell.cache_clear()
     text = '\n'.join(gates.v3(100))
     line = next(l for l in text.split('## Verdict')[1].splitlines() if l.startswith('- Arch all'))
@@ -655,10 +662,11 @@ def test_v3_report_rows_and_floors(tmp_path, monkeypatch):
         labels.update({f'tr{fold}_{i}': i % 2 for i in range(10)})
     results, notes = report.collect(labels)
     keys = {k for k, _ in results}
-    assert ('kfold_v3', 'all', 'GNN no-edges') in keys and ('kfold_v3', 'matched', 'edge-typed GNN') in keys
+    assert ('kfold_v3', 'all', 'GNN no-edges mask-blk 15% cell-select') in keys
+    assert ('kfold_v3', 'matched', 'edge-typed GNN mask-blk 15% cell-select') in keys
     assert ('kfold_v3', 'all', 'tfidf_sig_api_lr') in keys and ('kfold_v3', 'matched', 'structural_lr') in keys
-    assert any('GNN shuffle, kfold_v3, all, seed 0: only folds [0, 1, 2] present' in n for n in notes)
-    s, _, fl = dict(results)[('kfold_v3', 'all', 'edge-typed GNN')][0]
+    assert any('GNN shuffle mask-blk 15% cell-select, kfold_v3, all, seed 0: only folds [0, 1, 2] present' in n for n in notes)
+    s, _, fl = dict(results)[('kfold_v3', 'all', 'edge-typed GNN mask-blk 15% cell-select')][0]
     assert s['n'] == 600 and set(fl) == {'majority', 'x86_rule'} and s['recall_R_x64'] >= 0
     auc_results, _ = report.collect(labels, auc=True)
     assert ('kfold_v3', 'matched', 'tfidf_sig_api_lr') in {k for k, _ in auc_results}
@@ -703,31 +711,34 @@ def test_v3_floor_rows_in_the_report_tables(tmp_path, monkeypatch):
             assert f'| floor: {name} | kfold_v3 | {arch} | 1 |' in floors_part
 
 
-V3_QUEUE_ARMS = ['gnn-noedges', 'gnn', 'gnn-shuffle', 'gnn-untyped']
-V3_QUEUE_ORDER = ([('all', f'{v}-ab') for v in V3_QUEUE_ARMS] + [('all', v) for v in V3_QUEUE_ARMS]
-                  + [('matched', v) for v in V3_QUEUE_ARMS])
+V3_QUEUE_ARMS = ['gnn-noedges-mblk15', 'gnn-mblk15', 'gnn-shuffle-mblk15']
+V3_QUEUE_ORDER = ([('all', f'{v}-ab-selcell') for v in V3_QUEUE_ARMS] + [('all', f'{v}-selcell') for v in V3_QUEUE_ARMS]
+                  + [('matched', f'{v}-selcell') for v in V3_QUEUE_ARMS])
 
 
 @pytest.mark.skipif(BASH is None, reason='needs bash')
 def test_queue_v3_dry_names_match_run_configs():
     lines = queue('--stage', 'v3', '--dry')
     runs = [l.split()[1:] for l in lines if l.startswith('run ')]
-    assert len(runs) == 60
+    assert len(runs) == 45
     for name, *argv in runs:
         cfg, _ = parse_config(argv)
         assert cfg.name == name, (name, cfg.name)
         assert cfg.protocol == 'kfold_v3' and cfg.seed == 0 and cfg.model == 'gnn'
-        assert cfg.arch_balance == name.split('_')[2].endswith('-ab') == ('--arch-balance' in argv)
+        assert cfg.mask_blocks == 0.15 and cfg.select_on == 'cell' and cfg.encoder is None and not cfg.untyped
+        assert cfg.arch_balance == ('-ab-' in name.split('_')[2]) == ('--arch-balance' in argv)
+        assert argv.count('--mask-blocks') == 1 and argv.count('--select-on') == 1
     names = [n for n, *_ in runs]
     assert [n.split('_')[0] for n in names[:5]] == [f'v3kfold{f}' for f in range(5)]
     assert [tuple(n.split('_')[1:3]) for n in names[::5]] == V3_QUEUE_ORDER
     arms = {tuple(n.split('_')[1:3]): parse_config(a)[0] for (n, *a) in runs[::5]}
-    assert arms['all', 'gnn-noedges'].control == 'no_edges' and arms['all', 'gnn'].group == 'kfold_v3_all_gnn'
-    assert arms['all', 'gnn-ab'].group == 'kfold_v3_all_gnn-ab' and arms['all', 'gnn-ab'].arch_balance
-    assert arms['all', 'gnn-noedges-ab'].control == 'no_edges' and arms['all', 'gnn-shuffle-ab'].control == 'shuffle'
-    assert arms['all', 'gnn-untyped-ab'].untyped and not arms['all', 'gnn-untyped'].arch_balance
-    assert arms['matched', 'gnn-shuffle'].control == 'shuffle' and arms['matched', 'gnn-untyped'].untyped
-    assert arms['matched', 'gnn'].arch == 'matched' and arms['all', 'gnn-untyped'].arch == 'all'
+    assert [arms['all', v].control for v in ('gnn-noedges-mblk15-ab-selcell', 'gnn-mblk15-ab-selcell',
+                                             'gnn-shuffle-mblk15-ab-selcell')] == ['no_edges', '', 'shuffle']
+    assert arms['all', 'gnn-mblk15-selcell'].group == 'kfold_v3_all_gnn-mblk15-selcell'
+    assert arms['all', 'gnn-mblk15-ab-selcell'].group == 'kfold_v3_all_gnn-mblk15-ab-selcell'
+    assert arms['all', 'gnn-mblk15-ab-selcell'].arch_balance and not arms['all', 'gnn-mblk15-selcell'].arch_balance
+    assert arms['matched', 'gnn-shuffle-mblk15-selcell'].control == 'shuffle'
+    assert arms['matched', 'gnn-mblk15-selcell'].arch == 'matched' and arms['all', 'gnn-mblk15-selcell'].arch == 'all'
     assert not any(a.arch_balance for (arch, v), a in arms.items() if arch == 'matched')
     head = 'cpu baselines --protocol kfold_v3 --fold 0 1 2 3 4'
     assert lines[:3] == [f'{head} --arch all --seed 0', f'{head} --arch matched --seed 0',
@@ -741,11 +752,53 @@ def test_queue_v3_dry_names_match_run_configs():
 def test_queue_v3_budget_guard_and_usage():
     lines = queue('--stage', 'v3', '--dry', GPU_BUDGET_MIN='290', DRY_RUN_MIN='100')
     assert sum(l.startswith('run ') for l in lines) == 3
-    assert sum(l.startswith('skipped (budget) ') for l in lines) == 57
+    assert sum(l.startswith('skipped (budget) ') for l in lines) == 42
     assert lines[-1] == 'cpu val_threshold.py > RUNS/val_threshold.md'
     assert not any(l.startswith('skipped') for l in queue('--stage', 'v3', '--dry'))
     r = subprocess.run([BASH, 'queue_gnn.sh', '--stage', 'v4', '--dry'], cwd=ROOT, capture_output=True, text=True)
-    assert r.returncode == 2 and 'day1|day1b|v3' in r.stdout
+    assert r.returncode == 2 and 'day1|day1b|v3|subgraph' in r.stdout
+
+
+SG_QUEUE_VARIANTS = ['gnn-mblk15-sg-cap20k', 'gnn-mblk15-sg-cap5k', 'gnn-mblk15-sg-lcc20k', 'gnn-mblk15-sg-lcc5k',
+                     'gnn-noedges-mblk15-enc-raw', 'gnn-noedges-mblk15-enc-presence', 'gnn-noedges-mblk15-enc-rawlog']
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_subgraph_dry_names_match_run_configs():
+    lines = queue('--stage', 'subgraph', '--dry')
+    runs = [l.split()[1:] for l in lines if l.startswith('run ')]
+    assert len(runs) == 35
+    for name, *argv in runs:
+        cfg, _ = parse_config(argv)
+        assert cfg.name == name, (name, cfg.name)
+        assert cfg.protocol == 'kfold' and cfg.arch == 'x86' and cfg.seed == 0 and cfg.model == 'gnn'
+        assert cfg.mask_blocks == 0.15 and cfg.select_on == 'overall' and not cfg.arch_balance
+    names = [n for n, *_ in runs]
+    assert [n.split('_')[0] for n in names[:5]] == [f'kfold{f}' for f in range(5)]
+    assert [n.split('_')[2] for n in names[::5]] == SG_QUEUE_VARIANTS
+    arms = {n.split('_')[2]: parse_config(a)[0] for (n, *a) in runs[::5]}
+    assert [(arms[v].subgraph, arms[v].budget, arms[v].control) for v in SG_QUEUE_VARIANTS[:4]] == [
+        ('cap', 20000, ''), ('cap', 5000, ''), ('lcc', 20000, ''), ('lcc', 5000, '')]
+    assert [(arms[v].encoder, arms[v].control, arms[v].subgraph, arms[v].budget) for v in SG_QUEUE_VARIANTS[4:]] == [
+        (e, 'no_edges', 'cap', 0) for e in ('raw', 'presence', 'rawlog')]
+    assert lines[0] == 'cpu subgraph_chain.py'
+    assert lines[-3:] == ['cpu report.py', 'cpu gates.py --stage subgraph > RUNS/gates_subgraph.md',
+                          'cpu val_threshold.py > RUNS/val_threshold.md']
+    assert not any(l.startswith(('skipped', 'stopped')) for l in lines)
+
+
+@pytest.mark.skipif(BASH is None, reason='needs bash')
+def test_queue_subgraph_runs_the_chain_measurement_once(tmp_path):
+    runs, out = run_stub_queue(tmp_path, 'subgraph')
+    calls = (runs / 'calls.txt').read_text().splitlines()
+    assert [c.split()[0] for c in calls].count('subgraph_chain.py') == 1
+    assert sum(c.startswith('train.py') for c in calls) == 35 and any(l.startswith('start subgraph_chain') for l in out)
+    (runs / 'subgraph_chain.json').write_text('{}')
+    again = subprocess.run([BASH, 'queue_gnn.sh', '--stage', 'subgraph'], cwd=ROOT, capture_output=True, text=True,
+                           env={**os.environ, 'GT_PY': (tmp_path / 'stub.sh').as_posix(), 'GT_RUNS': runs.as_posix(),
+                                'GT_TRAIN_PATTERN': 'gtqueue_never_matches_train[.]py', 'FAIL_ONCE_FOLD': 'none',
+                                'FAIL_ALWAYS_FOLD': 'none'})
+    assert 'skip subgraph_chain' in again.stdout.splitlines() and 'start subgraph_chain' not in again.stdout
 
 
 CACHE_STUB = """#!/bin/bash
@@ -771,7 +824,7 @@ def test_queue_v3_exports_the_combined_cache_and_keeps_stop_and_skip(tmp_path):
         d.mkdir(parents=True)
         (d / 'metrics.json').write_text('{"methods": {"m": {"threshold_val": 0.4}}}')
     for fold in range(2):
-        d = runs / f'v3kfold{fold}_all_gnn-noedges-ab_s0'
+        d = runs / f'v3kfold{fold}_all_gnn-noedges-mblk15-ab-selcell_s0'
         d.mkdir()
         (d / 'metrics.json').write_text('{}')
     env = dict(GT_PY=stub.as_posix(), GT_RUNS=runs.as_posix(), GT_TRAIN_PATTERN='gtqueue_never_matches_train[.]py',
@@ -782,8 +835,8 @@ def test_queue_v3_exports_the_combined_cache_and_keeps_stop_and_skip(tmp_path):
     out = r.stdout.splitlines()
     assert 'skip baselines v3 all' in out and any(l.startswith('start baselines v3 matched') for l in out)
     assert [l.split()[1] for l in out if l.startswith('start v3kfold')] == [
-        f'v3kfold{f}_all_gnn-noedges-ab_s0' for f in (2, 3)]
-    assert [l for l in out if l.startswith('stopped before ')][0] == 'stopped before v3kfold4_all_gnn-noedges-ab_s0'
+        f'v3kfold{f}_all_gnn-noedges-mblk15-ab-selcell_s0' for f in (2, 3)]
+    assert [l for l in out if l.startswith('stopped before ')][0] == 'stopped before v3kfold4_all_gnn-noedges-mblk15-ab-selcell_s0'
     calls = (runs / 'calls.txt').read_text().splitlines()
     combined = 'GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined'
     assert {c.split(' ', 1)[0] for c in calls} == {'-c', 'baselines.py', 'train.py', 'report.py', 'gates.py',
@@ -826,7 +879,7 @@ def test_stats_pool_reads_truncation_by_column_name():
 
 def write_truncated_v3_run(root, arch, truncated_ids):
     for fold in range(5):
-        d = write_v3_run(root, arch, fold, 1.5)
+        d = write_v3_run(root, arch, fold, 1.5, **V3_MASKED)
         for fname in ('predictions.csv', 'predictions_auc.csv'):
             with (d / fname).open(newline='') as f:
                 rows = list(csv.DictReader(f))
@@ -840,7 +893,7 @@ def write_truncated_v3_run(root, arch, truncated_ids):
 
 def test_v3_gates_truncation_line(tmp_path, monkeypatch):
     build_v3_fake(tmp_path, monkeypatch)
-    for d in tmp_path.glob('v3kfold*_matched_gnn_s0'):
+    for d in tmp_path.glob('v3kfold*_matched_gnn-mblk15-selcell_s0'):
         shutil.rmtree(d)
     cut = {f'f{fold}_{i}' for fold in range(5) for i in range(0, 120, 10)}
     write_truncated_v3_run(tmp_path, 'matched', cut)
@@ -851,7 +904,7 @@ def test_v3_gates_truncation_line(tmp_path, monkeypatch):
     line = lines['- Arch matched']
     assert f'R7 truncated {5 * 12} of 600 test binaries' in line and 'cap 500000' in line
     assert 'truncated: R recall' in line and '; untruncated: R recall' in line
-    p = stats.load_group('kfold_v3_matched_gnn', 'auc', ('kfold_v3', 'matched'))[0][0]
+    p = stats.load_group('kfold_v3_matched_gnn-mblk15-selcell', 'auc', ('kfold_v3', 'matched'))[0][0]
     m = p.truncated == 1
     assert m.sum() == 60 and f"G recall {np.mean(p.pred[m & (p.y == 0)] == 0):.3f} (n={int((m & (p.y == 0)).sum())})" in line
 
@@ -882,7 +935,7 @@ def run_stub_queue(tmp_path, stage, **env):
 
 
 @pytest.mark.skipif(BASH is None, reason='needs bash')
-@pytest.mark.parametrize('stage', ['day1', 'day1b', 'v3'])
+@pytest.mark.parametrize('stage', ['day1', 'day1b', 'v3', 'subgraph'])
 def test_queue_sets_expandable_segments_for_every_python_call(tmp_path, stage):
     runs, out = run_stub_queue(tmp_path, stage, PYTORCH_CUDA_ALLOC_CONF='something_else')
     calls = (runs / 'calls.txt').read_text().splitlines()
@@ -894,7 +947,7 @@ def test_queue_sets_expandable_segments_for_every_python_call(tmp_path, stage):
 def test_queue_retries_a_failed_run_once(tmp_path):
     runs, out = run_stub_queue(tmp_path, 'v3', FAIL_ONCE_FOLD='2')
     calls = (runs / 'calls.txt').read_text().splitlines()
-    name = 'v3kfold2_all_gnn-noedges-ab_s0'
+    name = 'v3kfold2_all_gnn-noedges-mblk15-ab-selcell_s0'
     assert [l for l in out if l.startswith('retry')][0] == f'retry {name}' and out.count(f'retry {name}') == 1
     i = out.index(f'retry {name}')
     assert out[i - 1].startswith(f'start {name}') and out[i + 1].startswith(f'finished {name} rc=0')
@@ -1126,9 +1179,9 @@ def test_report_labels_for_arch_balance():
 def build_v3_ab_fake(tmp_path, monkeypatch):
     build_v3_fake(tmp_path, monkeypatch)
     for fold in range(5):
-        write_v3_run(tmp_path, 'all', fold, 1.9, arch_balance=True)
-        write_v3_run(tmp_path, 'all', fold, 1.3, arch_balance=True, control='no_edges')
-        write_v3_run(tmp_path, 'all', fold, 1.1, arch_balance=True, control='shuffle')
+        write_v3_run(tmp_path, 'all', fold, 1.9, arch_balance=True, **V3_MASKED)
+        write_v3_run(tmp_path, 'all', fold, 1.3, arch_balance=True, control='no_edges', **V3_MASKED)
+        write_v3_run(tmp_path, 'all', fold, 1.1, arch_balance=True, control='shuffle', **V3_MASKED)
         write_v3_baseline(tmp_path, 'all', fold, 1.5, suffix='_ab')
 
 
@@ -1141,22 +1194,26 @@ def test_gates_v3_cell_balanced_columns_ab_arms_and_twins(tmp_path, monkeypatch)
         cells = row[arm].split(' | ')
         assert len(cells) == 16 and 'missing' not in row[arm], arm
         assert all(0 <= float(c.strip(' |')) <= 1 for c in cells[2:])
-    assert 'missing' in row['R5 untyped ab'] and 'kfold_v3_all_gnn-untyped-ab' in row['R5 untyped ab']
-    got = gates.v3_cell('kfold_v3_all_gnn', 'f1', 'all')
-    q = stats.load_group('kfold_v3_all_gnn', 'f1', ('kfold_v3', 'all'))[0][0]
+    assert 'R5 untyped' not in text
+    got = gates.v3_cell('kfold_v3_all_gnn-mblk15-selcell', 'f1', 'all')
+    q = stats.load_group('kfold_v3_all_gnn-mblk15-selcell', 'f1', ('kfold_v3', 'all'))[0][0]
     want = cell_balanced(q.y, q.prob, q.pred, q.arch)
     assert got[7] == pytest.approx(want['auc']) and got[8] == pytest.approx(want['macro_f1'])
     assert '### Arch all: paired cell-balanced differences, second minus first' in all_part
     assert 'Cell-balanced: every test sample weighted' in all_part
     twin = all_part.split('each arch-balanced arm minus its unweighted twin')[1]
-    assert 'kfold_v3_all_gnn-ab minus kfold_v3_all_gnn' in twin and 'tfidf-ab minus tfidf' in twin
-    assert 'kfold_v3_all_gnn-noedges-ab minus kfold_v3_all_gnn-noedges' in twin
+    assert 'kfold_v3_all_gnn-mblk15-ab-selcell minus kfold_v3_all_gnn-mblk15-selcell' in twin
+    assert 'tfidf-ab minus tfidf' in twin
+    assert 'kfold_v3_all_gnn-noedges-mblk15-ab-selcell minus kfold_v3_all_gnn-noedges-mblk15-selcell' in twin
     ab_pairs = all_part.split('arch-balanced arms, paired cell-balanced differences')[1].split('### Arch all: each')[0]
-    assert 'kfold_v3_all_gnn-ab minus kfold_v3_all_gnn-noedges-ab' in ab_pairs
-    assert 'kfold_v3_all_gnn-noedges-ab minus tfidf-ab' in ab_pairs
-    assert '(selection auc): missing: kfold_v3_all_gnn-untyped-ab' in ab_pairs
+    assert 'kfold_v3_all_gnn-mblk15-ab-selcell minus kfold_v3_all_gnn-noedges-mblk15-ab-selcell' in ab_pairs
+    assert 'kfold_v3_all_gnn-noedges-mblk15-ab-selcell minus tfidf-ab' in ab_pairs
+    plain_ab = all_part.split('arch-balanced arms, paired differences, second minus first')[1].split('### Arch all: arch')[0]
+    assert 'kfold_v3_all_gnn-mblk15-ab-selcell minus kfold_v3_all_gnn-shuffle-mblk15-ab-selcell' in plain_ab
+    assert 'Cell-balanced: every' not in plain_ab
     verdicts = [l for l in text.split('## Verdict')[1].splitlines() if l.startswith('- Arch all')]
-    assert len(verdicts) == 3 and verdicts[2].startswith('- Arch all: cell-balanced: R7 ab beats both R2 and R4')
+    assert len(verdicts) == 4 and verdicts[3].startswith('- Arch all: cell-balanced: R7 ab beats both R2 and R4')
+    assert verdicts[2].startswith('- Arch all: R7 ab beats both R2 and R4')
 
 
 def test_report_cell_balanced_table_and_ab_rows(tmp_path, monkeypatch):
@@ -1166,13 +1223,14 @@ def test_report_cell_balanced_table_and_ab_rows(tmp_path, monkeypatch):
         labels.update({f'tr{fold}_{i}': i % 2 for i in range(10)})
     results, _ = report.collect(labels)
     keys = {k for k, _ in results}
-    assert ('kfold_v3', 'all', 'edge-typed GNN arch-bal') in keys and ('kfold_v3', 'all', 'edge-typed GNN') in keys
+    assert ('kfold_v3', 'all', 'edge-typed GNN mask-blk 15% arch-bal cell-select') in keys
+    assert ('kfold_v3', 'all', 'edge-typed GNN mask-blk 15% cell-select') in keys
     assert ('kfold_v3', 'all', 'tfidf_sig_api_lr arch-bal') in keys and ('kfold_v3', 'all', 'tfidf_sig_api_lr') in keys
     floor = {('kfold_v3', 'all', 'floor: x86_rule'): {0: (floors([0, 1], *cell_sample([60, 10, 20, 30]))['x86_rule'],
                                                          {}, {})}}
     lines = report.cell_table(results + sorted(floor.items()))
     assert lines[0].startswith('| config | arch | seeds | Acc | macro-F1 | AUC | PR-AUC | cells |')
-    row = next(l for l in lines if l.startswith('| edge-typed GNN arch-bal | all | 1 |'))
+    row = next(l for l in lines if l.startswith('| edge-typed GNN mask-blk 15% arch-bal cell-select | all | 1 |'))
     assert row.split(' | ')[-5] == '4' and not any('bundle' in l for l in lines)
     assert sum(l.startswith('| edge-typed GNN') for l in lines) == 3
 
@@ -1189,7 +1247,7 @@ def test_report_main_writes_the_cell_balanced_section(tmp_path, monkeypatch):
     for title in ('## Models and baselines', '## Floors on the same test manifests', '## AUC-selected checkpoint'):
         assert title in head
     assert '### F1 checkpoint at 0.5' in section and '### AUC checkpoint at the validation threshold' in section
-    assert '| edge-typed GNN arch-bal | all | 1 |' in section and '| tfidf_sig_api_lr arch-bal | all | 1 |' in section
+    assert '| edge-typed GNN mask-blk 15% arch-bal cell-select | all | 1 |' in section and '| tfidf_sig_api_lr arch-bal | all | 1 |' in section
     assert section.count('| floor: x86_rule | all | 1 |') == 2 and section.count('| floor: majority | matched | 1 |') == 2
     assert 'bundle' not in section
 
@@ -1211,3 +1269,224 @@ def test_baselines_arch_balance_matches_class_weight_on_one_architecture(tmp_pat
         assert v['test']['auc'] == pytest.approx(m['methods'][name]['test']['auc'], abs=1e-9)
     assert 'cell_balanced' in m['floors']['x86_rule'] and 'cell_balanced' in mab['floors']['majority']
     assert report.read_predictions(ab / 'predictions.csv', method='tfidf_sig_api_lr')
+
+
+# step 11: cell-balanced selection, subgraph and weighting arms in the gates, the chain measurement, the v3 smoke
+
+needs_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason='needs CUDA')
+SELECT_CELLS = [(1, 'x86', 200), (1, 'x64', 20), (0, 'x86', 20), (0, 'x64', 200)]
+
+
+def selection_fixture():
+    """A validation set where architecture predicts the label (ransomware mostly x86, goodware mostly x64), and two
+    epochs: epoch 1 scores by architecture only, epoch 2 by label only."""
+    rows = [{'sample_id': f'{y}{a}{i}', 'label': y, 'arch': a} for y, a, n in SELECT_CELLS for i in range(n)]
+    ids = [r['sample_id'] for r in rows]
+    y = np.array([r['label'] for r in rows])
+    arch = np.array([r['arch'] for r in rows])
+    rng = np.random.default_rng(0)
+    by_arch = np.clip(np.where(arch == 'x86', 0.8, 0.2) + rng.normal(0, 0.05, len(y)), 0.01, 0.99)
+    by_label = np.clip(np.where(y == 1, 0.65, 0.35) + rng.normal(0, 0.2, len(y)), 0.01, 0.99)
+    return rows, ids, y, arch, [by_arch, by_label]
+
+
+def test_select_on_cell_picks_other_epochs_and_thresholds_than_overall():
+    from training.train import evaluate, val_auc_of
+    rows, ids, y, arch, epochs = selection_fixture()
+    vals = [evaluate(rows, ids, p, 0.5) for p in epochs]
+    pick = lambda select_on: int(np.argmax([val_auc_of(gnn(select_on=select_on), v) for v in vals]))
+    assert [v['auc'] for v in vals] == sorted([v['auc'] for v in vals], reverse=True)
+    assert vals[0]['cell_balanced']['auc'] < 0.6 < vals[1]['cell_balanced']['auc']
+    assert pick('overall') == 0 and pick('cell') == 1
+    assert val_auc_of(gnn(), vals[0]) == vals[0]['auc'] and val_auc_of(gnn(select_on='cell'), vals[0]) == (
+        vals[0]['cell_balanced']['auc'])
+    thr = {s: val_threshold_of(rows, ids, epochs[pick(s)], s) for s in ('overall', 'cell')}
+    assert thr['overall'] != thr['cell'] and all(t in GRID for t in thr.values())
+    # on the same probabilities the two rules also disagree
+    assert val_threshold_of(rows, ids, epochs[0], 'overall') != val_threshold_of(rows, ids, epochs[0], 'cell')
+    assert val_threshold_of(rows, ids, epochs[0]) == val_threshold_of(rows, ids, epochs[0], 'overall')
+
+
+def test_cell_threshold_is_the_weighted_macro_f1_maximiser():
+    rows, ids, y, arch, epochs = selection_fixture()
+    w = cell_weights(y, arch)
+    for p in epochs:
+        want = max(GRID, key=lambda g: f1_score(y, (p >= g).astype(int), average='macro', sample_weight=w))
+        assert val_threshold_of(rows, ids, p, 'cell') == want
+        assert val_threshold_of(rows, ids, p, 'cell') == max(
+            GRID, key=lambda g: cell_balanced(y, p, (p >= g).astype(int), arch)['macro_f1'])
+
+
+def tiny_manifest():
+    """Small real binaries of the v2 cache, 5 / 4 / 3 per (label, arch) cell for train / val / test."""
+    from common.manifests import Manifest, load_index
+    small = sorted((r for r in load_index() if int(r['num_blocks']) <= 1200), key=lambda r: r['sample_id'])
+    train, val, test = [], [], []
+    for label in (1, 0):
+        for arch in ('x86', 'x64'):
+            cell = [r for r in small if r['label'] == label and r['arch'] == arch]
+            assert len(cell) >= 12, (label, arch, len(cell))
+            train, val, test = train + cell[:5], val + cell[5:9], test + cell[9:12]
+    return Manifest(train, val, test, []), small
+
+
+@needs_cuda
+@pytest.mark.parametrize('select_on', ['overall', 'cell'])
+def test_run_records_and_applies_the_selection_rule(tmp_path, monkeypatch, select_on):
+    """Two epochs of a d_model 16 GNN on 48 tiny binaries (a unit test of train.run, not a training run)."""
+    from common.manifests import Manifest
+    from training import train
+    manifest, _ = tiny_manifest()
+    monkeypatch.setattr(train, 'RUNS', tmp_path)
+    monkeypatch.setattr(train, 'make_manifest', lambda cfg, index: Manifest(**vars(manifest)))
+    cfg = gnn(d_model=16, fixed_epochs=3, batch_size=4, num_workers=0, select_on=select_on, mask_blocks=0.15)
+    metrics = train.run(cfg)
+    out = tmp_path / cfg.name
+    assert cfg.name.endswith('-selcell_s0') == (select_on == 'cell')
+    assert metrics['select_on'] == select_on and metrics['selection']['auc']['rule'] == train.AUC_RULES[select_on]
+    assert json.loads((out / 'metrics.json').read_text())['select_on'] == select_on
+    by_id = {r['sample_id']: r for r in manifest.val}
+    epochs = {}
+    for r in csv.DictReader((out / 'val_probs.csv').open()):
+        epochs.setdefault(int(r['epoch']), {})[r['sample_id']] = float(r['prob'])
+    score = lambda probs: train.evaluate(manifest.val, list(probs), np.array(list(probs.values())), 0.5)
+    vals = {e: score(p) for e, p in epochs.items()}
+    want = max(vals, key=lambda e: (train.val_auc_of(cfg, vals[e]), -e))
+    assert metrics['selection']['auc']['best_epoch'] == want
+    assert metrics['selection']['auc']['val_auc'] == pytest.approx(train.val_auc_of(cfg, vals[want]))
+    val_rows = [r for r in csv.DictReader((out / 'predictions_auc.csv').open()) if r['split'] == 'val']
+    ids, probs = [r['sample_id'] for r in val_rows], np.array([float(r['prob']) for r in val_rows])
+    assert metrics['selection']['auc']['threshold_val'] == val_threshold_of(manifest.val, ids, probs, select_on)
+    f1_rows = [r for r in csv.DictReader((out / 'predictions.csv').open()) if r['split'] == 'val']
+    assert metrics['selection']['f1']['threshold_val'] == val_threshold_of(
+        manifest.val, [r['sample_id'] for r in f1_rows], np.array([float(r['prob']) for r in f1_rows]), 'overall')
+    assert metrics['best_epoch'] == metrics['selection']['f1']['best_epoch']
+
+
+def test_model_labels_for_step11_fields():
+    assert report.model_label(gnn(select_on='cell')) == 'edge-typed GNN cell-select'
+    assert report.model_label(gnn(select_on='cell', arch_balance=True)) == 'edge-typed GNN arch-bal cell-select'
+    assert report.model_label(RunConfig(select_on='cell')) == 'graph transformer cell-select'
+    assert report.model_label(gnn(subgraph='lcc', budget=20000)) == 'edge-typed GNN lcc 20k'
+    assert report.model_label(gnn(budget=5000)) == 'edge-typed GNN cap 5k'
+    assert report.model_label(gnn(subgraph='lcc')) == 'edge-typed GNN lcc full budget'
+    assert report.model_label(gnn(control='no_edges', encoder='presence')) == 'GNN no-edges enc-presence'
+    assert report.model_label(gnn()) == 'edge-typed GNN'
+    for kw in (dict(select_on='cell'), dict(subgraph='lcc', budget=5000), dict(budget=20000)):
+        assert not {k for k in kw} & {k for k in report.DEFAULTS if k not in report.LABELLED}
+
+
+SG_REF = ('mask_blocks', 0.15)
+
+
+def build_subgraph_fake(root, monkeypatch, with_chain=None):
+    """kfold x86 seed 0: the whole-graph reference, cap 20k (as good), cap 5k (clearly worse), lcc 20k (missing fold 4),
+    no lcc 5k; the no-edge reference and its raw and presence weightings (rawlog missing)."""
+    monkeypatch.setattr(stats, 'RUNS', root)
+    gates.pooled.cache_clear()
+    plan = {(SG_REF,): (1.6, 5), (SG_REF, ('subgraph', 'cap'), ('budget', 20000)): (1.6, 5),
+            (SG_REF, ('subgraph', 'cap'), ('budget', 5000)): (0.3, 5),
+            (SG_REF, ('subgraph', 'lcc'), ('budget', 20000)): (1.6, 4),
+            (SG_REF, ('control', 'no_edges')): (1.4, 5),
+            (SG_REF, ('control', 'no_edges'), ('encoder', 'raw')): (1.4, 5),
+            (SG_REF, ('control', 'no_edges'), ('encoder', 'presence')): (0.5, 5)}
+    build_fake(root, {kw: (signal, range(folds)) for kw, (signal, folds) in plan.items()})
+    if with_chain is not None:
+        (root / 'subgraph_chain.json').write_text(json.dumps(with_chain))
+
+
+CHAIN = {'pool': 'kfold x86', 'n_binaries': 1800, 'n_blocks': 10_000_000, 'n_chain_blocks': 41_000,
+         'reduction': 0.0041, 'mean_binary_reduction': 0.005, 'max_binary_reduction': 0.09}
+
+
+def test_subgraph_gates_from_disk(tmp_path, monkeypatch):
+    build_subgraph_fake(tmp_path, monkeypatch, CHAIN)
+    text = '\n'.join(gates.subgraph(100))
+    assert 'stage subgraph' in text and gates.LABEL in text
+    noninf = text.split('## Subgraph policies')[1].split('## Chain merge')[0]
+    ni = {l.split(' | ')[0].lstrip('| '): l for l in noninf.splitlines() if l.startswith('| R7')}
+    assert ni['R7 typed, cap 20k'].endswith('| yes |') and ni['R7 typed, cap 5k'].endswith('| no |')
+    assert 'missing' in ni['R7 typed, lcc 20k'] and 'missing' in ni['R7 typed, lcc 5k']
+    assert 'kfold_x86_gnn-mblk15-sg-cap5k' in ni['R7 typed, cap 5k'] and 'kfold_x86_gnn-mblk15 ' in noninf
+    res, _ = stats.compare('kfold_x86_gnn-mblk15', 'kfold_x86_gnn-mblk15-sg-cap20k', 'auc', 100, seeds=[0])
+    assert gates.non_inferior(res) and f"{res['auc']['diff'] + 0.0:+.3f} [{res['auc']['lo'] + 0.0:+.3f}" in ni[
+        'R7 typed, cap 20k']
+    assert '- Chain merge (kfold x86): 41000 of 10000000 blocks in 1800 binaries could merge' in text
+    assert 'reduction of 0.41%' in text and 'below the 5% bar, so no chain-merge policy is built' in text
+    weights = text.split('## Block-level counting weightings')[1]
+    w = {l.split(' | ')[0].lstrip('| '): l for l in weights.splitlines() if l.startswith('| R2')}
+    assert set(w) == {'R2 no-edges, raw', 'R2 no-edges, presence', 'R2 no-edges, rawlog'}
+    assert 'missing' in w['R2 no-edges, rawlog'] and 'missing' not in w['R2 no-edges, raw']
+    assert 'kfold_x86_gnn-noedges-mblk15-enc-presence' in w['R2 no-edges, presence']
+    assert 'kfold_x86_gnn-noedges-mblk15 minus' not in weights and 'kfold_x86_gnn-noedges-mblk15-enc-raw minus' in weights
+    pooled = text.split('## Subgraph policies')[0]
+    assert '| R7 typed, whole graph | kfold_x86_gnn-mblk15 |' in pooled and 'R2 no-edges, tfidf' in pooled
+
+
+def test_subgraph_gates_without_runs_or_chain_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(stats, 'RUNS', tmp_path)
+    gates.pooled.cache_clear()
+    text = '\n'.join(gates.subgraph(30))
+    assert 'Chain merge: not measured (subgraph_chain.json is missing' in text
+    assert text.count('missing') >= 10 and 'Traceback' not in text
+    chain = dict(CHAIN, reduction=0.06, n_chain_blocks=600_000)
+    (tmp_path / 'subgraph_chain.json').write_text(json.dumps(chain))
+    assert 'a chain-merge policy is worth building' in gates.chain_line()
+
+
+def test_subgraph_gate_arms_are_run_names():
+    assert gates.SG_REFERENCE[1] == 'gnn-mblk15' and gates.SG_NOEDGES == 'gnn-noedges-mblk15'
+    assert [v for _, v in gates.SG_ARMS] == ['gnn-mblk15-sg-cap20k', 'gnn-mblk15-sg-cap5k', 'gnn-mblk15-sg-lcc20k',
+                                              'gnn-mblk15-sg-lcc5k']
+    assert [v for _, v in gates.WEIGHTINGS] == [f'gnn-noedges-mblk15-enc-{e}' for e in ('raw', 'presence', 'rawlog')]
+    assert [v for _, v in gates.V3_ARMS[1:]] == ['gnn-noedges-mblk15-selcell', 'gnn-shuffle-mblk15-selcell',
+                                                  'gnn-mblk15-selcell']
+    assert [v for _, v in gates.V3_AB_ARMS[1:]] == ['gnn-noedges-mblk15-ab-selcell', 'gnn-shuffle-mblk15-ab-selcell',
+                                                     'gnn-mblk15-ab-selcell']
+
+
+def test_gates_cli_accepts_the_subgraph_stage():
+    r = subprocess.run([sys.executable, 'gates.py', '--help'], cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0 and 'subgraph' in r.stdout
+
+
+def test_chain_script_writes_the_json(tmp_path, monkeypatch):
+    from scripts import subgraph_chain
+    (tmp_path / 'samples').mkdir()
+    edges = np.array([[0, 1], [1, 2]], dtype=np.int32)
+    for sid in ('a', 'b', 'c'):
+        np.savez(tmp_path / 'samples' / f'{sid}.npz', blk_feat=np.zeros((3, 6), dtype=np.float16),
+                 fn_blk_ptr=np.array([0, 3], dtype=np.int32), cfg_edges=edges, edge_kind=np.array([0, 2], dtype=np.int8))
+    index = [{'sample_id': 'a', 'arch': 'x86', 'fold': 0}, {'sample_id': 'b', 'arch': 'x64', 'fold': 1},
+             {'sample_id': 'c', 'arch': 'x86', 'fold': None}]
+    monkeypatch.setattr(subgraph_chain, 'load_index', lambda: index)
+    monkeypatch.setattr(subgraph_chain, 'CACHE', tmp_path)
+    monkeypatch.setattr(subgraph_chain, 'RUNS', tmp_path)
+    subgraph_chain.main()
+    got = json.loads((tmp_path / 'subgraph_chain.json').read_text())
+    assert got['pool'] == 'kfold x86' and got['n_binaries'] == 1 and got['n_blocks'] == 3
+    assert got['n_chain_blocks'] == 1 and got['reduction'] == pytest.approx(1 / 3) and got['worth_building'] is True
+
+
+def test_smoke_memory_script_takes_the_v3_protocol_and_masking():
+    from scripts import smoke_gnn_memory as smoke
+    cfg = smoke.parse_config([])
+    assert (cfg.protocol, cfg.arch, cfg.mask_blocks, cfg.model) == ('kfold', 'x86', 0.0, 'gnn')
+    cfg = smoke.parse_config(['--protocol', 'kfold_v3', '--mask-blocks', '0.15'])
+    assert (cfg.protocol, cfg.arch, cfg.mask_blocks, cfg.fold) == ('kfold_v3', 'all', 0.15, 0)
+    assert smoke.parse_config(['--protocol', 'kfold_v3', '--arch', 'matched']).arch == 'matched'
+    rows = [{'num_blocks': str(n), 'sample_id': str(n)} for n in (8_000_000, 600_000, 200_000, 90_000, 60_000, 50_000)]
+    assert smoke.capped_blocks(rows[0], cfg) == 500_000
+    assert [r['num_blocks'] for r in smoke.packed_rows(rows, cfg)] == ['200000', '90000']
+    assert smoke.capped_blocks(rows[0], gnn(budget=20000)) == 20000
+    r = subprocess.run([sys.executable, 'smoke_gnn_memory.py', '--help'], cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0 and 'kfold_v3' in r.stdout and '--mask-blocks' in r.stdout
+
+
+def test_smoke_memory_script_reads_the_combined_cache_for_kfold_v3():
+    code = ('import sys; sys.argv = ["smoke_gnn_memory.py", "--protocol", "kfold_v3"]; '
+            'from scripts import smoke_gnn_memory as s; print(s.CACHE)')
+    env = {k: v for k, v in os.environ.items() if k != 'GT_CACHE'}
+    r = subprocess.run([sys.executable, '-c', code], cwd=ROOT, capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip().replace('\\', '/') == 'C:/Users/chaoa/Downloads/graph_transformer_cache_combined'

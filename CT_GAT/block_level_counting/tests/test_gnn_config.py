@@ -325,3 +325,75 @@ def test_arch_balance_cli_and_roundtrip(tmp_path):
     old = tmp_path / 'old.json'
     old.write_text('{"model": "gnn"}')
     assert RunConfig.load(old).arch_balance is False
+
+
+# step 11: select_on, subgraph, budget and the count weightings
+
+def test_step11_defaults_leave_every_name_unchanged():
+    cfg = RunConfig()
+    assert (cfg.select_on, cfg.subgraph, cfg.budget) == ('overall', 'cap', 0)
+    for c in (RunConfig(), RunConfig(no_graph=True), gnn(), gnn(control='shuffle', mask_blocks=0.15, arch_balance=True),
+              gnn(encoder='mean', readout='gated', train_fraction=0.5)):
+        assert not {'selcell', 'sg'} & set(c.variant.split('-'))
+    assert gnn(mask_blocks=0.15).name == 'bundle_x86_gnn-mblk15_s0'
+    assert gnn(subgraph='cap').variant == gnn(budget=0).variant == 'gnn'
+
+
+def test_select_on_suffix_and_names():
+    assert gnn(select_on='cell').variant == 'gnn-selcell'
+    assert RunConfig(select_on='cell').variant == 'graph-selcell'
+    assert RunConfig(select_on='cell', no_graph=True, arch_balance=True).variant == 'nograph-ab-selcell'
+    cfg = gnn(protocol='kfold_v3', fold=2, arch='all', control='no_edges', mask_blocks=0.15, arch_balance=True,
+              select_on='cell')
+    assert cfg.name == 'v3kfold2_all_gnn-noedges-mblk15-ab-selcell_s0'
+    assert cfg.group == 'kfold_v3_all_gnn-noedges-mblk15-ab-selcell'
+    assert gnn(select_on='cell').group != gnn().group
+
+
+def test_subgraph_suffix_and_budget():
+    assert gnn(subgraph='lcc').variant == 'gnn-sg-lcc0k'
+    assert gnn(budget=20000).variant == 'gnn-sg-cap20k'
+    assert gnn(subgraph='cap', budget=5000).variant == 'gnn-sg-cap5k'
+    assert gnn(subgraph='lcc', budget=20000, mask_blocks=0.15).variant == 'gnn-mblk15-sg-lcc20k'
+    assert gnn(subgraph='lcc', budget=5000, select_on='cell', encoder='raw').variant == 'gnn-enc-raw-selcell-sg-lcc5k'
+    assert gnn(protocol='kfold', fold=3, mask_blocks=0.15, subgraph='lcc', budget=5000).name == (
+        'kfold3_x86_gnn-mblk15-sg-lcc5k_s0')
+
+
+def test_encoder_suffixes():
+    for enc in ('mean', 'raw', 'presence', 'rawlog'):
+        assert gnn(encoder=enc).variant == f'gnn-enc-{enc}' and gnn(encoder=enc).block_encoder == enc
+    assert gnn(encoder='tfidf').variant == 'gnn' and gnn().variant == 'gnn'
+    assert gnn(control='no_edges', mask_blocks=0.15, encoder='presence').variant == 'gnn-noedges-mblk15-enc-presence'
+    assert gnn(encoder='raw', readout='gated').variant == 'gnn-enc-raw-gated'
+
+
+@pytest.mark.parametrize('kw', [
+    dict(model='gnn', select_on='both'), dict(select_on='bogus'), dict(model='gnn', subgraph='bfs'),
+    dict(model='gnn', budget=-1), dict(model='gnn', budget=999), dict(subgraph='lcc'), dict(budget=5000),
+    dict(model='gnn', encoder='sum'), dict(encoder='raw'),
+])
+def test_step11_rejected(kw):
+    with pytest.raises(ValueError):
+        RunConfig(**kw)
+
+
+def test_step11_cli_and_roundtrip(tmp_path):
+    argv = ['--model', 'gnn', '--select-on', 'cell', '--subgraph', 'lcc', '--budget', '20000', '--encoder', 'rawlog',
+            '--mask-blocks', '0.15']
+    cfg, _ = parse_config(argv)
+    assert cfg == gnn(select_on='cell', subgraph='lcc', budget=20000, encoder='rawlog', mask_blocks=0.15)
+    assert cfg.variant == 'gnn-mblk15-enc-rawlog-selcell-sg-lcc20k'
+    for enc in ('raw', 'presence'):
+        assert parse_config(['--model', 'gnn', '--encoder', enc])[0].encoder == enc
+    d = parse_config(['--model', 'gnn'])[0]
+    assert (d.select_on, d.subgraph, d.budget) == ('overall', 'cap', 0)
+    cfg.save(tmp_path / 'config.json')
+    assert RunConfig.load(tmp_path / 'config.json') == cfg
+    old = tmp_path / 'old.json'
+    old.write_text('{"model": "gnn", "mask_blocks": 0.15}')
+    assert RunConfig.load(old).name == gnn(mask_blocks=0.15).name
+    with pytest.raises(SystemExit):
+        parse_config(['--model', 'gnn', '--select-on', 'neither'])
+    with pytest.raises(SystemExit):
+        parse_config(['--subgraph', 'lcc'])

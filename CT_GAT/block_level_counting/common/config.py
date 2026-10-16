@@ -9,6 +9,9 @@ from common.paths import CACHE, COMBINED_CACHE, DEFAULT_CACHE, RUNS, cache_for, 
 DIRECTIONS = ('both', 'forward', 'backward', 'undirected')
 DIRECTION_SUFFIX = {'forward': 'fwd', 'backward': 'bwd', 'undirected': 'undir'}
 CONTROLS = {'': '', 'no_edges': 'noedges', 'chain': 'chain', 'shuffle': 'shuffle', 'permute_types': 'permtypes'}
+ENCODERS = ('mean', 'tfidf', 'raw', 'presence', 'rawlog')
+SELECT_ON = ('overall', 'cell')
+SUBGRAPH_POLICIES = ('cap', 'lcc')
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,9 @@ class RunConfig:
     arch_balance: bool = False
     batch_blocks: int = 300000
     fixed_epochs: int = 0
+    select_on: str = 'overall'
+    subgraph: str = 'cap'
+    budget: int = 0
     tag: str = ''
     cache: str = ''
 
@@ -76,8 +82,14 @@ class RunConfig:
             raise ValueError(f'fold {self.fold}')
         if self.model not in ('transformer', 'gnn'):
             raise ValueError(f'model {self.model}')
-        if self.encoder not in (None, 'mean', 'tfidf'):
+        if self.encoder is not None and self.encoder not in ENCODERS:
             raise ValueError(f'encoder {self.encoder}')
+        if self.select_on not in SELECT_ON:
+            raise ValueError(f'select_on {self.select_on}')
+        if self.subgraph not in SUBGRAPH_POLICIES:
+            raise ValueError(f'subgraph {self.subgraph}')
+        if self.budget != 0 and self.budget < 1000:
+            raise ValueError(f'budget must be 0 (the binary cap) or at least 1000 blocks: {self.budget}')
         if self.readout not in ('fixed', 'gated'):
             raise ValueError(f'readout {self.readout}')
         if self.control not in CONTROLS:
@@ -102,6 +114,7 @@ class RunConfig:
                         'control': bool(self.control), 'untyped': self.untyped, 'no_call_mp': self.no_call_mp,
                         'stack_tfidf': self.stack_tfidf, 'mask/drop/aux rate': any(r > 0 for r in rates),
                         'direction': self.direction != 'both',
+                        'subgraph/budget': self.subgraph != 'cap' or self.budget != 0,
                         'drop/flip edges': bool(self.drop_edges or self.flip_edges)}
             used = [k for k, v in gnn_only.items() if v]
             if used:
@@ -119,8 +132,9 @@ class RunConfig:
     def variant(self):
         tf = [f'tf{round(100 * self.train_fraction)}'] if self.train_fraction < 1 else []
         ab = ['ab'] if self.arch_balance else []
+        sel = ['selcell'] if self.select_on == 'cell' else []
         if self.model == 'transformer':
-            return '-'.join(['nograph' if self.no_graph else 'graph'] + tf + ab)
+            return '-'.join(['nograph' if self.no_graph else 'graph'] + tf + ab + sel)
         parts = ['gnn']
         if self.control:
             parts.append(CONTROLS[self.control])
@@ -135,10 +149,13 @@ class RunConfig:
         parts += [f'{s}{n}' for s, n, default in (('L', self.gnn_fn_layers, 3), ('B', self.gnn_bin_layers, 2))
                   if n != default]
         parts += tf + ab
-        if self.block_encoder == 'mean':
-            parts.append('enc-mean')
+        if self.block_encoder != 'tfidf':
+            parts.append(f'enc-{self.block_encoder}')
         if self.readout == 'gated':
             parts.append('gated')
+        parts += sel
+        if self.subgraph != 'cap' or self.budget:
+            parts.append(f'sg-{self.subgraph}{self.budget // 1000}k')
         return '-'.join(parts)
 
     @property

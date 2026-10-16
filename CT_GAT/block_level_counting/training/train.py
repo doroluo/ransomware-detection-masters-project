@@ -10,6 +10,11 @@ graph_transformer_runs/<run name>/.
 
 --arch-balance weights each training sample's loss by N / (C n_cell) over the non-empty (label, arch) cells of the
 training manifest instead of by its class weight; every metrics block gains `cell_balanced` (each cell weighs equally).
+
+--select-on cell picks best_auc.pt by the validation cell-balanced AUC instead of the validation AUC, and the validation
+threshold of the AUC checkpoint (threshold_val, predictions_auc.csv) by the validation cell-balanced macro-F1 instead of
+the macro-F1. best.pt, the F1 checkpoint and its threshold are unchanged. As the gnn stops on the later of the F1 and
+AUC bests, the AUC rule also moves the stopping epoch. metrics.json records the rule (`select_on`, `selection.auc.rule`).
 """
 import argparse
 import csv
@@ -23,14 +28,18 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common.config import CACHE, DIRECTIONS, RUNS, RunConfig
+from common.config import CACHE, DIRECTIONS, ENCODERS, RUNS, RunConfig
 from common.manifests import load_index, make_manifest
-from evaluation.metrics import cell_weights, family_recall, floors, scores
+from evaluation.metrics import cell_balanced, cell_weights, family_recall, floors, scores
 from evaluation.val_threshold import GRID, macro_f1
 from legacy.graph_transformer.model import GraphTransformer
 from pipeline.batching import loader
 from pipeline.model import HierGNN
 from pipeline.s03_tokenizer.vocab import TokenVocab
+
+
+AUC_RULES = {'overall': 'checkpoint: validation AUC; threshold: validation macro-F1',
+             'cell': 'checkpoint: validation cell-balanced AUC; threshold: validation cell-balanced macro-F1'}
 
 
 def parse_config(argv=None):
@@ -41,7 +50,7 @@ def parse_config(argv=None):
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--no-graph', action='store_true')
     ap.add_argument('--model', choices=['transformer', 'gnn'], default='transformer')
-    ap.add_argument('--encoder', choices=['mean', 'tfidf'], default=None)
+    ap.add_argument('--encoder', choices=ENCODERS, default=None)
     ap.add_argument('--readout', choices=['fixed', 'gated'], default='fixed')
     ap.add_argument('--control', choices=['', 'no_edges', 'chain', 'shuffle', 'permute_types'], default='')
     ap.add_argument('--direction', choices=DIRECTIONS, default='both')
@@ -121,10 +130,19 @@ def should_stop(cfg: RunConfig, epoch, best_f1_epoch, best_auc_epoch):
     return epoch - last_best >= cfg.patience
 
 
-def val_threshold_of(rows, ids, probs):
-    """The GRID threshold with the highest validation macro-F1 (first on ties)."""
-    by_id = {r['sample_id']: r['label'] for r in rows}
-    y = np.array([by_id[i] for i in ids])
+def val_auc_of(cfg: RunConfig, val):
+    """The validation AUC that picks best_auc.pt: the plain one, or with select_on='cell' the cell-balanced one."""
+    return val['cell_balanced']['auc'] if cfg.select_on == 'cell' else val['auc']
+
+
+def val_threshold_of(rows, ids, probs, select_on='overall'):
+    """The GRID threshold with the highest validation macro-F1 (first on ties); with select_on='cell' the highest
+    cell-balanced macro-F1 (`metrics.cell_balanced`, each non-empty label x arch cell of `rows` weighs equally)."""
+    by_id = {r['sample_id']: r for r in rows}
+    y = np.array([by_id[i]['label'] for i in ids])
+    if select_on == 'cell':
+        arch = np.array([by_id[i]['arch'] for i in ids])
+        return float(max(GRID, key=lambda g: cell_balanced(y, probs, (probs >= g).astype(int), arch)['macro_f1']))
     return float(max(GRID, key=lambda g: macro_f1(y, probs, g)))
 
 
@@ -206,8 +224,9 @@ def run(cfg: RunConfig, out_name=None):
         if val['macro_f1'] > best_f1:
             best_f1, best_f1_epoch = val['macro_f1'], epoch
             torch.save(model.state_dict(), out / 'best.pt')
-        if val['auc'] > best_auc:
-            best_auc, best_auc_epoch = val['auc'], epoch
+        val_auc = val_auc_of(cfg, val)
+        if val_auc > best_auc:
+            best_auc, best_auc_epoch = val_auc, epoch
             torch.save(model.state_dict(), out / 'best_auc.pt')
         if should_stop(cfg, epoch, best_f1_epoch, best_auc_epoch):
             break
@@ -223,7 +242,8 @@ def run(cfg: RunConfig, out_name=None):
     for rule, ckpt in (('f1', 'best.pt'), ('auc', 'best_auc.pt')):
         model.load_state_dict(torch.load(out / ckpt, map_location=device))
         by_split = {'val': predict(model, val_data, device), 'test': predict(model, test_data, device)}
-        threshold_val = val_threshold_of(manifest.val, *by_split['val'][:2])
+        threshold_val = val_threshold_of(manifest.val, *by_split['val'][:2],
+                                         select_on=cfg.select_on if rule == 'auc' else 'overall')
         chosen[rule] = (by_split, threshold_val)
         write_predictions(out / ('predictions.csv' if rule == 'f1' else 'predictions_auc.csv'), rows, by_split,
                           cfg.threshold if rule == 'f1' else threshold_val)
@@ -240,7 +260,8 @@ def run(cfg: RunConfig, out_name=None):
     ids = chosen['f1'][0]['test'][0]
     thr_f1, thr_auc = chosen['f1'][1], chosen['auc'][1]
     metrics = {
-        'run': cfg.name, 'best_epoch': best_f1_epoch, 'epochs_run': len(history), 'val_macro_f1': best_f1,
+        'run': cfg.name, 'select_on': cfg.select_on, 'best_epoch': best_f1_epoch, 'epochs_run': len(history),
+        'val_macro_f1': best_f1,
         'truncated_test': truncated_count(chosen['f1'][0]['test'][2]),
         'test': test_scores('f1', cfg.threshold),
         'floors': floors(labels, [by_id[i]['label'] for i in ids], [by_id[i]['arch'] for i in ids]),
@@ -251,7 +272,8 @@ def run(cfg: RunConfig, out_name=None):
         'selection': {
             'f1': {'best_epoch': best_f1_epoch, 'threshold_val': thr_f1,
                    'test_at_val_threshold': test_scores('f1', thr_f1)},
-            'auc': {'best_epoch': best_auc_epoch, 'val_auc': best_auc, 'threshold_val': thr_auc,
+            'auc': {'rule': AUC_RULES[cfg.select_on], 'best_epoch': best_auc_epoch, 'val_auc': best_auc,
+                    'threshold_val': thr_auc,
                     'test': test_scores('auc', thr_auc), 'test_at_half': test_scores('auc', 0.5),
                     'family_recall': test_family_recall('auc', thr_auc)},
         },

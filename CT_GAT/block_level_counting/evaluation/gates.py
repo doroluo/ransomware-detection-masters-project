@@ -1,6 +1,6 @@
 """Gate summary from the runs on disk.
 
-python gates.py --stage day1|day1b|v3 [--resamples 2000]
+python gates.py --stage day1|day1b|v3|subgraph [--resamples 2000]
 
 Day 1 reads seed 0 of the kfold x86 arms (R0 TF-IDF baseline, R2 tfidf / mean, R4 shuffle, R5 untyped, R7 typed GNN):
 a pooled table, the preliminary gate-A verdict of PLAN_GNN.md section 5, and the stats.py paired differences. An arm
@@ -10,14 +10,23 @@ Day 1b reads the extra arms of step 5b (direction, augmentation, masking, depth,
 every kfold x86 GNN group on disk, the AUC-selection paired differences of each new arm against R7 and R2 tfidf, and
 the learning curve (train fraction 0.25 / 0.5 / 1.0 for R7 and TF-IDF).
 
-Stage v3 reads seed 0 of the kfold_v3 arms (R0, R2, R4, R5, R7) on the combined cache for arch all and arch matched: the
-pooled table under both checkpoint rules with per-architecture recall at the validation threshold, cell-balanced AUC
-and macro-F1 (each class x arch cell weighted equally) and both floors (majority, x86 rule), the arch-balanced
-(`-ab`) arms beside their unweighted twins, the paired AUC-selection differences R2-R7, R4-R7, R5-R7 and R0-R2 (plain
-and cell-balanced, for the plain and for the `-ab` arms), the cell-balanced difference of each `-ab` arm against its
-unweighted twin, and one-line verdicts per arch on whether R7 beats R2 and R4 under the pre-registered rule.
+Stage v3 reads seed 0 of the kfold_v3 block-masked arms (R2 no-edges, R4 shuffle, R7 typed with 15% block masking and
+cell-balanced checkpoint selection, `-mblk15-selcell`) and the R0 TF-IDF baseline on the combined cache, for arch all
+and arch matched: the pooled table under both checkpoint rules with per-architecture recall at the validation threshold,
+cell-balanced AUC and macro-F1 (each class x arch cell weighted equally) and both floors (majority, x86 rule), the
+arch-balanced (`-ab`) arms beside their unweighted twins, the paired AUC-selection differences R2-R7, R4-R7 and
+R0-R2 (ordinary and cell-balanced metrics, for the plain and for the `-ab` arms), the cell-balanced difference of each
+`-ab` arm against its unweighted twin, and one-line verdicts per arch on whether R7 beats R2 and R4 under the
+pre-registered rule.
+
+Stage subgraph reads the kfold x86 arms of step 11: R7 typed with 15% block masking under the subgraph policies cap and
+lcc at 20k and 5k blocks against the whole-graph `gnn-mblk15` reference (non-inferiority: the lower bound of the paired
+95% interval of dAUC above -0.01 and of dmacro-F1 above -0.02, AUC selection), the chain-merge measurement of
+RUNS/subgraph_chain.json, and the no-edge arm with the raw, presence and rawlog block weightings against
+`gnn-noedges-mblk15`.
 """
 import argparse
+import json
 from functools import lru_cache
 
 import numpy as np
@@ -40,11 +49,19 @@ NEW_ARMS = tuple(f'kfold_x86_gnn-{v}' for v in ('mtok15', 'dfn5-dlib40', 'undir'
 REFERENCES = (('R7 typed', 'kfold_x86_gnn'), ('R2 tfidf', 'kfold_x86_gnn-noedges'))
 CURVE = ((0.25, 'tf25'), (0.5, 'tf50'), (1.0, ''))
 V3_ARCHES = ('all', 'matched')
-V3_ARMS = (('R0 TF-IDF', 'tfidf'), ('R2 no-edges', 'gnn-noedges'), ('R4 shuffle', 'gnn-shuffle'),
-           ('R5 untyped', 'gnn-untyped'), ('R7 typed', 'gnn'))
-V3_AB_ARMS = tuple((f'{arm} ab', f'{variant}-ab') for arm, variant in V3_ARMS)
-V3_PAIRS = (('R2 no-edges', 'R7 typed'), ('R4 shuffle', 'R7 typed'), ('R5 untyped', 'R7 typed'),
-            ('R0 TF-IDF', 'R2 no-edges'))
+
+
+def variant_of(**kw):
+    """RunConfig.variant of a GNN arm, so the group names here cannot drift from the run names."""
+    return RunConfig(model='gnn', protocol='kfold_v3', fold=0, arch='all', **kw).variant
+
+
+V3_MASKED = dict(mask_blocks=0.15, select_on='cell')
+V3_GNN = (('R2 no-edges', dict(control='no_edges')), ('R4 shuffle', dict(control='shuffle')), ('R7 typed', {}))
+V3_ARMS = (('R0 TF-IDF', 'tfidf'),) + tuple((arm, variant_of(**kw, **V3_MASKED)) for arm, kw in V3_GNN)
+V3_AB_ARMS = (('R0 TF-IDF ab', 'tfidf-ab'),) + tuple(
+    (f'{arm} ab', variant_of(**kw, **V3_MASKED, arch_balance=True)) for arm, kw in V3_GNN)
+V3_PAIRS = (('R2 no-edges', 'R7 typed'), ('R4 shuffle', 'R7 typed'), ('R0 TF-IDF', 'R2 no-edges'))
 V3_AB_PAIRS = tuple((f'{a} ab', f'{b} ab') for a, b in V3_PAIRS)
 V3_TWINS = tuple((arm, f'{arm} ab') for arm, _ in V3_ARMS)
 V3_RECALLS = (('R x86', 1, 'x86'), ('R x64', 1, 'x64'), ('G x86', 0, 'x86'), ('G x64', 0, 'x64'))
@@ -221,7 +238,7 @@ def beats(r):
 def v3_truncation(arch):
     """One line: R7's test binaries cut by the per-binary block cap (AUC checkpoint, validation threshold) and the
     ransomware / goodware recall on the cut and the uncut ones."""
-    group = v3_group(arch, 'gnn')
+    group = v3_group(arch, dict(V3_ARMS)['R7 typed'])
     complete, partial = stats.load_group(group, 'auc', ('kfold_v3', arch))
     if SEED not in complete:
         return f"- Arch {arch}: truncation not assessed, R7 ({group}) has no complete seed {SEED}."
@@ -277,9 +294,12 @@ def v3_pairs(arch, pairs, resamples, balanced):
 
 def v3(resamples):
     out = [f'# Gate summary, stage v3 ({LABEL})', '',
-           'Combined cache, kfold_v3 (family-holdout v3 folds 0-4), seed 0 pooled over the five folds. The F1 checkpoint '
-           "is scored at 0.5; the AUC checkpoint at the threshold that maximises validation macro-F1 (TF-IDF at its own "
-           "per fold); recalls are at that threshold. A missing arm or fold is stated in its row. Floors: the majority "
+           'Combined cache, kfold_v3 (family-holdout v3 folds 0-4), seed 0 pooled over the five folds. Every GNN arm is '
+           'block-masked (15% of the blocks in training, `mblk15`). Its AUC checkpoint is chosen by the validation '
+           'cell-balanced AUC and its threshold by the validation cell-balanced macro-F1 (`selcell`); the F1 checkpoint '
+           'rule is unchanged. The F1 checkpoint is scored at 0.5; the AUC checkpoint at its validation threshold '
+           "(TF-IDF: the validation macro-F1 maximiser, per fold); recalls are at that threshold. A missing arm or fold "
+           "is stated in its row. Floors: the majority "
            "class of each fold's training manifest, and the x86 rule (ransomware iff x86). `ab` arms were trained with "
            "--arch-balance (each class x arch cell weighted equally). Cell-bal columns weight each class x arch cell "
            "of the pooled test set equally; under them the x86 rule scores 0.5.", '']
@@ -298,8 +318,12 @@ def v3(resamples):
         lines, balanced = v3_pairs(arch, V3_PAIRS, resamples, balanced=True)
         out += lines
         verdicts.append(v3_verdict(arch, balanced, note='cell-balanced: '))
+        out += [f'### Arch {arch}: arch-balanced arms, paired differences, second minus first, AUC selection ({LABEL})', '']
+        lines, plain_ab = v3_pairs(arch, V3_AB_PAIRS, resamples, balanced=False)
+        out += lines
+        verdicts.append(v3_verdict(arch, plain_ab, ' ab'))
         out += [f'### Arch {arch}: arch-balanced arms, paired cell-balanced differences ({LABEL})', '']
-        lines, balanced_ab = v3_pairs(arch, V3_AB_PAIRS, resamples, balanced=True)
+        lines, balanced_ab =v3_pairs(arch, V3_AB_PAIRS, resamples, balanced=True)
         out += lines
         verdicts.append(v3_verdict(arch, balanced_ab, ' ab', 'cell-balanced: '))
         out += [f'### Arch {arch}: each arch-balanced arm minus its unweighted twin, cell-balanced ({LABEL})', '']
@@ -309,17 +333,112 @@ def v3(resamples):
             f'Pre-registered rule (PLAN_GNN.md section 5), applied to the AUC selection: dAUC >= {MIN_AUC} and '
             f'dmacro-F1 >= {MIN_F1} pooled, both 95% intervals excluding zero. With one seed it cannot pass the rule; '
             'these lines only say which way seed 0 points. Per arch, the first line uses the ordinary metrics on the '
-            'unweighted arms, the second the cell-balanced metrics on them, the third the cell-balanced metrics on the '
-            'arch-balanced arms.', ''] + verdicts + ['']
+            'unweighted arms, the second the cell-balanced metrics on them, the third the ordinary metrics on the '
+            'arch-balanced arms, the fourth the cell-balanced metrics on the arch-balanced arms.', ''] + verdicts + ['']
+    return out
+
+
+SG_REFERENCE = ('R7 typed, whole graph', variant_of(mask_blocks=0.15))
+SG_NOEDGES = variant_of(control='no_edges', mask_blocks=0.15)
+SG_ARMS = tuple((f'R7 typed, {policy} {budget // 1000}k', variant_of(mask_blocks=0.15, subgraph=policy, budget=budget))
+                for policy in ('cap', 'lcc') for budget in (20000, 5000))
+WEIGHTINGS = tuple((f'R2 no-edges, {enc}', variant_of(control='no_edges', mask_blocks=0.15, encoder=enc))
+                   for enc in ('raw', 'presence', 'rawlog'))
+NI_AUC, NI_F1 = 0.01, 0.02
+CHAIN_BAR = 0.05
+
+
+def x86_group(variant):
+    return f'kfold_x86_{variant}'
+
+
+def signed_ci(r):
+    return f"{r['diff'] + 0.0:+.3f} [{r['lo'] + 0.0:+.3f}, {r['hi'] + 0.0:+.3f}]"
+
+
+def non_inferior(result):
+    """Lower bounds of the paired 95% intervals above -0.01 (dAUC) and -0.02 (dmacro-F1)."""
+    return result['auc']['lo'] > -NI_AUC and result['macro_f1']['lo'] > -NI_F1
+
+
+def truncated_share(group):
+    """'k of n' test binaries that kept fewer blocks than they have (AUC checkpoint, seed 0), or '-'."""
+    complete, _ = stats.load_group(group, 'auc')
+    if SEED not in complete or (complete[SEED].truncated < 0).any():
+        return '-'
+    cut = complete[SEED].truncated
+    return f'{int(cut.sum())} of {len(cut)}'
+
+
+def chain_line():
+    path = stats.RUNS / 'subgraph_chain.json'
+    if not path.exists():
+        return f'- Chain merge: not measured ({path.name} is missing; run subgraph_chain.py).'
+    c = json.loads(path.read_text(encoding='utf-8'))
+    verdict = ('a chain-merge policy is worth building' if c['reduction'] >= CHAIN_BAR
+               else f'below the {100 * CHAIN_BAR:.0f}% bar, so no chain-merge policy is built')
+    return (f"- Chain merge ({c['pool']}): {c['n_chain_blocks']} of {c['n_blocks']} blocks in {c['n_binaries']} binaries "
+            f"could merge, a reduction of {100 * c['reduction']:.2f}% (per binary: mean "
+            f"{100 * c['mean_binary_reduction']:.2f}%, maximum {100 * c['max_binary_reduction']:.2f}%): {verdict}.")
+
+
+def paired_rows(reference, arms, resamples):
+    """[(label, group, result or None)] of `arms` against the `reference` variant (kfold x86, AUC selection, seed 0) and
+    the markdown blocks that go with them."""
+    rows, blocks = [], []
+    for label, variant in arms:
+        group = x86_group(variant)
+        try:
+            result, info = stats.compare(x86_group(reference), group, 'auc', resamples, seeds=[SEED])
+        except stats.MissingGroup as e:
+            rows.append((label, group, None))
+            blocks += [f'**{label} vs {x86_group(reference)}** (selection auc): missing: {e}', '']
+            continue
+        rows.append((label, group, result))
+        blocks += [stats.fmt_block(x86_group(reference), group, 'auc', resamples, result, info), '']
+    return rows, blocks
+
+
+def subgraph(resamples):
+    ref_label, ref = SG_REFERENCE
+    out = [f'# Gate summary, stage subgraph ({LABEL})', '',
+           'kfold x86 on the v2 cache, seed 0 pooled over the five folds, 15% block masking on every arm. Differences '
+           f'are arm minus reference for the AUC checkpoint at its validation threshold, with the 95% paired cluster '
+           f'bootstrap interval ({resamples} resamples).', '', '## Pooled, AUC checkpoint', '',
+           '| arm | group | AUC | PR-AUC | macro-F1 |', '|---|---|---|---|---|']
+    for label, variant in (SG_REFERENCE,) + SG_ARMS + (('R2 no-edges, tfidf', SG_NOEDGES),) + WEIGHTINGS:
+        out.append(f'| {label} | {x86_group(variant)} | ' + ' | '.join(metric_cells(pooled(x86_group(variant), 'auc')))
+                   + ' |')
+    out += ['', '## Subgraph policies: non-inferiority against the whole graph', '',
+            f'Reference: {ref_label} ({x86_group(ref)}). An arm is non-inferior when the lower bound of its dAUC '
+            f'interval is above -{NI_AUC} and the lower bound of its dmacro-F1 interval is above -{NI_F1}.', '',
+            '| arm | group | dAUC [95% CI] | dmacro-F1 [95% CI] | truncated test binaries | non-inferior |',
+            '|---|---|---|---|---|---|']
+    rows, blocks = paired_rows(ref, SG_ARMS, resamples)
+    for label, group, r in rows:
+        out.append(f'| {label} | {group} | missing | missing | - | - |' if r is None else
+                   f"| {label} | {group} | {signed_ci(r['auc'])} | {signed_ci(r['macro_f1'])} | {truncated_share(group)} "
+                   f"| {'yes' if non_inferior(r) else 'no'} |")
+    out += [''] + blocks
+    out += ['## Chain merge', '', chain_line(), '']
+    out += ['## Block-level counting weightings', '',
+            'No-edge arm with the raw (counts), presence (each distinct token once) and rawlog (log1p of the count) '
+            f'weightings against the TF-IDF no-edge arm ({x86_group(SG_NOEDGES)}).', '',
+            '| arm | group | dAUC [95% CI] | dmacro-F1 [95% CI] |', '|---|---|---|---|']
+    rows, blocks = paired_rows(SG_NOEDGES, WEIGHTINGS, resamples)
+    for label, group, r in rows:
+        out.append(f'| {label} | {group} | missing | missing |' if r is None else
+                   f"| {label} | {group} | {signed_ci(r['auc'])} | {signed_ci(r['macro_f1'])} |")
+    out += [''] + blocks
     return out
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--stage', choices=['day1', 'day1b', 'v3'], required=True)
+    ap.add_argument('--stage', choices=['day1', 'day1b', 'v3', 'subgraph'], required=True)
     ap.add_argument('--resamples', type=int, default=2000)
     args = ap.parse_args()
-    print('\n'.join({'day1': day1, 'day1b': day1b, 'v3': v3}[args.stage](args.resamples)))
+    print('\n'.join({'day1': day1, 'day1b': day1b, 'v3': v3, 'subgraph': subgraph}[args.stage](args.resamples)))
 
 
 if __name__ == '__main__':
