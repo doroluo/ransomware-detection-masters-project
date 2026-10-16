@@ -375,3 +375,43 @@ all-arch test pool (R x86 2,421, R x64 741, G x86 968, G x64 1,522), so the x86 
 | arch-balanced | validation | 0.868 / 0.868 / 0.969 / 0.976 | 0.848 / 0.847 / 0.967 / 0.968 |
 | majority floor | - | 0.559 / 0.359 / 0.500 / 0.559 | 0.500 / 0.333 / 0.500 / 0.500 |
 | x86-rule floor | - | 0.698 / 0.690 / 0.688 / 0.678 | 0.500 / 0.500 / 0.500 / 0.500 |
+
+## Day-1b results (2026-10-15/16, seed 0 only; not the pre-registered test)
+
+307 GPU minutes, 65 runs (two OOMs on a shared GPU, rerun). Every arm is the typed GNN (R7) with one change,
+on kfold x86, AUC-selected checkpoint at the validation threshold. The paired difference against R7 comes from
+1,000 cluster resamples. Full tables: `RUNS/gates_day1b.md`, `RESULTS.md`.
+
+| arm | AUC | PR-AUC | macro-F1 | dAUC vs R7 [95% CI] |
+|---|---|---|---|---|
+| R7 typed GNN | 0.964 | 0.974 | 0.905 | |
+| block masking 15% | 0.986 | 0.990 | 0.935 | +0.022 [+0.005, +0.054] |
+| edge flip 20% | 0.986 | 0.990 | 0.888 | +0.022 [+0.003, +0.050] |
+| DropEdge 20% | 0.982 | 0.987 | 0.908 | +0.018 [+0.004, +0.038] |
+| backward only | 0.980 | 0.984 | 0.887 | +0.016 [+0.000, +0.040] |
+| 8 layers | 0.978 | 0.982 | 0.913 | +0.014 [-0.004, +0.041] |
+| function dropping 15% | 0.972 | 0.974 | 0.921 | +0.007 [-0.018, +0.041] |
+| token masking 50% | 0.963 | 0.979 | 0.915 | -0.001 [-0.014, +0.009] |
+| token masking 15% | 0.957 | 0.977 | 0.910 | -0.007 [-0.048, +0.016] |
+| library dropping 40% (+5% others) | 0.944 | 0.972 | 0.921 | -0.020 [-0.107, +0.039] |
+| forward only | 0.930 | 0.964 | 0.908 | -0.034 [-0.105, +0.005] |
+| undirected | 0.928 | 0.963 | 0.878 | -0.037 [-0.129, +0.013] |
+| R0 TF-IDF LR (reference) | 0.982 | 0.990 | 0.935 | |
+
+Learning curve (R7 / TF-IDF AUC): 25% of training families 0.945 / 0.970; 50% 0.956 / 0.978; 100% 0.964 / 0.982.
+
+Reading:
+1. **Coarse corruption helps, fine-grained masking does not.** Block masking, edge flipping and DropEdge raise
+   AUC by about +0.02, with CIs above zero. Token masking at 15% or 50% does nothing. The edge-corrupting arms
+   help as much as block masking, so this reads as regularisation of an overfitting model, not as evidence that
+   real wiring matters.
+2. **Block masking ties TF-IDF.** On AUC / PR-AUC / macro-F1 the block-masked GNN scores 0.986 / 0.990 / 0.935
+   against TF-IDF's 0.982 / 0.990 / 0.935. Paired, dAUC is +0.004 [-0.004, +0.015]. This is the first GNN arm at
+   TF-IDF level.
+3. **Direction arms are inconsistent.** Backward-only is 0.980, forward-only 0.930 and undirected 0.928, and
+   macro-F1 often moves opposite to AUC. This is noise from checkpoint selection, not a directional effect.
+4. **Literature replications:** the predicted harm from DropEdge (AIA) did not appear here. Depth 8 did not
+   oversmooth. Heavy token masking matched the opcode-augmentation result (no gain).
+5. **Next.** Block masking on the no-edge (R2) and shuffled (R4) arms decides whether edges matter once the
+   model is regularised. After that, seeds 1-2 for R2/R4/R7 and the block-masking trio, then the v3
+   all-architecture runs with `--arch-balance`.
