@@ -10,7 +10,7 @@ The project uses the Hugging Face Transformers (microsoft/codebert-base) to extr
 pip install torch torch-geometric transformers
 ```
 
-### Run Autotokenizer
+### Run Autotokenizer & Graph Processing
 Make sure the CFG Files are in your project directory. They should be formatted as:
 ```
 root_dir / cfg / {goodware, ransomware} / {train, test} / *.jsonl
@@ -19,4 +19,9 @@ root_dir / cfg / {goodware, ransomware} / {train, test} / *.jsonl
 Then run:
 ```bash
 python construct_blocks.py
+```
+
+### Inspect a Processed Graph
+```bash
+python inspect_graph.py
 ```
