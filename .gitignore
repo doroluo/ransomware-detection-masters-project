@@ -13,3 +13,5 @@
 !CT_GAT/graph_transformer/
 !CT_GAT/graph_transformer/*.py
 !CT_GAT/graph_transformer/*.md
+!CT_GAT/graph_transformer/*.sh
+!.gitattributes

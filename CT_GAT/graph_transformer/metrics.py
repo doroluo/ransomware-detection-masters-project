@@ -1,6 +1,7 @@
 """Binary-classification metrics shared by train.py, baselines.py and report.py (ransomware = 1 is positive)."""
 import numpy as np
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import (accuracy_score, average_precision_score, f1_score, precision_score, recall_score,
+                             roc_auc_score)
 
 ARCHES = ('x86', 'x64')
 
@@ -15,6 +16,7 @@ def scores(y, prob, pred, arch):
         'f1': f1_score(y, pred, zero_division=0),
         'macro_f1': f1_score(y, pred, average='macro', zero_division=0),
         'auc': roc_auc_score(y, prob) if len(set(y.tolist())) == 2 else float('nan'),
+        'pr_auc': average_precision_score(y, prob) if len(set(y.tolist())) == 2 else float('nan'),
     }
     for a in ARCHES:
         for cls, tag in ((1, 'R'), (0, 'G')):
