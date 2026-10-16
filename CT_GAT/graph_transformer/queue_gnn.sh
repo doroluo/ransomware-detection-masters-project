@@ -5,8 +5,9 @@
 # run. --dry prints what would run (DRY_RUN_MIN=<min> charges that many minutes per run to try the guard).
 # GT_PY / GT_RUNS override the interpreter / runs directory (testing).
 cd "$(dirname "$0")"
-PY=${GT_PY:-/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe}
-R=${GT_RUNS:-/c/Users/chaoa/Downloads/graph_transformer_runs}
+PY=/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe
+R=/c/Users/chaoa/Downloads/graph_transformer_runs
+PY=${GT_PY:-$PY}; R=${GT_RUNS:-$R}
 STAGE=; DRY=0
 while [ $# -gt 0 ]; do
   case $1 in --stage) STAGE=$2; shift;; --dry) DRY=1;; *) STAGE=;; esac; shift
