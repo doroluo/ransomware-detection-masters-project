@@ -56,10 +56,13 @@ class GatedReadout(nn.Module):
 
 class DirGINELayer(nn.Module):
     """h + MLP(LN((1 + eps) h + W [m_in ; m_out])) with m_in = sum over in-edges of relu(h_src + E_in[type]) and
-    m_out = sum over out-edges of relu(h_dst + E_out[type]); messages are accumulated in float32."""
+    m_out = sum over out-edges of relu(h_dst + E_out[type]); messages are accumulated in float32.
+    `direction` 'forward' zeroes the m_out half (messages from predecessors only), 'backward' the m_in half, and
+    'undirected' feeds m_in + m_out, both computed with the e_in bank, into both halves."""
 
-    def __init__(self, d, n_types, dropout):
+    def __init__(self, d, n_types, dropout, direction='both'):
         super().__init__()
+        self.direction = direction
         self.e_in, self.e_out = nn.Embedding(n_types, d), nn.Embedding(n_types, d)
         self.eps = nn.Parameter(torch.zeros(1))
         self.mix = nn.Linear(2 * d, d)
@@ -69,8 +72,16 @@ class DirGINELayer(nn.Module):
 
     def forward(self, h, src, dst, etype):
         x = h.float()
-        m_in = segment_sum(F.relu(x[src] + self.e_in(etype).float()), dst, len(h))
-        m_out = segment_sum(F.relu(x[dst] + self.e_out(etype).float()), src, len(h))
+        n = len(h)
+        if self.direction == 'undirected':
+            e_in = self.e_in(etype).float()
+            m_in = m_out = (segment_sum(F.relu(x[src] + e_in), dst, n) + segment_sum(F.relu(x[dst] + e_in), src, n))
+        else:
+            m_in = m_out = x.new_zeros(x.shape)
+            if self.direction != 'backward':
+                m_in = segment_sum(F.relu(x[src] + self.e_in(etype).float()), dst, n)
+            if self.direction != 'forward':
+                m_out = segment_sum(F.relu(x[dst] + self.e_out(etype).float()), src, n)
         z = self.norm(((1 + self.eps) * x + self.mix(torch.cat([m_in, m_out], 1).to(h.dtype))).to(h.dtype))
         return h + self.drop(self.mlp(z))
 
@@ -93,7 +104,8 @@ class HierGNN(nn.Module):
         self.cfg = cfg
         self.tokens = nn.EmbeddingBag(n_tokens, d, mode='sum')
         self.blk_feat = nn.Linear(6, d)
-        self.fn_layers = nn.ModuleList(DirGINELayer(d, N_EDGE_TYPES, cfg.dropout) for _ in range(cfg.gnn_fn_layers))
+        self.fn_layers = nn.ModuleList(DirGINELayer(d, N_EDGE_TYPES, cfg.dropout, cfg.direction)
+                                      for _ in range(cfg.gnn_fn_layers))
         self.fn_readout, self.seg_feat = readout(d), nn.Linear(2, d)
         self.bin_layers = nn.ModuleList(DirGINELayer(d, 1, cfg.dropout) for _ in range(cfg.gnn_bin_layers))
         self.bin_readout = readout(d)

@@ -22,6 +22,7 @@ def test_defaults():
     assert (cfg.mask_tokens, cfg.drop_functions, cfg.drop_library, cfg.mask_blocks) == (0.0,) * 4
     assert (cfg.aux_recon, cfg.aux_edge, cfg.aux_weight) == (0.0, 0.0, 0.3)
     assert (cfg.gnn_fn_layers, cfg.gnn_bin_layers, cfg.batch_blocks, cfg.fixed_epochs) == (3, 2, 300000, 0)
+    assert (cfg.direction, cfg.drop_edges, cfg.flip_edges, cfg.train_fraction) == ('both', 0.0, 0.0, 1.0)
 
 
 def test_block_encoder_and_segment_cap():
@@ -41,6 +42,9 @@ def test_block_encoder_and_segment_cap():
     dict(model='gnn', untyped=True, control='permute_types'), dict(model='gnn', untyped=True, control='no_edges'),
     dict(model='gnn', mask_tokens=1.0), dict(model='gnn', drop_library=-0.1), dict(model='gnn', aux_edge=1.5),
     dict(model='cnn'),
+    dict(direction='forward'), dict(drop_edges=0.1), dict(flip_edges=0.1),
+    dict(model='gnn', direction='sideways'), dict(model='gnn', drop_edges=1.0), dict(model='gnn', flip_edges=-0.1),
+    dict(train_fraction=0.0), dict(train_fraction=1.5), dict(model='gnn', train_fraction=0.0),
 ])
 def test_rejected(kw):
     with pytest.raises(ValueError):
@@ -71,6 +75,38 @@ def test_variant_suffix_order():
         assert gnn(control=control).variant == f'gnn-{suffix}'
     assert RunConfig().variant == 'graph'
     assert RunConfig(no_graph=True).variant == 'nograph'
+
+
+def test_new_fields_accepted():
+    gnn(direction='undirected', drop_edges=0.2, flip_edges=0.2, train_fraction=0.25)
+    RunConfig(train_fraction=0.5)
+    RunConfig(train_fraction=1.0)
+
+
+def test_variant_new_suffixes():
+    assert gnn(direction='forward').variant == 'gnn-fwd'
+    assert gnn(direction='backward').variant == 'gnn-bwd'
+    assert gnn(direction='undirected').variant == 'gnn-undir'
+    assert gnn(drop_edges=0.2).variant == 'gnn-dedge20' and gnn(flip_edges=0.2).variant == 'gnn-flip20'
+    assert gnn(gnn_fn_layers=8).variant == 'gnn-L8' and gnn(gnn_bin_layers=4).variant == 'gnn-B4'
+    assert gnn(gnn_fn_layers=3, gnn_bin_layers=2).variant == 'gnn'
+    assert gnn(train_fraction=0.5).variant == 'gnn-tf50'
+    assert RunConfig(train_fraction=0.5).variant == 'graph-tf50'
+    assert RunConfig(train_fraction=0.25, no_graph=True).variant == 'nograph-tf25'
+    full = gnn(control='shuffle', untyped=True, no_call_mp=True, stack_tfidf=True, mask_tokens=0.15,
+               drop_functions=0.05, drop_library=0.4, mask_blocks=0.15, aux_recon=0.3, direction='forward',
+               drop_edges=0.2, flip_edges=0.1, gnn_fn_layers=8, gnn_bin_layers=1, train_fraction=0.25,
+               encoder='mean', readout='gated')
+    assert full.variant == ('gnn-shuffle-untyped-nocall-stack-mtok15-dfn5-dlib40-mblk15-aux-fwd-dedge20-flip10-L8-B1'
+                            '-tf25-enc-mean-gated')
+
+
+def test_new_names():
+    assert gnn(direction='forward').group == 'bundle_x86_gnn-fwd'
+    assert gnn(gnn_fn_layers=8).group == 'bundle_x86_gnn-L8'
+    assert gnn(train_fraction=0.25, protocol='kfold', fold=1).name == 'kfold1_x86_gnn-tf25_s0'
+    assert RunConfig(train_fraction=0.5, protocol='kfold', fold=0, seed=1).name == 'kfold0_x86_graph-tf50_s1'
+    assert gnn(drop_edges=0.2, tag='t').name == 'bundle_x86_gnn-dedge20_s0_t'
 
 
 def test_names_and_groups():
@@ -123,6 +159,16 @@ def test_cli_all_fields():
     assert (cfg.gnn_fn_layers, cfg.batch_blocks, cfg.fixed_epochs) == (5, 1000, 7)
 
 
+def test_cli_new_flags():
+    cfg, _ = parse_config(['--model', 'gnn', '--direction', 'backward', '--drop-edges', '0.2', '--flip-edges', '0.1',
+                           '--train-fraction', '0.5', '--protocol', 'kfold', '--fold', '3'])
+    assert cfg == gnn(direction='backward', drop_edges=0.2, flip_edges=0.1, train_fraction=0.5, protocol='kfold',
+                      fold=3)
+    assert cfg.name == 'kfold3_x86_gnn-bwd-dedge20-flip10-tf50_s0'
+    assert parse_config(['--train-fraction', '0.25'])[0] == RunConfig(train_fraction=0.25)
+    assert parse_config([])[0].direction == 'both'
+
+
 def test_cli_defaults_and_old_flags():
     cfg, out = parse_config([])
     assert cfg == RunConfig() and out is None
@@ -133,7 +179,9 @@ def test_cli_defaults_and_old_flags():
 
 
 @pytest.mark.parametrize('argv', [['--model', 'cnn'], ['--encoder', 'bert'], ['--control', 'rotate'],
-                                  ['--model', 'gnn', '--no-graph'], ['--mask-tokens', '0.1']])
+                                  ['--model', 'gnn', '--no-graph'], ['--mask-tokens', '0.1'],
+                                  ['--direction', 'sideways'], ['--direction', 'forward'], ['--drop-edges', '0.1'],
+                                  ['--model', 'gnn', '--flip-edges', '1'], ['--train-fraction', '0']])
 def test_cli_rejects(argv):
     with pytest.raises(SystemExit):
         parse_config(argv)
@@ -142,5 +190,6 @@ def test_cli_rejects(argv):
 def test_help_exits_zero():
     r = subprocess.run([sys.executable, 'train.py', '--help'], cwd=HERE, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    for flag in ('--model', '--encoder', '--control', '--untyped', '--mask-tokens', '--tag'):
+    for flag in ('--model', '--encoder', '--control', '--untyped', '--mask-tokens', '--tag', '--direction',
+                 '--drop-edges', '--flip-edges', '--train-fraction'):
         assert flag in r.stdout

@@ -1,5 +1,6 @@
 """One run: python train.py --protocol bundle --arch x86 --seed 0 [--no-graph] | --protocol kfold --fold 2
-[--model gnn --control no_edges --encoder mean --untyped --fixed-epochs N]
+[--model gnn --control no_edges --encoder mean --untyped --fixed-epochs N --direction forward --drop-edges 0.2
+--flip-edges 0.2] [--train-fraction 0.5]
 
 Writes config.json, manifest.json, vocab.json (sizes), history.csv, val_probs.csv, best.pt (best validation macro-F1
 at cfg.threshold), best_auc.pt (best validation AUC), predictions.csv (F1 checkpoint, pred at cfg.threshold),
@@ -17,7 +18,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from config import RUNS, RunConfig
+from config import DIRECTIONS, RUNS, RunConfig
 from data import TokenVocab, load_index, loader, make_manifest
 from metrics import family_recall, floors, scores
 from model import GraphTransformer
@@ -36,6 +37,7 @@ def parse_config(argv=None):
     ap.add_argument('--encoder', choices=['mean', 'tfidf'], default=None)
     ap.add_argument('--readout', choices=['fixed', 'gated'], default='fixed')
     ap.add_argument('--control', choices=['', 'no_edges', 'chain', 'shuffle', 'permute_types'], default='')
+    ap.add_argument('--direction', choices=DIRECTIONS, default='both')
     ap.add_argument('--out', help='run directory name override (default: derived from the config)')
     done = {a.dest for a in ap._actions}
     for f in fields(RunConfig):

@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 
 from config import RunConfig
-from model_gnn import DirGINELayer, FixedReadout, GatedReadout, HierGNN, segment_softmax
+from model_gnn import DirGINELayer, FixedReadout, GatedReadout, HierGNN, segment_softmax, segment_sum
 
 DEV = 'cuda' if torch.cuda.is_available() else 'cpu'
 N_TOKENS = 40
@@ -402,3 +402,127 @@ def test_bf16_forward_backward(kw):
     assert sum(g.abs().sum().item() for g in grads.values()) > 0
     if not kw:
         assert len(grads) == len(list(model.parameters()))
+
+
+# step 5b: message direction
+
+DIRECTIONS = ('both', 'forward', 'backward', 'undirected')
+
+
+class LegacyLayer(DirGINELayer):
+    """The layer as it was before `direction` existed."""
+
+    def forward(self, h, src, dst, etype):
+        x = h.float()
+        m_in = segment_sum(F.relu(x[src] + self.e_in(etype).float()), dst, len(h))
+        m_out = segment_sum(F.relu(x[dst] + self.e_out(etype).float()), src, len(h))
+        z = self.norm(((1 + self.eps) * x + self.mix(torch.cat([m_in, m_out], 1).to(h.dtype))).to(h.dtype))
+        return h + self.drop(self.mlp(z))
+
+
+def test_direction_param_counts_equal():
+    counts = {d: n_params(model_for(direction=d)) for d in DIRECTIONS}
+    assert len(set(counts.values())) == 1, counts
+
+
+def test_direction_both_bit_identical_to_legacy():
+    """On the CPU (CUDA index_add_ is not deterministic): same weights, same batch, torch.equal logits."""
+    bins = make_bins()
+    model = model_for(direction='both').cpu()
+    legacy = model_for().cpu()
+    legacy.fn_layers = torch.nn.ModuleList(LegacyLayer(D, 12, 0.0) for _ in legacy.fn_layers)
+    legacy.bin_layers = torch.nn.ModuleList(LegacyLayer(D, 1, 0.0) for _ in legacy.bin_layers)
+    legacy.load_state_dict(model.state_dict())
+    legacy.eval()
+    batch = collate(bins, device='cpu')
+    with torch.no_grad():
+        want = legacy(batch)
+        assert torch.equal(model(batch), want)
+        assert not torch.equal(model_for(direction='forward').cpu()(batch), want)
+
+
+def test_direction_layer_matches_reference():
+    torch.manual_seed(0)
+    n = 6
+    h = torch.randn(n, D)
+    src, dst, ty = torch.tensor([0, 1, 1, 4, 2]), torch.tensor([1, 2, 1, 0, 5]), torch.tensor([0, 3, 11, 5, 3])
+    for direction in DIRECTIONS:
+        layer = DirGINELayer(D, 12, 0.0, direction).eval()
+        with torch.no_grad():
+            m_in, m_out, m_sym = torch.zeros(n, D), torch.zeros(n, D), torch.zeros(n, D)
+            for s, d, t in zip(src, dst, ty):
+                m_in[d] += F.relu(h[s] + layer.e_in.weight[t])
+                m_out[s] += F.relu(h[d] + layer.e_out.weight[t])
+                m_sym[d] += F.relu(h[s] + layer.e_in.weight[t])
+                m_sym[s] += F.relu(h[d] + layer.e_in.weight[t])
+            if direction == 'forward':
+                m_out = torch.zeros(n, D)
+            elif direction == 'backward':
+                m_in = torch.zeros(n, D)
+            elif direction == 'undirected':
+                m_in = m_out = m_sym
+            z = layer.norm((1 + layer.eps) * h + layer.mix(torch.cat([m_in, m_out], 1)))
+            assert torch.allclose(layer(h, src, dst, ty), h + layer.mlp(z), atol=1e-5), direction
+
+
+def fn_states(model, h, edges):
+    src, dst = (torch.tensor(v, device=DEV) for v in zip(*edges))
+    ty = torch.arange(len(edges), device=DEV) % 12
+    with torch.no_grad():
+        for layer in model.fn_layers:
+            h = layer(h, src, dst, ty)
+    return h.cpu()
+
+
+def changed_blocks(a, b):
+    return set(torch.nonzero((a - b).abs().amax(1) > 1e-6).flatten().tolist())
+
+
+def test_direction_locality():
+    """Blocks 0-4 form a chain, 1 -> 5 -> 6, and block 7 is isolated: sinks are 4, 6 and 7, block 0 is source-only.
+    forward: a block reads only its predecessors, so adding 0 -> 6 (into the sink 6) changes block 6 and nothing
+    else, while adding 3 -> 6 under 'both' also changes block 3 (it reads its new successor). backward is the
+    mirror image: adding 0 -> 3 from the source-only block 0 changes only block 0. undirected: reversing every
+    edge leaves all states unchanged."""
+    edges = [(0, 1), (1, 2), (2, 3), (3, 4), (1, 5), (5, 6)]
+    torch.manual_seed(1)
+    h = torch.randn(8, D, device=DEV)
+    states = {}
+    for direction in DIRECTIONS:
+        model = model_for(direction=direction)
+        states[direction] = (model, fn_states(model, h, edges))
+    into_sink, from_source = edges + [(0, 6)], edges + [(0, 3)]
+    fwd, bwd = states['forward'][0], states['backward'][0]
+    assert changed_blocks(states['forward'][1], fn_states(fwd, h, into_sink)) == {6}
+    assert changed_blocks(states['backward'][1], fn_states(bwd, h, from_source)) == {0}
+    assert changed_blocks(states['forward'][1], fn_states(fwd, h, from_source)) == {3, 4}
+    assert changed_blocks(states['backward'][1], fn_states(bwd, h, into_sink)) == {0}
+    assert changed_blocks(states['both'][1], fn_states(states['both'][0], h, into_sink)) >= {0, 6}
+    und = states['undirected'][0]
+    assert not changed_blocks(states['undirected'][1], fn_states(und, h, [(d, s) for s, d in edges]))
+    assert changed_blocks(states['forward'][1], fn_states(fwd, h, [(d, s) for s, d in edges]))
+
+
+def test_direction_logits_use_only_the_read_banks():
+    """Logit level: perturbing e_out leaves the forward and undirected logits unchanged (m_out is zero or built from
+    e_in), perturbing e_in leaves backward unchanged, and 'both' moves with either."""
+    bins = make_bins()
+    for direction, moves_with in (('both', {'e_in', 'e_out'}), ('forward', {'e_in'}), ('backward', {'e_out'}),
+                                  ('undirected', {'e_in'})):
+        model = model_for(direction=direction)
+        base = logits(model, bins)
+        for bank in ('e_in', 'e_out'):
+            with torch.no_grad():
+                for layer in model.fn_layers:
+                    getattr(layer, bank).weight.add_(torch.randn_like(getattr(layer, bank).weight))
+            assert differs(base, logits(model, bins)) == (bank in moves_with), (direction, bank)
+            with torch.no_grad():
+                model.load_state_dict(model_for(direction=direction).state_dict())
+
+
+def test_direction_leaves_call_graph_layers_alone():
+    model = model_for(direction='forward')
+    assert all(layer.direction == 'forward' for layer in model.fn_layers)
+    assert all(layer.direction == 'both' for layer in model.bin_layers)
+    bins = make_bins()
+    assert differs(logits(model, bins), logits(model_for(direction='forward', no_call_mp=True), bins))

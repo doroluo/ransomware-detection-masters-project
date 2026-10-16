@@ -60,6 +60,26 @@ def carve_validation(rows, fraction, seed):
     return [r for r in rows if r['sample_id'] not in held], [r for r in rows if r['sample_id'] in held], sorted(val_families)
 
 
+def subsample_train(train, fraction, seed):
+    """Whole groups (ransomware family, goodware identity group) per class: in a permutation from
+    default_rng([seed, 1729]), the shortest prefix whose binaries reach `fraction` of the class. Nested in `fraction`."""
+    rng = np.random.default_rng([seed, 1729])
+    kept = set()
+    for label, key in ((1, 'family'), (0, 'identity_group')):
+        members = {}
+        for r in train:
+            if r['label'] == label:
+                members.setdefault(r[key], []).append(r['sample_id'])
+        groups = sorted(members)
+        target, taken = fraction * sum(len(v) for v in members.values()), 0
+        for i in rng.permutation(len(groups)):
+            if taken >= target:
+                break
+            kept.update(members[groups[i]])
+            taken += len(members[groups[i]])
+    return [r for r in train if r['sample_id'] in kept]
+
+
 def make_manifest(cfg: RunConfig, index):
     """Rows without a fold under the run's protocol are left out of train, val and test alike. kfold_v3 rows are
     copies whose `fold` is their v3 fold, so everything downstream reports the fold the run used."""
@@ -74,6 +94,8 @@ def make_manifest(cfg: RunConfig, index):
         rows = [r for r in rows if r['fold'] is not None]
         pool, test = [r for r in rows if r['fold'] != cfg.fold], [r for r in rows if r['fold'] == cfg.fold]
     train, val, val_families = carve_validation(pool, cfg.val_fraction, cfg.seed)
+    if cfg.train_fraction < 1:
+        train = subsample_train(train, cfg.train_fraction, cfg.seed)
     return Manifest(train, val, test, val_families)
 
 
@@ -222,7 +244,8 @@ def permute_within(seg, values, rng):
 
 
 def encode_binary_gnn(z, vocab, cfg, rng, sample_id):
-    """Batch contract: one segment per kept function, edge types, tf-idf weights, controls and masking."""
+    """Batch contract: one segment per kept function, edge types, tf-idf weights, controls, masking and, in training,
+CFG edge drop and flip (after the control)."""
     if 'edge_kind' not in z:
         raise KeyError('sample lacks edge_kind/edge_back; point config.CACHE at the v2 cache')
     fn_ptr = z['fn_blk_ptr'].astype(np.int64)
@@ -275,6 +298,13 @@ def encode_binary_gnn(z, vocab, cfg, rng, sample_id):
         elif cfg.control == 'shuffle':
             edge_dst = permute_within(edge_seg, edge_dst, crng)
             edge_type = np.zeros(len(edge_seg), dtype=np.int64)
+
+    if rng is not None and cfg.drop_edges > 0:
+        alive = rng.random(len(edge_seg)) >= cfg.drop_edges
+        edge_seg, edge_src, edge_dst, edge_type = edge_seg[alive], edge_src[alive], edge_dst[alive], edge_type[alive]
+    if rng is not None and cfg.flip_edges > 0:
+        flip = rng.random(len(edge_seg)) < cfg.flip_edges
+        edge_src, edge_dst = np.where(flip, edge_dst, edge_src), np.where(flip, edge_src, edge_dst)
 
     fn_local = np.full(len(z['fn_flags']), -1, dtype=np.int64)
     fn_local[fn] = np.arange(n_seg)
