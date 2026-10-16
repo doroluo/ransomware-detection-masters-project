@@ -110,7 +110,7 @@ $PY -m pytest tests -q
 
 ## Where to read more
 
-- `docs/PLAN_GNN.md`: decisions, gates and results.
+- `docs/PLAN_GNN.md` and `docs/LITERATURE_REVIEW.md` (design rationale with sources)`: decisions, gates and results.
 - `docs/RESULTS.md`: the results table that `report.py` generates.
 - `experiments/side_arrays/SIDE_EXPERIMENTS.md`: the side-array and WL experiments.
 
