@@ -214,3 +214,35 @@ Steps 1, 2 and 3 can run concurrently. Steps 5 and 6 run concurrently after step
 - **Curves:** deletion curves show sensitivity, not necessity (the ROAR caveat).
 - **Low-FPR metrics:** TPR at 0.1% FPR cannot be estimated with 115 x86 goodware test binaries, so it is not
   claimed.
+
+## Day-1 results (2026-10-15, seed 0 only; not the pre-registered test)
+
+144 GPU minutes, 28 runs, all rc=0. Pooled 5-fold family-holdout, x86 (1,810 binaries, 712 clusters).
+Full tables: `RESULTS.md`, `RUNS/gates_day1.md`.
+
+| arm | AUC-selected, validation threshold: AUC / PR-AUC / macro-F1 | F1-selected, 0.5: AUC / macro-F1 |
+|---|---|---|
+| R0 TF-IDF LR | 0.982 / 0.990 / 0.935 | 0.982 / 0.939 |
+| R2 GNN no edges (tfidf encoder) | 0.976 / 0.981 / 0.924 | 0.926 / 0.896 |
+| R2 GNN no edges (mean encoder) | 0.975 / 0.984 / 0.917 | 0.961 / 0.910 |
+| R4 GNN shuffled edges | 0.975 / 0.984 / 0.929 | 0.940 / 0.901 |
+| R5 GNN real edges, untyped | 0.945 / 0.969 / 0.898 | 0.959 / 0.880 |
+| R7 GNN real edges, typed | 0.964 / 0.974 / 0.905 | 0.972 / 0.880 |
+| graph transformer (3 seeds) | n/a (no AUC checkpoint) | 0.946 ± 0.007 / 0.906 ± 0.021 |
+| no-graph transformer (3 seeds) | n/a | 0.967 ± 0.010 / 0.916 ± 0.016 |
+
+1. **Gate A passes on the AUC-selected rule.** The no-edge GNN is within 0.006 AUC and 0.011 macro-F1 of
+   TF-IDF. On the F1-selected rule it fails, because F1 checkpoints land on very early epochs (best epoch
+   1-4 on some folds).
+2. **No structure gain at seed 0.** Typed real edges minus no edges is ΔAUC -0.012 [-0.034, +0.002];
+   typed minus shuffled is -0.011 [-0.044, +0.025]. This is the "structure not exploited" outcome, pending
+   seeds 1-2.
+3. **Edge types beat untyped edges:** ΔAUC +0.013 [+0.003, +0.026] under F1 selection, and +0.019
+   [-0.033, +0.106] under AUC selection. Types carry some signal, but not enough to beat dropping the edges.
+4. **The checkpoint rule reorders the arms,** so one seed decides nothing. Day 2 starts with seeds 1-2 of
+   R2, R4, R5 and R7.
+
+Day-2 data change, agreed with the user: the Oct-8 collection zips `Mendeley_Ransomware` and
+`Mendeley_Goodware` are byte-identical to Mendeley_GNN_v1 (checked on all 2,670 sha256s, the metadata and
+the CFG file hashes). `Ransomware_Balanced` (2,326) and `Balanced_Goodware` (1,527) are new and become the
+all-architecture evaluation.
