@@ -16,13 +16,14 @@ flowchart TD
     S1["1 IDA export"] --> S2["2 Build CFG cache"]
     S2 --> S3["3 Tokenizer"]
     S3 --> S4["4 Select subgraph<br/>whole functions, 500k cap<br/>(policies cap, lcc)"]
-    S4 --> S5["5 Block-level counting<br/>TF-IDF or equal weight"]
+    S4 --> S5["5 Block-level counting<br/>TF-IDF or equal weight,<br/>or precomputed block vectors"]
     S5 --> S6["6 GNN over block CFG<br/>3 layers, 12 edge types"]
     S6 --> S7["7 Pool blocks to functions"]
     S7 --> S8["8 GNN over call graph<br/>2 layers"]
     S8 --> S9["9 Pool functions to binary"]
     S9 --> S11["11 Final classifier"]
     S10["10 Unused import features<br/>(not yet in the model)"] -.-> S11
+    S5V["Precomputed block vectors<br/>frozen per-block encoder<br/>(transformer_paths)"] -. "--block-input vec" .-> S5
     S2 -. "edge info: typed block edges" .-> S6
     S2 -. "edge info: call edges" .-> S8
     classDef notyet stroke-dasharray: 6 4,fill:#f4f4f4,color:#555
@@ -30,7 +31,8 @@ flowchart TD
 ```
 
 The dashed box is not in the model yet: step 10 does not exist. Step 4 keeps the whole binary by default; the other policies
-are options.
+are options. Step 5 can take precomputed block vectors from a frozen per-block encoder instead of the token counts
+(`--block-input vec`, see Transformer paths below).
 
 ## Steps and code
 
@@ -40,13 +42,13 @@ are options.
 | 2 Build CFG cache | `pipeline/s02_build_cfg_cache` | `build_cache.py`, `check_cache.py` | exports → `samples/<id>.npz`, `index.csv`, `vocab.json` | `GT_CACHE` (env), `protocol` picks the cache |
 | 3 Tokenizer | `pipeline/s03_tokenizer` | `TokenVocab`, `token_table`, `ranges` | npz arrays → `tokens`, `tok_offsets` | `min_df` |
 | 4 Select subgraph | `pipeline/s04_select_subgraph` | `select_subgraph`, `cap_functions`, `MAX_BINARY_BLOCKS`, `chain_reduction`; `keep_functions` in `batching.py` | functions of a binary → kept functions, `seg_len`, `seg_feat`, `blk_seg`, `blk_pos` | `subgraph` (`cap`, `lcc`), `budget`, `drop_functions`, `drop_library`, `batch_blocks` |
-| 5 Block-level counting | `pipeline/s05_block_counting` | `token_weights`, `BlockEncoder` | `tokens`, `tok_weights`, `blk_feat` → block vectors `[B, d]` | `encoder` (`tfidf`, `mean`, `raw`, `presence`, `rawlog`), `mask_blocks`, `mask_tokens`, `d_model` |
+| 5 Block-level counting | `pipeline/s05_block_counting` | `token_weights`, `BlockEncoder`, `BlockVecEncoder`, `BlockVecs`, `BlockVecSource` | `tokens`, `tok_weights`, `blk_feat` → block vectors `[B, d]`; with `block_input='vec'`: `blk_vec`, `blk_feat` → block vectors | `encoder` (`tfidf`, `mean`, `raw`, `presence`, `rawlog`), `mask_blocks`, `mask_tokens`, `d_model`, `block_input` (`tokens`, `vec`), `block_vec` |
 | 6 GNN over block CFG | `pipeline/s06_gnn_block_cfg` | `block_edges`, `control_edges`, `drop_and_flip_edges`, `DirGINELayer` | block vectors, `edge_seg/src/dst/type` → block vectors | `gnn_fn_layers`, `direction`, `control`, `untyped`, `drop_edges`, `flip_edges` |
 | 7 Pool blocks to functions | `pipeline/s07_pool_blocks_to_functions` | `FixedReadout`, `GatedReadout` | block vectors, `blk_seg` → function vectors `[S, d]` | `readout` (`fixed`, `gated`; `gated` is attention pooling) |
 | 8 GNN over call graph | `pipeline/s08_gnn_call_graph` | `call_pairs`, `call_layers`, `run_call_layers` | function vectors, `call_src/dst` → function vectors | `gnn_bin_layers`, `no_call_mp` |
 | 9 Pool functions to binary | `pipeline/s09_pool_functions_to_binary` | the readouts of step 7 | function vectors, `seg_bin` → binary vectors `[N, d]` | `readout` |
 | 10 Unused import features | `pipeline/s10_unused_import_features` | none (README only) | not built | none |
-| 11 Final classifier | `pipeline/s11_final_classifier` | `make_head`, `bin_feat` | binary vector, `bin_feat` → logit `[N]` | `dropout`, `stack_tfidf` (deferred), `select_on` (`overall`, `cell`: how `train.py` picks the AUC checkpoint and its threshold) |
+| 11 Final classifier | `pipeline/s11_final_classifier` | `make_head`, `bin_feat` | binary vector, `bin_feat` → logit `[N]` | `dropout`, `stack_tfidf` (out-of-fold TF-IDF logit from `baselines.py --stack-logits`), `select_on` (`overall`, `cell`: how `train.py` picks the AUC checkpoint and its threshold) |
 
 `pipeline/batching.py` builds one binary's arrays from steps 3 to 8 (`encode_binary_gnn`), collates them and loads
 batches. `pipeline/model.py` assembles `HierGNN` from the stages. Its attribute names are the checkpoint keys, so
@@ -61,6 +63,7 @@ do not rename them. The controls (`no_edges`, `untyped`, `no_call_mp`) are appli
 | `evaluation/` | `metrics.py`, `baselines.py`, `report.py`, `stats.py`, `gates.py`, `val_threshold.py` |
 | `experiments/side_arrays/` | side arrays and the WL baseline (see `SIDE_EXPERIMENTS.md`) |
 | `legacy/graph_transformer/` | the earlier graph transformer and its per-binary arrays |
+| `transformer_paths/` | block dataset export, reader, encoder contract, reference encoder, block-vector precompute (see Transformer paths) |
 | `scripts/` | `queue_gnn.sh`, `stop_queue.sh`, `smoke_gnn_memory.py` |
 | `docs/` | `PLAN.md`, `PLAN_GNN.md`, `RESULTS.md` |
 | `tests/` | all tests |
@@ -94,7 +97,7 @@ $PY report.py
 # paired test: no-edge control against typed edges, AUC-selected checkpoints
 $PY stats.py --a kfold_x86_gnn-noedges --b kfold_x86_gnn --selection auc
 
-# gate summary of a stage, and the resumable queue (--dry only prints the runs); stages day1, day1b, v3, subgraph
+# gate summary of a stage, and the resumable queue (--dry only prints the runs); stages day1, day1b, v3, subgraph, paths
 $PY gates.py --stage day1b
 bash queue_gnn.sh --stage day1b --dry
 
@@ -109,9 +112,42 @@ $PY train.py --protocol kfold --fold 0 --model gnn --control no_edges --mask-blo
 $PY smoke_gnn_memory.py --protocol kfold_v3 --mask-blocks 0.15
 $PY subgraph_chain.py
 
+# out-of-fold TF-IDF logits (RUNS/baselines/<dir>/stack_logits.csv), then a GNN that takes them as a head input
+$PY baselines.py --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --stack-logits
+$PY train.py --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --stack-tfidf
+
 # tests (GPU and caches needed for some)
 $PY -m pytest tests -q
 ```
+
+## Transformer paths
+
+Teammates train a per-block transformer encoder; `transformer_paths/` gives them the data and the contract, and plugs their
+frozen per-fold block vectors back into the GNN. Path 3 is the token-counting model above. Path 2 is the same typed GNN with
+the block bag of step 5 replaced by the encoder's vectors (`--block-input vec --block-vec <export>_<name>`), and path 1 is
+that network without edges (`--control no_edges --block-input vec ...`). All three paths see the same blocks and folds:
+`--val-seed 0` carves the validation set with seed 0 whatever `--seed` is, so an encoder's training families never sit in a
+GNN run's validation set.
+
+| file | content |
+|---|---|
+| `transformer_paths/block_export.py` | `python -m transformer_paths.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0`: every block of every binary as global-vocabulary token ids (at most 192 tokens a block), the typed CFG and call edges, and per fold the manifest, the vocabulary table and a key per block |
+| `transformer_paths/EXPORT_SCHEMA.md` | every file, dtype and shape of the export, the truncation rule, the fold vocabulary, and a 15-line PyTorch example over fold 0's training blocks |
+| `transformer_paths/reader.py` | `BlockStore`, `FoldView`, `collate_blocks` |
+| `transformer_paths/TRANSFORMER_CONTRACT.md` | the rules for the encoder: one checkpoint per fold, train on `train` and select on `val` only, a pure function of one block, `RUNS/encoders/<name>/fold{k}/best.pt` |
+| `transformer_paths/encoder_contract.py` | the `BlockEncoder` protocol, the checkpoint format, `load_encoder` and `check_checkpoint` (run it before handing a checkpoint over) |
+| `transformer_paths/reference_encoder.py` | a tiny deterministic encoder and a writer of its per-fold checkpoints, for tests and smoke runs |
+| `transformer_paths/precompute_blockvec.py` | `--encoder-name <name> --export <root> --folds 0 1 2 3 4`: one vector per distinct block key and fold, in `<cache>/side/blockvec/<export>_<name>/fold{k}/` |
+
+```bash
+$PY -m transformer_paths.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
+$PY -m transformer_paths.reference_encoder --export ours_cap0 --name ref
+$PY -m transformer_paths.precompute_blockvec --encoder-name ref --export ours_cap0 --folds 0
+$PY train.py --protocol kfold --fold 0 --arch x86 --seed 0 --val-seed 0 --model gnn --mask-blocks 0.15 \
+    --block-input vec --block-vec ours_cap0_ref --control no_edges   # path 1; without --control: path 2
+```
+
+The queue stage `paths` runs the stacking arm on five folds and the two reference-encoder arms on fold 0 as a plumbing check.
 
 ## Evaluation protocol
 
@@ -132,7 +168,7 @@ $PY -m pytest tests -q
 - Tokenizer variants: `pipeline/s03_tokenizer`.
 - Subgraph policies (which functions or blocks enter the model): `pipeline/s04_select_subgraph/subgraph.py`. A new policy is a
   branch of `select_subgraph` and a value of `RunConfig.subgraph`.
-- Precomputed block vectors: `pipeline/s05_block_counting`.
+- Precomputed block vectors: `pipeline/s05_block_counting` (`block_vecs.py` reads them; `transformer_paths/` writes them).
 - Import features: `pipeline/s10_unused_import_features`.
 
 A new `RunConfig` field also needs a change in `common/config.py`. Check that `RunConfig().name` and the names of

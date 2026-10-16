@@ -14,3 +14,16 @@ class BlockEncoder(nn.Module):
     def forward(self, batch, blk_feat):
         h = self.tokens(batch['tokens'], batch['tok_offsets'], per_sample_weights=batch['tok_weights'])
         return h + self.blk_feat(blk_feat)
+
+
+class BlockVecEncoder(nn.Module):
+    """Precomputed block vectors: Linear(d_vec -> d)(blk_vec) + Linear(blk_feat). HierGNN adopts `vec` and `blk_feat`
+    under those names. The vector comes from a frozen per-block encoder (`block_vecs.py`), so no token reaches the GNN."""
+
+    def __init__(self, d_vec, d):
+        super().__init__()
+        self.vec = nn.Linear(d_vec, d)
+        self.blk_feat = nn.Linear(6, d)
+
+    def forward(self, batch, blk_feat):
+        return self.vec(batch['blk_vec'].to(self.vec.weight.dtype)) + self.blk_feat(blk_feat)

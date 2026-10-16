@@ -1,5 +1,5 @@
 #!/bin/bash
-# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3|subgraph [--dry]
+# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths [--dry]
 # A run is skipped when RUNS/<name>/metrics.json exists. GPU_BUDGET_MIN (default 290 for day1, 600 for the other stages) caps the
 # cumulative GPU wall time: once it is spent, remaining GPU runs are logged as "skipped (budget)" and only the
 # CPU/report steps still run. If RUNS/STOP exists before a run (stop_queue.sh creates it), the run is logged as
@@ -14,7 +14,11 @@
 # all-arch arms (--arch-balance, names contain -ab; the main result) R2 no-edges, R7 typed, R4 shuffle, the same three
 # unweighted, then the matched arms. Stage subgraph (kfold x86, v2 cache, seed 0, 15% block masking) measures the chain
 # reduction (RUNS/subgraph_chain.json, CPU), then runs R7 typed with the cap and lcc subgraph policies at 20k and 5k blocks
-# and the no-edge arm with the raw, presence and rawlog block weightings.
+# and the no-edge arm with the raw, presence and rawlog block weightings. Stage paths (kfold x86, v2 cache, seed 0, 15% block
+# masking) writes the out-of-fold TF-IDF logits (CPU), runs R7 with --stack-tfidf on the five folds, then builds the reference
+# encoder's block vectors (the block export RUNS/export/ours_cap0, reference checkpoints RUNS/encoders/ref and the vectors of
+# fold 0, each skipped when it exists) and runs path 1 (no-edge GNN on block vectors) and path 2 (typed GNN on block vectors)
+# on fold 0 only, as a plumbing check. The real encoder arms are added when the teammates' checkpoints arrive.
 cd "$(dirname "$0")/.."
 PY=/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe
 R=/c/Users/chaoa/Downloads/graph_transformer_runs
@@ -23,7 +27,7 @@ STAGE=; DRY=0
 while [ $# -gt 0 ]; do
   case $1 in --stage) STAGE=$2; shift;; --dry) DRY=1;; *) STAGE=;; esac; shift
 done
-[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || [ "$STAGE" = subgraph ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3|subgraph [--dry]"; exit 2; }
+[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || [ "$STAGE" = subgraph ] || [ "$STAGE" = paths ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths [--dry]"; exit 2; }
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 [ $STAGE = v3 ] && export GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined
 if [ $STAGE = day1 ]; then GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-290}; else GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-600}; fi
@@ -81,7 +85,34 @@ chain_measure() {
   elif [ -f $R/subgraph_chain.json ]; then echo "skip subgraph_chain"
   else echo "start subgraph_chain $(date +%T)"; $PY subgraph_chain.py > $R/logs/subgraph_chain.log 2>&1; echo "finished subgraph_chain rc=$? $(date +%T)"; fi; }
 
-if [ $STAGE = v3 ]; then
+# baselines_stack: CPU out-of-fold TF-IDF logits for kfold x86 seed 0 (stack_logits.csv in the five baseline directories),
+# skipped when all five exist
+baselines_stack() {
+  STACK_ARGS="--protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --stack-logits"
+  if [ $DRY = 1 ]; then echo "cpu baselines $STACK_ARGS"
+  elif [ "$(ls $R/baselines/kfold[0-4]_x86_s0/stack_logits.csv 2>/dev/null | wc -l)" = 5 ]; then echo "skip stack logits"
+  else echo "start stack logits $(date +%T)"; $PY baselines.py $STACK_ARGS > $R/logs/stack_logits_kfold_x86_s0.log 2>&1; echo "finished stack logits rc=$? $(date +%T)"; fi; }
+
+# cpu_step <skip file> <log name> <command...>: a CPU step of the paths stage, skipped when its output file exists
+cpu_step() { f=$1; name=$2; shift; shift
+  if [ $DRY = 1 ]; then echo "cpu ${*:3}"
+  elif [ -f "$f" ]; then echo "skip $name"
+  else echo "start $name $(date +%T)"; "$@" > $R/logs/$name.log 2>&1; echo "finished $name rc=$? $(date +%T)"; fi; }
+
+# blockvec_ref: the block export, the reference encoder checkpoints and fold 0's block vectors, each skipped when it exists
+blockvec_ref() { C=${GT_CACHE:-C:/Users/chaoa/Downloads/graph_transformer_cache_v2}
+  cpu_step $R/export/ours_cap0/store/store.json block_export $PY -m transformer_paths.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
+  cpu_step $R/encoders/ref/fold4/best.pt reference_encoder $PY -m transformer_paths.reference_encoder --export ours_cap0 --name ref
+  cpu_step $C/side/blockvec/ours_cap0_ref/fold0/meta.json precompute_blockvec $PY -m transformer_paths.precompute_blockvec --encoder-name ref --export ours_cap0 --folds 0; }
+
+if [ $STAGE = paths ]; then
+baselines_stack                                                       # 1. CPU stack logits
+arm gnn-stack-mblk15 --model gnn --mask-blocks 0.15 --stack-tfidf     # 2. stack: R7 + out-of-fold TF-IDF logit
+blockvec_ref                                                          # 3. reference-encoder block vectors, fold 0
+V="--model gnn --mask-blocks 0.15 --val-seed 0 --block-input vec --block-vec ours_cap0_ref"
+run kfold0_x86_gnn-noedges-mblk15-bv-ours_cap0_ref_s0 --protocol kfold --fold 0 --arch x86 --seed 0 $V --control no_edges  # 4. path 1
+run kfold0_x86_gnn-mblk15-bv-ours_cap0_ref_s0 --protocol kfold --fold 0 --arch x86 --seed 0 $V                            # 5. path 2
+elif [ $STAGE = v3 ]; then
 M="--model gnn --mask-blocks 0.15 --select-on cell"
 baselines_v3 all                                                      # 1. CPU baselines
 baselines_v3 matched

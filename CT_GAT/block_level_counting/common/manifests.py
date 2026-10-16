@@ -89,7 +89,9 @@ def arch_rows(arch, index):
 
 def make_manifest(cfg: RunConfig, index):
     """Rows without a fold under the run's protocol are left out of train, val and test alike. kfold_v3 rows are
-    copies whose `fold` is their v3 fold, so everything downstream reports the fold the run used."""
+    copies whose `fold` is their v3 fold, so everything downstream reports the fold the run used. The validation carve
+    and the train-fraction subsample use `cfg.val_seed` (default: `cfg.seed`), so with a fixed `val_seed` train, val
+    and test do not change with the seed."""
     rows = arch_rows(cfg.arch, index)
     if cfg.protocol == 'bundle':
         pool, test = [r for r in rows if r['split'] == 'train'], [r for r in rows if r['split'] == 'test']
@@ -100,9 +102,10 @@ def make_manifest(cfg: RunConfig, index):
             rows = [{**r, 'fold': r['fold_v3']} for r in rows]
         rows = [r for r in rows if r['fold'] is not None]
         pool, test = [r for r in rows if r['fold'] != cfg.fold], [r for r in rows if r['fold'] == cfg.fold]
-    train, val, val_families = carve_validation(pool, cfg.val_fraction, cfg.seed)
+    split_seed = cfg.seed if cfg.val_seed is None else cfg.val_seed
+    train, val, val_families = carve_validation(pool, cfg.val_fraction, split_seed)
     if cfg.train_fraction < 1:
-        train = subsample_train(train, cfg.train_fraction, cfg.seed)
+        train = subsample_train(train, cfg.train_fraction, split_seed)
     return Manifest(train, val, test, val_families)
 
 

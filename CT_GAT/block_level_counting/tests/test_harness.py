@@ -52,12 +52,15 @@ def test_should_stop_rules():
 
 def test_unsupported_flags_raise():
     check_supported(gnn())
-    for kw in (dict(stack_tfidf=True), dict(aux_recon=0.1), dict(aux_edge=0.1)):
+    check_supported(gnn(stack_tfidf=True))                                        # supported since step 12
+    for kw in (dict(aux_recon=0.1), dict(aux_edge=0.1)):
         with pytest.raises(NotImplementedError):
             check_supported(gnn(**kw))
-    cfg, _ = parse_config(['--model', 'gnn', '--stack-tfidf'])
+    cfg, _ = parse_config(['--model', 'gnn', '--aux-edge', '0.1'])
     with pytest.raises(NotImplementedError):
         check_supported(cfg)
+    cfg, _ = parse_config(['--model', 'gnn', '--stack-tfidf'])
+    check_supported(cfg)
 
 
 def test_val_threshold_of_uses_grid():

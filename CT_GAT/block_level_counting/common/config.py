@@ -1,5 +1,6 @@
 """One run's configuration, saved as config.json in every run directory."""
 import json
+import re
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Literal, Optional
@@ -12,6 +13,7 @@ CONTROLS = {'': '', 'no_edges': 'noedges', 'chain': 'chain', 'shuffle': 'shuffle
 ENCODERS = ('mean', 'tfidf', 'raw', 'presence', 'rawlog')
 SELECT_ON = ('overall', 'cell')
 SUBGRAPH_POLICIES = ('cap', 'lcc')
+BLOCK_INPUTS = ('tokens', 'vec')
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,7 @@ class RunConfig:
     fold: Optional[int] = None
     arch: Literal['x86', 'all', 'matched'] = 'x86'
     seed: int = 0
+    val_seed: Optional[int] = None
     no_graph: bool = False
 
     d_model: int = 128
@@ -68,6 +71,8 @@ class RunConfig:
     select_on: str = 'overall'
     subgraph: str = 'cap'
     budget: int = 0
+    block_input: str = 'tokens'
+    block_vec: str = ''
     tag: str = ''
     cache: str = ''
 
@@ -82,6 +87,14 @@ class RunConfig:
             raise ValueError(f'fold {self.fold}')
         if self.model not in ('transformer', 'gnn'):
             raise ValueError(f'model {self.model}')
+        if self.val_seed is not None and self.val_seed < 0:
+            raise ValueError(f'val_seed {self.val_seed}')
+        if self.block_input not in BLOCK_INPUTS:
+            raise ValueError(f'block_input {self.block_input}')
+        if (self.block_input == 'vec') != bool(self.block_vec):
+            raise ValueError("block_vec names the precomputed vectors and goes with block_input='vec' (and only then)")
+        if self.block_vec and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', self.block_vec):
+            raise ValueError(f'block_vec is a directory name (letters, digits, . _ -): {self.block_vec}')
         if self.encoder is not None and self.encoder not in ENCODERS:
             raise ValueError(f'encoder {self.encoder}')
         if self.select_on not in SELECT_ON:
@@ -109,12 +122,20 @@ class RunConfig:
                 raise ValueError('no_graph applies to the transformer only')
             if self.untyped and self.control in ('permute_types', 'no_edges'):
                 raise ValueError(f'untyped has no meaning with control {self.control}')
+            if self.block_input == 'vec':
+                if self.mask_tokens > 0:
+                    raise ValueError("mask_tokens needs block_input='tokens' (a vector has no tokens to mask)")
+                if self.encoder is not None:
+                    raise ValueError("encoder (token weighting) needs block_input='tokens'")
+                if self.protocol != 'kfold':
+                    raise ValueError("block_input='vec' reads per-fold vectors and needs protocol 'kfold'")
         else:
             gnn_only = {'encoder': self.encoder is not None, 'readout': self.readout != 'fixed',
                         'control': bool(self.control), 'untyped': self.untyped, 'no_call_mp': self.no_call_mp,
                         'stack_tfidf': self.stack_tfidf, 'mask/drop/aux rate': any(r > 0 for r in rates),
                         'direction': self.direction != 'both',
                         'subgraph/budget': self.subgraph != 'cap' or self.budget != 0,
+                        'block_input': self.block_input != 'tokens',
                         'drop/flip edges': bool(self.drop_edges or self.flip_edges)}
             used = [k for k, v in gnn_only.items() if v]
             if used:
@@ -133,8 +154,9 @@ class RunConfig:
         tf = [f'tf{round(100 * self.train_fraction)}'] if self.train_fraction < 1 else []
         ab = ['ab'] if self.arch_balance else []
         sel = ['selcell'] if self.select_on == 'cell' else []
+        vs = [f'vs{self.val_seed}'] if self.val_seed is not None and self.val_seed != self.seed else []
         if self.model == 'transformer':
-            return '-'.join(['nograph' if self.no_graph else 'graph'] + tf + ab + sel)
+            return '-'.join(['nograph' if self.no_graph else 'graph'] + tf + ab + sel + vs)
         parts = ['gnn']
         if self.control:
             parts.append(CONTROLS[self.control])
@@ -151,12 +173,14 @@ class RunConfig:
         parts += tf + ab
         if self.block_encoder != 'tfidf':
             parts.append(f'enc-{self.block_encoder}')
+        if self.block_input == 'vec':
+            parts.append(f'bv-{self.block_vec}')
         if self.readout == 'gated':
             parts.append('gated')
         parts += sel
         if self.subgraph != 'cap' or self.budget:
             parts.append(f'sg-{self.subgraph}{self.budget // 1000}k')
-        return '-'.join(parts)
+        return '-'.join(parts + vs)
 
     @property
     def name(self):

@@ -30,10 +30,12 @@ def keep_functions(fn_flags, sizes, cfg, rng):
     return keep & ~drop
 
 
-def encode_binary_gnn(z, vocab, cfg, rng, sample_id):
+def encode_binary_gnn(z, vocab, cfg, rng, sample_id, vecs=None):
     """Batch contract: one segment per kept function, edge types, tf-idf weights, controls, masking and, in training,
 CFG edge drop and flip (after the control). A binary over MAX_BINARY_BLOCKS keeps a subset of whole functions
-(`select_subgraph`, after function dropping; policy and budget from the config); `bin_feat` counts the full binary."""
+(`select_subgraph`, after function dropping; policy and budget from the config); `bin_feat` counts the full binary.
+With block_input 'vec' the token keys (tokens, tok_offsets, tok_weights) give way to `blk_vec` [n_blk, d] float16, the
+precomputed vector of each kept block (`vecs`, a BlockVecSource); block masking zeroes the row and the block features."""
     if 'edge_kind' not in z:
         raise KeyError('sample lacks edge_kind/edge_back; point config.CACHE at the v2 cache')
     fn_ptr = z['fn_blk_ptr'].astype(np.int64)
@@ -47,20 +49,29 @@ CFG edge drop and flip (after the control). A binary over MAX_BINARY_BLOCKS keep
     blk_seg = np.repeat(np.arange(n_seg), length)
     blk_pos = np.arange(n_blk) - np.repeat(np.cumsum(length) - length, length)
 
-    tokens, kind, tok_offsets, per_block, ins_pos, api_pos = token_table(z, vocab, blk)
     blk_feat = z['blk_feat'][blk].astype(np.float32)
-    mask_of_kind = np.array([vocab.mask_id[k] for k in TOKEN_KINDS])
-    if rng is not None and cfg.mask_tokens > 0:
-        hit = rng.random(len(ins_pos[0])) < cfg.mask_tokens
-        for j in range(3):
-            tokens[ins_pos[j][hit]] = mask_of_kind[j]
-        tokens[api_pos[rng.random(len(api_pos)) < cfg.mask_tokens]] = mask_of_kind[3]
-    if rng is not None and cfg.mask_blocks > 0:
-        hit = rng.random(n_blk) < cfg.mask_blocks
-        in_hit = np.repeat(hit, per_block)
-        tokens[in_hit] = mask_of_kind[kind[in_hit]]
-        blk_feat[hit] = 0
-    tok_weights = token_weights(tokens, per_block, vocab, cfg.block_encoder)
+    if cfg.block_input == 'vec':
+        blk_vec = vecs.block_vectors(sample_id, blk)
+        if rng is not None and cfg.mask_blocks > 0:
+            hit = rng.random(n_blk) < cfg.mask_blocks
+            blk_vec[hit] = 0
+            blk_feat[hit] = 0
+        bag = {'blk_vec': blk_vec}
+    else:
+        tokens, kind, tok_offsets, per_block, ins_pos, api_pos = token_table(z, vocab, blk)
+        mask_of_kind = np.array([vocab.mask_id[k] for k in TOKEN_KINDS])
+        if rng is not None and cfg.mask_tokens > 0:
+            hit = rng.random(len(ins_pos[0])) < cfg.mask_tokens
+            for j in range(3):
+                tokens[ins_pos[j][hit]] = mask_of_kind[j]
+            tokens[api_pos[rng.random(len(api_pos)) < cfg.mask_tokens]] = mask_of_kind[3]
+        if rng is not None and cfg.mask_blocks > 0:
+            hit = rng.random(n_blk) < cfg.mask_blocks
+            in_hit = np.repeat(hit, per_block)
+            tokens[in_hit] = mask_of_kind[kind[in_hit]]
+            blk_feat[hit] = 0
+        bag = {'tokens': tokens, 'tok_offsets': tok_offsets,
+               'tok_weights': token_weights(tokens, per_block, vocab, cfg.block_encoder)}
 
     deg_in, deg_out, edges = block_edges(z, blk, blk_seg, blk_pos, cfg.degree_clip)
     if cfg.control:
@@ -69,7 +80,7 @@ CFG edge drop and flip (after the control). A binary over MAX_BINARY_BLOCKS keep
     call_src, call_dst = call_pairs(z, fn)
 
     return {
-        'tokens': tokens, 'tok_offsets': tok_offsets, 'tok_weights': tok_weights, 'blk_feat': blk_feat,
+        **bag, 'blk_feat': blk_feat,
         'deg_in': deg_in, 'deg_out': deg_out, 'blk_seg': blk_seg, 'blk_pos': blk_pos,
         'seg_len': length, 'seg_feat': np.stack([np.log1p(length), library], 1).astype(np.float32),
         'seg_fn': np.arange(n_seg), 'n_fn': n_seg,
@@ -81,9 +92,9 @@ CFG edge drop and flip (after the control). A binary over MAX_BINARY_BLOCKS keep
     }
 
 
-def encode_binary(z, vocab: TokenVocab, cfg: RunConfig, rng, sample_id=None):
+def encode_binary(z, vocab: TokenVocab, cfg: RunConfig, rng, sample_id=None, vecs=None):
     if cfg.model == 'gnn':
-        return encode_binary_gnn(z, vocab, cfg, rng, sample_id)
+        return encode_binary_gnn(z, vocab, cfg, rng, sample_id, vecs)
     return encode_binary_transformer(z, vocab, cfg, rng)
 
 
@@ -106,8 +117,11 @@ class EpochSampler:
 
 
 class BinaryDataset(torch.utils.data.Dataset):
-    def __init__(self, rows, vocab, cfg):
-        self.rows, self.vocab, self.cfg = rows, vocab, cfg
+    """`vecs`: the BlockVecSource of a block_input='vec' run. `stack`: {sample_id: standardised out-of-fold TF-IDF
+    logit} of a stack_tfidf run; both are absent from the items of a default run."""
+
+    def __init__(self, rows, vocab, cfg, vecs=None, stack=None):
+        self.rows, self.vocab, self.cfg, self.vecs, self.stack = rows, vocab, cfg, vecs, stack
 
     def __len__(self):
         return len(self.rows)
@@ -116,20 +130,26 @@ class BinaryDataset(torch.utils.data.Dataset):
         i, epoch = item
         row = self.rows[i]
         rng = None if epoch is None else np.random.default_rng([self.cfg.seed, epoch, i])
-        out = encode_binary(load_sample(row['sample_id']), self.vocab, self.cfg, rng, row['sample_id'])
+        out = encode_binary(load_sample(row['sample_id']), self.vocab, self.cfg, rng, row['sample_id'], self.vecs)
         out['label'], out['sample_id'] = row['label'], row['sample_id']
+        if self.stack is not None:
+            out['stack_logit'] = self.stack[row['sample_id']]
         return out
 
 
 def collate(items):
     """Concatenate binaries; per-binary indices are shifted into batch-global block, segment and function ids."""
     cat = lambda key, dtype=torch.long: torch.from_numpy(np.concatenate([it[key] for it in items])).to(dtype)
-    tok_shift = np.cumsum([0] + [len(it['tokens']) for it in items[:-1]])
     seg_shift = np.cumsum([0] + [len(it['seg_len']) for it in items[:-1]])
     fn_shift = np.cumsum([0] + [it['n_fn'] for it in items[:-1]])
     shifted = lambda key, shifts: torch.from_numpy(np.concatenate([it[key] + s for it, s in zip(items, shifts)])).long()
+    if 'blk_vec' in items[0]:
+        bag = {'blk_vec': cat('blk_vec', torch.float16)}
+    else:
+        tok_shift = np.cumsum([0] + [len(it['tokens']) for it in items[:-1]])
+        bag = {'tokens': cat('tokens'), 'tok_offsets': shifted('tok_offsets', tok_shift)}
     batch = {
-        'tokens': cat('tokens'), 'tok_offsets': shifted('tok_offsets', tok_shift),
+        **bag,
         'blk_feat': cat('blk_feat', torch.float32), 'deg_in': cat('deg_in'), 'deg_out': cat('deg_out'),
         'blk_seg': shifted('blk_seg', seg_shift), 'blk_pos': cat('blk_pos'),
         'seg_len': cat('seg_len'), 'seg_feat': cat('seg_feat', torch.float32), 'seg_fn': shifted('seg_fn', fn_shift),
@@ -146,8 +166,11 @@ def collate(items):
         batch['n_blocks_total'] = [it['n_blocks_total'] for it in items]
     if 'tok_weights' in items[0]:
         batch['tok_weights'] = cat('tok_weights', torch.float32)
+    if 'bin_feat' in items[0]:
         batch['edge_type'] = cat('edge_type')
         batch['bin_feat'] = torch.from_numpy(np.stack([it['bin_feat'] for it in items])).float()
+    if 'stack_logit' in items[0]:
+        batch['stack_logit'] = torch.tensor([it['stack_logit'] for it in items], dtype=torch.float32)
     return batch
 
 
@@ -171,14 +194,14 @@ class BlockBudgetSampler:
             yield batch
 
 
-def loader(rows, vocab, cfg, train):
+def loader(rows, vocab, cfg, train, vecs=None, stack=None):
     sampler = EpochSampler(len(rows), cfg.seed, train)
     if cfg.model == 'gnn':
         blocks = [min(int(r['num_blocks']), cfg.budget or subgraph.MAX_BINARY_BLOCKS) for r in rows]
         batches = BlockBudgetSampler(sampler, blocks, cfg.batch_size, cfg.batch_blocks)
         return torch.utils.data.DataLoader(
-            BinaryDataset(rows, vocab, cfg), batch_sampler=batches, collate_fn=collate,
+            BinaryDataset(rows, vocab, cfg, vecs, stack), batch_sampler=batches, collate_fn=collate,
             num_workers=cfg.num_workers, persistent_workers=cfg.num_workers > 0, pin_memory=True)
     return torch.utils.data.DataLoader(
-        BinaryDataset(rows, vocab, cfg), batch_size=cfg.batch_size, sampler=sampler, collate_fn=collate,
+        BinaryDataset(rows, vocab, cfg, vecs, stack), batch_size=cfg.batch_size, sampler=sampler, collate_fn=collate,
         num_workers=cfg.num_workers, persistent_workers=cfg.num_workers > 0, pin_memory=True)

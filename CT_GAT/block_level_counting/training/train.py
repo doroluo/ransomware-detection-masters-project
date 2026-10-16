@@ -1,7 +1,8 @@
 """One run: python train.py --protocol bundle --arch x86 --seed 0 [--no-graph] | --protocol kfold --fold 2
 | --protocol kfold_v3 --fold 2 --arch all|matched (reads the combined cache unless GT_CACHE is set)
 [--model gnn --control no_edges --encoder mean --untyped --fixed-epochs N --direction forward --drop-edges 0.2
---flip-edges 0.2] [--train-fraction 0.5] [--arch-balance]
+--flip-edges 0.2] [--train-fraction 0.5] [--arch-balance] [--val-seed 0]
+[--block-input vec --block-vec <export>_<name>] [--stack-tfidf]
 
 Writes config.json (with the cache path used), manifest.json, vocab.json (sizes), history.csv, val_probs.csv, best.pt
 (best validation macro-F1 at cfg.threshold), best_auc.pt (best validation AUC), predictions.csv (F1 checkpoint, pred at
@@ -10,6 +11,16 @@ graph_transformer_runs/<run name>/.
 
 --arch-balance weights each training sample's loss by N / (C n_cell) over the non-empty (label, arch) cells of the
 training manifest instead of by its class weight; every metrics block gains `cell_balanced` (each cell weighs equally).
+
+--val-seed k carves the validation set (and the train-fraction subsample) with seed k instead of --seed, so train, val and
+test do not change with the seed; the run name gains `-vs<k>` when k differs from the seed.
+
+--block-input vec replaces the token bag of step 5 by the precomputed block vectors <cache>/side/blockvec/<block-vec>/
+fold<k>/ (transformer_paths/precompute_blockvec.py). `--control no_edges --block-input vec` is path 1 of the transformer
+plan and the typed GNN with it is path 2. Fold runs of protocol kfold only.
+
+--stack-tfidf feeds the out-of-fold TF-IDF logit of `baselines.py --stack-logits` to the head: it is read from
+graph_transformer_runs/baselines/<baseline dir>/stack_logits.csv by sample id and standardised on the training rows.
 
 --select-on cell picks best_auc.pt by the validation cell-balanced AUC instead of the validation AUC, and the validation
 threshold of the AUC checkpoint (threshold_val, predictions_auc.csv) by the validation cell-balanced macro-F1 instead of
@@ -28,7 +39,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common.config import CACHE, DIRECTIONS, ENCODERS, RUNS, RunConfig
+from common.config import BLOCK_INPUTS, CACHE, DIRECTIONS, ENCODERS, RUNS, RunConfig
 from common.manifests import load_index, make_manifest
 from evaluation.metrics import cell_balanced, cell_weights, family_recall, floors, scores
 from evaluation.val_threshold import GRID, macro_f1
@@ -48,12 +59,14 @@ def parse_config(argv=None):
     ap.add_argument('--fold', type=int)
     ap.add_argument('--arch', choices=['x86', 'all', 'matched'], default='x86')
     ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--val-seed', type=int, default=None)
     ap.add_argument('--no-graph', action='store_true')
     ap.add_argument('--model', choices=['transformer', 'gnn'], default='transformer')
     ap.add_argument('--encoder', choices=ENCODERS, default=None)
     ap.add_argument('--readout', choices=['fixed', 'gated'], default='fixed')
     ap.add_argument('--control', choices=['', 'no_edges', 'chain', 'shuffle', 'permute_types'], default='')
     ap.add_argument('--direction', choices=DIRECTIONS, default='both')
+    ap.add_argument('--block-input', choices=BLOCK_INPUTS, default='tokens')
     ap.add_argument('--out', help='run directory name override (default: derived from the config)')
     done = {a.dest for a in ap._actions}
     for f in fields(RunConfig):
@@ -111,14 +124,40 @@ def loss_weight_fn(cfg: RunConfig, rows, device):
 
 
 def check_supported(cfg: RunConfig):
-    if cfg.stack_tfidf:
-        raise NotImplementedError('--stack-tfidf needs out-of-fold TF-IDF logits (deferred)')
     if cfg.aux_recon > 0 or cfg.aux_edge > 0:
         raise NotImplementedError('--aux-recon / --aux-edge are deferred')
 
 
-def build_model(cfg: RunConfig, vocab):
-    return (HierGNN if cfg.model == 'gnn' else GraphTransformer)(cfg, vocab.total)
+def build_model(cfg: RunConfig, vocab, d_vec=None):
+    """The network of `cfg`. With block_input='vec' there is no vocabulary (`vocab` None) and `d_vec` is the size of
+    the precomputed block vectors."""
+    if cfg.model == 'gnn':
+        return HierGNN(cfg, vocab.total if vocab else 0, d_vec)
+    return GraphTransformer(cfg, vocab.total)
+
+
+def open_block_vecs(cfg: RunConfig):
+    """The BlockVecSource of a block_input='vec' run, checked against the run: same cache, protocol and arch as the export
+    it was computed from."""
+    from pipeline.s05_block_counting.block_vecs import BlockVecSource
+    vecs = BlockVecSource(CACHE, cfg.block_vec, cfg.fold)
+    meta = vecs.store_meta()
+    if (meta['protocol'], meta['arch']) != (cfg.protocol, cfg.arch) or Path(meta['cache']) != Path(CACHE):
+        raise ValueError(f"{cfg.block_vec} is for {meta['protocol']} {meta['arch']} on {meta['cache']}, this run is "
+                         f'{cfg.protocol} {cfg.arch} on {CACHE}')
+    return vecs
+
+
+def stack_logits(cfg: RunConfig, manifest):
+    """{sample_id: standardised out-of-fold TF-IDF logit} for train, val and test rows of `manifest`. The logits are
+    read from RUNS/baselines/<baseline dir>/stack_logits.csv; the file must hold every row under the same role it has
+    here (train rows out of fold, val and test rows from the full fit), and the standardisation uses the training rows
+    only (mean and standard deviation)."""
+    from evaluation.baselines import baseline_name, read_stack_logits
+    raw = read_stack_logits(RUNS / 'baselines' / baseline_name(cfg) / 'stack_logits.csv', manifest)
+    train = np.array([raw[r['sample_id']] for r in manifest.train])
+    mean, std = float(train.mean()), float(max(train.std(), 1e-6))
+    return {k: np.float32((v - mean) / std) for k, v in raw.items()}
 
 
 def should_stop(cfg: RunConfig, epoch, best_f1_epoch, best_auc_epoch):
@@ -180,17 +219,20 @@ def run(cfg: RunConfig, out_name=None):
 
     manifest = make_manifest(cfg, load_index())
     manifest.save(out / 'manifest.json')
-    vocab = TokenVocab(manifest.train, cfg)
-    (out / 'vocab.json').write_text(json.dumps(vocab.summary(), indent=2), encoding='utf-8')
+    vecs = open_block_vecs(cfg) if cfg.block_input == 'vec' else None
+    vocab = None if vecs else TokenVocab(manifest.train, cfg)
+    (out / 'vocab.json').write_text(json.dumps(vocab.summary() if vocab else {'block_vec': cfg.block_vec, 'd': vecs.d},
+                                               indent=2), encoding='utf-8')
+    stack = stack_logits(cfg, manifest) if cfg.stack_tfidf else None
 
-    model = build_model(cfg, vocab).to(device)
+    model = build_model(cfg, vocab, vecs.d if vecs else None).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     labels = np.array([r['label'] for r in manifest.train])
     loss_weight = loss_weight_fn(cfg, manifest.train, device)
-    train_data = loader(manifest.train, vocab, cfg, train=True)
-    val_data = loader(manifest.val, vocab, cfg, train=False)
+    train_data = loader(manifest.train, vocab, cfg, train=True, vecs=vecs, stack=stack)
+    val_data = loader(manifest.val, vocab, cfg, train=False, vecs=vecs, stack=stack)
     print(f'{cfg.name}: train {len(manifest.train)} val {len(manifest.val)} test {len(manifest.test)} '
-          f'val families {manifest.val_families} vocab {vocab.summary()}', flush=True)
+          f'val families {manifest.val_families} vocab {vocab.summary() if vocab else cfg.block_vec}', flush=True)
 
     history, best_f1, best_f1_epoch, best_auc, best_auc_epoch = [], -1.0, 0, -1.0, 0
     with (out / 'val_probs.csv').open('w', newline='', encoding='utf-8') as f:
@@ -235,7 +277,7 @@ def run(cfg: RunConfig, out_name=None):
         w.writeheader()
         w.writerows(history)
 
-    test_data = loader(manifest.test, vocab, cfg, train=False)
+    test_data = loader(manifest.test, vocab, cfg, train=False, vecs=vecs, stack=stack)
     rows = manifest.val + manifest.test
     by_id = {r['sample_id']: r for r in manifest.test}
     chosen = {}

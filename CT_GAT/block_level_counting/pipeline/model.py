@@ -1,14 +1,15 @@
 """Edge-typed hierarchical message-passing network: blocks -> function vectors -> binary logit, plain torch.
 `RunConfig.control == 'no_edges'`, `untyped` and `no_call_mp` are read only in `HierGNN.structure`.
-Stage order: s05 block vectors, s06 block-CFG layers, s07 blocks -> functions, s08 call-graph layers,
-s09 functions -> binary, s11 head. Attribute names are the checkpoint keys."""
+Stage order: s05 block vectors (token bags, or precomputed vectors with block_input='vec'), s06 block-CFG layers,
+s07 blocks -> functions, s08 call-graph layers, s09 functions -> binary, s11 head. Attribute names are the checkpoint
+keys."""
 from dataclasses import dataclass
 
 import torch
 from torch import nn
 
 from common.config import RunConfig
-from pipeline.s05_block_counting.encoder import BlockEncoder
+from pipeline.s05_block_counting.encoder import BlockEncoder, BlockVecEncoder
 from pipeline.s06_gnn_block_cfg.edges import N_EDGE_TYPES
 from pipeline.s06_gnn_block_cfg.layers import DirGINELayer
 from pipeline.s07_pool_blocks_to_functions.readout import READOUTS
@@ -27,13 +28,19 @@ class Structure:
 
 
 class HierGNN(nn.Module):
-    def __init__(self, cfg: RunConfig, n_tokens):
+    def __init__(self, cfg: RunConfig, n_tokens, d_vec=None):
         super().__init__()
         d = cfg.d_model
         readout = READOUTS[cfg.readout]
         self.cfg = cfg
-        encoder = BlockEncoder(n_tokens, d)
-        self.tokens, self.blk_feat, self.encode_blocks = encoder.tokens, encoder.blk_feat, encoder.forward
+        if cfg.block_input == 'vec':
+            if not d_vec:
+                raise ValueError("block_input='vec' needs d_vec, the size of the precomputed block vectors")
+            encoder = BlockVecEncoder(d_vec, d)
+            self.vec, self.blk_feat, self.encode_blocks = encoder.vec, encoder.blk_feat, encoder.forward
+        else:
+            encoder = BlockEncoder(n_tokens, d)
+            self.tokens, self.blk_feat, self.encode_blocks = encoder.tokens, encoder.blk_feat, encoder.forward
         self.fn_layers = nn.ModuleList(DirGINELayer(d, N_EDGE_TYPES, cfg.dropout, cfg.direction)
                                       for _ in range(cfg.gnn_fn_layers))
         self.fn_readout, self.seg_feat = readout(d), nn.Linear(2, d)
