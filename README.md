@@ -1,15 +1,22 @@
 # masters-project
 
-## asm_parse.py
+## CFG Autotokenizer
+Tokenizes the CFG blocks generated IDA Pro. The CFG zip file is located [here](https://drive.google.com/drive/folders/19bufYY6xL3eUWbv0abOYgvC_wi5Ak1eO?usp=drive_link).
 
-Converts executable files in a directory into `.asm` files. A limit can be set for the number of files processed.
+The project uses the Hugging Face Transformers (microsoft/codebert-base) to extract contextual embeddings from basic blocks and into feature vectors.
 
-### Dataset
-
-[Download the dataset](https://data.mendeley.com/datasets/p3v94dft2y/3)
-
-### Usage
-
+### Install Dependencies
 ```bash
-python asm_parse.py
+pip install torch torch-geometric transformers
+```
 
+### Run Autotokenizer
+Make sure the CFG Files are in your project directory. They should be formatted as:
+```
+root_dir / cfg / {goodware, ransomware} / {train, test} / *.jsonl
+```
+
+Then run:
+```bash
+python construct_blocks.py
+```
