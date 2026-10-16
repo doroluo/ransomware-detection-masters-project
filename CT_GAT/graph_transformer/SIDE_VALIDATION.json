@@ -1,0 +1,147 @@
+{
+  "date": "2026-10-16",
+  "base_commit": "b6c0d9528870d8454bbb42c3e56ea155775c7cce",
+  "side_code_sha256": "9963461c85a2ffb59da6923f48ce5a8c1d50121eb4d20baa2bfdc10b0f3cbc0e",
+  "samples": [
+    {
+      "cache": "graph_transformer_cache_v2",
+      "sample_id": "002dd9b7cbf8ca2a09434f8c4abd85631efe922ab8daa1219d86d83a0228aeda",
+      "corpus": "mendeley",
+      "arch": "x86",
+      "blocks": 8220,
+      "functions": 628,
+      "tagged_functions": 10,
+      "df_edges": 4925,
+      "shuffle_changed": 4334,
+      "coverage": {
+        "address_operands_omitted": 10252,
+        "call_or_system_barrier": 2600,
+        "cfg_edges": 11564,
+        "fixed_point_steps": 11006,
+        "instructions": 36769,
+        "supported": 25470,
+        "unsupported_barrier": 8699
+      },
+      "cache_sha256": "ed41e0c439939a22598942af30a5a54126a23833f97ac887902fd8d58a1d5147",
+      "main_cache_hash_unchanged": true,
+      "degree_and_alignment_checks": true
+    },
+    {
+      "cache": "graph_transformer_cache_v2",
+      "sample_id": "002e70b8fde758f88adc506f3c71df1eb32ce1a2b5bec45f3e8e43dba923709f",
+      "corpus": "mendeley",
+      "arch": "x86",
+      "blocks": 35625,
+      "functions": 2836,
+      "tagged_functions": 20,
+      "df_edges": 14320,
+      "shuffle_changed": 12322,
+      "coverage": {
+        "address_operands_omitted": 68814,
+        "call_or_system_barrier": 14614,
+        "cfg_edges": 44603,
+        "fixed_point_steps": 45035,
+        "instructions": 201886,
+        "supported": 136534,
+        "unsupported_barrier": 50738
+      },
+      "cache_sha256": "196eae662e5c397184456d4e94538061995a1b12f6febd26a00a6dc659aed1ea",
+      "main_cache_hash_unchanged": true,
+      "degree_and_alignment_checks": true
+    },
+    {
+      "cache": "graph_transformer_cache_combined",
+      "sample_id": "002dd9b7cbf8ca2a09434f8c4abd85631efe922ab8daa1219d86d83a0228aeda",
+      "corpus": "mendeley",
+      "arch": "x86",
+      "blocks": 8220,
+      "functions": 628,
+      "tagged_functions": 10,
+      "df_edges": 4925,
+      "shuffle_changed": 4334,
+      "coverage": {
+        "address_operands_omitted": 10252,
+        "call_or_system_barrier": 2600,
+        "cfg_edges": 11564,
+        "fixed_point_steps": 11006,
+        "instructions": 36769,
+        "supported": 25470,
+        "unsupported_barrier": 8699
+      },
+      "cache_sha256": "ed41e0c439939a22598942af30a5a54126a23833f97ac887902fd8d58a1d5147",
+      "main_cache_hash_unchanged": true,
+      "degree_and_alignment_checks": true
+    },
+    {
+      "cache": "graph_transformer_cache_combined",
+      "sample_id": "00005ed250d85fc47e4c3883b8e6179a9888b8140acfeb94a40edc36bd523adb",
+      "corpus": "ransomware_balanced",
+      "arch": "x64",
+      "blocks": 227181,
+      "functions": 18035,
+      "tagged_functions": 71,
+      "df_edges": 139497,
+      "shuffle_changed": 123860,
+      "coverage": {
+        "address_operands_omitted": 378784,
+        "call_or_system_barrier": 95257,
+        "cfg_edges": 317493,
+        "fixed_point_steps": 427942,
+        "instructions": 1338460,
+        "supported": 991044,
+        "unsupported_barrier": 252159
+      },
+      "cache_sha256": "0a2cdab59c34845cb385fee5f66f5bdd94c422d77e97c867fd71e7aa24dd0d86",
+      "main_cache_hash_unchanged": true,
+      "degree_and_alignment_checks": true
+    },
+    {
+      "cache": "graph_transformer_cache_combined",
+      "sample_id": "0024c8ebf0deda45f66a000f7f0e63ab9fbe90dde7f29ba45be811df015cd8d7",
+      "corpus": "balanced_goodware",
+      "arch": "x64",
+      "blocks": 1075636,
+      "functions": 43338,
+      "tagged_functions": 39,
+      "df_edges": 1390316,
+      "shuffle_changed": 1325393,
+      "coverage": {
+        "address_operands_omitted": 2173009,
+        "call_or_system_barrier": 448514,
+        "cfg_edges": 1583415,
+        "fixed_point_steps": 2295192,
+        "instructions": 6183579,
+        "supported": 5203839,
+        "unsupported_barrier": 531226
+      },
+      "cache_sha256": "63e7fdf62198a6a9241332aeb0c0b34aca7644d2fb565ad3a49755bfa40bb90e",
+      "main_cache_hash_unchanged": true,
+      "degree_and_alignment_checks": true
+    }
+  ],
+  "shared_sample_arrays_equal": true,
+  "sampled_compare_v1": {
+    "002dd9b7cbf8ca2a09434f8c4abd85631efe922ab8daa1219d86d83a0228aeda": [],
+    "002e70b8fde758f88adc506f3c71df1eb32ce1a2b5bec45f3e8e43dba923709f": []
+  },
+  "real_WL_shared_sample_equal_across_caches": true,
+  "real_WL_real_and_shuffled_differ": true,
+  "wl_hash_bins": 262144,
+  "scope": "Five side smoke artifacts; one real shared-sample WL feature check. No corpus-wide generation or scored research runs.",
+  "tests": {
+    "cpu_regression": {
+      "command": "python -m pytest CT_GAT/graph_transformer -q --ignore=CT_GAT/graph_transformer/test_structure.py",
+      "passed": 205,
+      "skipped_cuda_only": 5,
+      "excluded_unconditional_cuda_tests": 2,
+      "seconds": 90.46
+    },
+    "final_new_experiment_tests": {
+      "command": "python -m pytest test_side_experiments.py -q",
+      "passed": 17,
+      "seconds": 4.56,
+      "note": "Includes two added regression cases after the full suite collected tests."
+    },
+    "initial_environment_issues": "An empty CUDA_VISIBLE_DEVICES value exposed inconsistent CUDA discovery (six autocast failures). Setting -1 disabled CUDA; two older test_structure.py cases unconditionally call .cuda() and were excluded from the CPU suite."
+  }
+}

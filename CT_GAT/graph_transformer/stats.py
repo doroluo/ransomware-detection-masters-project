@@ -30,7 +30,8 @@ from config import RUNS, RunConfig
 from metrics import cell_weights
 
 METRICS = (('auc', 'AUC'), ('pr_auc', 'PR-AUC'), ('macro_f1', 'macro-F1'))
-BASELINES = {'tfidf': 'tfidf_sig_api_lr', 'structural': 'structural_lr'}
+BASELINES = {'tfidf': 'tfidf_sig_api_lr', 'structural': 'structural_lr',
+             'wl0': 'wl_h0_lr', 'wl2': 'wl_h2_lr', 'wl2-shuffle': 'wl_h2_shuffle_lr'}
 FOLDS = range(5)
 KFOLD_PROTOCOLS = ('kfold', 'kfold_v3')
 BASELINE_PREFIX = {'kfold': 'kfold', 'kfold_v3': 'v3kfold'}
@@ -110,9 +111,10 @@ def folds_by_seed(group, scope=('kfold', 'x86')):
     out = {}
     if base := baseline_method(group):
         tf, (protocol, arch) = base[1], scope
-        for d in (RUNS / 'baselines').glob(f'{BASELINE_PREFIX[protocol]}*_{arch}_s*'):
+        root = RUNS / ('baselines_wl' if base[0].startswith('wl_') else 'baselines')
+        for d in root.glob(f'{BASELINE_PREFIX[protocol]}*_{arch}_s*'):
             m = re.fullmatch(rf'{BASELINE_PREFIX[protocol]}(\d)_{arch}_s(\d+){tf}', d.name)
-            if m and (d / 'metrics.json').exists():
+            if m and (d / 'metrics.json').exists() and base[0] in json.loads((d / 'metrics.json').read_text(encoding='utf-8')).get('methods', {}):
                 out.setdefault(int(m[2]), {})[int(m[1])] = d
         return out
     for d in sorted(p for p in RUNS.iterdir() if (p / 'config.json').exists()):
