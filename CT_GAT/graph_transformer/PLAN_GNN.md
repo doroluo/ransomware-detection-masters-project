@@ -439,3 +439,17 @@ and dAUC passes the +0.01 bar. Macro-F1 misses the rule by a hair (CI lower boun
 AUC gain (+0.009) is just under the bar and macro-F1 does not follow. Shuffled wiring hurts macro-F1 against no
 edges. This is the first structure signal in the ladder, but it is seed 0 only. The pre-registered test needs
 seeds 1-2 of these three arms (30 runs, about 2.5 GPU h).
+
+### Pre-registered test, block masking 15% (3 seeds x 5 folds, 2026-10-16)
+
+| comparison (b - a) | dAUC [95% CI] | dPR-AUC | dmacro-F1 | rule |
+|---|---|---|---|---|
+| typed - no edges | +0.004 [-0.001, +0.010] | +0.004 [-0.000, +0.011] | +0.006 [-0.019, +0.026] | **fail** |
+| typed - shuffled | +0.017 [+0.001, +0.047] | +0.010 [+0.001, +0.026] | +0.010 [+0.001, +0.020] | AUC passes; macro-F1 CI > 0 but below +0.02, so **fail** |
+| shuffled - no edges | -0.012 [-0.042, +0.004] | -0.005 | -0.004 | |
+
+Pooled 3-seed AUC: typed 0.979, no edges 0.974, shuffled 0.962.
+
+Verdict under the pre-registered rule: **structure does not help.** Real wiring beats random wiring, mainly
+because random wiring hurts. Real wiring does not beat no wiring. The CFG, as message passing uses it, adds
+nothing measurable over a regularised bag of blocks.
