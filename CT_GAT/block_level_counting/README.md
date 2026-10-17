@@ -160,6 +160,7 @@ The queue stage `paths` runs the stacking arm on five folds and the two referenc
 ## Where to read more
 
 - `docs/PLAN_GNN.md`: decisions, gates and results. `docs/LITERATURE_REVIEW.md`: the design rationale for every choice, with sources.
+- `docs/GRAPHS_AND_TOKENS.md`: which file builds the graphs and tokenizes, step by step.
 - `docs/RESULTS.md`: the results table that `report.py` generates.
 - `experiments/side_arrays/SIDE_EXPERIMENTS.md`: the side-array and WL experiments.
 
