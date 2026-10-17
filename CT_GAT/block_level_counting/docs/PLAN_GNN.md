@@ -478,6 +478,11 @@ Neither changes a default run: `RunConfig.vocab = 'ours'` and `imports = ''` kee
   then R7 + `--mask-blocks 0.15 --imports unreferenced` **only if** the pooled AUC of `imports_unref_lr` is at least the majority floor's
   AUC + 0.05 (`gates.py --stage imports --verdict`).
 
+Side builds from the finished reader job (6517 binaries, `readers done` 20:51): `side/yanping` 2411 ok / 0 failed / 0 missing on the v2 cache and
+5838 / 0 / 0 on the combined cache; `side/imports` 2411 / 0 / 0 and 5838 / 0 / 0. The reader also scans orphan instructions, which the
+cache omits, so for 34 of the first 1343 v2 binaries it sees more referenced imports than the cache does; the converter requires only that
+every import the cache references is referenced for the reader.
+
 CPU baselines on the v2 cache, kfold x86, seed 0, pooled over the five folds (AUC checkpoint at the validation threshold):
 
 | arm | AUC | PR-AUC | macro-F1 |
