@@ -10,7 +10,9 @@ embeddings of those ids with the weights (`EmbeddingBag`, d = IMPORT_DIM) and `h
 counts, as extra inputs. "Unreferenced" is a static fact of the export (CT_GAT/IDA_FEATURE_READERS.md), not run-time
 evidence.
 
-`which='header'` builds the same vocabulary over every header import, for the baselines (`baselines.py --imports`).
+`which='header'` is `RunConfig.imports == 'header'` (run-name suffix `-imph`): the same vocabulary, idf, bag and two log counts, over
+every header import identity instead of the unreferenced ones (min_df and idf again from the training binaries only). The baselines
+(`baselines.py --imports`) use both. `which` leaves the unreferenced item bit for bit as it was.
 """
 import numpy as np
 from torch import nn
@@ -55,7 +57,8 @@ class ImportVocab:
 
 
 class ImportBag(nn.Module):
-    """Weighted sum of the embeddings of a binary's kept unreferenced imports: [N, IMPORT_DIM]. An empty bag is zero."""
+    """Weighted sum of the embeddings of a binary's kept imports (unreferenced or header, as the vocabulary was fitted): [N, IMPORT_DIM].
+    An empty bag is zero."""
 
     def __init__(self, n_names):
         super().__init__()

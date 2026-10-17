@@ -1,5 +1,5 @@
 #!/bin/bash
-# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths|vocab|imports [--dry]
+# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths|vocab|imports|imports_header [--dry]
 # A run is skipped when RUNS/<name>/metrics.json exists. GPU_BUDGET_MIN (default 290 for day1, 600 for the other stages) caps the
 # cumulative GPU wall time: once it is spent, remaining GPU runs are logged as "skipped (budget)" and only the
 # CPU/report steps still run. If RUNS/STOP exists before a run (stop_queue.sh creates it), the run is logged as
@@ -25,6 +25,9 @@
 # <cache>/side/imports/) runs the CPU import baselines (baselines.py --imports, directories kfold<f>_x86_s0_imp) and then
 # asks `gates.py --stage imports --verdict`: R7 with 15% block masking and --imports unreferenced (gnn-mblk15-imp) runs only
 # when the pooled AUC of imports_unref_lr is at least the majority floor + 0.05; the verdict is printed either way.
+# Stage imports_header (needs <cache>/side/imports/) runs R7 typed with 15% block masking and --imports header (gnn-mblk15-imph)
+# on kfold x86, seed 0, folds 0-4, with no gate; its summary is `gates.py --stage imports` (R7, header-imports LR and TF-IDF against
+# R7 + header imports), written to RUNS/gates_imports_header.md. The baselines come from stage imports.
 cd "$(dirname "$0")/.."
 PY=/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe
 R=/c/Users/chaoa/Downloads/graph_transformer_runs
@@ -33,7 +36,8 @@ STAGE=; DRY=0
 while [ $# -gt 0 ]; do
   case $1 in --stage) STAGE=$2; shift;; --dry) DRY=1;; *) STAGE=;; esac; shift
 done
-[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || [ "$STAGE" = subgraph ] || [ "$STAGE" = paths ] || [ "$STAGE" = vocab ] || [ "$STAGE" = imports ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths|vocab|imports [--dry]"; exit 2; }
+[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || [ "$STAGE" = subgraph ] || [ "$STAGE" = paths ] || [ "$STAGE" = vocab ] || [ "$STAGE" = imports ] || [ "$STAGE" = imports_header ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths|vocab|imports|imports_header [--dry]"; exit 2; }
+GATES_STAGE=$STAGE; [ $STAGE = imports_header ] && GATES_STAGE=imports
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 [ $STAGE = v3 ] && export GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined
 if [ $STAGE = day1 ]; then GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-290}; else GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-600}; fi
@@ -128,6 +132,8 @@ arm gnn-noedges-mblk15-voc-hybrid $V --vocab hybrid                   # 3. R2 no
 elif [ $STAGE = imports ]; then
 baselines _imp --imports                                              # 1. CPU import baselines
 imports_gate gnn-mblk15-imp --model gnn --mask-blocks 0.15 --imports unreferenced  # 2. R7 + unreferenced imports, if the gate passes
+elif [ $STAGE = imports_header ]; then
+arm gnn-mblk15-imph --model gnn --mask-blocks 0.15 --imports header   # 1. R7 + header imports, no gate
 elif [ $STAGE = paths ]; then
 baselines_stack                                                       # 1. CPU stack logits
 arm gnn-stack-mblk15 --model gnn --mask-blocks 0.15 --stack-tfidf     # 2. stack: R7 + out-of-fold TF-IDF logit
@@ -190,10 +196,10 @@ fi
 
 # 8. report steps
 if [ $DRY = 1 ]; then
-  echo "cpu report.py"; echo "cpu gates.py --stage $STAGE > RUNS/gates_$STAGE.md"; echo "cpu val_threshold.py > RUNS/val_threshold.md"
+  echo "cpu report.py"; echo "cpu gates.py --stage $GATES_STAGE > RUNS/gates_$STAGE.md"; echo "cpu val_threshold.py > RUNS/val_threshold.md"
 else
   echo "start report $(date +%T)"; $PY report.py > $R/logs/report.log 2>&1; echo "finished report rc=$?"
-  $PY gates.py --stage $STAGE > $R/gates_$STAGE.md 2> $R/logs/gates_$STAGE.log; echo "finished gates rc=$?"
+  $PY gates.py --stage $GATES_STAGE > $R/gates_$STAGE.md 2> $R/logs/gates_$STAGE.log; echo "finished gates rc=$?"
   $PY val_threshold.py > $R/val_threshold.md 2> $R/logs/val_threshold.log; echo "finished val_threshold rc=$?"
   echo "queue done $(date +%T) gpu_min=$((GPU_SECS / 60))"
 fi

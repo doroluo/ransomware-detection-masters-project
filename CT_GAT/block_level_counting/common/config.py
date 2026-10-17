@@ -15,7 +15,8 @@ SELECT_ON = ('overall', 'cell')
 SUBGRAPH_POLICIES = ('cap', 'lcc')
 BLOCK_INPUTS = ('tokens', 'vec')
 VOCABS = ('ours', 'yanping', 'hybrid')
-IMPORTS = ('', 'unreferenced')
+IMPORTS = ('', 'unreferenced', 'header')
+IMPORT_SUFFIX = {'unreferenced': 'imp', 'header': 'imph'}
 
 
 @dataclass(frozen=True)
@@ -189,7 +190,7 @@ class RunConfig:
         if self.vocab != 'ours':
             parts.append(f'voc-{self.vocab}')
         if self.imports:
-            parts.append('imp')
+            parts.append(IMPORT_SUFFIX[self.imports])
         if self.readout == 'gated':
             parts.append('gated')
         parts += sel

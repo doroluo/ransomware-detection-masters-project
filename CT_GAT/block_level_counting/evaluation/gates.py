@@ -37,7 +37,9 @@ the same token kinds (`baselines.py --vocab`): the pooled table and the paired d
 
 Stage imports reads the kfold x86 import arms: the import baselines (`baselines.py --imports`), R7 typed and R7 + `--imports
 unreferenced` (`gnn-mblk15-imp`), the paired differences and the gate that decides whether the GNN arm runs: the pooled AUC of
-`imports_unref_lr` at least the majority floor's AUC + 0.05. `--verdict` prints the gate line and exits 0 (pass) or 3 (the
+`imports_unref_lr` at least the majority floor's AUC + 0.05. It also reads R7 + `--imports header` (`gnn-mblk15-imph`, queue stage
+`imports_header`): R7 against R7 + header imports, the header-imports LR against R7 + header imports, and TF-IDF against R7 +
+header imports. `--verdict` prints the gate line and exits 0 (pass) or 3 (the
 queue reads it); an unassessable gate (baseline missing) does not pass.
 """
 import argparse
@@ -537,9 +539,12 @@ IMP_R7 = dict(mask_blocks=0.15)
 IMP_ARMS = (('TF-IDF', 'tfidf'), ('unreferenced imports, LR', 'imports-unref'), ('header imports, LR', 'imports-header'),
             ('TF-IDF + unreferenced imports', 'tfidf-imp'),
             ('R7 typed', x86_group(variant_of(**IMP_R7))),
-            ('R7 + unreferenced imports', x86_group(variant_of(**IMP_R7, imports='unreferenced'))))
+            ('R7 + unreferenced imports', x86_group(variant_of(**IMP_R7, imports='unreferenced'))),
+            ('R7 + header imports', x86_group(variant_of(**IMP_R7, imports='header'))))
 IMP_PAIRS = (('TF-IDF', 'TF-IDF + unreferenced imports'), ('header imports, LR', 'unreferenced imports, LR'),
-             ('R7 typed', 'R7 + unreferenced imports'), ('TF-IDF + unreferenced imports', 'R7 + unreferenced imports'))
+             ('R7 typed', 'R7 + unreferenced imports'), ('TF-IDF + unreferenced imports', 'R7 + unreferenced imports'),
+             ('R7 typed', 'R7 + header imports'), ('header imports, LR', 'R7 + header imports'),
+             ('TF-IDF', 'R7 + header imports'))
 IMPORT_GATE_MARGIN = 0.05
 
 
@@ -580,7 +585,8 @@ def imports(resamples):
              'logistic regressions on the same folds): the unreferenced import identities, every header import identity, and '
              'the sig + api tokens hstacked with the unreferenced imports. GNN arms: R7 typed with 15% block masking, '
              'with and without `--imports unreferenced` (an EmbeddingBag over the unreferenced names and two log counts in '
-             'the head). The R7 + imports arm runs only when the gate below passes. Differences are second minus first '
+             'the head), and with `--imports header` (the same over every header import; queue stage `imports_header`, '
+             'no gate). The R7 + unreferenced imports arm runs only when the gate below passes. Differences are second minus first '
              f'for the AUC checkpoint at its validation threshold, with the 95% paired cluster bootstrap interval ({resamples} '
              'resamples). A missing arm or fold is stated.')
     return paired_stage('imports', intro, IMP_ARMS, IMP_PAIRS, resamples) + ['## Gate', '', imports_gate()[1], '']

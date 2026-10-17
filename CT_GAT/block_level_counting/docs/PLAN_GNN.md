@@ -502,3 +502,14 @@ the test binaries: `imports_unref_lr` pooled AUC 0.526 against a majority floor 
 fails, so the R7 + imports arm is not run.** (The header imports alone are a strong feature, AUC 0.985; that is a different feature from
 the one the step asked for.) Smoke runs (2 epochs, fold 0, `--out smoke_step14_*`) confirm that both GNN options train end to end; the
 GNN vocabulary arms (`queue_gnn.sh --stage vocab`, 10 runs) are not run yet.
+
+## Header imports as a binary-level input (step 15, 2026-10-17)
+
+`--imports header` (run-name suffix `-imph`) is the header-import feature the step 14 baselines singled out (`imports_header_lr`, AUC 0.985):
+the same vocabulary, `EmbeddingBag` and two log counts as `--imports unreferenced`, over every header import identity instead of the
+unreferenced ones (training binaries only, `min_df` 2, idf). `-imp` runs and all default names are unchanged (tested bit for bit). Queue:
+`queue_gnn.sh --stage imports_header` runs R7 + `--mask-blocks 0.15 --imports header` (`gnn-mblk15-imph`, kfold x86, seed 0, folds 0-4)
+with no gate; `gates.py --stage imports` adds R7 against R7 + header imports, `imports_header_lr` against R7 + header imports and TF-IDF
+against R7 + header imports. The five-fold arm is not run yet. A 2-epoch smoke run on fold 0 (`--fixed-epochs 2 --batch-blocks 100000
+--out smoke_step15_imports_header`) trains end to end: 4292 header identities in the vocabulary, test AUC 0.965 and macro-F1 0.966 after two
+epochs (not a result).

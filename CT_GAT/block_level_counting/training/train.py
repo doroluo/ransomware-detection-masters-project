@@ -2,7 +2,7 @@
 | --protocol kfold_v3 --fold 2 --arch all|matched (reads the combined cache unless GT_CACHE is set)
 [--model gnn --control no_edges --encoder mean --untyped --fixed-epochs N --direction forward --drop-edges 0.2
 --flip-edges 0.2] [--train-fraction 0.5] [--arch-balance] [--val-seed 0]
-[--block-input vec --block-vec <export>_<name>] [--stack-tfidf] [--vocab yanping|hybrid] [--imports unreferenced]
+[--block-input vec --block-vec <export>_<name>] [--stack-tfidf] [--vocab yanping|hybrid] [--imports unreferenced|header]
 
 Writes config.json (with the cache path used), manifest.json, vocab.json (sizes), history.csv, val_probs.csv, best.pt
 (best validation macro-F1 at cfg.threshold), best_auc.pt (best validation AUC), predictions.csv (F1 checkpoint, pred at
@@ -28,7 +28,8 @@ hybrid = our mn and beh plus the reader's two operand ids plus api. The run name
 
 --imports unreferenced adds an EmbeddingBag over the binary's unreferenced import names (vocabulary and idf fitted on the
 training binaries, min_df 2) and two log counts to the head input (<cache>/side/imports/,
-pipeline/s10_unused_import_features); the run name gains `-imp`.
+pipeline/s10_unused_import_features); the run name gains `-imp`. --imports header is the same over every header import
+(vocabulary and idf again from the training binaries, min_df 2), with the same two log counts; the run name gains `-imph`.
 
 --select-on cell picks best_auc.pt by the validation cell-balanced AUC instead of the validation AUC, and the validation
 threshold of the AUC checkpoint (threshold_val, predictions_auc.csv) by the validation cell-balanced macro-F1 instead of
@@ -235,7 +236,7 @@ def run(cfg: RunConfig, out_name=None):
     (out / 'vocab.json').write_text(json.dumps(vocab.summary() if vocab else {'block_vec': cfg.block_vec, 'd': vecs.d},
                                                indent=2), encoding='utf-8')
     stack = stack_logits(cfg, manifest) if cfg.stack_tfidf else None
-    imports = ImportVocab(manifest.train, cfg.min_df) if cfg.imports else None
+    imports = ImportVocab(manifest.train, cfg.min_df, cfg.imports) if cfg.imports else None
     if imports is not None:
         (out / 'imports_vocab.json').write_text(json.dumps(imports.summary(), indent=2), encoding='utf-8')
 
