@@ -2,7 +2,7 @@
 
 python baselines.py --protocol bundle --arch x86 --seed 0 1 2 | --protocol kfold --fold 0 1 2 3 4 --arch all
 | --protocol kfold_v3 --fold 0 1 2 3 4 --arch all|matched (combined cache unless GT_CACHE is set)
-[--train-fraction 0.5] [--arch-balance] [--val-seed 0] [--stack-logits]
+[--train-fraction 0.5] [--arch-balance] [--val-seed 0] [--stack-logits] [--vocab yanping|hybrid] [--imports]
 
 Fit on the run's training manifest (validation families held out, as for the model), scored on its validation and
 test sets. Writes <out-root>/<protocol[fold]>_<arch>_s<seed>/{metrics.json, predictions.csv} with out-root
@@ -14,6 +14,17 @@ has val and test rows told apart by the split column.
 cells of the training manifest (the weights train.py gives the loss), passed as sample_weight to both regressions; the
 output directory gets the suffix `_ab` and metrics.json records `arch_balance`. Every `test` block carries
 `cell_balanced` (each class x arch cell weighs equally).
+
+--vocab yanping|hybrid replaces the sig + api count features by the token kinds of that GNN vocabulary (yanping: the
+reader's three ids per instruction plus api; hybrid: mn, beh and the reader's two operand ids plus api; each kind its own
+columns, the document-frequency cut on the training manifest as for sig and api) and writes one method, `tfidf_<vocab>_lr`,
+to the directory with the suffix `_voc-<vocab>`. It needs <cache>/side/yanping/ (import_reader_side.py).
+
+--imports writes `imports_unref_lr` (the unreferenced import identities, kept when unreferenced in >= min_df training
+binaries), `imports_header_lr` (every header import identity, same cut) and `tfidf_sig_api_imp_lr` (the sig + api counts
+hstacked with the unreferenced imports) to the directory with the suffix `_imp`; all three are TF-IDF (sublinear) logistic
+regressions on the same folds. A feature space with no column left (no import kept) gives the constant 0.5, stated in
+metrics.json. It needs <cache>/side/imports/ (pipeline/s10_unused_import_features/import_side.py).
 
 --stack-logits writes <out-root>/<same directory>/stack_logits.csv and nothing else: the TF-IDF logistic regression's
 logit (decision function) of every row of the manifest, for `train.py --stack-tfidf`. Training rows get out-of-fold
@@ -36,10 +47,13 @@ from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from common.config import CACHE, RUNS, RunConfig
+from common.config import CACHE, RUNS, VOCABS, RunConfig
 from common.manifests import load_index, make_manifest
 from evaluation.metrics import cell_weights, family_recall, floors, scores
 from evaluation.val_threshold import GRID, macro_f1
+from pipeline.s03_tokenizer.import_reader_side import load_ytok
+from pipeline.s03_tokenizer.vocab import VOCAB_KINDS, Y_KINDS, Y_SIZES
+from pipeline.s10_unused_import_features.imports_feat import ImportVocab
 
 
 def load_features(rows, sizes):
@@ -54,6 +68,52 @@ def load_features(rows, sizes):
             logs = np.log1p([len(z['fn_flags']), len(feat), len(z['cfg_edges']), len(z['mn'])])
             structural.append(np.concatenate([feat.mean(0), feat.max(0), logs]))
     return sp.hstack([sp.vstack(counts['sig']), sp.vstack(counts['api'])]).tocsr(), np.array(structural)
+
+
+def load_vocab_features(rows, sizes, vocab):
+    """Count vectors of the token kinds of GNN vocabulary `vocab` (yanping, hybrid), the kinds side by side."""
+    kinds = VOCAB_KINDS[vocab]
+    width = {**sizes, **Y_SIZES}
+    counts = {k: [] for k in kinds}
+    for r in rows:
+        with np.load(CACHE / 'samples' / f"{r['sample_id']}.npz") as z:
+            cols = {k: z[k] for k in kinds if k not in Y_KINDS}
+        ytok = load_ytok(CACHE, r['sample_id'])
+        cols.update({k: ytok[:, int(k[1])] for k in kinds if k in Y_KINDS})
+        for k in kinds:
+            ids, n = np.unique(cols[k], return_counts=True)
+            counts[k].append(sp.csr_matrix((n, (np.zeros(len(ids)), ids)), shape=(1, width[k])))
+    return sp.hstack([sp.vstack(counts[k]) for k in kinds]).tocsr()
+
+
+def import_matrix(rows, vocab: ImportVocab):
+    """Presence matrix [len(rows), len(vocab)] of the vocabulary's identities (unreferenced or header imports)."""
+    from pipeline.s10_unused_import_features.imports_feat import WHICH
+    from pipeline.s10_unused_import_features.import_side import load_imports
+    indptr, indices = [0], []
+    for r in rows:
+        ids = vocab.ids(load_imports(vocab.cache, r['sample_id'])[WHICH[vocab.which]])
+        indices.append(ids)
+        indptr.append(indptr[-1] + len(ids))
+    flat = np.concatenate(indices) if indices else np.zeros(0, dtype=np.int64)
+    return sp.csr_matrix((np.ones(len(flat)), flat, indptr), shape=(len(rows), len(vocab)))
+
+
+class ConstantHalf:
+    """Stands in for a regression with no feature column: probability 0.5 for every binary."""
+
+    def fit(self, x, y, **kw):
+        return self
+
+    def predict_proba(self, x):
+        return np.full((x.shape[0], 2), 0.5)
+
+
+def tfidf_lr(x_fit, class_weight):
+    """sublinear TF-IDF logistic regression, or the constant 0.5 when x_fit has no column."""
+    if x_fit.shape[1] == 0:
+        return ConstantHalf()
+    return make_pipeline(TfidfTransformer(sublinear_tf=True), LogisticRegression(max_iter=5000, class_weight=class_weight))
 
 
 def baseline_name(cfg: RunConfig):
@@ -149,21 +209,28 @@ def read_stack_logits(path, manifest):
     return out
 
 
-def run(cfg: RunConfig, sizes, out_root=None):
-    manifest = make_manifest(cfg, load_index())
-    train, val, test = manifest.train, manifest.val, manifest.test
+def features_and_models(cfg: RunConfig, sizes, train, val, test, vocab, imports, class_weight):
+    """(models, n token features kept, feature counts per method): {method: (model, x_train, x_val, x_test)}. Default: the
+    sig + api TF-IDF regression and the structural one. `vocab`: one TF-IDF regression over that vocabulary's kinds.
+    `imports`: the three import methods (module docstring). Every document-frequency cut is fitted on `train`."""
+    if vocab != 'ours':
+        x_tr, x_va, x_te = (load_vocab_features(rows, sizes, vocab) for rows in (train, val, test))
+        keep = np.asarray((x_tr > 0).sum(0)).ravel() >= cfg.min_df
+        x = [m[:, keep] for m in (x_tr, x_va, x_te)]
+        return {f'tfidf_{vocab}_lr': (tfidf_lr(x[0], class_weight), *x)}, int(keep.sum()), {}
     x_train_tok, x_train_st = load_features(train, sizes)
     x_val_tok, x_val_st = load_features(val, sizes)
     x_test_tok, x_test_st = load_features(test, sizes)
     keep = np.asarray((x_train_tok > 0).sum(0)).ravel() >= cfg.min_df
-    y_train = np.array([r['label'] for r in train])
-    y_val = np.array([r['label'] for r in val])
-    y_test = np.array([r['label'] for r in test])
-    arch, family = [r['arch'] for r in test], [r['family'] for r in test]
-
-    class_weight = None if cfg.arch_balance else 'balanced'
-    fit_args = ({'logisticregression__sample_weight': cell_weights(y_train, [r['arch'] for r in train])}
-                if cfg.arch_balance else {})
+    if imports:
+        spaces = {which: ImportVocab(train, cfg.min_df, which) for which in ('unreferenced', 'header')}
+        mats = {which: [import_matrix(rows, v) for rows in (train, val, test)] for which, v in spaces.items()}
+        tok = [m[:, keep] for m in (x_train_tok, x_val_tok, x_test_tok)]
+        joint = [sp.hstack([t, u]).tocsr() for t, u in zip(tok, mats['unreferenced'])]
+        models = {'imports_unref_lr': (tfidf_lr(mats['unreferenced'][0], class_weight), *mats['unreferenced']),
+                  'imports_header_lr': (tfidf_lr(mats['header'][0], class_weight), *mats['header']),
+                  'tfidf_sig_api_imp_lr': (tfidf_lr(joint[0], class_weight), *joint)}
+        return models, int(keep.sum()), {name: int(m[1].shape[1]) for name, m in models.items()}
     models = {
         'tfidf_sig_api_lr': (make_pipeline(TfidfTransformer(sublinear_tf=True),
                                            LogisticRegression(max_iter=5000, class_weight=class_weight)),
@@ -172,14 +239,35 @@ def run(cfg: RunConfig, sizes, out_root=None):
                                         LogisticRegression(max_iter=5000, class_weight=class_weight)),
                           x_train_st, x_val_st, x_test_st),
     }
+    return models, int(keep.sum()), {}
+
+
+def run(cfg: RunConfig, sizes, out_root=None, vocab='ours', imports=False):
+    manifest = make_manifest(cfg, load_index())
+    train, val, test = manifest.train, manifest.val, manifest.test
+    y_train = np.array([r['label'] for r in train])
+    y_val = np.array([r['label'] for r in val])
+    y_test = np.array([r['label'] for r in test])
+    arch, family = [r['arch'] for r in test], [r['family'] for r in test]
+
+    class_weight = None if cfg.arch_balance else 'balanced'
+    fit_args = ({'logisticregression__sample_weight': cell_weights(y_train, [r['arch'] for r in train])}
+                if cfg.arch_balance else {})
+    models, n_keep, n_features = features_and_models(cfg, sizes, train, val, test, vocab, imports, class_weight)
     tf = f'_tf{round(100 * cfg.train_fraction)}' if cfg.train_fraction < 1 else ''
     ab = '_ab' if cfg.arch_balance else ''
-    out = Path(out_root or RUNS / 'baselines') / (baseline_name(cfg) + tf + ab)
+    kind = f'_voc-{vocab}' if vocab != 'ours' else '_imp' if imports else ''
+    out = Path(out_root or RUNS / 'baselines') / (baseline_name(cfg) + kind + tf + ab)
     out.mkdir(parents=True, exist_ok=True)
     metrics = {'protocol': cfg.protocol, 'fold': cfg.fold, 'arch': cfg.arch, 'seed': cfg.seed,
                'train_fraction': cfg.train_fraction, 'arch_balance': cfg.arch_balance, 'cache': str(CACHE),
-               'n_train': len(train), 'n_val': len(val), 'n_test': len(test), 'tfidf_features': int(keep.sum()),
+               'n_train': len(train), 'n_val': len(val), 'n_test': len(test), 'tfidf_features': n_keep,
                'floors': floors(y_train, y_test, arch), 'methods': {}}
+    if vocab != 'ours':
+        metrics['vocab'] = vocab
+    if imports:
+        metrics['imports'] = {'features_per_method': n_features, 'min_df': cfg.min_df,
+                              'note': 'a method with 0 features predicts the constant 0.5'}
     probs, val_probs = {}, {}
     for name, (model, xtr, xva, xte) in models.items():
         model.fit(xtr, y_train, **fit_args)
@@ -214,14 +302,23 @@ def main():
     ap.add_argument('--arch-balance', action='store_true')
     ap.add_argument('--val-seed', type=int, default=None)
     ap.add_argument('--stack-logits', action='store_true', help='write stack_logits.csv only (see the docstring)')
+    ap.add_argument('--vocab', choices=VOCABS, default='ours', help='TF-IDF over the tokens of this GNN vocabulary')
+    ap.add_argument('--imports', action='store_true', help='the import methods (see the docstring)')
     ap.add_argument('--out-root', help='default: graph_transformer_runs/baselines')
     args = ap.parse_args()
+    if args.stack_logits and (args.vocab != 'ours' or args.imports):
+        ap.error('--stack-logits is not combined with --vocab or --imports')
+    if args.vocab != 'ours' and args.imports:
+        ap.error('--vocab and --imports are separate runs')
     sizes = {k: len(v) for k, v in json.loads((CACHE / 'vocab.json').read_text(encoding='utf-8')).items()}
     for fold in args.fold:
         for seed in args.seed:
             cfg = RunConfig(protocol=args.protocol, fold=fold, arch=args.arch, seed=seed, val_seed=args.val_seed,
                             train_fraction=args.train_fraction, arch_balance=args.arch_balance)
-            (write_stack_logits if args.stack_logits else run)(cfg, sizes, args.out_root)
+            if args.stack_logits:
+                write_stack_logits(cfg, sizes, args.out_root)
+            else:
+                run(cfg, sizes, args.out_root, args.vocab, args.imports)
 
 
 if __name__ == '__main__':

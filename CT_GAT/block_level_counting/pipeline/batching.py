@@ -7,7 +7,7 @@ from common.config import RunConfig
 from common.manifests import load_sample
 from legacy.graph_transformer.encode import encode_binary_transformer
 from pipeline.s03_tokenizer.block_tokens import token_table
-from pipeline.s03_tokenizer.vocab import TOKEN_KINDS, TokenVocab
+from pipeline.s03_tokenizer.vocab import TokenVocab
 from pipeline.s04_select_subgraph import subgraph
 from pipeline.s04_select_subgraph.subgraph import select_subgraph
 from pipeline.s05_block_counting.weights import token_weights
@@ -59,12 +59,12 @@ precomputed vector of each kept block (`vecs`, a BlockVecSource); block masking 
         bag = {'blk_vec': blk_vec}
     else:
         tokens, kind, tok_offsets, per_block, ins_pos, api_pos = token_table(z, vocab, blk)
-        mask_of_kind = np.array([vocab.mask_id[k] for k in TOKEN_KINDS])
+        mask_of_kind = np.array([vocab.mask_id[k] for k in vocab.kinds])
         if rng is not None and cfg.mask_tokens > 0:
             hit = rng.random(len(ins_pos[0])) < cfg.mask_tokens
-            for j in range(3):
+            for j in range(len(ins_pos)):
                 tokens[ins_pos[j][hit]] = mask_of_kind[j]
-            tokens[api_pos[rng.random(len(api_pos)) < cfg.mask_tokens]] = mask_of_kind[3]
+            tokens[api_pos[rng.random(len(api_pos)) < cfg.mask_tokens]] = mask_of_kind[-1]
         if rng is not None and cfg.mask_blocks > 0:
             hit = rng.random(n_blk) < cfg.mask_blocks
             in_hit = np.repeat(hit, per_block)
@@ -118,10 +118,11 @@ class EpochSampler:
 
 class BinaryDataset(torch.utils.data.Dataset):
     """`vecs`: the BlockVecSource of a block_input='vec' run. `stack`: {sample_id: standardised out-of-fold TF-IDF
-    logit} of a stack_tfidf run; both are absent from the items of a default run."""
+    logit} of a stack_tfidf run. `imports`: the ImportVocab of an `imports` run. All three are absent from the items of a
+    default run."""
 
-    def __init__(self, rows, vocab, cfg, vecs=None, stack=None):
-        self.rows, self.vocab, self.cfg, self.vecs, self.stack = rows, vocab, cfg, vecs, stack
+    def __init__(self, rows, vocab, cfg, vecs=None, stack=None, imports=None):
+        self.rows, self.vocab, self.cfg, self.vecs, self.stack, self.imports = rows, vocab, cfg, vecs, stack, imports
 
     def __len__(self):
         return len(self.rows)
@@ -130,10 +131,13 @@ class BinaryDataset(torch.utils.data.Dataset):
         i, epoch = item
         row = self.rows[i]
         rng = None if epoch is None else np.random.default_rng([self.cfg.seed, epoch, i])
-        out = encode_binary(load_sample(row['sample_id']), self.vocab, self.cfg, rng, row['sample_id'], self.vecs)
+        z = load_sample(row['sample_id'], ytok=self.cfg.vocab != 'ours')
+        out = encode_binary(z, self.vocab, self.cfg, rng, row['sample_id'], self.vecs)
         out['label'], out['sample_id'] = row['label'], row['sample_id']
         if self.stack is not None:
             out['stack_logit'] = self.stack[row['sample_id']]
+        if self.imports is not None:
+            out.update(self.imports.item(row['sample_id']))
         return out
 
 
@@ -171,6 +175,11 @@ def collate(items):
         batch['bin_feat'] = torch.from_numpy(np.stack([it['bin_feat'] for it in items])).float()
     if 'stack_logit' in items[0]:
         batch['stack_logit'] = torch.tensor([it['stack_logit'] for it in items], dtype=torch.float32)
+    if 'imp_idx' in items[0]:
+        lengths = [len(it['imp_idx']) for it in items]
+        batch['imp_idx'], batch['imp_w'] = cat('imp_idx'), cat('imp_w', torch.float32)
+        batch['imp_offsets'] = torch.from_numpy(np.cumsum([0] + lengths[:-1])).long()
+        batch['imp_feat'] = torch.from_numpy(np.stack([it['imp_feat'] for it in items])).float()
     return batch
 
 
@@ -194,14 +203,14 @@ class BlockBudgetSampler:
             yield batch
 
 
-def loader(rows, vocab, cfg, train, vecs=None, stack=None):
+def loader(rows, vocab, cfg, train, vecs=None, stack=None, imports=None):
     sampler = EpochSampler(len(rows), cfg.seed, train)
     if cfg.model == 'gnn':
         blocks = [min(int(r['num_blocks']), cfg.budget or subgraph.MAX_BINARY_BLOCKS) for r in rows]
         batches = BlockBudgetSampler(sampler, blocks, cfg.batch_size, cfg.batch_blocks)
         return torch.utils.data.DataLoader(
-            BinaryDataset(rows, vocab, cfg, vecs, stack), batch_sampler=batches, collate_fn=collate,
+            BinaryDataset(rows, vocab, cfg, vecs, stack, imports), batch_sampler=batches, collate_fn=collate,
             num_workers=cfg.num_workers, persistent_workers=cfg.num_workers > 0, pin_memory=True)
     return torch.utils.data.DataLoader(
-        BinaryDataset(rows, vocab, cfg, vecs, stack), batch_size=cfg.batch_size, sampler=sampler, collate_fn=collate,
+        BinaryDataset(rows, vocab, cfg, vecs, stack, imports), batch_size=cfg.batch_size, sampler=sampler, collate_fn=collate,
         num_workers=cfg.num_workers, persistent_workers=cfg.num_workers > 0, pin_memory=True)

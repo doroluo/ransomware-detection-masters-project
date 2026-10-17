@@ -1,5 +1,5 @@
 #!/bin/bash
-# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths [--dry]
+# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths|vocab|imports [--dry]
 # A run is skipped when RUNS/<name>/metrics.json exists. GPU_BUDGET_MIN (default 290 for day1, 600 for the other stages) caps the
 # cumulative GPU wall time: once it is spent, remaining GPU runs are logged as "skipped (budget)" and only the
 # CPU/report steps still run. If RUNS/STOP exists before a run (stop_queue.sh creates it), the run is logged as
@@ -19,6 +19,12 @@
 # encoder's block vectors (the block export RUNS/export/ours_cap0, reference checkpoints RUNS/encoders/ref and the vectors of
 # fold 0, each skipped when it exists) and runs path 1 (no-edge GNN on block vectors) and path 2 (typed GNN on block vectors)
 # on fold 0 only, as a plumbing check. The real encoder arms are added when the teammates' checkpoints arrive.
+# Stage vocab (kfold x86, v2 cache, seed 0; needs <cache>/side/yanping/) runs the TF-IDF baselines over the reader's
+# vocabulary and the hybrid one (CPU, directories kfold<f>_x86_s0_voc-<name>), then the no-edge arm with 15% block masking
+# under --vocab yanping and --vocab hybrid (ours already exists as gnn-noedges-mblk15). Stage imports (needs
+# <cache>/side/imports/) runs the CPU import baselines (baselines.py --imports, directories kfold<f>_x86_s0_imp) and then
+# asks `gates.py --stage imports --verdict`: R7 with 15% block masking and --imports unreferenced (gnn-mblk15-imp) runs only
+# when the pooled AUC of imports_unref_lr is at least the majority floor + 0.05; the verdict is printed either way.
 cd "$(dirname "$0")/.."
 PY=/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe
 R=/c/Users/chaoa/Downloads/graph_transformer_runs
@@ -27,7 +33,7 @@ STAGE=; DRY=0
 while [ $# -gt 0 ]; do
   case $1 in --stage) STAGE=$2; shift;; --dry) DRY=1;; *) STAGE=;; esac; shift
 done
-[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || [ "$STAGE" = subgraph ] || [ "$STAGE" = paths ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths [--dry]"; exit 2; }
+[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || [ "$STAGE" = subgraph ] || [ "$STAGE" = paths ] || [ "$STAGE" = vocab ] || [ "$STAGE" = imports ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths|vocab|imports [--dry]"; exit 2; }
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 [ $STAGE = v3 ] && export GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined
 if [ $STAGE = day1 ]; then GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-290}; else GPU_BUDGET_MIN=${GPU_BUDGET_MIN:-600}; fi
@@ -105,7 +111,24 @@ blockvec_ref() { C=${GT_CACHE:-C:/Users/chaoa/Downloads/graph_transformer_cache_
   cpu_step $R/encoders/ref/fold4/best.pt reference_encoder $PY -m transformer_paths.reference_encoder --export ours_cap0 --name ref
   cpu_step $C/side/blockvec/ours_cap0_ref/fold0/meta.json precompute_blockvec $PY -m transformer_paths.precompute_blockvec --encoder-name ref --export ours_cap0 --folds 0; }
 
-if [ $STAGE = paths ]; then
+# imports_gate <train.py args of R7 + imports>: the pooled AUC of imports_unref_lr decides (gates.py --verdict exits 0 on
+# a pass, 3 otherwise, also when the baselines are missing); the verdict line is printed and the arm runs only on a pass
+imports_gate() { variant=$1; shift
+  if [ $DRY = 1 ]; then echo "cpu gates.py --stage imports --verdict (the arm below runs only on PASS)"; arm $variant "$@"; return; fi
+  verdict=$($PY gates.py --stage imports --verdict 2>> $R/logs/gate_imports.log); rc=$?
+  echo "$verdict"
+  if [ $rc = 0 ]; then arm $variant "$@"; else echo "gate not passed: skipping kfold<f>_x86_${variant}_s0"; fi; }
+
+if [ $STAGE = vocab ]; then
+V="--model gnn --mask-blocks 0.15 --control no_edges"
+baselines _voc-yanping --vocab yanping                                # 1. CPU TF-IDF over the reader's tokens
+baselines _voc-hybrid --vocab hybrid
+arm gnn-noedges-mblk15-voc-yanping $V --vocab yanping                 # 2. R2 no-edges, reader vocabulary
+arm gnn-noedges-mblk15-voc-hybrid $V --vocab hybrid                   # 3. R2 no-edges, hybrid vocabulary
+elif [ $STAGE = imports ]; then
+baselines _imp --imports                                              # 1. CPU import baselines
+imports_gate gnn-mblk15-imp --model gnn --mask-blocks 0.15 --imports unreferenced  # 2. R7 + unreferenced imports, if the gate passes
+elif [ $STAGE = paths ]; then
 baselines_stack                                                       # 1. CPU stack logits
 arm gnn-stack-mblk15 --model gnn --mask-blocks 0.15 --stack-tfidf     # 2. stack: R7 + out-of-fold TF-IDF logit
 blockvec_ref                                                          # 3. reference-encoder block vectors, fold 0

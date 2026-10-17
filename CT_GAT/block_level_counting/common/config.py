@@ -14,6 +14,8 @@ ENCODERS = ('mean', 'tfidf', 'raw', 'presence', 'rawlog')
 SELECT_ON = ('overall', 'cell')
 SUBGRAPH_POLICIES = ('cap', 'lcc')
 BLOCK_INPUTS = ('tokens', 'vec')
+VOCABS = ('ours', 'yanping', 'hybrid')
+IMPORTS = ('', 'unreferenced')
 
 
 @dataclass(frozen=True)
@@ -73,6 +75,8 @@ class RunConfig:
     budget: int = 0
     block_input: str = 'tokens'
     block_vec: str = ''
+    vocab: str = 'ours'
+    imports: str = ''
     tag: str = ''
     cache: str = ''
 
@@ -95,6 +99,12 @@ class RunConfig:
             raise ValueError("block_vec names the precomputed vectors and goes with block_input='vec' (and only then)")
         if self.block_vec and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', self.block_vec):
             raise ValueError(f'block_vec is a directory name (letters, digits, . _ -): {self.block_vec}')
+        if self.vocab not in VOCABS:
+            raise ValueError(f'vocab {self.vocab}')
+        if self.imports not in IMPORTS:
+            raise ValueError(f'imports {self.imports}')
+        if self.vocab != 'ours' and self.block_input == 'vec':
+            raise ValueError("vocab needs block_input='tokens' (precomputed block vectors have no vocabulary)")
         if self.encoder is not None and self.encoder not in ENCODERS:
             raise ValueError(f'encoder {self.encoder}')
         if self.select_on not in SELECT_ON:
@@ -136,6 +146,7 @@ class RunConfig:
                         'direction': self.direction != 'both',
                         'subgraph/budget': self.subgraph != 'cap' or self.budget != 0,
                         'block_input': self.block_input != 'tokens',
+                        'vocab': self.vocab != 'ours', 'imports': bool(self.imports),
                         'drop/flip edges': bool(self.drop_edges or self.flip_edges)}
             used = [k for k, v in gnn_only.items() if v]
             if used:
@@ -175,6 +186,10 @@ class RunConfig:
             parts.append(f'enc-{self.block_encoder}')
         if self.block_input == 'vec':
             parts.append(f'bv-{self.block_vec}')
+        if self.vocab != 'ours':
+            parts.append(f'voc-{self.vocab}')
+        if self.imports:
+            parts.append('imp')
         if self.readout == 'gated':
             parts.append('gated')
         parts += sel

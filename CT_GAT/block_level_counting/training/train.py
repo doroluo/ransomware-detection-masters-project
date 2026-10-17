@@ -2,7 +2,7 @@
 | --protocol kfold_v3 --fold 2 --arch all|matched (reads the combined cache unless GT_CACHE is set)
 [--model gnn --control no_edges --encoder mean --untyped --fixed-epochs N --direction forward --drop-edges 0.2
 --flip-edges 0.2] [--train-fraction 0.5] [--arch-balance] [--val-seed 0]
-[--block-input vec --block-vec <export>_<name>] [--stack-tfidf]
+[--block-input vec --block-vec <export>_<name>] [--stack-tfidf] [--vocab yanping|hybrid] [--imports unreferenced]
 
 Writes config.json (with the cache path used), manifest.json, vocab.json (sizes), history.csv, val_probs.csv, best.pt
 (best validation macro-F1 at cfg.threshold), best_auc.pt (best validation AUC), predictions.csv (F1 checkpoint, pred at
@@ -22,6 +22,14 @@ plan and the typed GNN with it is path 2. Fold runs of protocol kfold only.
 --stack-tfidf feeds the out-of-fold TF-IDF logit of `baselines.py --stack-logits` to the head: it is read from
 graph_transformer_runs/baselines/<baseline dir>/stack_logits.csv by sample id and standardised on the training rows.
 
+--vocab yanping|hybrid swaps the instruction tokens of the block bag for the team's operand-role ids (<cache>/side/yanping/,
+pipeline/s03_tokenizer/import_reader_side.py): yanping = the reader's three ids per instruction plus our api tokens,
+hybrid = our mn and beh plus the reader's two operand ids plus api. The run name gains `-voc-<name>`.
+
+--imports unreferenced adds an EmbeddingBag over the binary's unreferenced import names (vocabulary and idf fitted on the
+training binaries, min_df 2) and two log counts to the head input (<cache>/side/imports/,
+pipeline/s10_unused_import_features); the run name gains `-imp`.
+
 --select-on cell picks best_auc.pt by the validation cell-balanced AUC instead of the validation AUC, and the validation
 threshold of the AUC checkpoint (threshold_val, predictions_auc.csv) by the validation cell-balanced macro-F1 instead of
 the macro-F1. best.pt, the F1 checkpoint and its threshold are unchanged. As the gnn stops on the later of the F1 and
@@ -39,7 +47,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common.config import BLOCK_INPUTS, CACHE, DIRECTIONS, ENCODERS, RUNS, RunConfig
+from common.config import BLOCK_INPUTS, CACHE, DIRECTIONS, ENCODERS, IMPORTS, RUNS, VOCABS, RunConfig
 from common.manifests import load_index, make_manifest
 from evaluation.metrics import cell_balanced, cell_weights, family_recall, floors, scores
 from evaluation.val_threshold import GRID, macro_f1
@@ -47,6 +55,7 @@ from legacy.graph_transformer.model import GraphTransformer
 from pipeline.batching import loader
 from pipeline.model import HierGNN
 from pipeline.s03_tokenizer.vocab import TokenVocab
+from pipeline.s10_unused_import_features.imports_feat import ImportVocab
 
 
 AUC_RULES = {'overall': 'checkpoint: validation AUC; threshold: validation macro-F1',
@@ -67,6 +76,8 @@ def parse_config(argv=None):
     ap.add_argument('--control', choices=['', 'no_edges', 'chain', 'shuffle', 'permute_types'], default='')
     ap.add_argument('--direction', choices=DIRECTIONS, default='both')
     ap.add_argument('--block-input', choices=BLOCK_INPUTS, default='tokens')
+    ap.add_argument('--vocab', choices=VOCABS, default='ours')
+    ap.add_argument('--imports', choices=IMPORTS, default='')
     ap.add_argument('--out', help='run directory name override (default: derived from the config)')
     done = {a.dest for a in ap._actions}
     for f in fields(RunConfig):
@@ -128,11 +139,11 @@ def check_supported(cfg: RunConfig):
         raise NotImplementedError('--aux-recon / --aux-edge are deferred')
 
 
-def build_model(cfg: RunConfig, vocab, d_vec=None):
+def build_model(cfg: RunConfig, vocab, d_vec=None, n_imports=0):
     """The network of `cfg`. With block_input='vec' there is no vocabulary (`vocab` None) and `d_vec` is the size of
-    the precomputed block vectors."""
+    the precomputed block vectors; `n_imports` is the size of the import vocabulary of an `imports` run."""
     if cfg.model == 'gnn':
-        return HierGNN(cfg, vocab.total if vocab else 0, d_vec)
+        return HierGNN(cfg, vocab.total if vocab else 0, d_vec, n_imports)
     return GraphTransformer(cfg, vocab.total)
 
 
@@ -224,13 +235,16 @@ def run(cfg: RunConfig, out_name=None):
     (out / 'vocab.json').write_text(json.dumps(vocab.summary() if vocab else {'block_vec': cfg.block_vec, 'd': vecs.d},
                                                indent=2), encoding='utf-8')
     stack = stack_logits(cfg, manifest) if cfg.stack_tfidf else None
+    imports = ImportVocab(manifest.train, cfg.min_df) if cfg.imports else None
+    if imports is not None:
+        (out / 'imports_vocab.json').write_text(json.dumps(imports.summary(), indent=2), encoding='utf-8')
 
-    model = build_model(cfg, vocab, vecs.d if vecs else None).to(device)
+    model = build_model(cfg, vocab, vecs.d if vecs else None, len(imports) if imports is not None else 0).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     labels = np.array([r['label'] for r in manifest.train])
     loss_weight = loss_weight_fn(cfg, manifest.train, device)
-    train_data = loader(manifest.train, vocab, cfg, train=True, vecs=vecs, stack=stack)
-    val_data = loader(manifest.val, vocab, cfg, train=False, vecs=vecs, stack=stack)
+    train_data = loader(manifest.train, vocab, cfg, train=True, vecs=vecs, stack=stack, imports=imports)
+    val_data = loader(manifest.val, vocab, cfg, train=False, vecs=vecs, stack=stack, imports=imports)
     print(f'{cfg.name}: train {len(manifest.train)} val {len(manifest.val)} test {len(manifest.test)} '
           f'val families {manifest.val_families} vocab {vocab.summary() if vocab else cfg.block_vec}', flush=True)
 
@@ -277,7 +291,7 @@ def run(cfg: RunConfig, out_name=None):
         w.writeheader()
         w.writerows(history)
 
-    test_data = loader(manifest.test, vocab, cfg, train=False, vecs=vecs, stack=stack)
+    test_data = loader(manifest.test, vocab, cfg, train=False, vecs=vecs, stack=stack, imports=imports)
     rows = manifest.val + manifest.test
     by_id = {r['sample_id']: r for r in manifest.test}
     chosen = {}

@@ -25,7 +25,7 @@ Register names and operand widths are never stored as tokens: `sig` keeps only t
 | Step | File | What it does |
 |---|---|---|
 | Vocabulary | `pipeline/s03_tokenizer/vocab.py` (`TokenVocab`) | Keeps a token only if it occurs in at least 2 **training** binaries of the fold; the rest map to UNK. Computes IDF on training binaries; adds `[MASK]` ids. Nothing is fitted on validation or test |
-| Block token list | `pipeline/s03_tokenizer/block_tokens.py` (`token_table`) | For each kept block: its `mn`, `sig`, `beh` tokens per instruction plus its `api` tokens, as one flat list with per-block offsets |
+| Block token list | `pipeline/s03_tokenizer/block_tokens.py` (`token_table`) | For each kept block: its `mn`, `sig`, `beh` tokens per instruction plus its `api` tokens, as one flat list with per-block offsets. With `--vocab yanping` the per-instruction kinds are the reader's three ids; with `--vocab hybrid` they are `mn`, `beh` and the reader's two operand ids (section 4) |
 | Block vector | `pipeline/s05_block_counting/weights.py` + `encoder.py` | Per-block counting with TF-IDF, mean, raw, presence or log weighting, then a learned projection to 128 dimensions, plus the 6 structural features. Or precomputed vectors from a frozen encoder (`block_vecs.py`, paths 1 and 2) |
 
 ## 3. Selecting the graph and building the batch (every training run)
@@ -37,7 +37,22 @@ Register names and operand widths are never stored as tokens: `sig` keeps only t
 | Call edges for the GNN | `pipeline/s08_gnn_call_graph/calls.py` (`call_pairs`) | Call edges between kept functions, no self-calls |
 | Batch | `pipeline/batching.py` (`encode_binary_gnn`, `collate`) | Puts it together, shifts ids into one batch, applies training-time masking/dropping |
 
-## 4. The data export for the transformer team
+## 4. The team's operand-role and import readers (options)
+
+`CT_GAT/preprocessing/ida_feature_readers.py` reads an IDA export a second time and writes, per binary, the operand-role triplet of
+every instruction (`operand_roles.jsonl.gz`) and the header imports with their references (`imports.json`); `CT_GAT/IDA_FEATURE_READERS.md`
+documents both. They enter the model only through cache-aligned side arrays:
+
+| What | File | Output |
+|---|---|---|
+| Operand-role triplets | `pipeline/s03_tokenizer/import_reader_side.py` | `<cache>/side/yanping/<sample_id>.npz`: `ytok` int16 `[n_insn, 3]` in the cache's instruction order. Used by `RunConfig.vocab` `yanping` and `hybrid` (`TokenVocab`, `token_table`) |
+| Header, referenced and unreferenced imports | `pipeline/s10_unused_import_features/import_side.py` | `<cache>/side/imports/<sample_id>.npz`: three identity arrays. Used by `RunConfig.imports` (`ImportVocab`, `ImportBag`) |
+
+Both converters check the reader output against the cache (same functions, blocks and instruction counts per block, complete
+footer) and fail a sample on any mismatch. Register names, immediates and addresses are not in the reader's triplet either: it holds
+operand categories only.
+
+## 5. The data export for the transformer team
 
 `transformer_paths/block_export.py` writes the same selected blocks, tokens, edges and folds to
 `RUNS/export/<name>/` (schema in `transformer_paths/EXPORT_SCHEMA.md`). A teammate's encoder trained on that

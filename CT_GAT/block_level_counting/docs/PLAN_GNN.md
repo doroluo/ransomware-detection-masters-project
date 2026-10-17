@@ -461,3 +461,39 @@ Pooled 3-seed AUC: typed 0.979, no edges 0.974, shuffled 0.962.
 Verdict under the pre-registered rule: **structure does not help.** Real wiring beats random wiring, mainly
 because random wiring hurts. Real wiring does not beat no wiring. The CFG, as message passing uses it, adds
 nothing measurable over a regularised bag of blocks.
+
+## Reader inputs: operand-role vocabulary and unreferenced imports (step 14, 2026-10-16)
+
+Two options use the team's reader output (`CT_GAT/IDA_FEATURE_READERS.md`) through cache-aligned side arrays (README, "Reader inputs").
+Neither changes a default run: `RunConfig.vocab = 'ours'` and `imports = ''` keep every name, vocabulary and checkpoint.
+
+- **Vocabulary** (`--vocab yanping|hybrid`, run-name suffix `-voc-<name>`). yanping: the reader's three ids per instruction plus our `api`
+  tokens. hybrid: our `mn` and `beh`, the reader's two operand ids, `api`. Each kind except `beh` is cut on the training binaries
+  (document frequency at least `min_df`). Question: does Yanping's operand categorisation carry more than our `sig`? Arms (kfold x86,
+  seed 0): the no-edge arm with 15% block masking (`gnn-noedges-mblk15`, ours) against `-voc-yanping` and `-voc-hybrid`, plus the TF-IDF
+  baselines over the same token kinds.
+- **Unreferenced imports** (`--imports unreferenced`, suffix `-imp`). A bag of the imports in a binary's header that no instruction
+  references (static fact of the export, not run-time evidence) and two log counts enter the head. Vocabulary and idf: training binaries
+  only, `min_df` 2. Arms: three CPU baselines (`baselines.py --imports`: `imports_unref_lr`, `imports_header_lr`, `tfidf_sig_api_imp_lr`),
+  then R7 + `--mask-blocks 0.15 --imports unreferenced` **only if** the pooled AUC of `imports_unref_lr` is at least the majority floor's
+  AUC + 0.05 (`gates.py --stage imports --verdict`).
+
+CPU baselines on the v2 cache, kfold x86, seed 0, pooled over the five folds (AUC checkpoint at the validation threshold):
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| TF-IDF, ours (sig + api) | 0.982 | 0.990 | 0.935 |
+| TF-IDF, yanping | 0.981 | 0.990 | 0.938 |
+| TF-IDF, hybrid | 0.981 | 0.989 | 0.917 |
+| unreferenced imports, LR | 0.526 | 0.668 | 0.385 |
+| header imports, LR | 0.985 | 0.991 | 0.954 |
+| TF-IDF + unreferenced imports | 0.982 | 0.990 | 0.935 |
+
+Paired differences, second minus first, dAUC [95% CI] with 1000 resamples: TF-IDF ours -> yanping -0.001 [-0.005, +0.003], ours -> hybrid
+-0.001 [-0.003, +0.000], TF-IDF -> TF-IDF + unreferenced imports +0.000 [-0.000, +0.000]. The reader's operand categories give a bag of
+tokens no better and no worse than ours, as the linear baseline sees them. Unreferenced imports are rare (x86: 16.6% of ransomware and 0.6%
+of goodware have one or more; 81 of 1134 ransomware have no header imports at all) and under the family holdout a logistic regression on them barely ranks
+the test binaries: `imports_unref_lr` pooled AUC 0.526 against a majority floor of 0.500 + 0.05. **The imports gate
+fails, so the R7 + imports arm is not run.** (The header imports alone are a strong feature, AUC 0.985; that is a different feature from
+the one the step asked for.) Smoke runs (2 epochs, fold 0, `--out smoke_step14_*`) confirm that both GNN options train end to end; the
+GNN vocabulary arms (`queue_gnn.sh --stage vocab`, 10 runs) are not run yet.

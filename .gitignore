@@ -17,3 +17,4 @@
 !CT_GAT/block_level_counting/**/*.sh
 !.gitattributes
 !CT_GAT/block_level_counting/experiments/side_arrays/SIDE_VALIDATION.json
+!CT_GAT/block_level_counting/tests/fixtures/reader_side/**

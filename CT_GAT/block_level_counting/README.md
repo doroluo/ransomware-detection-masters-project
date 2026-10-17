@@ -5,7 +5,9 @@ tokens (opcodes, instruction signatures, behaviour tags and API references), wei
 GNN passes typed messages over each function's block CFG. Blocks are pooled into function vectors, a second GNN
 runs over the call graph, functions are pooled into one binary vector, and an MLP gives the ransomware logit.
 Subgraph selection keeps the whole binary up to a block budget (500,000 blocks by default; the `lcc` policy and smaller
-budgets are options). There are no unused-import features yet.
+budgets are options). Two options use the team's reader output (`IDA_FEATURE_READERS.md`): `--vocab yanping|hybrid` swaps the
+instruction tokens for the reader's operand-role ids, and `--imports unreferenced` adds a bag of the imports a binary declares but its code
+never references to the final classifier. Both are off by default.
 
 The packages under `pipeline/` are numbered like the boxes of the diagram below.
 
@@ -22,16 +24,16 @@ flowchart TD
     S7 --> S8["8 GNN over call graph<br/>2 layers"]
     S8 --> S9["9 Pool functions to binary"]
     S9 --> S11["11 Final classifier"]
-    S10["10 Unused import features<br/>(not yet in the model)"] -.-> S11
+    S10["10 Unreferenced import features<br/>(--imports unreferenced)"] -.-> S11
     S5V["Precomputed block vectors<br/>frozen per-block encoder<br/>(transformer_paths)"] -. "--block-input vec" .-> S5
     S2 -. "edge info: typed block edges" .-> S6
     S2 -. "edge info: call edges" .-> S8
-    classDef notyet stroke-dasharray: 6 4,fill:#f4f4f4,color:#555
-    class S10 notyet
+    classDef option stroke-dasharray: 6 4,fill:#f4f4f4,color:#555
+    class S10 option
 ```
 
-The dashed box is not in the model yet: step 10 does not exist. Step 4 keeps the whole binary by default; the other policies
-are options. Step 5 can take precomputed block vectors from a frozen per-block encoder instead of the token counts
+The dashed box is an option, off by default (`--imports unreferenced`, see Reader inputs below). Step 4 keeps the whole binary by
+default; the other policies are options. Step 5 can take precomputed block vectors from a frozen per-block encoder instead of the token counts
 (`--block-input vec`, see Transformer paths below).
 
 ## Steps and code
@@ -40,15 +42,15 @@ are options. Step 5 can take precomputed block vectors from a frozen per-block e
 |---|---|---|---|---|
 | 1 IDA export | `pipeline/s01_ida_export` | (README only; the export runs on the VM) | PE binary → `<sha256>.jsonl.gz` | none |
 | 2 Build CFG cache | `pipeline/s02_build_cfg_cache` | `build_cache.py`, `check_cache.py` | exports → `samples/<id>.npz`, `index.csv`, `vocab.json` | `GT_CACHE` (env), `protocol` picks the cache |
-| 3 Tokenizer | `pipeline/s03_tokenizer` | `TokenVocab`, `token_table`, `ranges` | npz arrays → `tokens`, `tok_offsets` | `min_df` |
+| 3 Tokenizer | `pipeline/s03_tokenizer` | `TokenVocab`, `token_table`, `ranges`, `import_reader_side` (converter) | npz arrays (and `side/yanping` for `vocab` ≠ `ours`) → `tokens`, `tok_offsets` | `min_df`, `vocab` (`ours`, `yanping`, `hybrid`) |
 | 4 Select subgraph | `pipeline/s04_select_subgraph` | `select_subgraph`, `cap_functions`, `MAX_BINARY_BLOCKS`, `chain_reduction`; `keep_functions` in `batching.py` | functions of a binary → kept functions, `seg_len`, `seg_feat`, `blk_seg`, `blk_pos` | `subgraph` (`cap`, `lcc`), `budget`, `drop_functions`, `drop_library`, `batch_blocks` |
 | 5 Block-level counting | `pipeline/s05_block_counting` | `token_weights`, `BlockEncoder`, `BlockVecEncoder`, `BlockVecs`, `BlockVecSource` | `tokens`, `tok_weights`, `blk_feat` → block vectors `[B, d]`; with `block_input='vec'`: `blk_vec`, `blk_feat` → block vectors | `encoder` (`tfidf`, `mean`, `raw`, `presence`, `rawlog`), `mask_blocks`, `mask_tokens`, `d_model`, `block_input` (`tokens`, `vec`), `block_vec` |
 | 6 GNN over block CFG | `pipeline/s06_gnn_block_cfg` | `block_edges`, `control_edges`, `drop_and_flip_edges`, `DirGINELayer` | block vectors, `edge_seg/src/dst/type` → block vectors | `gnn_fn_layers`, `direction`, `control`, `untyped`, `drop_edges`, `flip_edges` |
 | 7 Pool blocks to functions | `pipeline/s07_pool_blocks_to_functions` | `FixedReadout`, `GatedReadout` | block vectors, `blk_seg` → function vectors `[S, d]` | `readout` (`fixed`, `gated`; `gated` is attention pooling) |
 | 8 GNN over call graph | `pipeline/s08_gnn_call_graph` | `call_pairs`, `call_layers`, `run_call_layers` | function vectors, `call_src/dst` → function vectors | `gnn_bin_layers`, `no_call_mp` |
 | 9 Pool functions to binary | `pipeline/s09_pool_functions_to_binary` | the readouts of step 7 | function vectors, `seg_bin` → binary vectors `[N, d]` | `readout` |
-| 10 Unused import features | `pipeline/s10_unused_import_features` | none (README only) | not built | none |
-| 11 Final classifier | `pipeline/s11_final_classifier` | `make_head`, `bin_feat` | binary vector, `bin_feat` → logit `[N]` | `dropout`, `stack_tfidf` (out-of-fold TF-IDF logit from `baselines.py --stack-logits`), `select_on` (`overall`, `cell`: how `train.py` picks the AUC checkpoint and its threshold) |
+| 10 Unreferenced import features | `pipeline/s10_unused_import_features` | `import_side` (converter), `ImportVocab`, `ImportBag` | `side/imports` → import bag `[N, 32]` and 2 log counts | `imports` (`unreferenced`) |
+| 11 Final classifier | `pipeline/s11_final_classifier` | `make_head`, `bin_feat` | binary vector, `bin_feat` (and the import bag, the TF-IDF logit) → logit `[N]` | `dropout`, `stack_tfidf` (out-of-fold TF-IDF logit from `baselines.py --stack-logits`), `select_on` (`overall`, `cell`: how `train.py` picks the AUC checkpoint and its threshold) |
 
 `pipeline/batching.py` builds one binary's arrays from steps 3 to 8 (`encode_binary_gnn`), collates them and loads
 batches. `pipeline/model.py` assembles `HierGNN` from the stages. Its attribute names are the checkpoint keys, so
@@ -58,7 +60,7 @@ do not rename them. The controls (`no_edges`, `untyped`, `no_call_mp`) are appli
 
 | folder | content |
 |---|---|
-| `common/` | `RunConfig` (`config.py`), cache and run paths (`paths.py`), manifests and folds (`manifests.py`) |
+| `common/` | `RunConfig` (`config.py`), cache and run paths (`paths.py`), manifests and folds (`manifests.py`), shared code of the reader converters (`side_io.py`) |
 | `training/` | `train.py`, one run |
 | `evaluation/` | `metrics.py`, `baselines.py`, `report.py`, `stats.py`, `gates.py`, `val_threshold.py` |
 | `experiments/side_arrays/` | side arrays and the WL baseline (see `SIDE_EXPERIMENTS.md`) |
@@ -97,7 +99,7 @@ $PY report.py
 # paired test: no-edge control against typed edges, AUC-selected checkpoints
 $PY stats.py --a kfold_x86_gnn-noedges --b kfold_x86_gnn --selection auc
 
-# gate summary of a stage, and the resumable queue (--dry only prints the runs); stages day1, day1b, v3, subgraph, paths
+# gate summary of a stage, and the resumable queue (--dry only prints the runs); stages day1, day1b, v3, subgraph, paths, vocab, imports
 $PY gates.py --stage day1b
 bash queue_gnn.sh --stage day1b --dry
 
@@ -118,6 +120,49 @@ $PY train.py --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-bl
 
 # tests (GPU and caches needed for some)
 $PY -m pytest tests -q
+```
+
+## Reader inputs: operand-role vocabulary and unreferenced imports
+
+The team's readers (`CT_GAT/preprocessing/ida_feature_readers.py`, documented in `CT_GAT/IDA_FEATURE_READERS.md`) write, per binary,
+`<reader root>/<sample_id>/{operand_roles.jsonl.gz, imports.json, manifest.json}` (default reader root
+`C:/Users/chaoa/Downloads/ida_features/out`). Two converters turn that output into cache-aligned side arrays; neither reads the raw
+IDA export, and both fail a sample (listing it) when the reader output does not describe the cache's binary.
+
+| converter | writes | content |
+|---|---|---|
+| `python -m pipeline.s03_tokenizer.import_reader_side --cache <cache> ...` | `<cache>/side/yanping/<sample_id>.npz` | `ytok` int16 `[n_insn, 3]`, the reader's triplet (opcode or API id, operand 1, operand 2) in the cache's instruction order, plus schema and provenance |
+| `python -m pipeline.s10_unused_import_features.import_side --cache <cache> ...` | `<cache>/side/imports/<sample_id>.npz` | the header, referenced and unreferenced import identities (`dll!name`, lowercased) as the reader gives them |
+
+Both take several caches in one call (the reader output of a binary the caches share is parsed once), skip a sample whose provenance
+is unchanged, print `{ok, failed, missing}` counts, list each failure on stderr and write `side/<name>/_build-<id>.json`. A sample
+whose reader output is not there yet is `missing`, not failed. The alignment check covers the complete footer, the function, block and
+instruction counts, the instruction count of every block, the function of every block (empty functions included), the slot ranges, and
+one reader opcode id per cache mnemonic.
+
+- `--vocab yanping`: the block bag holds the reader's three ids per instruction plus our `api` tokens. `--vocab hybrid`: our `mn` and
+  `beh`, the reader's two operand ids, and `api`. `TokenVocab` cuts the reader kinds on the training binaries like `mn`, `sig` and
+  `api` (document frequency at least `min_df`, UNK = 0, one `[MASK]` id per kind); `beh` stays whole as before. The run name gains
+  `-voc-<name>`; `--vocab ours` (the default) leaves every name, vocabulary and checkpoint as it was.
+- `--imports unreferenced`: `ImportVocab` keeps the import identities that are unreferenced in at least `min_df` (2) training binaries,
+  with idf; an `EmbeddingBag` over the binary's kept names (weights: idf, L2-normalised), plus log1p(#unreferenced) and log1p(#header
+  imports), enter the head. The run name gains `-imp`. "Unreferenced" means no instruction of the export references the import; it is
+  not run-time evidence.
+- Baselines: `baselines.py --vocab yanping|hybrid` writes `tfidf_<vocab>_lr` to `kfold<f>_x86_s0_voc-<vocab>`; `baselines.py --imports`
+  writes `imports_unref_lr`, `imports_header_lr` and `tfidf_sig_api_imp_lr` to `kfold<f>_x86_s0_imp`. The gate groups are `tfidf-yanping`,
+  `tfidf-hybrid`, `imports-unref`, `imports-header`, `tfidf-imp`.
+- Queue: `queue_gnn.sh --stage vocab` runs both vocabulary baselines and the no-edge arm with 15% block masking under each vocabulary
+  (kfold x86, seed 0). `--stage imports` runs the import baselines, then `gates.py --stage imports --verdict`: R7 with `--mask-blocks 0.15
+  --imports unreferenced` runs only if the pooled AUC of `imports_unref_lr` is at least the majority floor's AUC + 0.05.
+
+```bash
+$PY -m pipeline.s03_tokenizer.import_reader_side --cache C:/Users/chaoa/Downloads/graph_transformer_cache_v2 C:/Users/chaoa/Downloads/graph_transformer_cache_combined
+$PY -m pipeline.s10_unused_import_features.import_side --cache C:/Users/chaoa/Downloads/graph_transformer_cache_v2 C:/Users/chaoa/Downloads/graph_transformer_cache_combined
+$PY baselines.py --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --vocab yanping
+$PY baselines.py --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --imports
+$PY train.py --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --control no_edges --mask-blocks 0.15 --vocab yanping
+$PY train.py --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --imports unreferenced
+$PY gates.py --stage vocab ; $PY gates.py --stage imports
 ```
 
 ## Transformer paths
@@ -170,7 +215,8 @@ The queue stage `paths` runs the stacking arm on five folds and the two referenc
 - Subgraph policies (which functions or blocks enter the model): `pipeline/s04_select_subgraph/subgraph.py`. A new policy is a
   branch of `select_subgraph` and a value of `RunConfig.subgraph`.
 - Precomputed block vectors: `pipeline/s05_block_counting` (`block_vecs.py` reads them; `transformer_paths/` writes them).
-- Import features: `pipeline/s10_unused_import_features`.
+- Import features: `pipeline/s10_unused_import_features` (`imports_feat.py` for the vocabulary and the bag, `import_side.py` for the converter).
+- Reader-based vocabularies: a kind of `VOCAB_KINDS` in `pipeline/s03_tokenizer/vocab.py` and a column of `ytok`.
 
 A new `RunConfig` field also needs a change in `common/config.py`. Check that `RunConfig().name` and the names of
 existing runs stay the same.

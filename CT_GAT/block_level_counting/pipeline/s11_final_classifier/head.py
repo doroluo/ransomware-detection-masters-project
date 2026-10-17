@@ -2,7 +2,10 @@
 import numpy as np
 from torch import nn
 
+from pipeline.s10_unused_import_features.imports_feat import IMPORT_DIM
+
 N_BIN_FEAT = 5
+N_IMPORT_FEAT = 2
 
 
 def bin_feat(z):
@@ -12,5 +15,7 @@ def bin_feat(z):
 
 
 def make_head(d, cfg):
-    return nn.Sequential(nn.Linear(d + N_BIN_FEAT + cfg.stack_tfidf, d), nn.GELU(), nn.Dropout(cfg.dropout),
-                         nn.Linear(d, 1))
+    """Input: binary vector, bin_feat, and with `stack_tfidf` one logit, with `imports` the import bag (IMPORT_DIM) and
+    its two log counts."""
+    d_in = d + N_BIN_FEAT + cfg.stack_tfidf + (IMPORT_DIM + N_IMPORT_FEAT if cfg.imports else 0)
+    return nn.Sequential(nn.Linear(d_in, d), nn.GELU(), nn.Dropout(cfg.dropout), nn.Linear(d, 1))

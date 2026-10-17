@@ -35,7 +35,7 @@ DEFAULTS = asdict(RunConfig())
 LABELLED = ('protocol', 'fold', 'arch', 'seed', 'no_graph', 'num_workers', 'model', 'encoder', 'readout', 'control',
             'untyped', 'no_call_mp', 'stack_tfidf', 'mask_tokens', 'drop_functions', 'drop_library', 'mask_blocks',
             'aux_recon', 'aux_edge', 'direction', 'drop_edges', 'flip_edges', 'gnn_fn_layers', 'gnn_bin_layers',
-            'train_fraction', 'arch_balance', 'select_on', 'subgraph', 'budget', 'cache')
+            'train_fraction', 'arch_balance', 'select_on', 'subgraph', 'budget', 'vocab', 'imports', 'cache')
 CONTROL_LABELS = {'no_edges': 'no-edges', 'shuffle': 'shuffle', 'chain': 'chain', 'permute_types': 'permuted types'}
 
 
@@ -59,6 +59,8 @@ def model_label(cfg):
     parts += [f'{s}{n}' for s, n, default in (('L', cfg.gnn_fn_layers, 3), ('B', cfg.gnn_bin_layers, 2)) if n != default]
     parts += tf + ab
     parts += [f'enc-{cfg.block_encoder}'] if cfg.block_encoder != 'tfidf' else []
+    parts += [f'vocab-{cfg.vocab}'] if cfg.vocab != 'ours' else []
+    parts += ['unref-imports'] if cfg.imports else []
     parts += ['gated'] if cfg.readout == 'gated' else []
     parts += ['cell-select'] if cfg.select_on == 'cell' else []
     if cfg.subgraph != 'cap' or cfg.budget:

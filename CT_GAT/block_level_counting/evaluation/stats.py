@@ -31,7 +31,13 @@ from evaluation.metrics import cell_weights
 
 METRICS = (('auc', 'AUC'), ('pr_auc', 'PR-AUC'), ('macro_f1', 'macro-F1'))
 BASELINES = {'tfidf': 'tfidf_sig_api_lr', 'structural': 'structural_lr',
-             'wl0': 'wl_h0_lr', 'wl2': 'wl_h2_lr', 'wl2-shuffle': 'wl_h2_shuffle_lr'}
+             'wl0': 'wl_h0_lr', 'wl2': 'wl_h2_lr', 'wl2-shuffle': 'wl_h2_shuffle_lr',
+             'tfidf-yanping': 'tfidf_yanping_lr', 'tfidf-hybrid': 'tfidf_hybrid_lr',
+             'imports-unref': 'imports_unref_lr', 'imports-header': 'imports_header_lr',
+             'tfidf-imp': 'tfidf_sig_api_imp_lr'}
+# the baselines of `--vocab` and `--imports` live in directories of their own: kfold0_x86_s0_voc-yanping, kfold0_x86_s0_imp
+BASELINE_KIND = {'tfidf-yanping': '_voc-yanping', 'tfidf-hybrid': '_voc-hybrid', 'imports-unref': '_imp',
+                 'imports-header': '_imp', 'tfidf-imp': '_imp'}
 FOLDS = range(5)
 KFOLD_PROTOCOLS = ('kfold', 'kfold_v3')
 BASELINE_PREFIX = {'kfold': 'kfold', 'kfold_v3': 'v3kfold'}
@@ -43,9 +49,9 @@ BASELINE_GROUP = re.compile(rf"({'|'.join(BASELINES)})(?:-tf(\d+))?(-ab)?")
 
 def baseline_method(group):
     """(method, directory suffix) for a baseline group such as `tfidf`, `structural-tf25` or `tfidf-ab` (`_tf25`, `_ab`
-    and `_tf50_ab` are the suffixes), else None."""
+    and `_tf50_ab` are the suffixes), `tfidf-yanping` (`_voc-yanping`) or `imports-unref` (`_imp`), else None."""
     m = BASELINE_GROUP.fullmatch(group)
-    return (BASELINES[m[1]], (f'_tf{m[2]}' if m[2] else '') + ('_ab' if m[3] else '')) if m else None
+    return (BASELINES[m[1]], BASELINE_KIND.get(m[1], '') + (f'_tf{m[2]}' if m[2] else '') + ('_ab' if m[3] else '')) if m else None
 
 
 class MissingGroup(Exception):

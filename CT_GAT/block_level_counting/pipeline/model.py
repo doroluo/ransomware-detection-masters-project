@@ -1,7 +1,7 @@
 """Edge-typed hierarchical message-passing network: blocks -> function vectors -> binary logit, plain torch.
 `RunConfig.control == 'no_edges'`, `untyped` and `no_call_mp` are read only in `HierGNN.structure`.
 Stage order: s05 block vectors (token bags, or precomputed vectors with block_input='vec'), s06 block-CFG layers,
-s07 blocks -> functions, s08 call-graph layers, s09 functions -> binary, s11 head. Attribute names are the checkpoint
+s07 blocks -> functions, s08 call-graph layers, s09 functions -> binary, s10 import bag (`imports`), s11 head. Attribute names are the checkpoint
 keys."""
 from dataclasses import dataclass
 
@@ -14,6 +14,7 @@ from pipeline.s06_gnn_block_cfg.edges import N_EDGE_TYPES
 from pipeline.s06_gnn_block_cfg.layers import DirGINELayer
 from pipeline.s07_pool_blocks_to_functions.readout import READOUTS
 from pipeline.s08_gnn_call_graph.calls import call_layers, run_call_layers
+from pipeline.s10_unused_import_features.imports_feat import ImportBag
 from pipeline.s11_final_classifier.head import make_head
 
 
@@ -28,7 +29,7 @@ class Structure:
 
 
 class HierGNN(nn.Module):
-    def __init__(self, cfg: RunConfig, n_tokens, d_vec=None):
+    def __init__(self, cfg: RunConfig, n_tokens, d_vec=None, n_imports=0):
         super().__init__()
         d = cfg.d_model
         readout = READOUTS[cfg.readout]
@@ -46,6 +47,8 @@ class HierGNN(nn.Module):
         self.fn_readout, self.seg_feat = readout(d), nn.Linear(2, d)
         self.bin_layers = call_layers(d, cfg)
         self.bin_readout = readout(d)
+        if cfg.imports:
+            self.imports = ImportBag(n_imports)
         self.head = make_head(d, cfg)
 
     def structure(self, batch):
@@ -80,4 +83,6 @@ class HierGNN(nn.Module):
         z = [self.bin_readout(f, batch['seg_bin'], n_bin), batch['bin_feat']]
         if self.cfg.stack_tfidf:
             z.append(batch['stack_logit'][:, None])
+        if self.cfg.imports:
+            z += [self.imports(batch), batch['imp_feat']]
         return self.head(torch.cat([t.to(z[0].dtype) for t in z], 1)).squeeze(-1).float()

@@ -1,6 +1,6 @@
 """Gate summary from the runs on disk.
 
-python gates.py --stage day1|day1b|v3|subgraph|paths [--resamples 2000]
+python gates.py --stage day1|day1b|v3|subgraph|paths|vocab|imports [--resamples 2000]
 
 Day 1 reads seed 0 of the kfold x86 arms (R0 TF-IDF baseline, R2 tfidf / mean, R4 shuffle, R5 untyped, R7 typed GNN):
 a pooled table, the preliminary gate-A verdict of PLAN_GNN.md section 5, and the stats.py paired differences. An arm
@@ -30,6 +30,15 @@ Stage paths reads the kfold x86 arms of step 12: R7 with the out-of-fold TF-IDF 
 block vectors, path 2: typed GNN on them) against each other and against the token-counting no-edge arm
 `gnn-noedges-mblk15` (R2 tokens). The vectors are the reference encoder's until the teammates' checkpoints arrive. An
 arm that is not on disk, or has fewer than five folds (the reference arms run on fold 0 only), is reported as missing.
+
+Stage vocab reads the kfold x86 vocabulary arms of step 14: the no-edge GNN with 15% block masking under our vocabulary
+(`gnn-noedges-mblk15`), the reader's (`-voc-yanping`) and the hybrid one (`-voc-hybrid`), and the three TF-IDF baselines over
+the same token kinds (`baselines.py --vocab`): the pooled table and the paired differences. Missing arms print as missing.
+
+Stage imports reads the kfold x86 import arms: the import baselines (`baselines.py --imports`), R7 typed and R7 + `--imports
+unreferenced` (`gnn-mblk15-imp`), the paired differences and the gate that decides whether the GNN arm runs: the pooled AUC of
+`imports_unref_lr` at least the majority floor's AUC + 0.05. `--verdict` prints the gate line and exits 0 (pass) or 3 (the
+queue reads it); an unassessable gate (baseline missing) does not pass.
 """
 import argparse
 import json
@@ -480,14 +489,120 @@ def paths(resamples):
     return out + [''] + blocks
 
 
-STAGES = {'day1': day1, 'day1b': day1b, 'v3': v3, 'subgraph': subgraph, 'paths': paths}
+def paired_stage(title, intro, arms, pairs, resamples):
+    """Pooled table of `arms` ((label, group), AUC checkpoint, seed 0) and the paired differences of `pairs` (labels,
+    second minus first). A missing arm or fold prints as missing."""
+    group = dict(arms)
+    out = [f'# Gate summary, stage {title} ({LABEL})', '', intro, '', '## Pooled, AUC checkpoint', '',
+           '| arm | group | AUC | PR-AUC | macro-F1 |', '|---|---|---|---|---|']
+    for arm, g in arms:
+        out.append(f'| {arm} | {g} | ' + ' | '.join(metric_cells(pooled(g, 'auc'))) + ' |')
+    out += ['', '## Paired differences, second minus first', '',
+            '| first | second | dAUC [95% CI] | dmacro-F1 [95% CI] |', '|---|---|---|---|']
+    blocks = []
+    for a, b in pairs:
+        try:
+            result, info = stats.compare(group[a], group[b], 'auc', resamples, seeds=[SEED])
+        except stats.MissingGroup as e:
+            out.append(f'| {a} | {b} | missing | missing |')
+            blocks += [f'**{b} vs {a}** (selection auc): missing: {e}', '']
+            continue
+        out.append(f"| {a} | {b} | {signed_ci(result['auc'])} | {signed_ci(result['macro_f1'])} |")
+        blocks += [stats.fmt_block(group[a], group[b], 'auc', resamples, result, info), '']
+    return out + [''] + blocks
+
+
+VOC_GNN = dict(mask_blocks=0.15, control='no_edges')
+VOC_ARMS = (('TF-IDF, ours (sig + api)', 'tfidf'), ('TF-IDF, yanping', 'tfidf-yanping'), ('TF-IDF, hybrid', 'tfidf-hybrid'),
+            ('R2 no-edges, ours', x86_group(variant_of(**VOC_GNN))),
+            ('R2 no-edges, yanping', x86_group(variant_of(**VOC_GNN, vocab='yanping'))),
+            ('R2 no-edges, hybrid', x86_group(variant_of(**VOC_GNN, vocab='hybrid'))))
+VOC_PAIRS = (('TF-IDF, ours (sig + api)', 'TF-IDF, yanping'), ('TF-IDF, ours (sig + api)', 'TF-IDF, hybrid'),
+             ('R2 no-edges, ours', 'R2 no-edges, yanping'), ('R2 no-edges, ours', 'R2 no-edges, hybrid'),
+             ('R2 no-edges, yanping', 'R2 no-edges, hybrid'), ('TF-IDF, yanping', 'R2 no-edges, yanping'),
+             ('TF-IDF, hybrid', 'R2 no-edges, hybrid'))
+
+
+def vocab(resamples):
+    intro = ('kfold x86 on the v2 cache, seed 0 pooled over the five folds. Vocabularies: ours (mn, sig, beh, api), yanping '
+             '(the reader\'s three ids per instruction plus api) and hybrid (our mn and beh, the reader\'s two operand ids, '
+             'api). GNN arms are the no-edge arm with 15% block masking (`--control no_edges --mask-blocks 0.15 --vocab`); '
+             'the TF-IDF rows are `baselines.py --vocab` over the same token kinds. Differences are second minus first '
+             f'for the AUC checkpoint at its validation threshold, with the 95% paired cluster bootstrap interval ({resamples} '
+             'resamples). A missing arm or fold is stated.')
+    return paired_stage('vocab', intro, VOC_ARMS, VOC_PAIRS, resamples)
+
+
+IMP_R7 = dict(mask_blocks=0.15)
+IMP_ARMS = (('TF-IDF', 'tfidf'), ('unreferenced imports, LR', 'imports-unref'), ('header imports, LR', 'imports-header'),
+            ('TF-IDF + unreferenced imports', 'tfidf-imp'),
+            ('R7 typed', x86_group(variant_of(**IMP_R7))),
+            ('R7 + unreferenced imports', x86_group(variant_of(**IMP_R7, imports='unreferenced'))))
+IMP_PAIRS = (('TF-IDF', 'TF-IDF + unreferenced imports'), ('header imports, LR', 'unreferenced imports, LR'),
+             ('R7 typed', 'R7 + unreferenced imports'), ('TF-IDF + unreferenced imports', 'R7 + unreferenced imports'))
+IMPORT_GATE_MARGIN = 0.05
+
+
+@lru_cache(maxsize=None)
+def majority_floor_auc(seed=SEED):
+    """AUC of the pooled majority-class floor of the kfold x86 test folds, each fold predicting the majority class of its
+    training manifest (0.5 whenever the folds agree). 0.5, the AUC of any constant predictor, when the cache is absent."""
+    from common.manifests import load_index, make_manifest
+    try:
+        index = load_index()
+    except FileNotFoundError:
+        return 0.5
+    rows, train_ids = [], {}
+    for fold in range(5):
+        m = make_manifest(RunConfig(protocol='kfold', fold=fold, arch='x86', seed=seed), index)
+        rows += [{'fold': str(fold), 'label': r['label'], 'arch': r['arch']} for r in m.test]
+        train_ids[str(fold)] = [r['sample_id'] for r in m.train]
+    labels = {r['sample_id']: r['label'] for r in index}
+    return float(report.pooled_floors(rows, train_ids, labels)['majority']['auc'])
+
+
+def imports_gate():
+    """(passed, verdict line): R7 + unreferenced imports runs only if the pooled AUC of `imports_unref_lr` (kfold x86, seed
+    0) is at least the majority floor's AUC + IMPORT_GATE_MARGIN. A missing baseline is not a pass."""
+    floor = majority_floor_auc()
+    bar = floor + IMPORT_GATE_MARGIN
+    r = pooled('imports-unref', 'auc')
+    if isinstance(r, str):
+        return False, f'GATE imports: cannot assess, imports_unref_lr is {r}; R7 + unreferenced imports is not run.'
+    ok = r[0] >= bar
+    return ok, (f"GATE imports: {'PASS' if ok else 'FAIL'}. imports_unref_lr pooled AUC {r[0]:.3f} vs majority floor "
+                f"{floor:.3f} + {IMPORT_GATE_MARGIN} = {bar:.3f}; R7 + unreferenced imports "
+                f"{'runs' if ok else 'is not run'}.")
+
+
+def imports(resamples):
+    intro = ('kfold x86 on the v2 cache, seed 0 pooled over the five folds. Baselines (`baselines.py --imports`, TF-IDF '
+             'logistic regressions on the same folds): the unreferenced import identities, every header import identity, and '
+             'the sig + api tokens hstacked with the unreferenced imports. GNN arms: R7 typed with 15% block masking, '
+             'with and without `--imports unreferenced` (an EmbeddingBag over the unreferenced names and two log counts in '
+             'the head). The R7 + imports arm runs only when the gate below passes. Differences are second minus first '
+             f'for the AUC checkpoint at its validation threshold, with the 95% paired cluster bootstrap interval ({resamples} '
+             'resamples). A missing arm or fold is stated.')
+    return paired_stage('imports', intro, IMP_ARMS, IMP_PAIRS, resamples) + ['## Gate', '', imports_gate()[1], '']
+
+
+STAGES = {'day1': day1, 'day1b': day1b, 'v3': v3, 'subgraph': subgraph, 'paths': paths, 'vocab': vocab,
+          'imports': imports}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--stage', choices=list(STAGES), required=True)
     ap.add_argument('--resamples', type=int, default=2000)
+    ap.add_argument('--verdict', action='store_true',
+                    help='stage imports only: print the gate verdict line; exit 0 if it passes, 3 if not')
     args = ap.parse_args()
+    if args.verdict:
+        if args.stage != 'imports':
+            ap.error('--verdict belongs to --stage imports')
+        passed, line = imports_gate()
+        print(line)
+        raise SystemExit(0 if passed else 3)
     print('\n'.join(STAGES[args.stage](args.resamples)))
 
 
