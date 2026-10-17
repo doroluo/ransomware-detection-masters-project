@@ -513,3 +513,20 @@ with no gate; `gates.py --stage imports` adds R7 against R7 + header imports, `i
 against R7 + header imports. The five-fold arm is not run yet. A 2-epoch smoke run on fold 0 (`--fixed-epochs 2 --batch-blocks 100000
 --out smoke_step15_imports_header`) trains end to end: 4292 header identities in the vocabulary, test AUC 0.965 and macro-F1 0.966 after two
 epochs (not a result).
+
+## Vocabulary decision (2026-10-17): keep `ours`
+
+Pre-registered test. Arm: no-edge GNN + 15% block masking, kfold x86, 3 seeds x 5 folds, AUC-selected checkpoint at
+the validation threshold, paired cluster bootstrap (2,000 resamples, 712 clusters). The rule for replacing `ours` is
+dAUC >= +0.01 and dmacro-F1 >= +0.02, both 95% CIs above zero, and non-inferior on TF-IDF.
+
+| candidate | dAUC [95% CI] | dPR-AUC | dmacro-F1 [95% CI] | TF-IDF dAUC | verdict |
+|---|---|---|---|---|---|
+| yanping (opcode + 2 operand roles + api) | +0.006 [-0.001, +0.014] | +0.003 [-0.002, +0.009] | +0.014 [-0.015, +0.041] | -0.001 [-0.005, +0.003] | tie, fails rule |
+| hybrid (mn + beh + 2 operand roles + api) | -0.004 [-0.011, +0.003] | -0.007 [-0.016, -0.001] | +0.003 [-0.016, +0.021] | -0.001 [-0.003, +0.000] | tie/worse, fails rule |
+
+Pooled 3-seed AUC: ours 0.974, yanping 0.980, hybrid 0.971.
+
+**Decision.** `vocab='ours'` stays the default (mnemonic, operand-category signature, behaviour id, API name).
+`--vocab yanping` remains available. The operand roles from the team's reader cannot separate stack memory from
+other memory in the 2.1 exports, which is consistent with the near-tie.
