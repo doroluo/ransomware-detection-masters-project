@@ -1,0 +1,162 @@
+"""Pipeline B preprocessing: the teammates' `preprocess_full.process_sample` over the 1,810 kfold x86 binaries.
+
+python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --seed 0 --out RUNS/team/b_sig500
+       [--limit N] [--ids <sample_id> ...]       (run from the block_level_counting root;
+a leading RUNS/ in --out is graph_transformer_runs)
+
+For every id (sorted) the CFG from the Mendeley bundle and the IDA listing from ida_asm_mendeley_20261006 go through
+`process_sample` with the explicit cfg path, no size cap (the caps live in the teammates' `main`, which is not called),
+one shared `ApiVocab` and one `FiveChannelEmbedder` created after `torch.manual_seed(seed)`. Per sample
+<out>/<sample_id>.pt and <out>/<sample_id>.manifest.json (their `save_sample`). The vocabulary (`api_vocab.json`), the
+embedder (`channel_embedder.pt`) and `checkpoint.json` (the ids they cover) are written every 50 samples and at the end,
+under <out>, never under the teammates' tree. A rerun resumes: it loads that state, keeps the ids in the checkpoint and
+rebuilds every other id (a sample finished after the last checkpoint used vocabulary ids the saved vocabulary may lack).
+A sample that raises stops the build with its id; nothing is skipped. `build_log.csv`: sample_id, status,
+n_blocks_total, n_blocks_kept, seconds.
+"""
+import argparse
+import csv
+import gc
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from pathlib import Path
+
+import torch
+
+from common.config import RUNS
+from experiments.team_pipelines.common import all_ids, import_team, paths_for, sample_rows
+
+SAVE_EVERY = 50
+LOG_FIELDS = ('sample_id', 'status', 'n_blocks_total', 'n_blocks_kept', 'seconds')
+
+
+def atomic(path, write):
+    tmp = path.with_name(path.name + '.tmp')
+    write(tmp)
+    os.replace(tmp, path)
+
+
+def save_state(out, pp, vocab, embedder, done, settings):
+    atomic(out / 'api_vocab.json', lambda p: pp.tok.save_api_vocab(vocab, p))
+    atomic(out / 'channel_embedder.pt', lambda p: torch.save(embedder.state_dict(), p))
+    atomic(out / 'checkpoint.json', lambda p: p.write_text(
+        json.dumps({'settings': settings, 'done': sorted(done), 'api_names': len(vocab.names)}), encoding='utf-8'))
+
+
+def load_state(out, pp, settings):
+    """(vocab, embedder, done ids) from `out`, or a fresh pair seeded with settings['seed'] when it has none."""
+    ckpt = out / 'checkpoint.json'
+    if not ckpt.is_file():
+        torch.manual_seed(settings['seed'])
+        vocab = pp.tok.ApiVocab()
+        return vocab, pp.FiveChannelEmbedder(pp.api_table_size(vocab)), set()
+    state = json.loads(ckpt.read_text(encoding='utf-8'))
+    if state['settings'] != settings:
+        raise SystemExit(f"{out} was built with {state['settings']}, this run asks for {settings}")
+    vocab = pp.tok.load_api_vocab(out / 'api_vocab.json')
+    if len(vocab.names) != state['api_names']:
+        raise SystemExit(f"{out}/api_vocab.json has {len(vocab.names)} names, the checkpoint says {state['api_names']}")
+    embedder = pp.FiveChannelEmbedder(pp.api_table_size(vocab))
+    weights = torch.load(out / 'channel_embedder.pt', map_location='cpu')
+    embedder.expand_api(int(weights['api_embedding.weight'].shape[0]))
+    embedder.load_state_dict(weights)
+    return vocab, embedder, set(state['done'])
+
+
+def drop_unfinished(out, done):
+    """Delete the .pt / manifest files of ids the checkpoint does not cover."""
+    gone = 0
+    for p in out.glob('*.pt'):
+        if p.name != 'channel_embedder.pt' and p.stem not in done:
+            p.unlink()
+            (out / f'{p.stem}.manifest.json').unlink(missing_ok=True)
+            gone += 1
+    return gone
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--sample', choices=['signal', 'walk'], default='signal')
+    ap.add_argument('--num-blocks', type=int, default=500)
+    ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--out', type=Path, required=True)
+    ap.add_argument('--limit', type=int, help='the first N ids in sorted order')
+    ap.add_argument('--ids', nargs='+', help='only these sample ids')
+    args = ap.parse_args(argv)
+    logging.basicConfig(level=logging.WARNING, format='%(levelname)s %(message)s')
+
+    ids = all_ids() if args.ids is None else list(args.ids)
+    unknown = sorted(set(ids) - set(sample_rows()))
+    if unknown:
+        raise SystemExit(f'not kfold x86 ids: {unknown}')
+    if args.limit is not None:
+        ids = ids[:args.limit]
+    ids = sorted(ids)
+    pp = import_team('preprocess_full')
+    settings = {'sample': args.sample, 'num_blocks': args.num_blocks, 'seed': args.seed}
+    out = RUNS.joinpath(*args.out.parts[1:]) if args.out.parts and args.out.parts[0] == 'RUNS' else args.out
+    out.mkdir(parents=True, exist_ok=True)
+    vocab, embedder, done = load_state(out, pp, settings)
+    dropped = drop_unfinished(out, done)
+    todo = [i for i in ids if i not in done]
+    print(f'{out}: {len(ids)} ids, {len(ids) - len(todo)} done in the checkpoint, {dropped} unfinished files removed, '
+          f'{len(todo)} to build', flush=True)
+
+    log_path = out / 'build_log.csv'
+    new_log = not log_path.exists()
+    t_start, built, since_save = time.time(), 0, 0
+    with log_path.open('a', newline='', encoding='utf-8') as log_file:
+        log = csv.writer(log_file)
+        if new_log:
+            log.writerow(LOG_FIELDS)
+        for n, sample_id in enumerate(todo, 1):
+            row = sample_rows()[sample_id]
+            cfg_path, asm_path = paths_for(sample_id)
+            t0 = time.time()
+            try:
+                result = pp.process_sample(
+                    asm_path, cfg_path, label=row['label'], seed=args.seed, api_vocab=vocab,
+                    num_blocks=args.num_blocks, sample_mode=args.sample, file_id=sample_id,
+                    channel_embedder=embedder,
+                    dataset_metadata={'sample_id': sample_id, 'label': row['label'], 'arch': row['arch'],
+                                      'family': row['family'], 'fold': row['fold']})
+                pp.save_sample(result, out)
+            except Exception:
+                traceback.print_exc()
+                print(f'FAILED sample_id={sample_id} after {built} built in this run; nothing skipped, build stopped',
+                      flush=True)
+                raise SystemExit(1)
+            seconds = time.time() - t0
+            sample = result['sample']
+            log.writerow([sample_id, 'ok', sample.original_blocks, sample.sampled_blocks, f'{seconds:.1f}'])
+            log_file.flush()
+            del result
+            gc.collect()
+            done.add(sample_id)
+            built += 1
+            since_save += 1
+            if since_save >= SAVE_EVERY:
+                save_state(out, pp, vocab, embedder, done, settings)
+                since_save = 0
+            if n % 10 == 0 or n == len(todo):
+                wall = time.time() - t_start
+                print(f'{n}/{len(todo)} built, {len(done)}/{len(ids)} done, {wall:.0f} s, '
+                      f'{wall / n:.1f} s/sample, last {sample_id[:12]} {seconds:.1f} s '
+                      f'({sample.sampled_blocks}/{sample.original_blocks} blocks), vocab {len(vocab.names)}',
+                      flush=True)
+    save_state(out, pp, vocab, embedder, done, settings)
+    wall = time.time() - t_start
+    summary = {'processed': len(done & set(ids)), 'total': len(ids), 'built_this_run': built,
+               'wall_seconds_this_run': round(wall, 1), 'api_names': len(vocab.names), 'settings': settings}
+    (out / 'build_summary.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
+    print(f"processed {summary['processed']}/{summary['total']} in {wall:.0f} s this run "
+          f"({built} built); vocabulary {len(vocab.names)} names", flush=True)
+    return summary
+
+
+if __name__ == '__main__':
+    sys.exit(0 if main() else 1)
