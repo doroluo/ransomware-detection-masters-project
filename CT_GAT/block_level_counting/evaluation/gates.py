@@ -1,6 +1,6 @@
 """Gate summary from the runs on disk.
 
-python gates.py --stage day1|day1b|v3|subgraph|paths|vocab|imports [--resamples 2000]
+python gates.py --stage day1|day1b|v3|subgraph|paths|paths_codebert|vocab|imports [--resamples 2000]
 
 Day 1 reads seed 0 of the kfold x86 arms (R0 TF-IDF baseline, R2 tfidf / mean, R4 shuffle, R5 untyped, R7 typed GNN):
 a pooled table, the preliminary gate-A verdict of PLAN_GNN.md section 5, and the stats.py paired differences. An arm
@@ -30,6 +30,12 @@ Stage paths reads the kfold x86 arms of step 12: R7 with the out-of-fold TF-IDF 
 block vectors, path 2: typed GNN on them) against each other and against the token-counting no-edge arm
 `gnn-noedges-mblk15` (R2 tokens). The vectors are the reference encoder's until the teammates' checkpoints arrive. An
 arm that is not on disk, or has fewer than five folds (the reference arms run on fold 0 only), is reported as missing.
+
+Stage paths_codebert reads the CodeBERT arms of queue stage `paths_codebert` (frozen `microsoft/codebert-base` on the vocabulary
+strings of each block, `ours_cap0_codebert`; seeds 0 1 2): path 1 (no-edge GNN on the vectors) and path 2 (typed GNN on them)
+against each other, path 1 against the token-counting no-edge arm `gnn-noedges-mblk15` (R2 tokens), path 2 against R7 typed
+`gnn-mblk15`, and both against TF-IDF. The pooled table is seed 0; the paired differences use the seeds complete in both arms.
+An arm that is not on disk is reported as missing.
 
 Stage vocab reads the kfold x86 vocabulary arms of step 14: the no-edge GNN with 15% block masking under our vocabulary
 (`gnn-noedges-mblk15`), the reader's (`-voc-yanping`) and the hybrid one (`-voc-hybrid`), and the three TF-IDF baselines over
@@ -491,9 +497,9 @@ def paths(resamples):
     return out + [''] + blocks
 
 
-def paired_stage(title, intro, arms, pairs, resamples):
+def paired_stage(title, intro, arms, pairs, resamples, seeds=(SEED,)):
     """Pooled table of `arms` ((label, group), AUC checkpoint, seed 0) and the paired differences of `pairs` (labels,
-    second minus first). A missing arm or fold prints as missing."""
+    second minus first) over the `seeds` complete in both arms. A missing arm or fold prints as missing."""
     group = dict(arms)
     out = [f'# Gate summary, stage {title} ({LABEL})', '', intro, '', '## Pooled, AUC checkpoint', '',
            '| arm | group | AUC | PR-AUC | macro-F1 |', '|---|---|---|---|---|']
@@ -504,7 +510,7 @@ def paired_stage(title, intro, arms, pairs, resamples):
     blocks = []
     for a, b in pairs:
         try:
-            result, info = stats.compare(group[a], group[b], 'auc', resamples, seeds=[SEED])
+            result, info = stats.compare(group[a], group[b], 'auc', resamples, seeds=list(seeds))
         except stats.MissingGroup as e:
             out.append(f'| {a} | {b} | missing | missing |')
             blocks += [f'**{b} vs {a}** (selection auc): missing: {e}', '']
@@ -512,6 +518,30 @@ def paired_stage(title, intro, arms, pairs, resamples):
         out.append(f"| {a} | {b} | {signed_ci(result['auc'])} | {signed_ci(result['macro_f1'])} |")
         blocks += [stats.fmt_block(group[a], group[b], 'auc', resamples, result, info), '']
     return out + [''] + blocks
+
+
+CB_VEC = 'ours_cap0_codebert'
+CB_VEC_ARMS = dict(**PATHS_X86, block_input='vec', block_vec=CB_VEC)
+CB_SEEDS = (0, 1, 2)
+CB_ARMS = (('TF-IDF', 'tfidf'),
+           ('R2 no-edges, tokens', x86_group(variant_of(**PATHS_X86, control='no_edges'))),
+           ('R7 typed, tokens', x86_group(variant_of(**PATHS_X86))),
+           ('path 1: no-edges, CodeBERT vectors', x86_group(variant_of(**CB_VEC_ARMS, control='no_edges'))),
+           ('path 2: typed, CodeBERT vectors', x86_group(variant_of(**CB_VEC_ARMS))))
+CB_PAIRS = (('path 1: no-edges, CodeBERT vectors', 'path 2: typed, CodeBERT vectors'),
+            ('R2 no-edges, tokens', 'path 1: no-edges, CodeBERT vectors'),
+            ('R7 typed, tokens', 'path 2: typed, CodeBERT vectors'),
+            ('TF-IDF', 'path 1: no-edges, CodeBERT vectors'), ('TF-IDF', 'path 2: typed, CodeBERT vectors'))
+
+
+def paths_codebert(resamples):
+    intro = ('kfold x86 on the v2 cache, 15% block masking on every GNN arm. Paths 1 and 2 train on the frozen CodeBERT vectors '
+             f'`{CB_VEC}`: `microsoft/codebert-base` on the text of each block, built from the signature and API '
+             'strings of our block export and never from operands (`transformer_paths/codebert_encoder.py`); path 1 has no '
+             'edges, path 2 has the typed edges. The pooled table is seed 0; the paired differences, second minus first for the AUC '
+             f'checkpoint at its validation threshold, are over the seeds complete in both arms (queue seeds {list(CB_SEEDS)}), '
+             f'with the 95% paired cluster bootstrap interval ({resamples} resamples). A missing arm or fold is stated.')
+    return paired_stage('paths_codebert', intro, CB_ARMS, CB_PAIRS, resamples, seeds=CB_SEEDS)
 
 
 VOC_GNN = dict(mask_blocks=0.15, control='no_edges')
@@ -592,8 +622,8 @@ def imports(resamples):
     return paired_stage('imports', intro, IMP_ARMS, IMP_PAIRS, resamples) + ['## Gate', '', imports_gate()[1], '']
 
 
-STAGES = {'day1': day1, 'day1b': day1b, 'v3': v3, 'subgraph': subgraph, 'paths': paths, 'vocab': vocab,
-          'imports': imports}
+STAGES = {'day1': day1, 'day1b': day1b, 'v3': v3, 'subgraph': subgraph, 'paths': paths,
+          'paths_codebert': paths_codebert, 'vocab': vocab, 'imports': imports}
 
 
 def main():

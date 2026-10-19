@@ -47,3 +47,29 @@ and of how to write the checkpoint.
 
 We then run `python -m transformer_paths.precompute_blockvec --encoder-name <name> --export <export> --folds 0 1 2 3 4`
 and train the GNN arms on the vectors.
+
+## The CodeBERT encoder (`codebert_encoder.py`)
+
+`CodeBertBlockEncoder` is an encoder of this contract that needs no training: the frozen `microsoft/codebert-base`, read
+from the local Hugging Face cache (`HF_HOME`, `local_files_only`), on a text built from our own vocabulary strings. The block
+text is the signature strings (`xor r,r`) and then the API reference strings (`kernel32.dll!CreateFileW`) of the block,
+exactly as the cache `vocab.json` spells them, in sequence order and joined with ` ; `. A token that the fold vocabulary maps
+to its kind's UNK id, and the specials CLS, SEP and MASK, give the placeholder `<unk>`; PAD, the mnemonic tokens and the
+behaviour tags are not put in the text (the signature already carries the mnemonic). An empty block is the empty text. No operand
+reaches the model, so no register name or address can appear in the text (`tests/test_codebert_encoder.py` checks 2,000
+blocks). The text is cut at 256 subwords, the hidden state of the last layer is averaged over the non-pad subwords, and the
+vector has 768 float32 numbers (computed in fp16 on CUDA, fp32 on CPU; two batch shapes agree to about 3e-4).
+
+The weights are not in `state_dict`, so a checkpoint is about 0.1 MB; `init_kwargs` carries the model revision and the sha256 of
+`model.safetensors`, and loading refuses other weights. To rebuild the checkpoints and the vectors:
+
+```bash
+export HF_HOME=C:/Users/chaoa/Downloads/hf_home HF_HUB_OFFLINE=1
+$PY -m transformer_paths.codebert_encoder --write-checkpoints --export ours_cap0 --name codebert
+$PY -m transformer_paths.encoder_contract --ckpt RUNS/encoders/codebert/fold0/best.pt --export ours_cap0 --fold 0   # per fold
+$PY -m transformer_paths.precompute_blockvec --encoder-name codebert --export ours_cap0 --folds 0 1 2 3 4
+```
+
+The vectors land in `<cache_v2>/side/blockvec/ours_cap0_codebert/fold{k}/`; `train.py --block-input vec --block-vec
+ours_cap0_codebert` reads them (path 2; `--control no_edges` for path 1), and `queue_gnn.sh --stage paths_codebert` runs both
+on seeds 0 1 2. The encoder is not fitted to our data, so the validation split may follow `--seed` (no `--val-seed`).
