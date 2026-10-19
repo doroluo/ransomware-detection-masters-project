@@ -966,6 +966,89 @@ def _inventory(
     }
 
 
+def encode_parsed_record(
+    record: dict[str, Any],
+    imports: dict[str, dict[str, Any]],
+    api_ids: ApiVocab,
+) -> tuple[list[int], dict[str, Any]]:
+    """Encode one parsed IDA instruction with the shared API vocabulary.
+
+    ``imports`` is the file-level table from ``_merge_imports``. Names already
+    in ``api_ids`` keep their ids. A new called or imported name is appended
+    to that same vocabulary.
+    """
+    resolved = resolve_api_reference(
+        record["operand_text"],
+        record["comment"],
+        imports,
+        _mnemonic(record["opcode"]),
+    )
+    if resolved["unresolved"]:
+        parsed = encode_instruction_channels(
+            record["opcode"],
+            record["operands"],
+            unresolved=True,
+            explicit=True,
+            api_ids=api_ids,
+        )
+    elif resolved["name"]:
+        parsed = encode_instruction_channels(
+            record["opcode"],
+            record["operands"],
+            resolved["name"],
+            explicit=True,
+            api_ids=api_ids,
+        )
+    else:
+        parsed = encode_instruction_channels(
+            record["opcode"],
+            record["operands"],
+            explicit=True,
+            api_ids=api_ids,
+        )
+    return parsed, resolved
+
+
+def instruction_api_kind(api_id: int, api_source: str | None) -> str:
+    """Separate a missing API, an unresolved slot, an unseen name, and a known API.
+
+    Imported APIs that are never called are not instruction rows. They stay in
+    the sample import inventory.
+    """
+    if api_source == "unseen":
+        return "unseen"
+    if api_id == UNK_API or api_source == "unresolved":
+        return "unresolved"
+    if api_id == NO_API or not api_source:
+        return "none"
+    return "known"
+
+
+def _remember_call(
+    called: dict[str, dict[str, Any]],
+    resolved: dict[str, Any],
+    api_id: int,
+    mnemonic: str,
+) -> None:
+    if not resolved.get("name") or resolved.get("unresolved"):
+        return
+    if mnemonic not in {"CALL", "JMP"} or resolved.get("source") not in {"called_api", "ida_comment"}:
+        return
+    key = resolved["name"].lower()
+    slot = called.get(key)
+    if slot is None:
+        called[key] = {
+            "name": resolved["name"],
+            "dll": resolved["dll"],
+            "api_id": api_id,
+            "count": 1,
+        }
+        return
+    slot["count"] += 1
+    if slot.get("dll") is None:
+        slot["dll"] = resolved["dll"]
+
+
 def tokenize_lines(
     lines: Iterable[str],
     ida_imports: list[dict[str, Any]],
@@ -988,47 +1071,8 @@ def tokenize_lines(
         record = parse_ida_instruction_line(line)
         if record is None:
             continue
-        mnemonic = _mnemonic(record["opcode"])
-        resolved = resolve_api_reference(
-            record["operand_text"], record["comment"], imports, mnemonic
-        )
-        if resolved["unresolved"]:
-            parsed = encode_instruction_channels(
-                record["opcode"],
-                record["operands"],
-                unresolved=True,
-                explicit=True,
-                api_ids=table,
-            )
-        elif resolved["name"]:
-            parsed = encode_instruction_channels(
-                record["opcode"],
-                record["operands"],
-                resolved["name"],
-                explicit=True,
-                api_ids=table,
-            )
-            if mnemonic in {"CALL", "JMP"} and resolved["source"] in {"called_api", "ida_comment"}:
-                key = resolved["name"].lower()
-                slot = called.get(key)
-                if slot is None:
-                    called[key] = {
-                        "name": resolved["name"],
-                        "dll": resolved["dll"],
-                        "api_id": parsed[3],
-                        "count": 1,
-                    }
-                else:
-                    slot["count"] += 1
-                    if slot.get("dll") is None:
-                        slot["dll"] = resolved["dll"]
-        else:
-            parsed = encode_instruction_channels(
-                record["opcode"],
-                record["operands"],
-                explicit=True,
-                api_ids=table,
-            )
+        parsed, resolved = encode_parsed_record(record, imports, table)
+        _remember_call(called, resolved, parsed[3], _mnemonic(record["opcode"]))
         instructions.append(parsed)
         metadata.append(
             _metadata_row(record, parsed, state.get("va"), _current_rva(state), resolved)
@@ -1045,6 +1089,72 @@ def tokenize_listing(
     """Tokenize an in-memory IDA listing. Used by the tests."""
     listing = list(lines)
     return tokenize_lines(listing, collect_ida_imports(listing), pe_imports, api_ids)
+
+
+def tokenize_raw_instruction(
+    raw_line: str,
+    imports: dict[str, dict[str, Any]],
+    api_ids: ApiVocab | None = None,
+    *,
+    va: int | None = None,
+    rva: int | None = None,
+    freeze_vocab: bool = False,
+) -> dict[str, Any] | None:
+    """Tokenize one selected assembly line with a shared API vocabulary.
+
+    When ``freeze_vocab`` is set, a name that is not already in ``api_ids``
+    stays out of the vocabulary and uses ``UNK_API``. The API name is still
+    kept on the row, with ``api_kind`` ``unseen``. An import slot with no
+    readable name stays ``unresolved``. ``NO_API`` means the instruction does
+    not name an API.
+    """
+    record = parse_ida_instruction_line(raw_line)
+    if record is None:
+        return None
+    table = api_ids or ApiVocab()
+    resolved = resolve_api_reference(
+        record["operand_text"],
+        record["comment"],
+        imports,
+        _mnemonic(record["opcode"]),
+    )
+    unseen_name = None
+    if (
+        freeze_vocab
+        and resolved.get("name")
+        and not resolved.get("unresolved")
+        and resolved["name"] not in table
+    ):
+        unseen_name = resolved["name"]
+        parsed = encode_instruction_channels(
+            record["opcode"],
+            record["operands"],
+            unresolved=True,
+            explicit=True,
+            api_ids=table,
+        )
+        # The id stays UNK_API so the shared vocabulary does not grow.
+        # The behavior channel still follows the named API.
+        parsed[4] = _behavior_id(_mnemonic(record["opcode"]), unseen_name)
+        resolved = {
+            "name": unseen_name,
+            "dll": resolved.get("dll"),
+            "source": "unseen",
+            "unresolved": True,
+        }
+    else:
+        parsed, resolved = encode_parsed_record(record, imports, table)
+    metadata = _metadata_row(record, parsed, va, rva, resolved)
+    if unseen_name is not None:
+        metadata["api_name"] = unseen_name
+        metadata["api_source"] = "unseen"
+        metadata["dll_name"] = resolved.get("dll")
+        metadata["behavior_tag"] = _BEHAVIOR_NAME[parsed[4]]
+        metadata["behavior_tags"] = auxiliary_behavior_tags(unseen_name, record["opcode"])
+    metadata["raw_text"] = raw_line.strip()
+    metadata["token_ids"] = parsed
+    metadata["api_kind"] = instruction_api_kind(parsed[3], metadata.get("api_source"))
+    return metadata
 
 
 def parse_asm_gz(
