@@ -64,7 +64,7 @@ def model_label(cfg):
     parts += ['gated'] if cfg.readout == 'gated' else []
     parts += ['cell-select'] if cfg.select_on == 'cell' else []
     if cfg.subgraph != 'cap' or cfg.budget:
-        parts.append(f'{cfg.subgraph} {cfg.budget // 1000}k' if cfg.budget else f'{cfg.subgraph} full budget')
+        parts.append(f'{cfg.subgraph} ' + (f'{cfg.budget // 1000}k' if cfg.budget >= 1000 else f'{cfg.budget} blocks') if cfg.budget else f'{cfg.subgraph} full budget')
     return ' '.join(parts)
 
 

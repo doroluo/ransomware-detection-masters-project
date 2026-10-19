@@ -10,6 +10,7 @@ greater, tracked while the F1 rule keeps training) with its validation threshold
 """
 import csv
 import json
+import os
 import random
 import tempfile
 import time
@@ -22,6 +23,15 @@ import torch.nn as nn
 from common.config import RUNS
 from experiments.team_pipelines.common import (evaluate, fold_manifest, import_team, sample_rows, team_config,
                                                val_threshold_of, write_run)
+
+
+def configure_threads():
+    """Cap the CPU threads of this process at $TEAM_THREADS when set (team_runs.sh sets it so the CPU trainers leave the
+    cores the pipeline-B build and the GPU queue's loaders use); returns the thread count torch will use."""
+    n = os.environ.get('TEAM_THREADS')
+    if n:
+        torch.set_num_threads(int(n))
+    return torch.get_num_threads()
 
 
 def _state(model):
@@ -117,6 +127,7 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
     written to RUNS/<team_config name>. With smoke=N it trains on N available training ids for 2 epochs and writes only
     a temp directory (a mkdtemp, never under RUNS; smoke_split = (train ids, val ids) overrides the choice): returns that directory's path and the history."""
     tc = import_team('train_cfg')
+    threads = configure_threads()
     manifest = fold_manifest(fold, seed)
     cfg = team_config(fold, seed, arm)
     random.seed(seed)
@@ -126,7 +137,8 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
         train_ids, val_ids = smoke_split or smoke_ids(manifest, set(graphs), smoke)
         hp = {**hp, 'epochs': 2}
         out = Path(tempfile.mkdtemp(prefix=f'team_smoke_{arm}_'))
-        log(f'smoke {cfg.name}: train {len(train_ids)} val {len(val_ids)} (temp dir {out}, 2 epochs, device {device})')
+        log(f'smoke {cfg.name}: train {len(train_ids)} val {len(val_ids)} (temp dir {out}, 2 epochs, device {device}, '
+            f'{threads} torch threads)')
     else:
         need = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test]
         missing = [i for i in need if i not in graphs]
@@ -135,7 +147,8 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
         train_ids = [r['sample_id'] for r in manifest.train]
         val_ids = [r['sample_id'] for r in manifest.val]
         out = RUNS / cfg.name
-        log(f'{cfg.name}: train {len(train_ids)} val {len(val_ids)} test {len(manifest.test)} device {device}')
+        log(f'{cfg.name}: train {len(train_ids)} val {len(val_ids)} test {len(manifest.test)} device {device}, '
+            f'{threads} torch threads')
     result = fit(model, train_ids, val_ids, graphs, hp=hp, seed=seed, device=device, log=log)
     history = result['history']
     peak = max(h['peak_gpu_mb'] for h in history)
@@ -147,7 +160,7 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
         out.mkdir(parents=True, exist_ok=True)
         write_history(out / 'history.csv', history)
         return {'dir': out, 'history': history, 'val_auc': result['val_auc'], 'peak_gpu_mb': peak,
-                'train_ids': train_ids, 'val_ids': val_ids}
+                'device': str(device), 'epoch_secs_mean': mean_epoch, 'train_ids': train_ids, 'val_ids': val_ids}
 
     by_split, states = {}, {}
     for rule in ('f1', 'auc'):
@@ -164,7 +177,7 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
     total = [s[2] for s in by_split['f1']['test'][2]]
     info = {'best_epoch': result['f1_epoch'], 'epochs_run': len(history), 'auc_best_epoch': result['auc_epoch'],
             'val_auc': result['val_auc'], 'val_macro_f1': result['val_macro_f1'], 'val_f1_ransomware': result['val_f1'],
-            'peak_gpu_mb': peak, 'epoch_secs_mean': mean_epoch,
+            'peak_gpu_mb': peak, 'epoch_secs_mean': mean_epoch, 'device': str(device), 'torch_threads': threads,
             'mean_train_epoch_secs': float(np.mean([h['train_secs'] for h in history])),
             'n_blocks_kept': {'test_sum': int(sum(kept)), 'test_mean': float(np.mean(kept)), 'test_max': int(max(kept))},
             'n_blocks_total': {'test_sum': int(sum(total)), 'test_mean': float(np.mean(total)),

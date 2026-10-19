@@ -7,6 +7,42 @@ gat_full_model) under our 5-fold x86 family holdout, so their results sit in the
 Run every script as a module from `CT_GAT/block_level_counting` (`python -m experiments.team_pipelines.<name>`), not as
 a file: as a file this directory is first on `sys.path` and its `common.py` shadows our `common` package.
 
+## Team pipelines: how to run
+
+Two scripts, both resumable (a run whose `RUNS/<name>/metrics.json` exists is skipped), both with `--dry` (prints every run in
+order and writes nothing). Run them from `CT_GAT/block_level_counting`.
+
+```
+nohup bash scripts/team_runs.sh     > RUNS/logs/team_runs.log 2>&1 &    # CPU, now, next to the GPU queue
+nohup bash scripts/team_gpu_runs.sh > RUNS/logs/team_gpu_runs.log 2>&1 & # GPU, waits for the GPU queue to finish
+```
+
+- `scripts/team_runs.sh` (CPU only: `--device cpu` and `CUDA_VISIBLE_DEVICES=-1`). Three lanes side by side, each over seeds 0 1 2
+  and folds 0-4 (45 runs): `train_a --arm gnn500`, `train_a --arm cb500` (CodeBERT vectors `ours_cap0_codebert`), and `train_b --arm
+  sig500`, which waits until `RUNS/team/b_sig500/build_summary.json` reports 1810 of 1810 binaries. Each trainer uses `TEAM_THREADS`
+  torch threads (default 3, 6 of the 16 logical cores for the two A lanes while the build and the GPU queue's loaders run).
+  Stop it with `touch RUNS/STOP_TEAM` (a file of its own; `RUNS/STOP` stops the GPU queue and not this); the run in flight finishes.
+  One retry per failed run; logs in `RUNS/logs/<name>.log`.
+- `scripts/team_gpu_runs.sh` (GPU; started by the owner once the queue is done). Waits for `master4 done` in
+  `RUNS/logs/master4.log`, then runs our matched arms (`train.py --protocol kfold --arch x86 --model gnn --mask-blocks 0.15 --subgraph
+  cap --budget 500 --tag b500`, typed and `--control no_edges`, seeds 0 1 2, folds 0-4: 30 runs, directories
+  `kfold<f>_x86_gnn[-noedges]-mblk15-sg-cap500_s<seed>_b500`), then `queue_gnn.sh --stage paths_codebert`, then `report.py`, `gates.py
+  --stage team > RUNS/gates_team.md` and `gates.py --stage paths_codebert > RUNS/gates_paths_codebert.md`. It stops on `RUNS/STOP`.
+- `python gates.py --stage team` reads whatever is on disk: TF-IDF, the header-imports LR, R7, R2, our b500 arms, the three team arms
+  and path 2 on CodeBERT vectors; AUC, PR-AUC, macro-F1, accuracy, precision, recall and the confusion matrix per arm (seed 0
+  pooled), the paired differences of each team arm against TF-IDF, R7 and our b500 typed arm (and cb500 against path 2, the b500
+  typed arm against R7), with the pre-registered rule text. A missing arm prints as missing.
+
+`RunConfig` accepts `--budget` from 100 blocks (0 is the binary cap). Below 1000 the variant suffix spells the budget out
+(`sg-cap500`, `sg-cap128`), so two budgets cannot share a directory name; the matched arms still pass `--tag b500`. Every
+existing run name is unchanged (`tests/test_gnn_config.py::test_existing_run_names_unchanged`).
+
+CPU time per epoch (3 threads, Ryzen 7 9800X3D shared with the GPU queue and the build, fold 0): gnn500 about 6 ms per training
+graph (57-d features), cb500 about 6 ms (768-d float16 vectors cast per batch), sig500 about 8 ms (141-d features, edge
+attributes). A fold has about 1,200 training and 230 validation binaries, so an epoch takes roughly 8 s (gnn500, cb500) and
+11 s (sig500); the recipes stop after at most 20 (A) and 40 (B) epochs, which bounds a fold at about 3 and 7 minutes of training
+plus under a minute of loading and prediction. The 15 runs of an arm therefore take at most about 1 h (A) and 2 h (B).
+
 ## What is here
 
 - `common.py`
@@ -93,14 +129,13 @@ python -m experiments.team_pipelines.train_a --fold k --seed s --arm gnn500|cb50
   trained (the harness's own gnn stops on the later of the two bests).
 - Output. `RUNS/kfold{f}_x86_gnn_s{s}_team-gnn500|cb500/` from `common.write_run`, plus `history.csv` (epoch, loss, seconds,
   val F1 / macro-F1 / AUC, peak GPU MB), `best.pt`, `best_auc.pt`. `metrics.json` also holds `n_blocks_kept` and
-  `n_blocks_total` (test sum / mean / max), `in_dim`, `peak_gpu_mb`, `epoch_secs_mean`, the recipe and, for cb500, the vectors
+  `n_blocks_total` (test sum / mean / max), `in_dim`, `peak_gpu_mb`, `epoch_secs_mean`, `device` and `torch_threads`, the recipe and, for cb500, the vectors
   used. In `predictions*.csv` `n_blocks_kept` and `n_blocks_total` are exact; `n_segments_total` is the number of kept
   functions (their export parser discards the total).
 - `--smoke N`: N available training ids (both classes), the available validation ids (else a few training ids), 2 epochs,
   written only to a `tempfile.mkdtemp` directory; it never calls `write_run` and creates nothing under `RUNS`.
 
-`RunConfig` refuses `budget < 1000`, so `--subgraph cap --budget 500` cannot be started with `train.py` until that check is
-relaxed (step S7); the test of the cb500 block selection sets the budget on the config object directly.
+The matched `--subgraph cap --budget 500` arm starts with `train.py --tag b500` (`RunConfig` accepts budgets from 100 blocks).
 
 ## train_b.py (arm sig500)
 

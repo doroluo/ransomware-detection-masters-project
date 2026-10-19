@@ -14,6 +14,7 @@ ENCODERS = ('mean', 'tfidf', 'raw', 'presence', 'rawlog')
 SELECT_ON = ('overall', 'cell')
 SUBGRAPH_POLICIES = ('cap', 'lcc')
 BLOCK_INPUTS = ('tokens', 'vec')
+MIN_BUDGET = 100  # blocks; 0 means the binary cap
 VOCABS = ('ours', 'yanping', 'hybrid')
 IMPORTS = ('', 'unreferenced', 'header')
 IMPORT_SUFFIX = {'unreferenced': 'imp', 'header': 'imph'}
@@ -112,8 +113,8 @@ class RunConfig:
             raise ValueError(f'select_on {self.select_on}')
         if self.subgraph not in SUBGRAPH_POLICIES:
             raise ValueError(f'subgraph {self.subgraph}')
-        if self.budget != 0 and self.budget < 1000:
-            raise ValueError(f'budget must be 0 (the binary cap) or at least 1000 blocks: {self.budget}')
+        if self.budget != 0 and self.budget < MIN_BUDGET:
+            raise ValueError(f'budget must be 0 (the binary cap) or at least {MIN_BUDGET} blocks: {self.budget}')
         if self.readout not in ('fixed', 'gated'):
             raise ValueError(f'readout {self.readout}')
         if self.control not in CONTROLS:
@@ -195,7 +196,9 @@ class RunConfig:
             parts.append('gated')
         parts += sel
         if self.subgraph != 'cap' or self.budget:
-            parts.append(f'sg-{self.subgraph}{self.budget // 1000}k')
+            # below 1000 blocks the suffix spells the budget out (cap500), so 128 and 500 cannot share a name
+            parts.append(f'sg-{self.subgraph}' + (f'{self.budget // 1000}k' if self.budget >= 1000 or not self.budget
+                                                  else str(self.budget)))
         return '-'.join(parts + vs)
 
     @property

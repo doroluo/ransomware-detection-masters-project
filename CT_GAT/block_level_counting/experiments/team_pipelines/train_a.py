@@ -98,7 +98,7 @@ def run(arm, fold, seed, smoke=None, block_vec=DEFAULT_BLOCK_VEC, device=None, g
     if arm == 'gnn500':
         graphs, sizes = load_gnn_graphs(want, graph_dir)
     else:
-        # RunConfig refuses budget 500, so this config (used only to open the vectors and check their export) says 0
+        # this config only opens the vectors and checks their export; the 500-block selection is cache_graph's, so its budget stays 0
         cfg = RunConfig(protocol='kfold', fold=fold, arch='x86', seed=seed, model='gnn', block_input='vec',
                         block_vec=block_vec)
         vecs = open_block_vecs(cfg)

@@ -360,6 +360,19 @@ def test_subgraph_suffix_and_budget():
         'kfold3_x86_gnn-mblk15-sg-lcc5k_s0')
 
 
+def test_budget_floor_and_small_budget_names():
+    assert gnn(budget=100).budget == 100                                      # the floor is 100 blocks
+    with pytest.raises(ValueError):
+        gnn(budget=99)
+    # below 1000 the suffix spells the budget out, so the two matched-arm budgets cannot share a name
+    assert gnn(budget=128, mask_blocks=0.15).variant == 'gnn-mblk15-sg-cap128'
+    assert gnn(budget=500, mask_blocks=0.15).variant == 'gnn-mblk15-sg-cap500'
+    assert gnn(budget=999).variant == 'gnn-sg-cap999' and gnn(budget=1000).variant == 'gnn-sg-cap1k'
+    cfg = gnn(protocol='kfold', fold=2, seed=1, mask_blocks=0.15, subgraph='cap', budget=500, tag='b500')
+    assert cfg.name == 'kfold2_x86_gnn-mblk15-sg-cap500_s1_b500'
+    assert cfg.group == 'kfold_x86_gnn-mblk15-sg-cap500_b500'
+
+
 def test_encoder_suffixes():
     for enc in ('mean', 'raw', 'presence', 'rawlog'):
         assert gnn(encoder=enc).variant == f'gnn-enc-{enc}' and gnn(encoder=enc).block_encoder == enc
@@ -370,7 +383,7 @@ def test_encoder_suffixes():
 
 @pytest.mark.parametrize('kw', [
     dict(model='gnn', select_on='both'), dict(select_on='bogus'), dict(model='gnn', subgraph='bfs'),
-    dict(model='gnn', budget=-1), dict(model='gnn', budget=999), dict(subgraph='lcc'), dict(budget=5000),
+    dict(model='gnn', budget=-1), dict(model='gnn', budget=99), dict(subgraph='lcc'), dict(budget=5000),
     dict(model='gnn', encoder='sum'), dict(encoder='raw'),
 ])
 def test_step11_rejected(kw):
