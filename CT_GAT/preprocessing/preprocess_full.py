@@ -903,6 +903,85 @@ def sample_connected_subgraph(
     )
 
 
+def _block_signal(block: CfgBlock) -> int:
+    """Prefer blocks that call or reference an import. Those carry the ransomware APIs."""
+    return sum(2 * len(instruction.import_ids) + int(instruction.is_call) for instruction in block.instructions)
+
+
+def sample_signal_subgraph(
+    cfg: FullCFG,
+    *,
+    seed: int,
+    num_blocks: int | None = None,
+    max_instructions: int | None = None,
+) -> SampledSubgraph:
+    """Keep whole functions that reference imports, highest signal first.
+
+    A random walk often stays in library code and never reaches the payload.
+    Functions are taken in import-call order so the block budget is spent on
+    the code the classifier can actually use. Edges stay the original directed
+    CFG inside the kept blocks.
+    """
+    if num_blocks is None and max_instructions is None:
+        raise ValueError("set num_blocks or max_instructions")
+    if not cfg.blocks:
+        raise ValueError("CFG has no blocks")
+
+    by_function: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for key in cfg.blocks:
+        by_function[key[0]].append(key)
+
+    ranked = []
+    filler = []
+    for function_id, keys in by_function.items():
+        ordered = sorted(keys, key=lambda key: (cfg.blocks[key].start_rva, key[1]))
+        score = sum(_block_signal(cfg.blocks[key]) for key in ordered)
+        start = cfg.blocks[ordered[0]].start_rva
+        bucket = ranked if score else filler
+        bucket.append((score, start, function_id, ordered))
+    ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
+    random.Random(seed).shuffle(filler)
+
+    selected: list[tuple[int, int]] = []
+    chosen: set[tuple[int, int]] = set()
+    total = 0
+    for _score, _start, _function_id, keys in ranked + filler:
+        if num_blocks is not None and len(selected) >= num_blocks:
+            break
+        block_order = sorted(
+            keys,
+            key=lambda key: (-_block_signal(cfg.blocks[key]), cfg.blocks[key].start_rva, key[1]),
+        )
+        for key in block_order:
+            if num_blocks is not None and len(selected) >= num_blocks:
+                break
+            extra = cfg.blocks[key].instruction_count
+            if (
+                max_instructions is not None
+                and selected
+                and total + extra > max_instructions
+            ):
+                continue
+            selected.append(key)
+            chosen.add(key)
+            total += extra
+    if not selected:
+        return sample_connected_subgraph(
+            cfg,
+            seed=seed,
+            num_blocks=num_blocks,
+            max_instructions=max_instructions,
+        )
+    return SampledSubgraph(
+        seed=seed,
+        selected_keys=selected,
+        edges=induced_edges(cfg.edges, chosen),
+        original_blocks=len(cfg.blocks),
+        original_edges=len(cfg.edges),
+        original_instructions=cfg.instruction_count,
+    )
+
+
 def connected_keys(keys: Sequence[tuple[int, int]], edges: Sequence[CfgEdge]) -> bool:
     """True when the selected nodes are one undirected connected component."""
     chosen = list(keys)
@@ -1575,6 +1654,7 @@ def process_sample(
     api_vocab: tok.ApiVocab,
     num_blocks: int | None = None,
     max_instructions: int | None = None,
+    sample_mode: str = "walk",
     split: str | None = None,
     freeze_vocab: bool = False,
     file_id: str | None = None,
@@ -1591,7 +1671,10 @@ def process_sample(
     report = align_cfg_to_asm(cfg, asm_instructions, collapsed)
     report.add_format_problems(cfg.address_format_problems)
     report.add_format_problems(problems)
-    sample = sample_connected_subgraph(
+    sampler = sample_signal_subgraph if sample_mode == "signal" else sample_connected_subgraph
+    if sample_mode not in {"walk", "signal"}:
+        raise ValueError(f"sample_mode must be 'walk' or 'signal', got {sample_mode!r}")
+    sample = sampler(
         cfg,
         seed=seed,
         num_blocks=num_blocks,
@@ -1705,6 +1788,12 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--num-blocks", type=int)
     parser.add_argument("--max-instructions", type=int)
+    parser.add_argument(
+        "--sample",
+        choices=["walk", "signal"],
+        default="walk",
+        help="walk grows from a random block. signal keeps import-calling functions first.",
+    )
     parser.add_argument("--output", type=Path, default=tok.PROJECT_ROOT / "processed" / "cfg_subgraphs")
     parser.add_argument(
         "--max-asm-bytes",
@@ -1792,6 +1881,7 @@ def main() -> None:
                 api_vocab=vocab,
                 num_blocks=args.num_blocks,
                 max_instructions=args.max_instructions,
+                sample_mode=args.sample,
                 split=row["split"],
                 freeze_vocab=args.freeze_vocab,
                 file_id=sample_id,

@@ -28,6 +28,7 @@ import random
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
@@ -36,6 +37,34 @@ GRAPH_DIR = PROJECT_ROOT / "processed" / "cfg_subgraphs"
 BATCH_SIZE = 8
 
 FEATURE_MODES = ("both", "embeddings", "features")
+# block_features layout from preprocess_full.HANDCRAFTED_FEATURE_NAMES:
+# 0..6 structural, then behavior / API / opcode / operand counts.
+_LOG_COLUMNS = (0, 1, 2, 3, 5, 6)
+_COUNT_START = 7
+
+
+def scale_block_features(features: torch.Tensor) -> torch.Tensor:
+    """Log-scale sizes and degrees, and turn later columns into per-instruction rates.
+
+    Raw counts let a long block dominate a short one. Rates are comparable
+    across blocks, which is the same normalization the compact GNN graphs use.
+    """
+    if features.numel() == 0 or features.shape[1] <= _COUNT_START:
+        return features
+    scaled = features.clone()
+    for index in _LOG_COLUMNS:
+        if index < scaled.shape[1]:
+            scaled[:, index] = torch.log1p(scaled[:, index].clamp(min=0))
+    length = features[:, 0].clamp(min=1).unsqueeze(1)
+    scaled[:, _COUNT_START:] = features[:, _COUNT_START:] / length
+    return scaled
+
+
+def scale_embeddings(embeddings: torch.Tensor) -> torch.Tensor:
+    """Unit-length block embeddings so their magnitude does not track block size."""
+    if embeddings.numel() == 0:
+        return embeddings
+    return F.normalize(embeddings, p=2, dim=1)
 
 
 def _is_sample_graph(path: Path) -> bool:
@@ -48,11 +77,14 @@ def _is_sample_graph(path: Path) -> bool:
     )
 
 
-def _node_features(payload: dict, feature_mode: str) -> torch.Tensor:
+def _node_features(payload: dict, feature_mode: str, scale: bool) -> torch.Tensor:
     if feature_mode not in FEATURE_MODES:
         raise ValueError(f"feature_mode must be one of {FEATURE_MODES}, got {feature_mode!r}")
     embeddings = payload["block_embeddings"].float()
     features = payload["block_features"].float()
+    if scale:
+        embeddings = scale_embeddings(embeddings)
+        features = scale_block_features(features)
     if feature_mode == "embeddings":
         return embeddings
     if feature_mode == "features":
@@ -77,12 +109,12 @@ def _edge_attr(payload: dict) -> torch.Tensor:
     return torch.cat([one_hot, back], dim=1)
 
 
-def load_full_graph(path: str | Path, feature_mode: str = "both") -> Data:
+def load_full_graph(path: str | Path, feature_mode: str = "both", scale: bool = True) -> Data:
     """Read one ``preprocess_full.py`` payload into a PyG ``Data`` graph."""
     path = Path(path)
     payload = torch.load(path, map_location="cpu", weights_only=False)
 
-    x = _node_features(payload, feature_mode)
+    x = _node_features(payload, feature_mode, scale)
     num_nodes = int(x.shape[0])
     edge_index = payload["edge_index"].long()
     edge_attr = _edge_attr(payload)
@@ -103,7 +135,11 @@ def load_full_graph(path: str | Path, feature_mode: str = "both") -> Data:
     return data
 
 
-def load_dir(graph_dir: str | Path = GRAPH_DIR, feature_mode: str = "both") -> list[Data]:
+def load_dir(
+    graph_dir: str | Path = GRAPH_DIR,
+    feature_mode: str = "both",
+    scale: bool = True,
+) -> list[Data]:
     """Load every ``<sha256>.pt`` in ``graph_dir``."""
     graph_dir = Path(graph_dir)
     if not graph_dir.is_dir():
@@ -113,7 +149,7 @@ def load_dir(graph_dir: str | Path = GRAPH_DIR, feature_mode: str = "both") -> l
     graphs = []
     for path in sorted(graph_dir.glob("*.pt")):
         if _is_sample_graph(path):
-            graphs.append(load_full_graph(path, feature_mode))
+            graphs.append(load_full_graph(path, feature_mode, scale))
     return graphs
 
 
@@ -153,9 +189,10 @@ def get_loaders(
     batch_size: int = BATCH_SIZE,
     val_fraction: float = 0.15,
     seed: int = 0,
+    scale: bool = True,
 ):
     """Return ``(train_loader, val_loader, test_loader, in_dim, edge_dim)``."""
-    graphs = load_dir(graph_dir, feature_mode)
+    graphs = load_dir(graph_dir, feature_mode, scale)
     if not graphs:
         raise FileNotFoundError(f"No subgraph .pt files in {graph_dir}")
     train, val, test = split_graphs(graphs, val_fraction, seed)
