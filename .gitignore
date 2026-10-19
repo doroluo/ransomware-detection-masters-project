@@ -6,8 +6,9 @@
 !model_train.py
 !construct_blocks.py
 !inspect_graph.py
-!processed_graphs/
-!processed_graphs/**
+!train_cfg.py
+
+# processed_graphs is generated output (covered by the leading *)
 
 # CNN-ViT pipeline
 !CNN-ViT/
