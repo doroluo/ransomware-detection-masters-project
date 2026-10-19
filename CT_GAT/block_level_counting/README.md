@@ -190,6 +190,7 @@ GNN run's validation set.
 | `transformer_paths/TRANSFORMER_CONTRACT.md` | the rules for the encoder: one checkpoint per fold, train on `train` and select on `val` only, a pure function of one block, `RUNS/encoders/<name>/fold{k}/best.pt` |
 | `transformer_paths/encoder_contract.py` | the `BlockEncoder` protocol, the checkpoint format, `load_encoder` and `check_checkpoint` (run it before handing a checkpoint over) |
 | `transformer_paths/reference_encoder.py` | a tiny deterministic encoder and a writer of its per-fold checkpoints, for tests and smoke runs |
+| `transformer_paths/codebert_encoder.py` | `CodeBertBlockEncoder`: frozen `microsoft/codebert-base` on the text of a block built from the export's signature and API strings (never operands); `--write-checkpoints` writes `RUNS/encoders/codebert/fold{k}/best.pt` (see the CodeBERT section of `TRANSFORMER_CONTRACT.md`) |
 | `transformer_paths/precompute_blockvec.py` | `--encoder-name <name> --export <root> --folds 0 1 2 3 4`: one vector per distinct block key and fold, in `<cache>/side/blockvec/<export>_<name>/fold{k}/` |
 
 ```bash
@@ -201,6 +202,9 @@ $PY train.py --protocol kfold --fold 0 --arch x86 --seed 0 --val-seed 0 --model 
 ```
 
 The queue stage `paths` runs the stacking arm on five folds and the two reference-encoder arms on fold 0 as a plumbing check.
+The queue stage `paths_codebert` builds the CodeBERT checkpoints and vectors (`ours_cap0_codebert`) and runs path 1 and path 2
+on them, seeds 0 1 2 and folds 0-4; `gates.py --stage paths_codebert` pairs them with each other, with R2 and R7 on tokens and
+with TF-IDF.
 
 ## Evaluation protocol
 

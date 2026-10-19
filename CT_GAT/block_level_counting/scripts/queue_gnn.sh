@@ -1,5 +1,5 @@
 #!/bin/bash
-# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths|vocab|imports|imports_header [--dry]
+# Resumable GNN run queue: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths|vocab|imports|imports_header|paths_codebert [--dry]
 # A run is skipped when RUNS/<name>/metrics.json exists. GPU_BUDGET_MIN (default 290 for day1, 600 for the other stages) caps the
 # cumulative GPU wall time: once it is spent, remaining GPU runs are logged as "skipped (budget)" and only the
 # CPU/report steps still run. If RUNS/STOP exists before a run (stop_queue.sh creates it), the run is logged as
@@ -19,6 +19,11 @@
 # encoder's block vectors (the block export RUNS/export/ours_cap0, reference checkpoints RUNS/encoders/ref and the vectors of
 # fold 0, each skipped when it exists) and runs path 1 (no-edge GNN on block vectors) and path 2 (typed GNN on block vectors)
 # on fold 0 only, as a plumbing check. The real encoder arms are added when the teammates' checkpoints arrive.
+# Stage paths_codebert (kfold x86, v2 cache, 15% block masking, seeds 0 1 2, folds 0-4: 30 runs) builds the CodeBERT checkpoints
+# (RUNS/encoders/codebert, the block text is the vocabulary strings of the export, transformer_paths/codebert_encoder.py) and
+# their block vectors (<cache>/side/blockvec/ours_cap0_codebert, GPU, HF_HOME defaults to C:/Users/chaoa/Downloads/hf_home),
+# each skipped when it exists, then runs path 1 (no-edge GNN on the vectors) and path 2 (typed GNN on them), seed by seed.
+# The validation split follows --seed, as in the token arms R2 and R7 that the gates pair them with.
 # Stage vocab (kfold x86, v2 cache, seed 0; needs <cache>/side/yanping/) runs the TF-IDF baselines over the reader's
 # vocabulary and the hybrid one (CPU, directories kfold<f>_x86_s0_voc-<name>), then the no-edge arm with 15% block masking
 # under --vocab yanping and --vocab hybrid (ours already exists as gnn-noedges-mblk15). Stage imports (needs
@@ -36,7 +41,7 @@ STAGE=; DRY=0
 while [ $# -gt 0 ]; do
   case $1 in --stage) STAGE=$2; shift;; --dry) DRY=1;; *) STAGE=;; esac; shift
 done
-[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || [ "$STAGE" = subgraph ] || [ "$STAGE" = paths ] || [ "$STAGE" = vocab ] || [ "$STAGE" = imports ] || [ "$STAGE" = imports_header ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths|vocab|imports|imports_header [--dry]"; exit 2; }
+[ "$STAGE" = day1 ] || [ "$STAGE" = day1b ] || [ "$STAGE" = v3 ] || [ "$STAGE" = subgraph ] || [ "$STAGE" = paths ] || [ "$STAGE" = paths_codebert ] || [ "$STAGE" = vocab ] || [ "$STAGE" = imports ] || [ "$STAGE" = imports_header ] || { echo "usage: bash queue_gnn.sh --stage day1|day1b|v3|subgraph|paths|vocab|imports|imports_header|paths_codebert [--dry]"; exit 2; }
 GATES_STAGE=$STAGE; [ $STAGE = imports_header ] && GATES_STAGE=imports
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 [ $STAGE = v3 ] && export GT_CACHE=C:/Users/chaoa/Downloads/graph_transformer_cache_combined
@@ -115,6 +120,17 @@ blockvec_ref() { C=${GT_CACHE:-C:/Users/chaoa/Downloads/graph_transformer_cache_
   cpu_step $R/encoders/ref/fold4/best.pt reference_encoder $PY -m transformer_paths.reference_encoder --export ours_cap0 --name ref
   cpu_step $C/side/blockvec/ours_cap0_ref/fold0/meta.json precompute_blockvec $PY -m transformer_paths.precompute_blockvec --encoder-name ref --export ours_cap0 --folds 0; }
 
+# codebert_vectors: the CodeBERT checkpoints and block vectors of the five folds (needs the block export), each skipped when
+# it exists
+codebert_vectors() { C=${GT_CACHE:-C:/Users/chaoa/Downloads/graph_transformer_cache_v2}
+  export HF_HOME=${HF_HOME:-C:/Users/chaoa/Downloads/hf_home} HF_HUB_OFFLINE=1
+  cpu_step $R/encoders/codebert/fold4/best.pt codebert_checkpoints $PY -m transformer_paths.codebert_encoder --write-checkpoints --export ours_cap0 --name codebert
+  cpu_step $C/side/blockvec/ours_cap0_codebert/fold4/meta.json precompute_blockvec_codebert $PY -m transformer_paths.precompute_blockvec --encoder-name codebert --export ours_cap0 --folds 0 1 2 3 4; }
+
+# arm_seed <seed> <variant> <train.py args>: kfold x86 folds 0-4 at one seed
+arm_seed() { seed=$1; variant=$2; shift; shift
+  for f in 0 1 2 3 4; do run kfold${f}_x86_${variant}_s${seed} --protocol kfold --fold $f --arch x86 --seed $seed "$@"; done; }
+
 # imports_gate <train.py args of R7 + imports>: the pooled AUC of imports_unref_lr decides (gates.py --verdict exits 0 on
 # a pass, 3 otherwise, also when the baselines are missing); the verdict line is printed and the arm runs only on a pass
 imports_gate() { variant=$1; shift
@@ -141,6 +157,13 @@ blockvec_ref                                                          # 3. refer
 V="--model gnn --mask-blocks 0.15 --val-seed 0 --block-input vec --block-vec ours_cap0_ref"
 run kfold0_x86_gnn-noedges-mblk15-bv-ours_cap0_ref_s0 --protocol kfold --fold 0 --arch x86 --seed 0 $V --control no_edges  # 4. path 1
 run kfold0_x86_gnn-mblk15-bv-ours_cap0_ref_s0 --protocol kfold --fold 0 --arch x86 --seed 0 $V                            # 5. path 2
+elif [ $STAGE = paths_codebert ]; then
+codebert_vectors                                                      # 1. CodeBERT checkpoints and block vectors, five folds
+V="--model gnn --mask-blocks 0.15 --block-input vec --block-vec ours_cap0_codebert"
+for s in 0 1 2; do
+arm_seed $s gnn-noedges-mblk15-bv-ours_cap0_codebert $V --control no_edges  # 2. path 1, seed s
+arm_seed $s gnn-mblk15-bv-ours_cap0_codebert $V                       # 3. path 2, seed s
+done
 elif [ $STAGE = v3 ]; then
 M="--model gnn --mask-blocks 0.15 --select-on cell"
 baselines_v3 all                                                      # 1. CPU baselines

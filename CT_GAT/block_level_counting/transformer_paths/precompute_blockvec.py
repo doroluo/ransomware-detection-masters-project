@@ -60,6 +60,8 @@ def precompute(export_root, encoder_name, folds, enc_root=None, cache=None, devi
     metas = {}
     for k in folds:
         start = time.time()
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
         ckpt = Path(enc_root or RUNS / 'encoders') / encoder_name / f'fold{k}' / 'best.pt'
         check_checkpoint(ckpt, export_root, k)
         encoder = load_encoder(ckpt, device)
@@ -77,7 +79,8 @@ def precompute(export_root, encoder_name, folds, enc_root=None, cache=None, devi
                     'checkpoint_sha': sha_of_file(ckpt), 'fold': k, 'manifest_sha': manifest['manifest_sha'],
                     'n_distinct': len(keys), 'n_blocks': manifest['n_blocks'], 'd': int(vectors.shape[1]),
                     'dtype': 'float16', 'autocast': 'bfloat16', 'device': device, 'max_len': encoder.max_len,
-                    'secs': round(secs, 2), 'blocks_per_sec': round(len(keys) / max(secs, 1e-9))}
+                    'secs': round(secs, 2), 'blocks_per_sec': round(len(keys) / max(secs, 1e-9)),
+                    'peak_gpu_mb': round(torch.cuda.max_memory_allocated() / 2 ** 20) if device == 'cuda' else 0}
         (out / 'meta.json').write_text(json.dumps(metas[k], indent=1), encoding='utf-8')
         log(f"fold {k}: {len(keys)} distinct of {manifest['n_blocks']} blocks -> {out} ({vectors.shape[1]} dims, "
             f"{secs:.1f} s, {metas[k]['blocks_per_sec']} blocks/s on {device})")
