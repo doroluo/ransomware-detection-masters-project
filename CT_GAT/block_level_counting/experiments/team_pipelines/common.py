@@ -152,6 +152,16 @@ def paths_for(sample_id):
     return cfg_path, asm_path
 
 
+def team_row(sample_id):
+    """The row `construct_blocks.gnn_graph_from_export` / `graph_from_export` expect, from the bundle's samples.csv (the
+    fields `load_split_rows` fills: the csv columns, an int `label`, `cfg_file`). A missing row or file is an error."""
+    cfg_path, _ = paths_for(sample_id)
+    row = dict(_bundle_rows()[sample_id])
+    row['label'] = int(row['label'])
+    row['cfg_file'] = cfg_path
+    return row
+
+
 def team_config(fold, seed, arm):
     """The RunConfig of a team arm; its `.name` is the run directory name (`kfold{f}_x86_gnn_s{seed}_team-<arm>`)."""
     return RunConfig(protocol='kfold', fold=fold, arch='x86', seed=seed, model='gnn', tag=f'team-{arm}')
