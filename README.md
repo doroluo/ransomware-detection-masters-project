@@ -11,19 +11,41 @@ pip install torch torch-geometric transformers
 ```
 
 ### Run Autotokenizer & Graph Processing
-Make sure the CFG Files are in your project directory. They should be formatted as:
-```
-root_dir / cfg / {goodware, ransomware} / {train, test} / *.jsonl
+The IDA Pro exports live in `data/Combined_Goodware` and `data/Combined_Ransomware`.
+Each recommended sample is a `<sha256>.jsonl.gz` CFG (schema `ida-cfg-research/2.1`),
+listed in `splits/train.csv` and `splits/test.csv`. Unassigned samples stay in
+`splits/unassigned.csv` and are not used.
+
+```bash
+python construct_blocks.py --count-only
+python construct_blocks.py --limit 4          # short run
+python construct_blocks.py                    # all recommended train and test samples
 ```
 
-Then run:
+Graphs are written to `processed_graphs/{train,test}/<sha256>.pt`.
+Each node is a CodeBERT vector of one basic block. Edges are the intra-function CFG.
+The block budget (default 500) keeps blocks that reference imports first.
+
+### Train the GNN
+Opcode and API-call features are enough for the graph network, and they stay small
+enough to train on every recommended sample:
+
 ```bash
-python construct_blocks.py
+python construct_blocks.py --gnn
+python train_cfg.py --epochs 20
 ```
+
+Graphs land in `processed_graphs/gnn/{train,test}/<sha256>.pt`. Each node is one
+basic block (opcode mix, crypto/file/registry/process/network API counts, and
+block degree). Edges are the intra-function CFG. The checkpoint is
+`checkpoints/best_gnn.pt`.
+
+CodeBERT embeddings are a separate, heavier run: `python construct_blocks.py`.
+`train_cfg.py --graphs processed_graphs` trains on those vectors instead.
 
 ### Inspect a Processed Graph
 ```bash
-python inspect_graph.py
+python inspect_graph.py processed_graphs/train/<sha256>.pt
 ```
 
 ## Other pipelines

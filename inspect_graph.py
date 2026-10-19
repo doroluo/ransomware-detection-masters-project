@@ -27,6 +27,14 @@ def inspect_graph(file_path: str):
     label = data.y.item()
     label_str = "Ransomware (1)" if label == 1 else "Goodware (0)"
     print(f"Target Label (y)       : {label} ({label_str})")
+    if getattr(data, "sample_id", None):
+        print(f"Sample id              : {data.sample_id}")
+    if getattr(data, "family", None):
+        print(f"Family                 : {data.family}")
+    if getattr(data, "architecture", None):
+        print(f"Architecture           : {data.architecture}")
+    if getattr(data, "num_blocks_total", None):
+        print(f"Blocks kept / total    : {data.num_nodes} / {data.num_blocks_total}")
 
     # Inspect first 3 basic blocks across first 5 embedding dimensions
     print("\nSample Node Features (First 3 blocks, 5 dims):")
