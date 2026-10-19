@@ -1,14 +1,20 @@
 """Train a graph-attention classifier on CFG graphs.
 
-Reads processed_graphs/gnn/{train,test}/<sha256>.pt from `construct_blocks.py --gnn`,
-or CodeBERT graphs from `construct_blocks.py`. Holds out 15% of the training
-graphs for early stopping, then scores the recommended test split.
-Reports ransomware precision, recall, and F1.
+Reads either layout:
+
+* ``processed_graphs/gnn/{train,test}/<sha256>.pt`` from ``construct_blocks.py``
+* a flat directory of ``preprocess_full.py`` subgraphs, such as
+  ``CT_GAT/processed/cfg_subgraphs`` or ``cfg_subgraphs_signal``
+
+The flat directory stores the train/test flag inside each file. This script
+holds out 15% of the training graphs for early stopping, then scores the
+recommended test split. Reports ransomware precision, recall, and F1.
 """
 
 import argparse
 import json
 import random
+import sys
 from pathlib import Path
 
 import torch
@@ -17,11 +23,34 @@ import torch.nn.functional as F
 from torch_geometric.data import Batch
 from torch_geometric.nn import GATConv
 
+PREPROCESS_DIR = Path(__file__).resolve().parent / "CT_GAT" / "preprocessing"
+sys.path.insert(0, str(PREPROCESS_DIR))
+from graph_full_loader import load_dir, split_graphs  # noqa: E402
+
 
 def _is_sample_graph(path: Path):
     return path.suffix == ".pt" and len(path.stem) == 64 and all(
         char in "0123456789abcdef" for char in path.stem
     )
+
+
+def _is_preprocess_dir(root: Path) -> bool:
+    """True when ``root`` holds ``preprocess_full.py`` dict payloads, not PyG graphs."""
+    sample = next((path for path in sorted(root.glob("*.pt")) if _is_sample_graph(path)), None)
+    if sample is None:
+        return False
+    payload = torch.load(sample, map_location="cpu", weights_only=False)
+    return isinstance(payload, dict) and "block_features" in payload
+
+
+def load_subgraphs(root: Path, feature_mode: str, scale: bool, val_fraction: float, seed: int):
+    """Load one flat ``preprocess_full.py`` directory and split it by the saved flag."""
+    graphs = load_dir(root, feature_mode=feature_mode, scale=scale)
+    if not graphs:
+        raise SystemExit(
+            f"No subgraph .pt files in {root}. Run preprocess_full.py first."
+        )
+    return split_graphs(graphs, val_fraction, seed)
 
 
 def load_split(root: Path, split: str):
@@ -55,27 +84,46 @@ def stratified_holdout(graphs, fraction, seed):
 
 
 class BlockGAT(nn.Module):
-    """Project block features, then attend over the function CFGs."""
+    """Project block features, then attend over the function CFGs.
 
-    def __init__(self, in_dim, hidden=128, heads=4, dropout=0.2):
+    ``edge_dim`` is set for ``preprocess_full.py`` subgraphs, whose edges carry
+    the relation one-hot plus the back-edge bit. Compact and CodeBERT graphs
+    leave it unset and attend on connectivity alone.
+    """
+
+    def __init__(self, in_dim, hidden=128, heads=4, dropout=0.2, edge_dim=None):
         super().__init__()
+        self.edge_dim = edge_dim
+        edge_kwargs = {"edge_dim": edge_dim} if edge_dim else {}
         self.project = nn.Linear(in_dim, hidden)
-        self.conv1 = GATConv(hidden, hidden, heads=heads, concat=False, dropout=dropout)
-        self.conv2 = GATConv(hidden, hidden, heads=1, concat=False, dropout=dropout)
+        self.conv1 = GATConv(hidden, hidden, heads=heads, concat=False, dropout=dropout, **edge_kwargs)
+        self.conv2 = GATConv(hidden, hidden, heads=1, concat=False, dropout=dropout, **edge_kwargs)
         self.norm1 = nn.LayerNorm(hidden)
         self.norm2 = nn.LayerNorm(hidden)
         self.dropout = nn.Dropout(dropout)
         self.classifier = nn.Linear(hidden, 2)
 
+    def _edges(self, data, x):
+        edge_index = data.edge_index
+        edge_attr = getattr(data, "edge_attr", None)
+        if edge_index.numel() == 0:
+            nodes = torch.arange(x.size(0), device=x.device)
+            edge_index = torch.stack([nodes, nodes], dim=0)
+            if self.edge_dim:
+                edge_attr = torch.zeros((x.size(0), self.edge_dim), dtype=x.dtype, device=x.device)
+            else:
+                edge_attr = None
+        elif self.edge_dim:
+            edge_attr = edge_attr.to(dtype=x.dtype)
+        else:
+            edge_attr = None
+        return edge_index, edge_attr
+
     def forward(self, data):
         x = self.dropout(F.relu(self.project(data.x)))
-        edge_index = data.edge_index
-        if edge_index.numel() == 0:
-            nodes = x.size(0)
-            loops = torch.arange(nodes, device=x.device)
-            edge_index = torch.stack([loops, loops], dim=0)
-        x = self.norm1(x + self.dropout(F.relu(self.conv1(x, edge_index))))
-        x = self.norm2(x + self.dropout(self.conv2(x, edge_index)))
+        edge_index, edge_attr = self._edges(data, x)
+        x = self.norm1(x + self.dropout(F.relu(self.conv1(x, edge_index, edge_attr=edge_attr))))
+        x = self.norm2(x + self.dropout(self.conv2(x, edge_index, edge_attr=edge_attr)))
         pooled = torch.zeros(data.num_graphs, x.size(1), device=x.device)
         pooled.index_add_(0, data.batch, x)
         counts = torch.bincount(data.batch, minlength=data.num_graphs).clamp(min=1).unsqueeze(1)
@@ -171,17 +219,33 @@ def train(args):
     random.seed(args.seed)
     torch.manual_seed(args.seed)
     root = Path(args.graphs)
-    graphs = load_split(root, "train")
-    test = load_split(root, "test")
-    if len(graphs) < 4:
-        raise SystemExit(
-            f"Need at least 4 training graphs in {root / 'train'}, found {len(graphs)}. "
-            "Run construct_blocks.py first."
+    if _is_preprocess_dir(root):
+        train_graphs, val_graphs, test = load_subgraphs(
+            root, args.feature_mode, not args.raw_features, args.val_fraction, args.seed
         )
-    train_graphs, val_graphs = stratified_holdout(graphs, args.val_fraction, args.seed)
+        source = "preprocess_full subgraphs"
+    else:
+        graphs = load_split(root, "train")
+        test = load_split(root, "test")
+        if len(graphs) < 4:
+            raise SystemExit(
+                f"Need at least 4 training graphs in {root / 'train'}, found {len(graphs)}. "
+                "Run construct_blocks.py, or pass a preprocess_full.py output directory."
+            )
+        train_graphs, val_graphs = stratified_holdout(graphs, args.val_fraction, args.seed)
+        source = "construct_blocks graphs"
+    if len(train_graphs) < 4:
+        raise SystemExit(
+            f"Need at least 4 training graphs in {root}, found {len(train_graphs)}."
+        )
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
-    in_dim = int(graphs[0].x.size(1))
-    model = BlockGAT(in_dim=in_dim, hidden=args.hidden, dropout=args.dropout).to(device)
+    probe = train_graphs[0]
+    in_dim = int(probe.x.size(1))
+    edge_attr = getattr(probe, "edge_attr", None)
+    edge_dim = int(edge_attr.size(1)) if edge_attr is not None and edge_attr.dim() == 2 else None
+    model = BlockGAT(
+        in_dim=in_dim, hidden=args.hidden, dropout=args.dropout, edge_dim=edge_dim
+    ).to(device)
     labels = torch.tensor([int(graph.y.item()) for graph in train_graphs])
     counts = torch.bincount(labels, minlength=2).float().clamp(min=1)
     weights = (counts.sum() / counts).to(device)
@@ -193,8 +257,8 @@ def train(args):
     best_state = None
     stale = 0
     print(
-        f"Train {len(train_graphs)}  val {len(val_graphs)}  test {len(test)}  "
-        f"features {in_dim}  device {device}"
+        f"{source}: train {len(train_graphs)}  val {len(val_graphs)}  test {len(test)}  "
+        f"features {in_dim}  edge_dim {edge_dim}  device {device}"
     )
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -237,6 +301,7 @@ def train(args):
         {
             "model": model.state_dict(),
             "in_dim": in_dim,
+            "edge_dim": edge_dim,
             "hidden": args.hidden,
             "dropout": args.dropout,
             "threshold": val_at["threshold"],
@@ -252,6 +317,8 @@ def train(args):
         "val": len(val_graphs),
         "test": len(test),
         "in_dim": in_dim,
+        "edge_dim": edge_dim,
+        "source": source,
         "threshold": val_at["threshold"],
         "val_metrics": val_at,
         "test_metrics": test_metrics,
@@ -277,6 +344,17 @@ def train(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--graphs", default="processed_graphs/gnn")
+    parser.add_argument(
+        "--feature-mode",
+        choices=("both", "embeddings", "features"),
+        default="both",
+        help="Which preprocess_full.py block vector to use. Ignored for construct_blocks graphs.",
+    )
+    parser.add_argument(
+        "--raw-features",
+        action="store_true",
+        help="Keep raw preprocess_full.py counts. By default sizes are log-scaled and counts become rates.",
+    )
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--hidden", type=int, default=128)
