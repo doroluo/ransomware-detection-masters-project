@@ -250,3 +250,17 @@ def test_the_signal_sampler_returns_a_union_of_functions_that_need_not_be_connec
     assert len({key[0] for key in sample.selected_keys}) > 1
     assert not pf.connected_keys(sample.selected_keys, sample.edges)
     assert 'not one connected subgraph' in pf.sample_signal_subgraph.__doc__
+
+
+def test_missing_asm_count_is_the_unmatched_selected_instructions_except_duplicate_rvas():
+    """After the endp fix the report does not count matched instructions. Instructions that share an RVA with another
+    are never paired on purpose and are reported under duplicate_count instead."""
+    twin = ('twin', 1, 0x1100, [(0, [(0x1012, 'retn')])])          # a second function with an instruction at 0x1012
+    listing = LISTING + ['', 'sub_401100      proc near', '                retn', 'sub_401100      endp']
+    cfg, report = aligned(listing, ENDP_CFG + [twin])
+    instructions = [i for block in cfg.blocks.values() for i in block.instructions]
+    unmatched = sum(not i.matched for i in instructions)
+    shared = sum(1 for i in instructions if i.rva == 0x1012)
+    assert report.duplicate_count == 1 and shared == 2
+    assert report.missing_asm_count == 0
+    assert unmatched == report.missing_asm_count + shared
