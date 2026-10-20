@@ -3,8 +3,8 @@
 
 Ported from the 3-block-level-counting branch (tests/test_model1_trainer.py). CPU only. The block export is built from the small
 synthetic cache of tests/tiny_cache.py (40 binaries, all five folds); no test needs the real caches, the real export or a GPU,
-except the one that checks bit-identical evaluation on CUDA (`gpu`). The run script of the branch (scripts/model1_runs.sh) comes
-with the experiment queue, with its tests.
+except the one that checks bit-identical evaluation on CUDA (`gpu`). The run script of the branch (scripts/model1_runs.sh) is the plan
+experiments/plans/model1.txt of the experiment queue (tests/test_queue.py).
 """
 import csv
 import json

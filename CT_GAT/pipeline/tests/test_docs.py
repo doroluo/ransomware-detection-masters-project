@@ -6,11 +6,9 @@
 * every relative link of every markdown file of the pipeline resolves, the stage READMEs say how to run their stage from
   `CT_GAT/pipeline`, and the history index lists every file of docs/history.
 """
-import json
 import re
 import sys
 import types
-from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,7 +16,7 @@ import numpy as np
 import pytest
 import torch
 
-from common import paths, registry
+from common import paths
 from common.config import RunConfig
 from common.manifests import load_index, make_manifest
 from common.registry import MODELS, ModelSpec, RunInfo, spec_for
@@ -209,7 +207,7 @@ def test_every_relative_link_resolves():
 @pytest.mark.parametrize('readme', ['s02_preprocess', 's03a_transformer', 's03b_cfg_feature', 's03c_cfg_transformer', 's04_evaluation'])
 def test_a_stage_readme_says_how_to_run_the_stage_from_the_pipeline_root(readme):
     text = (ROOT / readme / 'README.md').read_text(encoding='utf-8')
-    assert 'CT_GAT/pipeline' in text and f'python -m' in text
+    assert 'CT_GAT/pipeline' in text and 'python -m' in text
 
 
 def test_the_root_readme_lists_every_stage_folder_and_every_plan():
