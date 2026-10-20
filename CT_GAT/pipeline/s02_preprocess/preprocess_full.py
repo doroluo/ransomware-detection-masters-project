@@ -1006,11 +1006,12 @@ def sample_connected_subgraph(
     kept even when it alone is larger than ``max_instructions``.
 
     Blocks of library functions are skipped: the start block and every
-    neighbor come from non-library functions. The walk never leaves its
-    function (CFG edges stay inside one), so a smaller function is not topped
-    up with library blocks, which would not be connected to it. Only a binary
-    whose functions are all library functions is walked over its library
-    blocks. ``include_library=True`` walks over every block.
+    neighbor come from non-library functions, and a short walk is not topped
+    up with library blocks (the listing collapses their code, and they would
+    not be connected to it). Only a binary whose functions are all library
+    functions is walked over its library blocks, as in
+    ``sample_signal_subgraph``. ``include_library=True`` walks over every
+    block.
     """
     if num_blocks is None and max_instructions is None:
         raise ValueError("set num_blocks or max_instructions")
@@ -1083,13 +1084,14 @@ def sample_signal_subgraph(
     order so the block budget is spent on the code the classifier can actually
     use. Edges stay the original directed CFG inside the kept blocks.
 
-    Library functions are visited only after every non-library function, and
-    only when the budget is still not filled: ``num_blocks`` blocks selected,
-    or, when only ``max_instructions`` is set, at least one block selected.
-    They keep the same order (import-call score, then a seeded shuffle of the
-    functions without imports), so a binary made only of library code still
-    gets a sample. ``include_library=True`` ranks library and other functions
-    together, as before.
+    Library functions are skipped. A binary with fewer than ``num_blocks``
+    non-library blocks gets just those blocks; it is not topped up with
+    library blocks, whose code the listing collapses and which can never be
+    matched. Only a binary made of library functions alone is sampled from
+    them, in the same order (import-call score, then a seeded shuffle of the
+    functions without imports), so it still gets a sample.
+    ``include_library=True`` ranks library and other functions together, as
+    before.
     """
     if num_blocks is None and max_instructions is None:
         raise ValueError("set num_blocks or max_instructions")
@@ -1147,7 +1149,7 @@ def sample_signal_subgraph(
                 total += extra
 
     take(ranked + filler)
-    if not selected or (num_blocks is not None and len(selected) < num_blocks):
+    if not selected:
         take(library_ranked + library_filler)
     if not selected:
         return sample_connected_subgraph(

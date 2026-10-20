@@ -161,16 +161,36 @@ def test_signal_sampler_never_picks_a_library_block_while_the_others_fill_the_bu
         assert library_blocks(cfg, sample) == []
 
 
-def test_signal_sampler_falls_back_to_library_blocks_in_a_fixed_order_when_the_others_run_out():
-    cfg = mixed_cfg()
-    first = pf.sample_signal_subgraph(cfg, seed=3, num_blocks=7)
-    assert first.selected_keys[:5] != [] and all(key[0] in (1, 2) for key in first.selected_keys[:5])
-    assert len(first.selected_keys) == 7
-    assert len(library_blocks(cfg, first)) == 2
-    # the library function with the import call is visited first, so its first block comes first
-    assert first.selected_keys[5] == (0, 0)
-    again = pf.sample_signal_subgraph(cfg, seed=3, num_blocks=7)
-    assert again.selected_keys == first.selected_keys and again.edges == first.edges
+def chain_cfg(non_library_blocks, library_functions=3, library_blocks_each=200):
+    """One non-library function of `non_library_blocks` blocks in a chain, plus library functions with many blocks."""
+    functions = [('app', 0, 0x1000, blocks_of(0, non_library_blocks, 0x1000, call=True))]
+    edges = [((0, i), (0, i + 1)) for i in range(non_library_blocks - 1)]
+    for index in range(1, library_functions + 1):
+        functions.append((f'lib{index}', index, 0x100000 * index, blocks_of(index, library_blocks_each, 0x100000 * index, call=True)))
+        edges += [((index, i), (index, i + 1)) for i in range(library_blocks_each - 1)]
+    cfg = make_cfg(functions, edges)
+    cfg.library_functions = set(range(1, library_functions + 1))
+    return cfg
+
+
+@pytest.mark.parametrize('sampler', [pf.sample_signal_subgraph, pf.sample_connected_subgraph])
+def test_a_binary_with_fewer_non_library_blocks_than_the_budget_samples_just_those(sampler):
+    cfg = chain_cfg(120)
+    for seed in range(5):
+        sample = sampler(cfg, seed=seed, num_blocks=500)
+        assert sorted(sample.selected_keys) == [(0, i) for i in range(120)]
+
+
+def test_include_library_restores_the_top_up():
+    cfg = chain_cfg(120)
+    sample = pf.sample_signal_subgraph(cfg, seed=0, num_blocks=500, include_library=True)
+    assert len(sample.selected_keys) == 500 and any(key[0] != 0 for key in sample.selected_keys)
+
+
+def test_the_signal_sampler_is_not_topped_up_when_a_max_instructions_budget_is_left():
+    cfg = chain_cfg(4)
+    sample = pf.sample_signal_subgraph(cfg, seed=0, num_blocks=500, max_instructions=1000)
+    assert sorted(sample.selected_keys) == [(0, i) for i in range(4)]
 
 
 def test_signal_sampler_include_library_ranks_all_functions_together():
@@ -186,7 +206,7 @@ def test_signal_sampler_include_library_ranks_all_functions_together():
             assert new.selected_keys == old.selected_keys
 
 
-def test_signal_sampler_with_only_max_instructions_uses_library_blocks_only_when_nothing_else_is_selected():
+def test_signal_sampler_with_only_max_instructions_skips_library_blocks():
     cfg = mixed_cfg()
     sample = pf.sample_signal_subgraph(cfg, seed=0, max_instructions=6)
     assert library_blocks(cfg, sample) == [] and sample.selected_keys
