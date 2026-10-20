@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import gc
 import gzip
+import hashlib
 import json
 import logging
 import random
@@ -1969,6 +1970,40 @@ def _cfg_path_for_asm(asm_path: Path) -> Path:
     raise CfgSchemaError(f"cannot derive a CFG path from {asm_path}")
 
 
+def _run_settings(args: argparse.Namespace) -> dict[str, Any]:
+    """What decides the content of a sample file. A folder keeps one such set, in ``settings.json``."""
+    return {
+        "sample": args.sample,
+        "seed": args.seed,
+        "num_blocks": args.num_blocks,
+        "max_instructions": args.max_instructions,
+        "include_library": args.include_library,
+        "freeze_vocab": args.freeze_vocab,
+        "split_order": "train rows grow the vocabulary first, every other split is frozen",
+        "source_sha256": {
+            path.name: hashlib.sha256(path.read_bytes().replace(bytes([13, 10]), bytes([10]))).hexdigest()
+            for path in (Path(__file__).resolve(), Path(tok.__file__).resolve())
+        },
+    }
+
+
+def _check_settings(parser: argparse.ArgumentParser, output: Path, settings: dict[str, Any], overwrite: bool) -> None:
+    """Refuse to add samples to a folder that was built with other settings, then record these settings."""
+    path = output / "settings.json"
+    if path.is_file():
+        previous = json.loads(path.read_text(encoding="utf-8"))
+        changed = sorted(key for key in settings.keys() | previous.keys() if settings.get(key) != previous.get(key))
+        if changed and not overwrite:
+            parser.error(
+                f"{output} was built with other settings ({', '.join(changed)}); "
+                "use a new --output or --overwrite to rebuild it"
+            )
+    elif not overwrite and (output.is_dir() and any(output.glob("*.pt"))):
+        parser.error(f"{output} has samples but no settings.json; use a new --output or --overwrite to rebuild it")
+    output.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+
+
 def _cfg_path_for_row(row: dict[str, str], cfg_root: Path | None) -> Path:
     """Where the CFG of a splits-CSV row is.
 
@@ -2064,6 +2099,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.limit is not None:
         selected = selected[: args.limit]
     full_run = args.limit is None and args.sample_id is None and not args.freeze_vocab
+    _check_settings(parser, args.output, _run_settings(args), args.overwrite)
     vocab = tok.load_api_vocab(args.vocab)
     torch.manual_seed(args.seed)
     embedder = FiveChannelEmbedder(api_table_size(vocab), seed=args.seed)

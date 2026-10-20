@@ -229,3 +229,53 @@ def test_a_splits_csv_without_a_collection_column_uses_the_folder_name(tmp_path)
     assert {row['collection'] for row in rows} == {'nocollection'}
     out_dir, _ = run(tmp_path, [root])
     assert built(out_dir) == [sha(1), sha(3)]
+
+
+# ---- 6. a folder keeps one set of settings -------------------------------------------------------------------------
+
+def test_a_rerun_with_the_same_settings_goes_on_and_one_with_other_settings_is_refused(tmp_path):
+    root = three_samples(tmp_path, 'guard')
+    out_dir, _ = run(tmp_path, [root])
+    settings = json.loads((out_dir / 'settings.json').read_text(encoding='utf-8'))
+    assert settings['sample'] == 'walk' and settings['seed'] == 0 and settings['num_blocks'] == 8
+    assert settings['include_library'] is False and set(settings['source_sha256']) == {'preprocess_full.py', 'tokenize_asm_gz.py'}
+    run(tmp_path, [root], '--split', 'test')                       # another split of the same settings is fine
+    for flag, value in (('--sample', 'signal'), ('--seed', '3'), ('--num-blocks', '9'), ('--max-instructions', '50')):
+        options = {'--num-blocks': '8', '--seed': '0', '--output': str(out_dir), '--vocab': str(tmp_path / 'vocab.json'),
+                   flag: value}
+        with pytest.raises(SystemExit) as stop:
+            pf.main(['--root', str(root), *[word for item in options.items() for word in item]])
+        assert stop.value.code == 2
+    with pytest.raises(SystemExit):
+        run(tmp_path, [root], '--include-library')
+
+
+def test_overwrite_rebuilds_with_the_new_settings(tmp_path):
+    root = three_samples(tmp_path, 'over')
+    out_dir, _ = run(tmp_path, [root])
+    out_dir, _ = run(tmp_path, [root], '--overwrite', '--include-library')
+    assert json.loads((out_dir / 'settings.json').read_text(encoding='utf-8'))['include_library'] is True
+
+
+def test_a_folder_of_samples_without_settings_is_refused(tmp_path):
+    root = three_samples(tmp_path, 'legacy')
+    out_dir, _ = run(tmp_path, [root])
+    (out_dir / 'settings.json').unlink()
+    with pytest.raises(SystemExit):
+        run(tmp_path, [root])
+    run(tmp_path, [root], '--overwrite')
+
+
+def test_a_changed_source_file_is_a_change_of_settings(tmp_path, monkeypatch):
+    root = three_samples(tmp_path, 'source')
+    run(tmp_path, [root])
+    real = pf._run_settings
+
+    def edited(args):
+        settings = real(args)
+        settings['source_sha256'] = {**settings['source_sha256'], 'preprocess_full.py': '0' * 64}
+        return settings
+
+    monkeypatch.setattr(pf, '_run_settings', edited)
+    with pytest.raises(SystemExit):
+        run(tmp_path, [root])
