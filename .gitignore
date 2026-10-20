@@ -35,3 +35,7 @@ samples/
 *.sys
 *.zip
 *.7z
+
+# Per-machine pipeline configuration (copy CT_GAT/pipeline/datasets.json.example) and run output
+CT_GAT/pipeline/datasets.json
+CT_GAT/pipeline/runs/
