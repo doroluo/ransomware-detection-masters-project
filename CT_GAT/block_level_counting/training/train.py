@@ -232,7 +232,7 @@ def run(cfg: RunConfig, out_name=None):
     (out / 'vocab.json').write_text(json.dumps(vocab.summary() if vocab else {'block_vec': cfg.block_vec, 'd': vecs.d},
                                                indent=2), encoding='utf-8')
     stack = stack_logits(cfg, manifest) if cfg.stack_tfidf else None
-    imports = ImportVocab(manifest.train, cfg.min_df, cfg.imports) if cfg.imports else None
+    imports = ImportVocab(manifest.train, cfg.min_df) if cfg.imports else None
     if imports is not None:
         (out / 'imports_vocab.json').write_text(json.dumps(imports.summary(), indent=2), encoding='utf-8')
 

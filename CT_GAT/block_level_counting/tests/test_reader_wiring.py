@@ -560,3 +560,29 @@ def test_vocab_stage_runs_baselines_then_ten_arms(tmp_path):
 def test_queue_usage_lists_the_new_stages():
     r = subprocess.run([BASH, 'queue_gnn.sh', '--stage', 'v4', '--dry'], cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 2 and 'day1|day1b|v3|subgraph|paths|vocab|imports' in r.stdout
+
+
+# ---- the header-import run reads the cache of the process --------------------------------------------------------
+
+def test_train_builds_the_import_vocabulary_from_the_process_cache():
+    import ast
+    from training import train
+    tree = ast.parse(Path(train.__file__).read_text(encoding='utf-8'))
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, 'id', None) == 'ImportVocab']
+    assert len(calls) == 1
+    assert len(calls[0].args) == 2 and not [k for k in calls[0].keywords if k.arg == 'cache']
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='train.run needs CUDA')
+def test_train_with_header_imports_writes_metrics(tiny, monkeypatch):  # noqa: F811
+    from training import train
+    runs = tiny.runs / 'gnn'
+    runs.mkdir()
+    monkeypatch.setattr(train, 'CACHE', tiny.root)
+    monkeypatch.setattr(train, 'RUNS', runs)
+    cfg = fold(0, imports='header', batch_size=8, epochs=2)
+    metrics = train.run(cfg)
+    out = runs / cfg.name
+    assert (out / 'metrics.json').exists() and metrics['epochs_run'] == 2
+    summary = json.loads((out / 'imports_vocab.json').read_text(encoding='utf-8'))
+    assert summary['which'] == 'header' and summary['size'] > 0
