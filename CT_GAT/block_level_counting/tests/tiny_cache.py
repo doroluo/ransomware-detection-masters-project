@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from common.side_io import atomic_npz
-from pipeline.s03_tokenizer import import_reader_side as yan
+from experiments.side_arrays import import_reader_side as yan
 from pipeline.s10_unused_import_features import import_side as imp
 
 N_MN, N_SIG, N_API, N_BEH = 30, 50, 24, 9

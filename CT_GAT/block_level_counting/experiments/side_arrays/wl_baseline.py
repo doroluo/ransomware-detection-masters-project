@@ -145,7 +145,7 @@ def fit_predict(xtr, xva, xte, y, cfg, train_arch):
 def run(cfg, cache=None, out_root=None):
     cache = Path(cache or CACHE)
     # Separate from existing baselines, keeping historical directory names untouched.
-    out = Path(out_root or RUNS / 'baselines_wl') / replace(cfg, train_fraction=1.0, arch_balance=False).name.replace('_graph', '')
+    out = Path(out_root or RUNS / 'baselines_wl') / replace(cfg, train_fraction=1.0, arch_balance=False).name.replace('_gnn', '')
     suffix = (f'_tf{round(100 * cfg.train_fraction)}' if cfg.train_fraction < 1 else '') + ('_ab' if cfg.arch_balance else '')
     out = out.with_name(out.name + suffix)
     if out.exists():

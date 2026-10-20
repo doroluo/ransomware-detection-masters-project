@@ -1,5 +1,8 @@
 # IDA side arrays and WL experiment plan
 
+Experiment, not on the main path (step 25): no default run reads these arrays. The same holds for the reader's operand-role
+side array (`import_reader_side.py`, `RunConfig.vocab` `yanping` / `hybrid`).
+
 Implementation starts at `b6c0d95` on `side-arrays` in `rdmp-gt-side`.
 The active `rdmp-gt` queue and `rdmp-gt-s5` are outside this change. No model,
 training configuration, existing variant names, or main cache arrays are modified.

@@ -8,7 +8,7 @@ malware code/CFGs, B generic graph/ML benchmarks, C the notes' inference, D the 
 `C:/Users/chaoa/Downloads/graph_transformer_runs`. Since step 9 the code is grouped by pipeline step (see `../README.md`);
 the sections below name modules as they were when written: `data.py` is now `common/manifests.py`, `pipeline/s03_tokenizer/`,
 `pipeline/s04_select_subgraph/` and `pipeline/batching.py`, `model_gnn.py` is `pipeline/model.py` and the stage packages,
-`model.py` is `legacy/graph_transformer/model.py`, and the scripts keep their names (root shims call
+`model.py` was the graph transformer (removed in step 25, with `--model transformer`), and the scripts keep their names (root shims call
 `training/`, `evaluation/` and `pipeline/s02_build_cfg_cache/`).
 
 ## 0. What changed and why
@@ -464,6 +464,10 @@ nothing measurable over a regularised bag of blocks.
 
 ## Reader inputs: operand-role vocabulary and unreferenced imports (step 14, 2026-10-16)
 
+Status (step 25, 2026-10-20): the `--imports unreferenced` option described here was removed (its baseline reached AUC 0.526, the gate
+failed and the GNN arm never ran), together with the `lcc` subgraph policy and the graph transformer (`--model transformer`).
+`--vocab yanping|hybrid` and the side arrays are kept as experiments, not on the main path. See "Final results" at the end.
+
 Two options use the team's reader output (`CT_GAT/IDA_FEATURE_READERS.md`) through cache-aligned side arrays (README, "Reader inputs").
 Neither changes a default run: `RunConfig.vocab = 'ours'` and `imports = ''` keep every name, vocabulary and checkpoint.
 
@@ -515,6 +519,8 @@ against R7 + header imports. The five-fold arm is not run yet. A 2-epoch smoke r
 epochs (not a result).
 
 ## Vocabulary decision (2026-10-17): keep `ours`
+
+`--vocab yanping|hybrid` is an experiment, not on the main path (step 25).
 
 Pre-registered test. Arm: no-edge GNN + 15% block masking, kfold x86, 3 seeds x 5 folds, AUC-selected checkpoint at
 the validation threshold, paired cluster bootstrap (2,000 resamples, 712 clusters). The rule for replacing `ours` is

@@ -4,7 +4,7 @@ import json
 import numpy as np
 
 from common.config import CACHE, RunConfig
-from pipeline.s03_tokenizer.import_reader_side import YTOK_SIZES, load_ytok
+from experiments.side_arrays.import_reader_side import YTOK_SIZES, load_ytok
 
 TOKEN_KINDS = ('mn', 'sig', 'beh', 'api')
 OURS_INSN_KINDS = TOKEN_KINDS[:-1]
@@ -35,15 +35,12 @@ class TokenVocab:
     references are not tokens at all); 'yanping' the reader's three ids y0 (opcode or API, < 256), y1, y2 (operand categories, < 76)
     plus api; 'hybrid' our mn and beh plus the reader's y1, y2 plus api. Every kind but `beh` is cut on the training
     binaries the same way (document frequency >= min_df, UNK = 0); `beh` keeps all its ids, as before. The reader kinds
-    need `<cache>/side/yanping/` (import_reader_side.py).
+    need `<cache>/side/yanping/` (experiments/side_arrays/import_reader_side.py; an experiment, not on the main path).
 
-    For gnn configs, a [MASK] id per kind is appended after the kinds' ranges (`mask_id`, counted in `total`) and
+    A [MASK] id per kind is appended after the kinds' ranges (`mask_id`, counted in `total`) and
     `idf[run id] = ln((1 + N) / (1 + df)) + 1` over the training binaries (UNK and MASK get 1)."""
 
     def __init__(self, train_rows, cfg: RunConfig):
-        gnn = cfg.model == 'gnn'
-        if cfg.vocab != 'ours' and not gnn:
-            raise ValueError("vocab other than 'ours' needs model='gnn'")
         self.name, self.kinds = cfg.vocab, VOCAB_KINDS[cfg.vocab]
         self.insn_kinds, self.has_api = VOCAB_INSN_KINDS[cfg.vocab], VOCAB_API[cfg.vocab]
         sizes = {k: len(v) for k, v in json.loads((CACHE / 'vocab.json').read_text(encoding='utf-8')).items()}
@@ -54,7 +51,7 @@ class TokenVocab:
         for r in train_rows:
             with np.load(CACHE / 'samples' / f"{r['sample_id']}.npz") as z:
                 ours = {k: z[f'{k}_u'] for k in cut if k in ('mn', 'sig', 'api')}
-                if gnn and 'beh' in self.kinds:
+                if 'beh' in self.kinds:
                     df_beh[np.unique(z['beh'])] += 1
             if uses_reader(cfg.vocab):
                 ytok = load_ytok(CACHE, r['sample_id'])
@@ -73,16 +70,14 @@ class TokenVocab:
             self.size['beh'] = sizes['beh']
         self.offset = dict(zip(self.kinds, np.cumsum([0] + [self.size[k] for k in self.kinds]).tolist()))
         self.total = sum(self.size.values())
-        self.idf = self.mask_id = None
-        if gnn:
-            if 'beh' in self.kinds:
-                kept_df['beh'] = df_beh
-            self.idf = np.ones(self.total + len(self.kinds), dtype=np.float32)
-            for k, counts in kept_df.items():
-                lo = self.offset[k] + (k != 'beh')
-                self.idf[lo:lo + len(counts)] = np.log((1 + len(train_rows)) / (1 + counts)) + 1
-            self.mask_id = {k: self.total + j for j, k in enumerate(self.kinds)}
-            self.total += len(self.kinds)
+        if 'beh' in self.kinds:
+            kept_df['beh'] = df_beh
+        self.idf = np.ones(self.total + len(self.kinds), dtype=np.float32)
+        for k, counts in kept_df.items():
+            lo = self.offset[k] + (k != 'beh')
+            self.idf[lo:lo + len(counts)] = np.log((1 + len(train_rows)) / (1 + counts)) + 1
+        self.mask_id = {k: self.total + j for j, k in enumerate(self.kinds)}
+        self.total += len(self.kinds)
 
     def summary(self):
         return {'sizes_with_unk': self.size, 'total': self.total}

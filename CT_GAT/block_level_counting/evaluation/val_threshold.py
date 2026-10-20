@@ -41,8 +41,8 @@ def main():
     for run_dir in sorted(RUNS.iterdir()):
         if not (run_dir / 'config.json').exists() or not (run_dir / 'predictions.csv').exists():
             continue
-        cfg = RunConfig.load(run_dir / 'config.json')
-        if run_dir.name != cfg.name:
+        cfg = RunConfig.try_load(run_dir / 'config.json')
+        if cfg is None or run_dir.name != cfg.name:
             continue
         yv, pv, yt, pt = load(run_dir)
         t = max(GRID, key=lambda g: macro_f1(yv, pv, g))

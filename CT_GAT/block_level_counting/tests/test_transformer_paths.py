@@ -53,7 +53,7 @@ def gnn(**kw):
 
 
 def test_default_names_are_unchanged():
-    assert RunConfig().name == 'bundle_x86_graph_s0'
+    assert RunConfig().name == 'bundle_x86_gnn_s0'
     assert RunConfig(protocol='kfold', fold=2, model='gnn').name == 'kfold2_x86_gnn_s0'
     cfg = RunConfig(protocol='kfold', fold=0, model='gnn', control='no_edges', mask_blocks=0.15, seed=3)
     assert cfg.name == 'kfold0_x86_gnn-noedges-mblk15_s3'
@@ -66,7 +66,7 @@ def test_val_seed_suffix_only_when_it_differs_from_the_seed():
     assert gnn(**base, seed=1).name == gnn(**base, seed=1, val_seed=1).name == 'kfold0_x86_gnn_s1'
     assert gnn(**base, seed=1, val_seed=0).name == 'kfold0_x86_gnn-vs0_s1'
     assert gnn(**base, seed=0, val_seed=0).name == 'kfold0_x86_gnn_s0'
-    assert RunConfig(protocol='kfold', fold=0, seed=2, val_seed=0).name == 'kfold0_x86_graph-vs0_s2'
+    assert RunConfig(protocol='kfold', fold=0, seed=2, val_seed=0).name == 'kfold0_x86_gnn-vs0_s2'
     assert gnn(**base, seed=1, val_seed=0).group == 'kfold_x86_gnn-vs0'
     with pytest.raises(ValueError):
         RunConfig(val_seed=-1)
@@ -83,8 +83,6 @@ def test_block_input_config_rules():
                 {**vec, 'block_vec': 'a b'}, {**vec, 'block_vec': '../x'}, {**vec, 'protocol': 'kfold_v3'}):
         with pytest.raises(ValueError):
             RunConfig(**{'model': 'gnn', 'protocol': 'kfold', 'fold': 0, **bad})
-    with pytest.raises(ValueError):
-        RunConfig(protocol='kfold', fold=0, block_input='vec', block_vec='x')       # the transformer path has no vectors
 
 
 def test_cli_parses_the_new_flags():

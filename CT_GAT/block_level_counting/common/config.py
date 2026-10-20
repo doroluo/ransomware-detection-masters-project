@@ -12,15 +12,21 @@ DIRECTION_SUFFIX = {'forward': 'fwd', 'backward': 'bwd', 'undirected': 'undir'}
 CONTROLS = {'': '', 'no_edges': 'noedges', 'chain': 'chain', 'shuffle': 'shuffle', 'permute_types': 'permtypes'}
 ENCODERS = ('mean', 'tfidf', 'raw', 'presence', 'rawlog')
 SELECT_ON = ('overall', 'cell')
-SUBGRAPH_POLICIES = ('cap', 'lcc')
+SUBGRAPH_POLICIES = ('cap',)
 BLOCK_INPUTS = ('tokens', 'vec')
 MIN_BUDGET = 100  # blocks; 0 means the binary cap
 VOCABS = ('ours', 'yanping', 'hybrid', 'noapi')
-IMPORTS = ('', 'unreferenced', 'header')
-IMPORT_SUFFIX = {'unreferenced': 'imp', 'header': 'imph'}
-MODELS = ('transformer', 'gnn', 'tokenseq')
+IMPORTS = ('', 'header')
+IMPORT_SUFFIX = {'header': 'imph'}
+MODELS = ('gnn', 'tokenseq')
+# options that were removed on 2026-10-20 (step 25); the run directories that used them stay on disk but are not read
+REMOVED = {'model': ('transformer',), 'subgraph': ('lcc',), 'imports': ('unreferenced',)}
 SEQ_LEN, MAX_WINDOWS = 512, 64      # Model 1 window length and training windows per binary (defaults: no name suffix)
 TOKENSEQ_VAL_SEED = 0                # the block export carves its validation split with seed 0
+
+
+class RemovedOption(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -30,15 +36,9 @@ class RunConfig:
     arch: Literal['x86', 'all', 'matched'] = 'x86'
     seed: int = 0
     val_seed: Optional[int] = None
-    no_graph: bool = False
 
     d_model: int = 128
-    heads: int = 4
-    fn_layers: int = 2
-    bin_layers: int = 2
     dropout: float = 0.1
-    max_segment_blocks: int = 128
-    max_segments: int = 4096
     degree_clip: int = 15
 
     lr: float = 3e-4
@@ -52,7 +52,7 @@ class RunConfig:
     grad_clip: float = 1.0
     num_workers: int = 2
 
-    model: Literal['transformer', 'gnn', 'tokenseq'] = 'transformer'
+    model: Literal['gnn', 'tokenseq'] = 'gnn'
     encoder: Optional[str] = None
     readout: str = 'fixed'
     control: str = ''
@@ -140,9 +140,7 @@ class RunConfig:
             raise ValueError(f'train_fraction must be in (0, 1]: {self.train_fraction}')
         if self.model == 'tokenseq':
             self.check_tokenseq()
-        elif self.model == 'gnn':
-            if self.no_graph:
-                raise ValueError('no_graph applies to the transformer only')
+        else:
             if self.untyped and self.control in ('permute_types', 'no_edges'):
                 raise ValueError(f'untyped has no meaning with control {self.control}')
             if self.block_input == 'vec':
@@ -152,18 +150,6 @@ class RunConfig:
                     raise ValueError("encoder (token weighting) needs block_input='tokens'")
                 if self.protocol != 'kfold':
                     raise ValueError("block_input='vec' reads per-fold vectors and needs protocol 'kfold'")
-        else:
-            gnn_only = {'encoder': self.encoder is not None, 'readout': self.readout != 'fixed',
-                        'control': bool(self.control), 'untyped': self.untyped, 'no_call_mp': self.no_call_mp,
-                        'stack_tfidf': self.stack_tfidf, 'mask/drop/aux rate': any(r > 0 for r in rates),
-                        'direction': self.direction != 'both',
-                        'subgraph/budget': self.subgraph != 'cap' or self.budget != 0,
-                        'block_input': self.block_input != 'tokens',
-                        'vocab': self.vocab != 'ours', 'imports': bool(self.imports),
-                        'drop/flip edges': bool(self.drop_edges or self.flip_edges)}
-            used = [k for k, v in gnn_only.items() if v]
-            if used:
-                raise ValueError(f"{', '.join(used)} need model='gnn'")
 
     def check_tokenseq(self):
         """Model 1 reads the fold of a block export: its validation split is the export's carve (val_seed 0, forced here),
@@ -181,7 +167,7 @@ class RunConfig:
                        'stack_tfidf': self.stack_tfidf, 'mask/drop/aux/edge rate': any(r > 0 for r in rates),
                        'direction': self.direction != 'both', 'subgraph/budget': self.subgraph != 'cap' or self.budget != 0,
                        'block_input/block_vec': self.block_input != 'tokens' or bool(self.block_vec),
-                       'vocab': self.vocab != 'ours', 'imports': bool(self.imports), 'no_graph': self.no_graph,
+                       'vocab': self.vocab != 'ours', 'imports': bool(self.imports),
                        'gnn_fn_layers/gnn_bin_layers': (self.gnn_fn_layers, self.gnn_bin_layers) != (3, 2),
                        'train_fraction': self.train_fraction != 1.0, 'arch_balance': self.arch_balance,
                        'select_on': self.select_on != 'overall', 'fixed_epochs': self.fixed_epochs > 0}
@@ -191,11 +177,7 @@ class RunConfig:
 
     @property
     def block_encoder(self):
-        return self.encoder or ('mean' if self.model == 'transformer' else 'tfidf')
-
-    @property
-    def segment_cap(self):
-        return self.max_segment_blocks if self.model == 'transformer' else None
+        return self.encoder or 'tfidf'
 
     @property
     def variant(self):
@@ -207,8 +189,6 @@ class RunConfig:
             return '-'.join(['tokenseq'] + [f'{s}{n}' for s, n, default in (('L', self.seq_len, SEQ_LEN),
                                                                              ('w', self.max_windows, MAX_WINDOWS))
                                             if n != default])
-        if self.model == 'transformer':
-            return '-'.join(['nograph' if self.no_graph else 'graph'] + tf + ab + sel + vs)
         parts = ['gnn']
         if self.control:
             parts.append(CONTROLS[self.control])
@@ -255,6 +235,21 @@ class RunConfig:
 
     @classmethod
     def load(cls, path):
+        """The config saved in `path`; raises RemovedOption for a run that used an option removed in step 25."""
         raw = json.loads(Path(path).read_text(encoding='utf-8'))
+        raw.setdefault('model', 'transformer')                                  # files before the model field were transformer runs
+        gone = [f'{k}={raw[k]}' for k, values in REMOVED.items() if raw.get(k) in values]
+        if raw.get('no_graph'):
+            gone.append('no_graph')
+        if gone:
+            raise RemovedOption(f"{path}: {', '.join(gone)} no longer exist")
         known = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in raw.items() if k in known})
+
+    @classmethod
+    def try_load(cls, path):
+        """`load`, or None for a run directory of a removed option (the directory stays on disk, nothing reads it)."""
+        try:
+            return cls.load(path)
+        except RemovedOption:
+            return None

@@ -13,7 +13,7 @@
 # for every python call and runs, in order: the CPU baselines (all, matched, all arch-balanced), the arch-balanced
 # all-arch arms (--arch-balance, names contain -ab; the main result) R2 no-edges, R7 typed, R4 shuffle, the same three
 # unweighted, then the matched arms. Stage subgraph (kfold x86, v2 cache, seed 0, 15% block masking) measures the chain
-# reduction (RUNS/subgraph_chain.json, CPU), then runs R7 typed with the cap and lcc subgraph policies at 20k and 5k blocks
+# reduction (RUNS/subgraph_chain.json, CPU), then runs R7 typed with the cap subgraph policy at 20k and 5k blocks
 # and the no-edge arm with the raw, presence and rawlog block weightings. Stage paths (kfold x86, v2 cache, seed 0, 15% block
 # masking) writes the out-of-fold TF-IDF logits (CPU), runs R7 with --stack-tfidf on the five folds, then builds the reference
 # encoder's block vectors (the block export RUNS/export/ours_cap0, reference checkpoints RUNS/encoders/ref and the vectors of
@@ -27,11 +27,9 @@
 # Stage vocab (kfold x86, v2 cache, seed 0; needs <cache>/side/yanping/) runs the TF-IDF baselines over the reader's
 # vocabulary and the hybrid one (CPU, directories kfold<f>_x86_s0_voc-<name>), then the no-edge arm with 15% block masking
 # under --vocab yanping and --vocab hybrid (ours already exists as gnn-noedges-mblk15). Stage imports (needs
-# <cache>/side/imports/) runs the CPU import baselines (baselines.py --imports, directories kfold<f>_x86_s0_imp) and then
-# asks `gates.py --stage imports --verdict`: R7 with 15% block masking and --imports unreferenced (gnn-mblk15-imp) runs only
-# when the pooled AUC of imports_unref_lr is at least the majority floor + 0.05; the verdict is printed either way.
+# <cache>/side/imports/) runs the CPU import baseline (baselines.py --imports, directories kfold<f>_x86_s0_imp).
 # Stage imports_header (needs <cache>/side/imports/) runs R7 typed with 15% block masking and --imports header (gnn-mblk15-imph)
-# on kfold x86, seed 0, folds 0-4, with no gate; its summary is `gates.py --stage imports` (R7, header-imports LR and TF-IDF against
+# on kfold x86, seed 0, folds 0-4; its summary is `gates.py --stage imports` (R7, header-imports LR and TF-IDF against
 # R7 + header imports), written to RUNS/gates_imports_header.md. The baselines come from stage imports.
 cd "$(dirname "$0")/.."
 PY=/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe
@@ -131,14 +129,6 @@ codebert_vectors() { C=${GT_CACHE:-C:/Users/chaoa/Downloads/graph_transformer_ca
 arm_seed() { seed=$1; variant=$2; shift; shift
   for f in 0 1 2 3 4; do run kfold${f}_x86_${variant}_s${seed} --protocol kfold --fold $f --arch x86 --seed $seed "$@"; done; }
 
-# imports_gate <train.py args of R7 + imports>: the pooled AUC of imports_unref_lr decides (gates.py --verdict exits 0 on
-# a pass, 3 otherwise, also when the baselines are missing); the verdict line is printed and the arm runs only on a pass
-imports_gate() { variant=$1; shift
-  if [ $DRY = 1 ]; then echo "cpu gates.py --stage imports --verdict (the arm below runs only on PASS)"; arm $variant "$@"; return; fi
-  verdict=$($PY gates.py --stage imports --verdict 2>> $R/logs/gate_imports.log); rc=$?
-  echo "$verdict"
-  if [ $rc = 0 ]; then arm $variant "$@"; else echo "gate not passed: skipping kfold<f>_x86_${variant}_s0"; fi; }
-
 if [ $STAGE = vocab ]; then
 V="--model gnn --mask-blocks 0.15 --control no_edges"
 baselines _voc-yanping --vocab yanping                                # 1. CPU TF-IDF over the reader's tokens
@@ -146,8 +136,7 @@ baselines _voc-hybrid --vocab hybrid
 arm gnn-noedges-mblk15-voc-yanping $V --vocab yanping                 # 2. R2 no-edges, reader vocabulary
 arm gnn-noedges-mblk15-voc-hybrid $V --vocab hybrid                   # 3. R2 no-edges, hybrid vocabulary
 elif [ $STAGE = imports ]; then
-baselines _imp --imports                                              # 1. CPU import baselines
-imports_gate gnn-mblk15-imp --model gnn --mask-blocks 0.15 --imports unreferenced  # 2. R7 + unreferenced imports, if the gate passes
+baselines _imp --imports                                              # 1. CPU import baseline
 elif [ $STAGE = imports_header ]; then
 arm gnn-mblk15-imph --model gnn --mask-blocks 0.15 --imports header   # 1. R7 + header imports, no gate
 elif [ $STAGE = paths ]; then
@@ -183,9 +172,7 @@ chain_measure                                                         # 1. chain
 M="--model gnn --mask-blocks 0.15"
 arm gnn-mblk15-sg-cap20k $M --subgraph cap --budget 20000            # 2. R7, cap order at 20k and 5k blocks
 arm gnn-mblk15-sg-cap5k $M --subgraph cap --budget 5000
-arm gnn-mblk15-sg-lcc20k $M --subgraph lcc --budget 20000            # 3. R7, call-graph components
-arm gnn-mblk15-sg-lcc5k $M --subgraph lcc --budget 5000
-arm gnn-noedges-mblk15-enc-raw $M --control no_edges --encoder raw    # 4. R2 weightings
+arm gnn-noedges-mblk15-enc-raw $M --control no_edges --encoder raw    # 3. R2 weightings
 arm gnn-noedges-mblk15-enc-presence $M --control no_edges --encoder presence
 arm gnn-noedges-mblk15-enc-rawlog $M --control no_edges --encoder rawlog
 elif [ $STAGE = day1b ]; then
@@ -212,9 +199,6 @@ arm gnn-noedges-enc-mean --model gnn --control no_edges --encoder mean  # 3. R2 
 arm gnn --model gnn                                                  # 4. R7
 arm gnn-untyped --model gnn --untyped                                # 5. R5
 arm gnn-shuffle --model gnn --control shuffle                        # 6. R4
-run kfold3_x86_nograph_s2 --protocol kfold --fold 3 --arch x86 --seed 2 --no-graph   # 7. transformer completions
-run kfold4_x86_graph_s2 --protocol kfold --fold 4 --arch x86 --seed 2
-run kfold4_x86_nograph_s2 --protocol kfold --fold 4 --arch x86 --seed 2 --no-graph
 fi
 
 # 8. report steps

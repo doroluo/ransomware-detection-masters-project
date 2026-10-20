@@ -117,7 +117,7 @@ def load_sample(sample_id, ytok=False):
                                  'fn_blk_ptr', 'fn_flags', 'cfg_edges', 'call_edges', 'edge_kind', 'edge_back')
                if k in z.files}
     if ytok:
-        from pipeline.s03_tokenizer.import_reader_side import load_ytok
+        from experiments.side_arrays.import_reader_side import load_ytok
         out['ytok'] = load_ytok(CACHE, sample_id)
         if len(out['ytok']) != len(out['mn']):
             raise ValueError(f'{sample_id}: {len(out["ytok"])} reader instructions, {len(out["mn"])} in the cache')

@@ -189,18 +189,6 @@ def test_encode_and_collate_match(old, train_rows, real_ids, tiny_ids, case, whi
         same_batch(collate(new_items), old.data.collate(old_items))
 
 
-@pytest.mark.parametrize('kw', [dict(), dict(max_segment_blocks=16, max_segments=24)], ids=['default', 'capped'])
-def test_transformer_path_matches(old, train_rows, real_ids, kw):
-    cfg = RunConfig(num_workers=0, **kw)
-    vocab, old_vocab = TokenVocab(train_rows[:100], cfg), old.data.TokenVocab(train_rows[:100], cfg)
-    same_vocab(vocab, old_vocab)
-    for sid in real_ids:
-        z = load_sample(sid)
-        for epoch in (None, 1):
-            rng = lambda: None if epoch is None else np.random.default_rng([cfg.seed, epoch, 5])
-            same_dict(encode_binary(z, vocab, cfg, rng(), sid), old.data.encode_binary(z, old_vocab, cfg, rng(), sid))
-
-
 def test_block_cap_matches(old, train_rows, real_ids, monkeypatch):
     monkeypatch.setattr(subgraph, 'MAX_BINARY_BLOCKS', 150)
     monkeypatch.setattr(old.data, 'MAX_BINARY_BLOCKS', 150)

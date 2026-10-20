@@ -1,6 +1,6 @@
 """Converter of the team's operand-role reader output to a cache-aligned side array.
 
-python -m pipeline.s03_tokenizer.import_reader_side --cache C:/.../graph_transformer_cache_v2 [C:/.../graph_transformer_cache_combined]
+python -m experiments.side_arrays.import_reader_side --cache C:/.../graph_transformer_cache_v2 [C:/.../graph_transformer_cache_combined]
     [--reader-root C:/Users/chaoa/Downloads/ida_features/out] [--limit N] [--sample-id ID ...] [--replace-stale]
 
 Each `<reader root>/<sample_id>/operand_roles.jsonl.gz` (schema ida-operand-roles/1, CT_GAT/IDA_FEATURE_READERS.md) becomes
@@ -159,7 +159,7 @@ def load_ytok(cache, sample_id):
     path = yanping_path(cache, sample_id)
     if not path.exists():
         raise FileNotFoundError(f'{path}: no reader side array for {sample_id}; run '
-                                f'python -m pipeline.s03_tokenizer.import_reader_side --cache {cache}')
+                                f'python -m experiments.side_arrays.import_reader_side --cache {cache}')
     with np.load(path, allow_pickle=False) as z:
         if str(z['schema']) != SCHEMA or str(z['sample_id']) != sample_id:
             raise ValueError(f'{path}: schema {z["schema"]} / sample {z["sample_id"]}, expected {SCHEMA} / {sample_id}')

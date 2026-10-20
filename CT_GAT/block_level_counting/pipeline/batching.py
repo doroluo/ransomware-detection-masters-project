@@ -1,11 +1,10 @@
 """Per-binary arrays and batches: function dropping, the stage calls that build one binary's inputs, collate,
-the block-budget sampler and the loader. The legacy transformer path is `legacy.graph_transformer.encode`."""
+the block-budget sampler and the loader."""
 import numpy as np
 import torch
 
 from common.config import RunConfig
 from common.manifests import load_sample
-from legacy.graph_transformer.encode import encode_binary_transformer
 from pipeline.s03_tokenizer.block_tokens import token_table
 from pipeline.s03_tokenizer.vocab import TokenVocab, uses_reader
 from pipeline.s04_select_subgraph import subgraph
@@ -94,9 +93,7 @@ precomputed vector of each kept block (`vecs`, a BlockVecSource); block masking 
 
 
 def encode_binary(z, vocab: TokenVocab, cfg: RunConfig, rng, sample_id=None, vecs=None):
-    if cfg.model == 'gnn':
-        return encode_binary_gnn(z, vocab, cfg, rng, sample_id, vecs)
-    return encode_binary_transformer(z, vocab, cfg, rng)
+    return encode_binary_gnn(z, vocab, cfg, rng, sample_id, vecs)
 
 
 class EpochSampler:
@@ -206,12 +203,8 @@ class BlockBudgetSampler:
 
 def loader(rows, vocab, cfg, train, vecs=None, stack=None, imports=None):
     sampler = EpochSampler(len(rows), cfg.seed, train)
-    if cfg.model == 'gnn':
-        blocks = [min(int(r['num_blocks']), cfg.budget or subgraph.MAX_BINARY_BLOCKS) for r in rows]
-        batches = BlockBudgetSampler(sampler, blocks, cfg.batch_size, cfg.batch_blocks)
-        return torch.utils.data.DataLoader(
-            BinaryDataset(rows, vocab, cfg, vecs, stack, imports), batch_sampler=batches, collate_fn=collate,
-            num_workers=cfg.num_workers, persistent_workers=cfg.num_workers > 0, pin_memory=True)
+    blocks = [min(int(r['num_blocks']), cfg.budget or subgraph.MAX_BINARY_BLOCKS) for r in rows]
+    batches = BlockBudgetSampler(sampler, blocks, cfg.batch_size, cfg.batch_blocks)
     return torch.utils.data.DataLoader(
-        BinaryDataset(rows, vocab, cfg, vecs, stack, imports), batch_size=cfg.batch_size, sampler=sampler, collate_fn=collate,
+        BinaryDataset(rows, vocab, cfg, vecs, stack, imports), batch_sampler=batches, collate_fn=collate,
         num_workers=cfg.num_workers, persistent_workers=cfg.num_workers > 0, pin_memory=True)

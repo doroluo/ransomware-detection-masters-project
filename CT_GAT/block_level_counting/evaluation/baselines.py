@@ -25,11 +25,11 @@ method `tfidf_noapi_lr` counts the kinds of the GNN vocabulary `noapi`, mn, sig 
 api), so the GNN arm `--vocab noapi` and this baseline see the same tokens. The default's kinds minus api (sig alone) are
 written beside it as `tfidf_sig_lr`, to read the ablation both ways.
 
---imports writes `imports_unref_lr` (the unreferenced import identities, kept when unreferenced in >= min_df training
-binaries), `imports_header_lr` (every header import identity, same cut) and `tfidf_sig_api_imp_lr` (the sig + api counts
-hstacked with the unreferenced imports) to the directory with the suffix `_imp`; all three are TF-IDF (sublinear) logistic
-regressions on the same folds. A feature space with no column left (no import kept) gives the constant 0.5, stated in
-metrics.json. It needs <cache>/side/imports/ (pipeline/s10_unused_import_features/import_side.py).
+--imports writes `imports_header_lr` (every header import identity kept when present in >= min_df training binaries,
+a TF-IDF (sublinear) logistic regression) to the directory with the suffix `_imp`. The earlier unreferenced-import methods
+(`imports_unref_lr`, `tfidf_sig_api_imp_lr`) were removed in step 25; the directories written before that still hold them.
+A feature space with no column left (no import kept) gives the constant 0.5, stated in metrics.json. It needs
+<cache>/side/imports/ (pipeline/s10_unused_import_features/import_side.py).
 
 --stack-logits writes <out-root>/<same directory>/stack_logits.csv and nothing else: the TF-IDF logistic regression's
 logit (decision function) of every row of the manifest, for `train.py --stack-tfidf`. Training rows get out-of-fold
@@ -56,7 +56,7 @@ from common.config import CACHE, RUNS, VOCABS, RunConfig
 from common.manifests import load_index, make_manifest
 from evaluation.metrics import cell_weights, family_recall, floors, scores
 from evaluation.val_threshold import GRID, macro_f1
-from pipeline.s03_tokenizer.import_reader_side import load_ytok
+from experiments.side_arrays.import_reader_side import load_ytok
 from pipeline.s03_tokenizer.vocab import VOCAB_KINDS, Y_KINDS, Y_SIZES, uses_reader
 from pipeline.s10_unused_import_features.imports_feat import ImportVocab
 
@@ -93,12 +93,11 @@ def load_vocab_features(rows, sizes, vocab):
 
 
 def import_matrix(rows, vocab: ImportVocab):
-    """Presence matrix [len(rows), len(vocab)] of the vocabulary's identities (unreferenced or header imports)."""
-    from pipeline.s10_unused_import_features.imports_feat import WHICH
+    """Presence matrix [len(rows), len(vocab)] of the vocabulary's header import identities."""
     from pipeline.s10_unused_import_features.import_side import load_imports
     indptr, indices = [0], []
     for r in rows:
-        ids = vocab.ids(load_imports(vocab.cache, r['sample_id'])[WHICH[vocab.which]])
+        ids = vocab.ids(load_imports(vocab.cache, r['sample_id'])['header_imports'])
         indices.append(ids)
         indptr.append(indptr[-1] + len(ids))
     flat = np.concatenate(indices) if indices else np.zeros(0, dtype=np.int64)
@@ -123,10 +122,10 @@ def tfidf_lr(x_fit, class_weight):
 
 
 def baseline_name(cfg: RunConfig):
-    """Directory name of the baselines of cfg's split (protocol, fold, arch, seed, val_seed): the transformer run name
-    without the model word, whatever model or tag cfg has."""
+    """Directory name of the baselines of cfg's split (protocol, fold, arch, seed, val_seed): the run name without the
+    model word, whatever model or tag cfg has."""
     split = RunConfig(protocol=cfg.protocol, fold=cfg.fold, arch=cfg.arch, seed=cfg.seed, val_seed=cfg.val_seed)
-    return split.name.replace('_graph', '')
+    return split.name.replace('_gnn', '')
 
 
 STACK_SPLITS = 5
@@ -218,7 +217,7 @@ def read_stack_logits(path, manifest):
 def features_and_models(cfg: RunConfig, sizes, train, val, test, vocab, imports, class_weight):
     """(models, n token features kept, feature counts per method): {method: (model, x_train, x_val, x_test)}. Default: the
     sig + api TF-IDF regression and the structural one. `vocab`: one TF-IDF regression over that vocabulary's kinds.
-    `imports`: the three import methods (module docstring). Every document-frequency cut is fitted on `train`."""
+    `imports`: the header-import method (module docstring). Every document-frequency cut is fitted on `train`."""
     if vocab != 'ours':
         x_tr, x_va, x_te = (load_vocab_features(rows, sizes, vocab) for rows in (train, val, test))
         keep = np.asarray((x_tr > 0).sum(0)).ravel() >= cfg.min_df
@@ -236,13 +235,9 @@ def features_and_models(cfg: RunConfig, sizes, train, val, test, vocab, imports,
     x_test_tok, x_test_st = load_features(test, sizes)
     keep = np.asarray((x_train_tok > 0).sum(0)).ravel() >= cfg.min_df
     if imports:
-        spaces = {which: ImportVocab(train, cfg.min_df, which) for which in ('unreferenced', 'header')}
-        mats = {which: [import_matrix(rows, v) for rows in (train, val, test)] for which, v in spaces.items()}
-        tok = [m[:, keep] for m in (x_train_tok, x_val_tok, x_test_tok)]
-        joint = [sp.hstack([t, u]).tocsr() for t, u in zip(tok, mats['unreferenced'])]
-        models = {'imports_unref_lr': (tfidf_lr(mats['unreferenced'][0], class_weight), *mats['unreferenced']),
-                  'imports_header_lr': (tfidf_lr(mats['header'][0], class_weight), *mats['header']),
-                  'tfidf_sig_api_imp_lr': (tfidf_lr(joint[0], class_weight), *joint)}
+        header = ImportVocab(train, cfg.min_df)
+        mats = [import_matrix(rows, header) for rows in (train, val, test)]
+        models = {'imports_header_lr': (tfidf_lr(mats[0], class_weight), *mats)}
         return models, int(keep.sum()), {name: int(m[1].shape[1]) for name, m in models.items()}
     models = {
         'tfidf_sig_api_lr': (make_pipeline(TfidfTransformer(sublinear_tf=True),

@@ -1,7 +1,7 @@
 """python -m pytest tests/test_reader_wiring.py: the vocabulary option (`vocab` ours | yanping | hybrid) and the import feature
-(`imports` unreferenced | header) on a small synthetic cache (tests/tiny_cache.py): names, vocabularies, block tokens, masking, the
-import vocabulary, batches and the network, the baselines (`--vocab`, `--imports`) with the groups the gates read, the gate
-of the imports stage, and the two queue stages."""
+(`imports` header; `unreferenced` was removed in step 25) on a small synthetic cache (tests/tiny_cache.py): names, vocabularies,
+block tokens, masking, the import vocabulary, batches and the network, the baselines (`--vocab`, `--imports`) with the groups the
+gates read, and the queue stages."""
 import json
 import os
 import shutil
@@ -42,7 +42,7 @@ def fold(f=0, **kw):
 # ---- configuration ------------------------------------------------------------------------------------------------
 
 def test_default_names_are_unchanged():
-    assert RunConfig().name == 'bundle_x86_graph_s0'
+    assert RunConfig().name == 'bundle_x86_gnn_s0'
     assert RunConfig(protocol='kfold', fold=2, model='gnn').name == 'kfold2_x86_gnn_s0'
     assert fold(0, control='no_edges', mask_blocks=0.15).name == 'kfold0_x86_gnn-noedges-mblk15_s0'
     assert fold(0, vocab='ours', imports='').name == fold(0).name
@@ -53,26 +53,23 @@ def test_default_names_are_unchanged():
 def test_vocab_and_imports_suffixes():
     assert fold(0, control='no_edges', mask_blocks=0.15, vocab='yanping').name == 'kfold0_x86_gnn-noedges-mblk15-voc-yanping_s0'
     assert fold(3, control='no_edges', mask_blocks=0.15, vocab='hybrid').name == 'kfold3_x86_gnn-noedges-mblk15-voc-hybrid_s0'
-    assert fold(0, mask_blocks=0.15, imports='unreferenced').name == 'kfold0_x86_gnn-mblk15-imp_s0'
-    assert fold(0, mask_blocks=0.15, imports='unreferenced').group == 'kfold_x86_gnn-mblk15-imp'
-    assert fold(0, vocab='hybrid', imports='unreferenced').variant == 'gnn-voc-hybrid-imp'
     assert fold(0, mask_blocks=0.15, imports='header').name == 'kfold0_x86_gnn-mblk15-imph_s0'
     assert fold(0, mask_blocks=0.15, imports='header').group == 'kfold_x86_gnn-mblk15-imph'
     assert fold(0, vocab='hybrid', imports='header').variant == 'gnn-voc-hybrid-imph'
 
 
 def test_vocab_and_imports_validation():
-    for bad in (dict(vocab='bert'), dict(imports='all'), dict(vocab='yanping', block_input='vec', block_vec='x')):
+    for bad in (dict(vocab='bert'), dict(imports='all'), dict(imports='unreferenced'),
+                dict(vocab='yanping', block_input='vec', block_vec='x')):
         with pytest.raises(ValueError):
             fold(0, **bad)
-    for bad in (dict(vocab='yanping'), dict(imports='unreferenced'), dict(imports='header')):
-        with pytest.raises(ValueError, match="need model='gnn'"):
-            RunConfig(protocol='kfold', fold=0, **bad)
 
 
 def test_cli_parses_vocab_and_imports():
-    cfg, _ = parse_config('--protocol kfold --fold 0 --model gnn --vocab hybrid --imports unreferenced'.split())
-    assert (cfg.vocab, cfg.imports, cfg.name) == ('hybrid', 'unreferenced', 'kfold0_x86_gnn-voc-hybrid-imp_s0')
+    cfg, _ = parse_config('--protocol kfold --fold 0 --model gnn --vocab hybrid --imports header'.split())
+    assert (cfg.vocab, cfg.imports, cfg.name) == ('hybrid', 'header', 'kfold0_x86_gnn-voc-hybrid-imph_s0')
+    with pytest.raises(SystemExit):
+        parse_config('--protocol kfold --fold 0 --model gnn --imports unreferenced'.split())
     cfg, _ = parse_config('--protocol kfold --fold 0 --model gnn --mask-blocks 0.15 --imports header'.split())
     assert (cfg.imports, cfg.name) == ('header', 'kfold0_x86_gnn-mblk15-imph_s0')
     assert parse_config('--protocol kfold --fold 0 --model gnn'.split())[0] == fold(0, num_workers=2)
@@ -123,11 +120,10 @@ def test_ours_vocabulary_is_the_vocabulary_of_before(tiny):  # noqa: F811
     assert new.size == size and list(new.size) == list(size) and new.offset == offset
     assert new.total == total + 4 and new.mask_id == mask_id
     assert new.idf.dtype == idf.dtype and (new.idf == idf).all()
-    assert (TokenVocab(rows, RunConfig()).idf is None)                              # the transformer path: no idf, no masks
 
 
 def reader_unique(tiny, rows, slot):  # noqa: F811
-    from pipeline.s03_tokenizer.import_reader_side import load_ytok
+    from experiments.side_arrays.import_reader_side import load_ytok
     return [np.unique(load_ytok(tiny.root, r['sample_id'])[:, slot]) for r in rows]
 
 
@@ -238,58 +234,23 @@ def test_dataset_items_and_default_runs_carry_nothing_extra(tiny):  # noqa: F811
     assert np.isin(item['tokens'], np.arange(v.total)).all()
 
 
-# ---- unreferenced imports -----------------------------------------------------------------------------------------
+# ---- header imports ------------------------------------------------------------------------------------------------
 
-def unreferenced(tiny, row):  # noqa: F811
-    return imports_feat.load_imports(tiny.root, row['sample_id'])['unreferenced_imports']
-
-
-def test_import_vocabulary_is_fitted_on_the_training_binaries_only(tiny):  # noqa: F811
-    train, other = tiny.rows[:24], tiny.rows[24:]
-    v = ImportVocab(train, min_df=2)
-    df = {}
-    for r in train:
-        for n in set(unreferenced(tiny, r)):
-            df[n] = df.get(n, 0) + 1
-    assert v.names == sorted(n for n, c in df.items() if c >= 2) and len(v) == len(v.names) > 0
-    assert (v.idf == np.array([np.log(25 / (1 + df[n])) + 1 for n in v.names], dtype=np.float32)).all()
-    seen_only_later = {n for r in other for n in unreferenced(tiny, r)} - set(df)
-    assert not seen_only_later & set(v.names)
-    assert ImportVocab(train, min_df=3).names == sorted(n for n, c in df.items() if c >= 3)
-    assert set(ImportVocab(train[:6]).names) <= {n for r in train[:6] for n in unreferenced(tiny, r)}
+def header(tiny, row):  # noqa: F811
+    return imports_feat.load_imports(tiny.root, row['sample_id'])['header_imports']
 
 
-def test_import_item_is_a_normalised_idf_bag_and_two_log_counts(tiny):  # noqa: F811
-    v = ImportVocab(tiny.rows[:30], min_df=2)
-    sizes = []
-    for r in tiny.rows[30:]:
-        got = imports_feat.load_imports(tiny.root, r['sample_id'])
-        item = v.item(r['sample_id'])
-        kept = [n for n in set(got['unreferenced_imports']) if n in v.index]
-        assert item['imp_idx'].tolist() == sorted(v.index[n] for n in kept) and item['imp_idx'].dtype == np.int64
-        assert item['imp_w'].dtype == np.float32 and item['imp_feat'].dtype == np.float32
-        np.testing.assert_allclose(item['imp_feat'], np.log1p([len(got['unreferenced_imports']), len(got['header_imports'])]),
-                                   rtol=1e-6)
-        if kept:
-            assert abs(float((item['imp_w'].astype(np.float64) ** 2).sum()) - 1) < 1e-5
-            raw = v.idf[item['imp_idx']]
-            np.testing.assert_allclose(item['imp_w'], raw / np.linalg.norm(raw), rtol=1e-5)
-        else:
-            assert len(item['imp_w']) == 0
-        sizes.append(len(kept))
-    assert 0 in sizes and max(sizes) > 0                                                # empty and non-empty bags both occur
-
-
-def reference_unreferenced_item(tiny, train, sample_id, min_df=2):  # noqa: F811
-    """The unreferenced-import vocabulary and item written out again from the definition (as step 14 had them), as plain Python."""
+def reference_header_item(tiny, train, sample_id, min_df=2):  # noqa: F811
+    """The header-import vocabulary and item written out again from the definition, as plain Python. The two log counts are
+    log1p(#unreferenced) and log1p(#header), as in the finished `-imph` runs."""
     count = {}
     for r in train:
-        for n in set(imports_feat.load_imports(tiny.root, r['sample_id'])['unreferenced_imports']):
+        for n in set(header(tiny, r)):
             count[n] = count.get(n, 0) + 1
     names = sorted(n for n, c in count.items() if c >= min_df)
     idf = np.array([np.log((1 + len(train)) / (1 + count[n])) + 1 for n in names], dtype=np.float32)
     got = imports_feat.load_imports(tiny.root, sample_id)
-    idx = np.array(sorted(names.index(n) for n in set(got['unreferenced_imports']) if n in names), dtype=np.int64)
+    idx = np.array(sorted(names.index(n) for n in set(got['header_imports']) if n in names), dtype=np.int64)
     w = idf[idx]
     if len(w):
         w = w / np.float32(np.sqrt((w.astype(np.float64) ** 2).sum()))
@@ -297,33 +258,27 @@ def reference_unreferenced_item(tiny, train, sample_id, min_df=2):  # noqa: F811
     return names, idf, {'imp_idx': idx, 'imp_w': w.astype(np.float32), 'imp_feat': feat}
 
 
-def test_unreferenced_imports_stay_bit_identical(tiny):  # noqa: F811
+def test_header_imports_stay_bit_identical_to_the_definition(tiny):  # noqa: F811
     train = tiny.rows[:30]
-    explicit, default = ImportVocab(train, 2, 'unreferenced'), ImportVocab(train, 2)
+    v = ImportVocab(train, 2)
     for sample in tiny.rows[30:]:
-        names, idf, ref = reference_unreferenced_item(tiny, train, sample['sample_id'])
-        for v in (explicit, default):
-            assert v.names == names and v.idf.dtype == idf.dtype and np.array_equal(v.idf, idf)
-            item = v.item(sample['sample_id'])
-            assert set(item) == set(ref)
-            for k in ref:
-                assert item[k].dtype == ref[k].dtype and np.array_equal(item[k], ref[k]), k
-    # the network and the head of an unreferenced run are the ones of before: same keys, same shapes, same seed -> same weights
+        names, idf, ref = reference_header_item(tiny, train, sample['sample_id'])
+        assert v.names == names and v.idf.dtype == idf.dtype and np.array_equal(v.idf, idf)
+        item = v.item(sample['sample_id'])
+        assert set(item) == set(ref)
+        for k in ref:
+            assert item[k].dtype == ref[k].dtype and np.array_equal(item[k], ref[k]), k
     torch.manual_seed(0)
-    a = HierGNN(fold(0, imports='unreferenced'), 100, n_imports=len(explicit))
+    a = HierGNN(fold(0, imports='header'), 100, n_imports=len(v))
     torch.manual_seed(0)
-    b = HierGNN(fold(0, imports='header'), 100, n_imports=len(explicit))
+    b = HierGNN(fold(0, imports='header'), 100, n_imports=len(v))
     assert list(a.state_dict()) == list(b.state_dict())
     assert all(torch.equal(a.state_dict()[k], b.state_dict()[k]) for k in a.state_dict())
 
 
-def header(tiny, row):  # noqa: F811
-    return imports_feat.load_imports(tiny.root, row['sample_id'])['header_imports']
-
-
 def test_header_vocabulary_is_fitted_on_the_training_binaries_only(tiny):  # noqa: F811
     train, other = tiny.rows[:24], tiny.rows[24:]
-    v = ImportVocab(train, min_df=2, which='header')
+    v = ImportVocab(train, min_df=2)
     df = {}
     for r in train:
         for n in set(header(tiny, r)):
@@ -331,19 +286,18 @@ def test_header_vocabulary_is_fitted_on_the_training_binaries_only(tiny):  # noq
     assert v.names == sorted(n for n, c in df.items() if c >= 2) and len(v) > 0
     assert (v.idf == np.array([np.log(25 / (1 + df[n])) + 1 for n in v.names], dtype=np.float32)).all()
     assert not ({n for r in other for n in header(tiny, r)} - set(df)) & set(v.names)
-    assert ImportVocab(train, min_df=3, which='header').names == sorted(n for n, c in df.items() if c >= 3)
-    assert len(v) > len(ImportVocab(train, min_df=2))                                    # every header import, not only the unreferenced
+    assert ImportVocab(train, min_df=3).names == sorted(n for n, c in df.items() if c >= 3)
 
 
 def test_header_item_is_a_normalised_idf_bag_and_the_same_two_log_counts(tiny):  # noqa: F811
-    v = ImportVocab(tiny.rows[:30], min_df=2, which='header')
-    u = ImportVocab(tiny.rows[:30], min_df=2)
+    v = ImportVocab(tiny.rows[:30], min_df=2)
     for r in tiny.rows[30:]:
         got = imports_feat.load_imports(tiny.root, r['sample_id'])
         item = v.item(r['sample_id'])
         kept = [n for n in set(got['header_imports']) if n in v.index]
         assert item['imp_idx'].tolist() == sorted(v.index[n] for n in kept) and item['imp_idx'].dtype == np.int64
-        assert np.array_equal(item['imp_feat'], u.item(r['sample_id'])['imp_feat'])      # the counts do not depend on `which`
+        np.testing.assert_allclose(item['imp_feat'], np.log1p([len(got['unreferenced_imports']), len(got['header_imports'])]),
+                                   rtol=1e-6)
         assert item['imp_feat'].shape == (2,) and item['imp_w'].dtype == np.float32
         if kept:
             assert abs(float((item['imp_w'].astype(np.float64) ** 2).sum()) - 1) < 1e-5
@@ -356,13 +310,13 @@ def test_header_item_is_a_normalised_idf_bag_and_the_same_two_log_counts(tiny): 
 
 def make_batch(tiny, cfg, rows):  # noqa: F811
     v = TokenVocab(train_rows(tiny), cfg)
-    imports = ImportVocab(train_rows(tiny), cfg.min_df, cfg.imports) if cfg.imports else None
+    imports = ImportVocab(train_rows(tiny), cfg.min_df) if cfg.imports else None
     data = loader(rows, v, cfg, train=False, imports=imports)
     return v, imports, next(iter(data))
 
 
 def test_collate_shifts_import_offsets_and_default_batches_have_none(tiny):  # noqa: F811
-    cfg = fold(0, imports='unreferenced', batch_size=8)
+    cfg = fold(0, imports='header', batch_size=8)
     v, imports, batch = make_batch(tiny, cfg, tiny.rows[28:36])
     items = [imports.item(r['sample_id']) for r in tiny.rows[28:36]]
     lengths = [len(i['imp_idx']) for i in items]
@@ -376,16 +330,16 @@ def test_collate_shifts_import_offsets_and_default_batches_have_none(tiny):  # n
 
 def test_network_with_and_without_the_import_bag(tiny):  # noqa: F811
     base = HierGNN(fold(0), 100)
-    with_imports = HierGNN(fold(0, imports='unreferenced'), 100, n_imports=17)
+    with_imports = HierGNN(fold(0, imports='header'), 100, n_imports=17)
     assert not [k for k in base.state_dict() if k.startswith('imports')]               # a default checkpoint keeps its keys
     assert list(with_imports.state_dict()) == list(base.state_dict())[:-4] + ['imports.bag.weight'] + list(base.state_dict())[-4:]
     assert base.head[0].in_features == 128 + 5 and with_imports.head[0].in_features == 128 + 5 + IMPORT_DIM + 2
     assert with_imports.imports.bag.weight.shape == (17, IMPORT_DIM)
-    assert HierGNN(fold(0, imports='unreferenced'), 100, n_imports=0).imports.bag.weight.shape[0] == 1   # no name survived
+    assert HierGNN(fold(0, imports='header'), 100, n_imports=0).imports.bag.weight.shape[0] == 1   # no name survived
 
 
-@pytest.mark.parametrize('kw', [dict(vocab='yanping'), dict(vocab='hybrid', control='no_edges'), dict(imports='unreferenced'),
-                                dict(imports='header'), dict(vocab='yanping', imports='unreferenced', mask_blocks=0.3, mask_tokens=0.2)])
+@pytest.mark.parametrize('kw', [dict(vocab='yanping'), dict(vocab='hybrid', control='no_edges'),
+                                dict(imports='header'), dict(vocab='yanping', imports='header', mask_blocks=0.3, mask_tokens=0.2)])
 def test_forward_and_backward_on_cpu(tiny, kw):  # noqa: F811
     cfg = fold(0, batch_size=8, **kw)
     v, imports, batch = make_batch(tiny, cfg, tiny.rows[10:18])
@@ -417,10 +371,8 @@ def built(tiny):  # noqa: F811
     run_baselines(tiny, 'hybrid')
     run_baselines(tiny, imports=True)
     gates.pooled.cache_clear()
-    gates.majority_floor_auc.cache_clear()
     yield tiny
     gates.pooled.cache_clear()
-    gates.majority_floor_auc.cache_clear()
 
 
 def test_vocab_baselines_write_their_own_directories(built):
@@ -435,50 +387,28 @@ def test_vocab_baselines_write_their_own_directories(built):
 
 def test_import_baselines_methods_and_feature_counts(built):
     m = json.loads((built.runs / 'baselines' / 'kfold0_x86_s0_imp' / 'metrics.json').read_text(encoding='utf-8'))
-    assert list(m['methods']) == ['imports_unref_lr', 'imports_header_lr', 'tfidf_sig_api_imp_lr']
-    counts = m['imports']['features_per_method']
-    assert counts['imports_unref_lr'] > 0 and counts['imports_header_lr'] >= counts['imports_unref_lr']
-    assert counts['tfidf_sig_api_imp_lr'] == m['tfidf_features'] + counts['imports_unref_lr']
+    assert list(m['methods']) == ['imports_header_lr']
+    assert m['imports']['features_per_method']['imports_header_lr'] > 0
     rows = (built.runs / 'baselines' / 'kfold0_x86_s0_imp' / 'predictions.csv').read_text(encoding='utf-8').splitlines()
     assert {r.split(',')[2] for r in rows[1:]} == set(m['methods'])
 
 
 def test_the_gates_find_what_the_baselines_wrote(built):
-    for group in ('tfidf-yanping', 'tfidf-hybrid', 'imports-unref', 'imports-header', 'tfidf-imp'):
+    for group in ('tfidf-yanping', 'tfidf-hybrid', 'imports-header'):
         folds = stats.folds_by_seed(group)
         assert sorted(folds[0]) == [0, 1, 2, 3, 4], group
         r = gates.pooled(group, 'auc')
         assert not isinstance(r, str) and 0 <= r[0] <= 1, (group, r)
     assert stats.folds_by_seed('tfidf') == {}                                          # the plain baseline was not touched
-    assert gates.pooled('imports-unref', 'auc')[0] > 0.6                              # the planted signal is found
-    result, info = stats.compare('tfidf-imp', 'imports-unref', 'auc', 50, seeds=[0])
+    assert gates.pooled('imports-header', 'auc')[0] > 0.6                             # the planted signal is found
+    result, info = stats.compare('tfidf-yanping', 'imports-header', 'auc', 50, seeds=[0])
     assert info['seeds'] == [0] and 'auc' in result
 
 
-def test_imports_gate_passes_on_signal_and_fails_without(built, monkeypatch):
-    passed, line = gates.imports_gate()
-    assert passed and line.startswith('GATE imports: PASS') and 'majority floor' in line and '+ 0.05' in line
-    floor = gates.majority_floor_auc()
-    assert 0 <= floor <= 1
-    monkeypatch.setattr(gates, 'pooled', lambda group, selection: (floor + 0.049, 0.5, 0.5))
-    assert gates.imports_gate()[0] is False and 'FAIL' in gates.imports_gate()[1]
-    monkeypatch.setattr(gates, 'pooled', lambda group, selection: (floor + 0.05, 0.5, 0.5))
-    assert gates.imports_gate()[0] is True
-    monkeypatch.setattr(gates, 'pooled', lambda group, selection: 'missing (seed 0 folds present [] of 0-4)')
-    passed, line = gates.imports_gate()
-    assert not passed and 'cannot assess' in line and 'not run' in line
-
-
-def test_verdict_option_exits_zero_on_pass_and_three_otherwise(built, monkeypatch, capsys):
+def test_the_unreferenced_imports_gate_and_its_option_are_gone(monkeypatch, capsys):
+    assert not hasattr(gates, 'imports_gate') and not hasattr(gates, 'majority_floor_auc')
+    assert set(stats.BASELINES) & {'imports-unref', 'tfidf-imp'} == set()
     monkeypatch.setattr(sys, 'argv', ['gates.py', '--stage', 'imports', '--verdict'])
-    with pytest.raises(SystemExit) as stop:
-        gates.main()
-    assert stop.value.code == 0 and capsys.readouterr().out.startswith('GATE imports: PASS')
-    monkeypatch.setattr(gates, 'pooled', lambda group, selection: 'missing')
-    with pytest.raises(SystemExit) as stop:
-        gates.main()
-    assert stop.value.code == 3
-    monkeypatch.setattr(sys, 'argv', ['gates.py', '--stage', 'vocab', '--verdict'])
     with pytest.raises(SystemExit) as stop:
         gates.main()
     assert stop.value.code == 2
@@ -489,8 +419,8 @@ def test_a_feature_space_with_no_column_gives_the_constant_half(tiny):  # noqa: 
     out = tiny.runs / 'empty'
     baselines.run(RunConfig(protocol='kfold', fold=0, arch='x86', seed=0, min_df=1000), sizes, out, 'ours', True)
     m = json.loads((out / 'kfold0_x86_s0_imp' / 'metrics.json').read_text(encoding='utf-8'))
-    assert m['imports']['features_per_method']['imports_unref_lr'] == 0 and m['imports']['features_per_method']['imports_header_lr'] == 0
-    assert m['methods']['imports_unref_lr']['test']['auc'] == 0.5 and 'constant 0.5' in m['imports']['note']
+    assert m['imports']['features_per_method']['imports_header_lr'] == 0
+    assert m['methods']['imports_header_lr']['test']['auc'] == 0.5 and 'constant 0.5' in m['imports']['note']
 
 
 def test_default_baseline_run_is_unchanged(tiny):  # noqa: F811
@@ -511,7 +441,6 @@ def test_stage_tables_print_missing_arms(tmp_path, monkeypatch):
             assert f'| {arm} | {group} | missing' in text
         for a, b in pairs:
             assert f'| {a} | {b} | missing | missing |' in text
-    assert 'GATE imports: cannot assess' in text
     gates.pooled.cache_clear()
 
 
@@ -523,12 +452,11 @@ def test_gate_groups_follow_the_run_configs():
     assert arms['R2 no-edges, hybrid'] == RunConfig(**base, control='no_edges', vocab='hybrid').group
     arms = dict(gates.IMP_ARMS)
     assert arms['R7 typed'] == RunConfig(**base).group
-    assert arms['R7 + unreferenced imports'] == RunConfig(**base, imports='unreferenced').group
     assert arms['R7 + header imports'] == RunConfig(**base, imports='header').group
     pairs = set(gates.IMP_PAIRS)
     assert {('R7 typed', 'R7 + header imports'), ('header imports, LR', 'R7 + header imports'),
             ('TF-IDF', 'R7 + header imports')} <= pairs
-    assert all(stats.baseline_method(g) for g in ('tfidf-yanping', 'tfidf-hybrid', 'imports-unref', 'imports-header', 'tfidf-imp'))
+    assert all(stats.baseline_method(g) for g in ('tfidf-yanping', 'tfidf-hybrid', 'imports-header'))
 
 
 # ---- the queue stages ---------------------------------------------------------------------------------------------
@@ -559,16 +487,8 @@ def test_vocab_stage_dry_names_match_run_configs():
 @needs_bash
 def test_imports_stage_dry_names_match_run_configs():
     lines = queue('--stage', 'imports', '--dry')
-    runs = [l.split()[1:] for l in lines if l.startswith('run ')]
-    assert len(runs) == 5
-    for name, *argv in runs:
-        cfg, _ = parse_config(argv)
-        assert cfg.name == name, (name, cfg.name)
-        assert (cfg.imports, cfg.mask_blocks, cfg.control, cfg.vocab, cfg.fold == int(name[5])) == ('unreferenced', 0.15, '', 'ours', True)
-    assert lines[0] == 'cpu baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --imports'
-    assert lines[1].startswith('cpu gates.py --stage imports --verdict')
-    assert lines[-3:] == ['cpu report.py', 'cpu gates.py --stage imports > RUNS/gates_imports.md', 'cpu val_threshold.py > RUNS/val_threshold.md']
-    assert parse_config(runs[0][1:])[0].group == dict(gates.IMP_ARMS)['R7 + unreferenced imports']
+    assert lines == ['cpu baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --imports', 'cpu report.py',
+                     'cpu gates.py --stage imports > RUNS/gates_imports.md', 'cpu val_threshold.py > RUNS/val_threshold.md']
 
 
 @needs_bash
@@ -582,7 +502,7 @@ def test_imports_header_stage_dry_names_match_run_configs():
         assert (cfg.imports, cfg.mask_blocks, cfg.control, cfg.vocab, cfg.protocol, cfg.arch, cfg.seed, cfg.model) == (
             'header', 0.15, '', 'ours', 'kfold', 'x86', 0, 'gnn')
     assert [parse_config(a)[0].fold for _, *a in runs] == [0, 1, 2, 3, 4]
-    assert not any('baselines' in l or 'verdict' in l for l in lines)                    # no gate, no baselines
+    assert not any('baselines' in l or 'verdict' in l for l in lines)                    # no baselines here
     assert lines[-3:] == ['cpu report.py', 'cpu gates.py --stage imports > RUNS/gates_imports_header.md',
                           'cpu val_threshold.py > RUNS/val_threshold.md']
     assert parse_config(runs[0][1:])[0].group == dict(gates.IMP_ARMS)['R7 + header imports']
@@ -619,14 +539,10 @@ def run_stage(tmp_path, stage, rc, verdict='GATE imports: stub'):
 
 
 @needs_bash
-def test_imports_arm_runs_only_when_the_gate_passes(tmp_path):
-    calls, out = run_stage(tmp_path / 'pass', 'imports', 0, 'GATE imports: PASS. stub')
+def test_imports_stage_runs_the_baseline_and_no_arm(tmp_path):
+    calls, out = run_stage(tmp_path, 'imports', 0)
     assert any(c.startswith('baselines.py') and c.endswith('--imports') for c in calls)
-    assert [c for c in calls if c.startswith('train.py')].__len__() == 5 and 'GATE imports: PASS. stub' in out
-    assert calls.index(next(c for c in calls if 'verdict' in c)) > calls.index(next(c for c in calls if c.startswith('baselines.py')))
-    calls, out = run_stage(tmp_path / 'fail', 'imports', 3, 'GATE imports: FAIL. stub')
-    assert not [c for c in calls if c.startswith('train.py')]
-    assert 'GATE imports: FAIL. stub' in out and any(l.startswith('gate not passed') for l in out)
+    assert not [c for c in calls if c.startswith('train.py') or 'verdict' in c]
     assert out[-1].startswith('queue done') and 'report.py' in calls[-3] and 'gates.py --stage imports' in calls[-2]
 
 

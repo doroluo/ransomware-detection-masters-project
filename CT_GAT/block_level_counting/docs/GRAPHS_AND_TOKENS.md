@@ -25,19 +25,19 @@ Register names and operand widths are never stored as tokens: `sig` keeps only t
 | Step | File | What it does |
 |---|---|---|
 | Vocabulary | `pipeline/s03_tokenizer/vocab.py` (`TokenVocab`) | Keeps a token only if it occurs in at least 2 **training** binaries of the fold; the rest map to UNK. Computes IDF on training binaries; adds `[MASK]` ids. Nothing is fitted on validation or test |
-| Block token list | `pipeline/s03_tokenizer/block_tokens.py` (`token_table`) | For each kept block: its `mn`, `sig`, `beh` tokens per instruction plus its `api` tokens, as one flat list with per-block offsets. With `--vocab yanping` the per-instruction kinds are the reader's three ids; with `--vocab hybrid` they are `mn`, `beh` and the reader's two operand ids (section 4) |
+| Block token list | `pipeline/s03_tokenizer/block_tokens.py` (`token_table`) | For each kept block: its `mn`, `sig`, `beh` tokens per instruction plus its `api` tokens, as one flat list with per-block offsets. With `--vocab yanping` the per-instruction kinds are the reader's three ids; with `--vocab hybrid` they are `mn`, `beh` and the reader's two operand ids (section 4; both are experiments, not on the main path) |
 | Block vector | `pipeline/s05_block_counting/weights.py` + `encoder.py` | Per-block counting with TF-IDF, mean, raw, presence or log weighting, then a learned projection to 128 dimensions, plus the 6 structural features. Or precomputed vectors from a frozen encoder (`block_vecs.py`, paths 1 and 2) |
 
 ## 3. Selecting the graph and building the batch (every training run)
 
 | Step | File | What it does |
 |---|---|---|
-| Subgraph selection | `pipeline/s04_select_subgraph/subgraph.py` (`select_subgraph`) | Whole binary by default (500k-block cap); optional `cap` / `lcc` policies at a block budget. Whole functions only, never uses labels, deterministic in evaluation |
+| Subgraph selection | `pipeline/s04_select_subgraph/subgraph.py` (`select_subgraph`) | Whole binary by default (500k-block cap); optional smaller block budget with the `cap` policy (the only one). Whole functions only, never uses labels, deterministic in evaluation |
 | Block edges for the GNN | `pipeline/s06_gnn_block_cfg/edges.py` (`block_edges`) | Keeps edges inside kept functions; type id = `edge_kind * 2 + edge_back` (12 types); optional controls (shuffle, chain, no edges) |
 | Call edges for the GNN | `pipeline/s08_gnn_call_graph/calls.py` (`call_pairs`) | Call edges between kept functions, no self-calls |
 | Batch | `pipeline/batching.py` (`encode_binary_gnn`, `collate`) | Puts it together, shifts ids into one batch, applies training-time masking/dropping |
 
-## 4. The team's operand-role and import readers (options)
+## 4. The team's operand-role and import readers (options; the operand-role side array is an experiment, not on the main path)
 
 `CT_GAT/preprocessing/ida_feature_readers.py` reads an IDA export a second time and writes, per binary, the operand-role triplet of
 every instruction (`operand_roles.jsonl.gz`) and the header imports with their references (`imports.json`); `CT_GAT/IDA_FEATURE_READERS.md`
@@ -45,8 +45,8 @@ documents both. They enter the model only through cache-aligned side arrays:
 
 | What | File | Output |
 |---|---|---|
-| Operand-role triplets | `pipeline/s03_tokenizer/import_reader_side.py` | `<cache>/side/yanping/<sample_id>.npz`: `ytok` int16 `[n_insn, 3]` in the cache's instruction order. Used by `RunConfig.vocab` `yanping` and `hybrid` (`TokenVocab`, `token_table`) |
-| Header, referenced and unreferenced imports | `pipeline/s10_unused_import_features/import_side.py` | `<cache>/side/imports/<sample_id>.npz`: three identity arrays. Used by `RunConfig.imports` (`ImportVocab`, `ImportBag`) |
+| Operand-role triplets (experiment, not on the main path) | `experiments/side_arrays/import_reader_side.py` | `<cache>/side/yanping/<sample_id>.npz`: `ytok` int16 `[n_insn, 3]` in the cache's instruction order. Used by `RunConfig.vocab` `yanping` and `hybrid` (`TokenVocab`, `token_table`) |
+| Header, referenced and unreferenced imports | `pipeline/s10_unused_import_features/import_side.py` | `<cache>/side/imports/<sample_id>.npz`: three identity arrays. Used by `RunConfig.imports` = `header` (`ImportVocab`, `ImportBag`) |
 
 Both converters check the reader output against the cache (same functions, blocks and instruction counts per block, complete
 footer) and fail a sample on any mismatch. Register names, immediates and addresses are not in the reader's triplet either: it holds

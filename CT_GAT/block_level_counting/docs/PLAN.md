@@ -136,8 +136,7 @@ macro-F1 with patience 8, threshold 0.5.
 | file | role |
 |---|---|
 | `pipeline/s02_build_cfg_cache/build_cache.py` | export to cache |
-| `common/manifests.py`, `pipeline/s03_tokenizer/`, `legacy/graph_transformer/encode.py` | manifests, filters, folds; vocab cut; per-binary tensors |
-| `legacy/graph_transformer/model.py` | the hierarchical graph transformer and the ablation switch |
+| `common/manifests.py`, `pipeline/s03_tokenizer/`, `pipeline/batching.py` | manifests, filters, folds; vocab cut; per-binary tensors (the graph transformer's `encode.py` and `model.py` were removed in step 25) |
 | `training/train.py` | one run: protocol, arch filter, seed, ablation; writes predictions and metrics |
 | `evaluation/baselines.py` | TF-IDF and structural logistic regressions on the same manifests |
 | `evaluation/report.py` | aggregates runs into `RESULTS.md` |

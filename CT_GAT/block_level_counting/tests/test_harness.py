@@ -43,11 +43,10 @@ def test_pr_auc_in_scores():
 
 
 def test_should_stop_rules():
-    tf, g = RunConfig(patience=3), gnn(patience=3)
-    assert not should_stop(tf, 4, 2, 4) and should_stop(tf, 5, 2, 4)
+    g = gnn(patience=3)
     assert not should_stop(g, 6, 2, 4) and should_stop(g, 7, 2, 4)
+    assert not should_stop(g, 6, 4, 2) and should_stop(g, 7, 4, 2)
     assert not should_stop(gnn(patience=3, fixed_epochs=2), 99, 1, 1)
-    assert not should_stop(RunConfig(patience=3, fixed_epochs=2), 99, 1, 1)
 
 
 def test_unsupported_flags_raise():
@@ -194,8 +193,6 @@ def test_baseline_group_in_stats(tmp_path, monkeypatch):
 
 
 def test_report_labels():
-    assert report.model_label(RunConfig()) == 'graph transformer'
-    assert report.model_label(RunConfig(no_graph=True)) == 'no-graph transformer'
     assert report.model_label(gnn()) == 'edge-typed GNN'
     assert report.model_label(gnn(control='no_edges')) == 'GNN no-edges'
     assert report.model_label(gnn(control='shuffle')) == 'GNN shuffle'
@@ -211,7 +208,7 @@ def test_report_labels():
 def test_report_auc_table_sources(tmp_path, monkeypatch):
     monkeypatch.setattr(report, 'RUNS', tmp_path)
     for name, selection in (('gnn', True), ('old', False)):
-        cfg = gnn(seed=0) if selection else RunConfig(seed=0)
+        cfg = gnn(seed=0) if selection else gnn(seed=0, control='no_edges')
         d = tmp_path / cfg.name
         d.mkdir()
         cfg.save(d / 'config.json')
@@ -224,10 +221,10 @@ def test_report_auc_table_sources(tmp_path, monkeypatch):
                                            'a,test,0,0.1,0,x86,g,0,1\nb,test,1,0.9,1,x86,f,0,1\n')
     main, main_notes = report.collect({})
     auc, auc_notes = report.collect({}, auc=True)
-    assert {k[2] for k, _ in main} == {'edge-typed GNN', 'graph transformer'}
+    assert {k[2] for k, _ in main} == {'edge-typed GNN', 'GNN no-edges'}
     assert [k[2] for k, _ in auc] == ['edge-typed GNN']
     assert auc[0][1][0][0]['macro_f1'] == 0.123
-    assert any('graph transformer' in n and 'no AUC-selected checkpoint' in n for n in auc_notes)
+    assert any('GNN no-edges' in n and 'no AUC-selected checkpoint' in n for n in auc_notes)
     assert not main_notes
 
 
@@ -258,7 +255,7 @@ def queue(*args, **env):
 def test_queue_dry_names_match_run_configs():
     lines = queue('--stage', 'day1', '--dry')
     runs = [l.split()[1:] for l in lines if l.startswith('run ')]
-    assert len(runs) == 28
+    assert len(runs) == 25
     for name, *argv in runs:
         cfg, _ = parse_config(argv)
         assert cfg.name == name, (name, cfg.name)
@@ -266,7 +263,6 @@ def test_queue_dry_names_match_run_configs():
     assert names[0] == 'kfold0_x86_gnn-noedges_s0' and names[5] == 'kfold0_x86_gnn-noedges-enc-mean_s0'
     assert [n.split('_')[2] for n in names[:25:5]] == ['gnn-noedges', 'gnn-noedges-enc-mean', 'gnn', 'gnn-untyped',
                                                       'gnn-shuffle']
-    assert names[25:] == ['kfold3_x86_nograph_s2', 'kfold4_x86_graph_s2', 'kfold4_x86_nograph_s2']
     assert lines[0].startswith('cpu baselines') and lines[-3:] == [
         'cpu report.py', 'cpu gates.py --stage day1 > RUNS/gates_day1.md', 'cpu val_threshold.py > RUNS/val_threshold.md']
     assert not any(l.startswith('skipped') for l in lines)
@@ -276,7 +272,7 @@ def test_queue_dry_names_match_run_configs():
 def test_queue_budget_guard():
     lines = queue('--stage', 'day1', '--dry', GPU_BUDGET_MIN='290', DRY_RUN_MIN='100')
     assert sum(l.startswith('run ') for l in lines) == 3
-    assert sum(l.startswith('skipped (budget) ') for l in lines) == 25
+    assert sum(l.startswith('skipped (budget) ') for l in lines) == 22
     assert lines[-1] == 'cpu val_threshold.py > RUNS/val_threshold.md'
     assert not any(l.startswith('skipped') for l in queue('--stage', 'day1', '--dry', GPU_BUDGET_MIN='290'))
     assert queue('--stage', 'day1', '--dry', GPU_BUDGET_MIN='0')[1].startswith('skipped (budget) kfold0_x86_gnn-noedges')
@@ -339,7 +335,7 @@ def test_report_labels_new_arms():
     assert len(labels) == 10
     assert report.model_label(gnn(direction='forward')) == 'edge-typed GNN forward'
     assert report.model_label(gnn(drop_edges=0.2, gnn_fn_layers=8)) == 'edge-typed GNN drop-edge 20% L8'
-    assert report.model_label(RunConfig(train_fraction=0.5)) == 'graph transformer train 50%'
+    assert report.model_label(gnn(train_fraction=0.5)) == 'edge-typed GNN train 50%'
     labelled = set(report.LABELLED)
     cfg = gnn(direction='forward', drop_edges=0.2, flip_edges=0.1, gnn_fn_layers=8, train_fraction=0.5)
     assert not {k for k, v in report.asdict(cfg).items() if k not in labelled and v != report.DEFAULTS[k]}
@@ -762,7 +758,7 @@ def test_queue_v3_budget_guard_and_usage():
     assert r.returncode == 2 and 'day1|day1b|v3|subgraph' in r.stdout
 
 
-SG_QUEUE_VARIANTS = ['gnn-mblk15-sg-cap20k', 'gnn-mblk15-sg-cap5k', 'gnn-mblk15-sg-lcc20k', 'gnn-mblk15-sg-lcc5k',
+SG_QUEUE_VARIANTS = ['gnn-mblk15-sg-cap20k', 'gnn-mblk15-sg-cap5k',
                      'gnn-noedges-mblk15-enc-raw', 'gnn-noedges-mblk15-enc-presence', 'gnn-noedges-mblk15-enc-rawlog']
 
 
@@ -770,7 +766,7 @@ SG_QUEUE_VARIANTS = ['gnn-mblk15-sg-cap20k', 'gnn-mblk15-sg-cap5k', 'gnn-mblk15-
 def test_queue_subgraph_dry_names_match_run_configs():
     lines = queue('--stage', 'subgraph', '--dry')
     runs = [l.split()[1:] for l in lines if l.startswith('run ')]
-    assert len(runs) == 35
+    assert len(runs) == 25
     for name, *argv in runs:
         cfg, _ = parse_config(argv)
         assert cfg.name == name, (name, cfg.name)
@@ -780,9 +776,9 @@ def test_queue_subgraph_dry_names_match_run_configs():
     assert [n.split('_')[0] for n in names[:5]] == [f'kfold{f}' for f in range(5)]
     assert [n.split('_')[2] for n in names[::5]] == SG_QUEUE_VARIANTS
     arms = {n.split('_')[2]: parse_config(a)[0] for (n, *a) in runs[::5]}
-    assert [(arms[v].subgraph, arms[v].budget, arms[v].control) for v in SG_QUEUE_VARIANTS[:4]] == [
-        ('cap', 20000, ''), ('cap', 5000, ''), ('lcc', 20000, ''), ('lcc', 5000, '')]
-    assert [(arms[v].encoder, arms[v].control, arms[v].subgraph, arms[v].budget) for v in SG_QUEUE_VARIANTS[4:]] == [
+    assert [(arms[v].subgraph, arms[v].budget, arms[v].control) for v in SG_QUEUE_VARIANTS[:2]] == [
+        ('cap', 20000, ''), ('cap', 5000, '')]
+    assert [(arms[v].encoder, arms[v].control, arms[v].subgraph, arms[v].budget) for v in SG_QUEUE_VARIANTS[2:]] == [
         (e, 'no_edges', 'cap', 0) for e in ('raw', 'presence', 'rawlog')]
     assert lines[0] == 'cpu subgraph_chain.py'
     assert lines[-3:] == ['cpu report.py', 'cpu gates.py --stage subgraph > RUNS/gates_subgraph.md',
@@ -795,7 +791,7 @@ def test_queue_subgraph_runs_the_chain_measurement_once(tmp_path):
     runs, out = run_stub_queue(tmp_path, 'subgraph')
     calls = (runs / 'calls.txt').read_text().splitlines()
     assert [c.split()[0] for c in calls].count('subgraph_chain.py') == 1
-    assert sum(c.startswith('train.py') for c in calls) == 35 and any(l.startswith('start subgraph_chain') for l in out)
+    assert sum(c.startswith('train.py') for c in calls) == 25 and any(l.startswith('start subgraph_chain') for l in out)
     (runs / 'subgraph_chain.json').write_text('{}')
     again = subprocess.run([BASH, 'queue_gnn.sh', '--stage', 'subgraph'], cwd=ROOT, capture_output=True, text=True,
                            env={**os.environ, 'GT_PY': (tmp_path / 'stub.sh').as_posix(), 'GT_RUNS': runs.as_posix(),
@@ -1171,7 +1167,6 @@ def test_baseline_group_names_for_arch_balance(tmp_path, monkeypatch):
 def test_report_labels_for_arch_balance():
     assert report.model_label(gnn(arch_balance=True)) == 'edge-typed GNN arch-bal'
     assert report.model_label(gnn(control='shuffle', arch_balance=True)) == 'GNN shuffle arch-bal'
-    assert report.model_label(RunConfig(arch_balance=True)) == 'graph transformer arch-bal'
     assert report.model_label(gnn(arch_balance=True, encoder='mean')) == 'edge-typed GNN arch-bal enc-mean'
     assert 'arch_balance' in report.LABELLED
     overrides = {k for k, v in report.asdict(gnn(arch_balance=True)).items()
@@ -1369,13 +1364,11 @@ def test_run_records_and_applies_the_selection_rule(tmp_path, monkeypatch, selec
 def test_model_labels_for_step11_fields():
     assert report.model_label(gnn(select_on='cell')) == 'edge-typed GNN cell-select'
     assert report.model_label(gnn(select_on='cell', arch_balance=True)) == 'edge-typed GNN arch-bal cell-select'
-    assert report.model_label(RunConfig(select_on='cell')) == 'graph transformer cell-select'
-    assert report.model_label(gnn(subgraph='lcc', budget=20000)) == 'edge-typed GNN lcc 20k'
+    assert report.model_label(gnn(subgraph='cap', budget=20000)) == 'edge-typed GNN cap 20k'
     assert report.model_label(gnn(budget=5000)) == 'edge-typed GNN cap 5k'
-    assert report.model_label(gnn(subgraph='lcc')) == 'edge-typed GNN lcc full budget'
     assert report.model_label(gnn(control='no_edges', encoder='presence')) == 'GNN no-edges enc-presence'
     assert report.model_label(gnn()) == 'edge-typed GNN'
-    for kw in (dict(select_on='cell'), dict(subgraph='lcc', budget=5000), dict(budget=20000)):
+    for kw in (dict(select_on='cell'), dict(subgraph='cap', budget=5000), dict(budget=20000)):
         assert not {k for k in kw} & {k for k in report.DEFAULTS if k not in report.LABELLED}
 
 
@@ -1383,13 +1376,12 @@ SG_REF = ('mask_blocks', 0.15)
 
 
 def build_subgraph_fake(root, monkeypatch, with_chain=None):
-    """kfold x86 seed 0: the whole-graph reference, cap 20k (as good), cap 5k (clearly worse), lcc 20k (missing fold 4),
-    no lcc 5k; the no-edge reference and its raw and presence weightings (rawlog missing)."""
+    """kfold x86 seed 0: the whole-graph reference, cap 20k (as good), cap 5k (clearly worse); the no-edge reference and
+    its raw and presence weightings (rawlog missing)."""
     monkeypatch.setattr(stats, 'RUNS', root)
     gates.pooled.cache_clear()
     plan = {(SG_REF,): (1.6, 5), (SG_REF, ('subgraph', 'cap'), ('budget', 20000)): (1.6, 5),
             (SG_REF, ('subgraph', 'cap'), ('budget', 5000)): (0.3, 5),
-            (SG_REF, ('subgraph', 'lcc'), ('budget', 20000)): (1.6, 4),
             (SG_REF, ('control', 'no_edges')): (1.4, 5),
             (SG_REF, ('control', 'no_edges'), ('encoder', 'raw')): (1.4, 5),
             (SG_REF, ('control', 'no_edges'), ('encoder', 'presence')): (0.5, 5)}
@@ -1409,7 +1401,7 @@ def test_subgraph_gates_from_disk(tmp_path, monkeypatch):
     noninf = text.split('## Subgraph policies')[1].split('## Chain merge')[0]
     ni = {l.split(' | ')[0].lstrip('| '): l for l in noninf.splitlines() if l.startswith('| R7')}
     assert ni['R7 typed, cap 20k'].endswith('| yes |') and ni['R7 typed, cap 5k'].endswith('| no |')
-    assert 'missing' in ni['R7 typed, lcc 20k'] and 'missing' in ni['R7 typed, lcc 5k']
+    assert set(ni) == {'R7 typed, cap 20k', 'R7 typed, cap 5k'}
     assert 'kfold_x86_gnn-mblk15-sg-cap5k' in ni['R7 typed, cap 5k'] and 'kfold_x86_gnn-mblk15 ' in noninf
     res, _ = stats.compare('kfold_x86_gnn-mblk15', 'kfold_x86_gnn-mblk15-sg-cap20k', 'auc', 100, seeds=[0])
     assert gates.non_inferior(res) and f"{res['auc']['diff'] + 0.0:+.3f} [{res['auc']['lo'] + 0.0:+.3f}" in ni[
@@ -1439,8 +1431,7 @@ def test_subgraph_gates_without_runs_or_chain_file(tmp_path, monkeypatch):
 
 def test_subgraph_gate_arms_are_run_names():
     assert gates.SG_REFERENCE[1] == 'gnn-mblk15' and gates.SG_NOEDGES == 'gnn-noedges-mblk15'
-    assert [v for _, v in gates.SG_ARMS] == ['gnn-mblk15-sg-cap20k', 'gnn-mblk15-sg-cap5k', 'gnn-mblk15-sg-lcc20k',
-                                              'gnn-mblk15-sg-lcc5k']
+    assert [v for _, v in gates.SG_ARMS] == ['gnn-mblk15-sg-cap20k', 'gnn-mblk15-sg-cap5k']
     assert [v for _, v in gates.WEIGHTINGS] == [f'gnn-noedges-mblk15-enc-{e}' for e in ('raw', 'presence', 'rawlog')]
     assert [v for _, v in gates.V3_ARMS[1:]] == ['gnn-noedges-mblk15-selcell', 'gnn-shuffle-mblk15-selcell',
                                                   'gnn-mblk15-selcell']

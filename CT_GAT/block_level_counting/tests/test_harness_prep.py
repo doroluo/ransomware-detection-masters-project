@@ -21,7 +21,7 @@ from token_sequence import train as ts_train
 from training.train import check_supported, parse_config
 
 ROOT = Path(__file__).resolve().parents[1]
-CODE_FILES = [p for p in ROOT.rglob('*.py') if not {'tests', 'legacy', '.git'} & set(p.relative_to(ROOT).parts)]
+CODE_FILES = [p for p in ROOT.rglob('*.py') if not {'tests', '.git'} & set(p.relative_to(ROOT).parts)]
 
 
 # ---- run_io ----------------------------------------------------------------------------------------------------------
@@ -194,8 +194,8 @@ def test_tokenseq_needs_a_fold_of_an_export():
 GNN_ONLY = [dict(control='no_edges'), dict(control='shuffle'), dict(mask_blocks=0.15), dict(mask_tokens=0.1),
             dict(drop_functions=0.1), dict(drop_library=0.1), dict(aux_recon=0.1), dict(drop_edges=0.1), dict(flip_edges=0.1),
             dict(block_input='vec', block_vec='x'), dict(encoder='mean'), dict(readout='gated'), dict(untyped=True),
-            dict(no_call_mp=True), dict(stack_tfidf=True), dict(direction='forward'), dict(subgraph='lcc', budget=5000),
-            dict(vocab='noapi'), dict(imports='header'), dict(no_graph=True), dict(gnn_fn_layers=4), dict(gnn_bin_layers=1),
+            dict(no_call_mp=True), dict(stack_tfidf=True), dict(direction='forward'), dict(subgraph='cap', budget=5000),
+            dict(vocab='noapi'), dict(imports='header'), dict(gnn_fn_layers=4), dict(gnn_bin_layers=1),
             dict(train_fraction=0.5), dict(arch_balance=True), dict(select_on='cell'), dict(fixed_epochs=3)]
 
 
@@ -220,11 +220,10 @@ def test_check_supported_rejects_tokenseq_with_gnn_options_however_it_was_built(
 
 
 def test_seq_len_and_max_windows_belong_to_tokenseq_only():
-    for model in ('gnn', 'transformer'):
-        with pytest.raises(ValueError, match="model='tokenseq'"):
-            RunConfig(protocol='kfold', fold=0, model=model, seq_len=256)
-        with pytest.raises(ValueError, match="model='tokenseq'"):
-            RunConfig(protocol='kfold', fold=0, model=model, max_windows=8)
+    with pytest.raises(ValueError, match="model='tokenseq'"):
+        RunConfig(protocol='kfold', fold=0, model='gnn', seq_len=256)
+    with pytest.raises(ValueError, match="model='tokenseq'"):
+        RunConfig(protocol='kfold', fold=0, model='gnn', max_windows=8)
     for bad in (dict(seq_len=0), dict(max_windows=0)):
         with pytest.raises(ValueError):
             tok(**bad)
@@ -254,5 +253,5 @@ def test_existing_run_names_stay_the_same():
     assert gnn(tag='team-sig500v2').name == 'kfold1_x86_gnn_s0_team-sig500v2'
     assert RunConfig(protocol='kfold_v3', fold=3, arch='all', model='gnn', mask_blocks=0.15, select_on='cell').name == (
         'v3kfold3_all_gnn-mblk15-selcell_s0')
-    assert RunConfig(protocol='kfold', fold=0, seed=2, val_seed=0).name == 'kfold0_x86_graph-vs0_s2'
-    assert RunConfig().name == 'bundle_x86_graph_s0'
+    assert RunConfig(protocol='kfold', fold=0, seed=2, val_seed=0).name == 'kfold0_x86_gnn-vs0_s2'
+    assert RunConfig().name == 'bundle_x86_gnn_s0'

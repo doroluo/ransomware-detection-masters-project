@@ -32,7 +32,7 @@ COLUMNS = (('accuracy', 'Acc'), ('precision', 'P'), ('recall', 'R'), ('f1', 'F1'
 CELL_COLUMNS = (('accuracy', 'Acc'), ('macro_f1', 'macro-F1'), ('auc', 'AUC'), ('pr_auc', 'PR-AUC'))
 CELL_COUNTS = ('R_x86', 'R_x64', 'G_x86', 'G_x64')
 DEFAULTS = asdict(RunConfig())
-LABELLED = ('protocol', 'fold', 'arch', 'seed', 'no_graph', 'num_workers', 'model', 'encoder', 'readout', 'control',
+LABELLED = ('protocol', 'fold', 'arch', 'seed', 'num_workers', 'model', 'encoder', 'readout', 'control',
             'untyped', 'no_call_mp', 'stack_tfidf', 'mask_tokens', 'drop_functions', 'drop_library', 'mask_blocks',
             'aux_recon', 'aux_edge', 'direction', 'drop_edges', 'flip_edges', 'gnn_fn_layers', 'gnn_bin_layers',
             'train_fraction', 'arch_balance', 'select_on', 'subgraph', 'budget', 'vocab', 'imports', 'seq_len', 'max_windows',
@@ -48,9 +48,6 @@ def model_label(cfg):
         return ' '.join(['Model 1 token-sequence'] + [f'{s}{n}' for s, n, default in (('L', cfg.seq_len, SEQ_LEN),
                                                                                      ('w', cfg.max_windows, MAX_WINDOWS))
                                                       if n != default])
-    if cfg.model == 'transformer':
-        return ' '.join([f"{'no-graph' if cfg.no_graph else 'graph'} transformer"] + tf + ab
-                        + (['cell-select'] if cfg.select_on == 'cell' else []))
     ablate = [CONTROL_LABELS[cfg.control]] if cfg.control else []
     ablate += [s for s, on in (('untyped', cfg.untyped), ('no call-MP', cfg.no_call_mp)) if on]
     parts = ['GNN'] if ablate else ['edge-typed GNN']
@@ -65,7 +62,7 @@ def model_label(cfg):
     parts += tf + ab
     parts += [f'enc-{cfg.block_encoder}'] if cfg.block_encoder != 'tfidf' else []
     parts += [f'vocab-{cfg.vocab}'] if cfg.vocab != 'ours' else []
-    parts += ['unref-imports'] if cfg.imports else []
+    parts += ['header-imports'] if cfg.imports else []
     parts += ['gated'] if cfg.readout == 'gated' else []
     parts += ['cell-select'] if cfg.select_on == 'cell' else []
     if cfg.subgraph != 'cap' or cfg.budget:
@@ -150,8 +147,8 @@ def model_runs():
     for d in sorted(p for p in RUNS.iterdir() if p.is_dir()):
         if not all((d / f).exists() for f in ('config.json', 'metrics.json', 'predictions.csv')):
             continue
-        cfg = RunConfig.load(d / 'config.json')
-        if d.name != cfg.name:
+        cfg = RunConfig.try_load(d / 'config.json')
+        if cfg is None or d.name != cfg.name:
             continue
         # tokenseq forces val_seed to the export's carve (0), which is not an override
         overrides = {k: v for k, v in asdict(cfg).items()

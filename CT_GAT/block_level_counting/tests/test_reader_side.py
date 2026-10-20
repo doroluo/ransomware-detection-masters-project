@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from common import side_io
-from pipeline.s03_tokenizer import import_reader_side as yan
+from experiments.side_arrays import import_reader_side as yan
 from pipeline.s10_unused_import_features import import_side as imp
 
 FIX = Path(__file__).parent / 'fixtures' / 'reader_side'

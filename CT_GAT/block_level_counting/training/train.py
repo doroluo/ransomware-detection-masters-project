@@ -1,8 +1,8 @@
-"""One run: python train.py --protocol bundle --arch x86 --seed 0 [--no-graph] | --protocol kfold --fold 2
+"""One run: python train.py --protocol bundle --arch x86 --seed 0 | --protocol kfold --fold 2
 | --protocol kfold_v3 --fold 2 --arch all|matched (reads the combined cache unless GT_CACHE is set)
-[--model gnn --control no_edges --encoder mean --untyped --fixed-epochs N --direction forward --drop-edges 0.2
+[--control no_edges --encoder mean --untyped --fixed-epochs N --direction forward --drop-edges 0.2
 --flip-edges 0.2] [--train-fraction 0.5] [--arch-balance] [--val-seed 0]
-[--block-input vec --block-vec <export>_<name>] [--stack-tfidf] [--vocab yanping|hybrid] [--imports unreferenced|header]
+[--block-input vec --block-vec <export>_<name>] [--stack-tfidf] [--vocab yanping|hybrid] [--imports header]
 
 Writes config.json (with the cache path used), manifest.json, vocab.json (sizes), history.csv, val_probs.csv, best.pt
 (best validation macro-F1 at cfg.threshold), best_auc.pt (best validation AUC), predictions.csv (F1 checkpoint, pred at
@@ -17,19 +17,18 @@ test do not change with the seed; the run name gains `-vs<k>` when k differs fro
 
 --block-input vec replaces the token bag of step 5 by the precomputed block vectors <cache>/side/blockvec/<block-vec>/
 fold<k>/ (transformer_paths/precompute_blockvec.py). `--control no_edges --block-input vec` is path 1 of the transformer
-plan and the typed GNN with it is path 2. Fold runs of protocol kfold only.
+paths plan and the typed GNN with it is path 2. Fold runs of protocol kfold only.
 
 --stack-tfidf feeds the out-of-fold TF-IDF logit of `baselines.py --stack-logits` to the head: it is read from
 graph_transformer_runs/baselines/<baseline dir>/stack_logits.csv by sample id and standardised on the training rows.
 
---vocab yanping|hybrid swaps the instruction tokens of the block bag for the team's operand-role ids (<cache>/side/yanping/,
-pipeline/s03_tokenizer/import_reader_side.py): yanping = the reader's three ids per instruction plus our api tokens,
+--vocab yanping|hybrid (an experiment, not on the main path) swaps the instruction tokens of the block bag for the team's operand-role ids (<cache>/side/yanping/,
+experiments/side_arrays/import_reader_side.py): yanping = the reader's three ids per instruction plus our api tokens,
 hybrid = our mn and beh plus the reader's two operand ids plus api. The run name gains `-voc-<name>`.
 
---imports unreferenced adds an EmbeddingBag over the binary's unreferenced import names (vocabulary and idf fitted on the
-training binaries, min_df 2) and two log counts to the head input (<cache>/side/imports/,
-pipeline/s10_unused_import_features); the run name gains `-imp`. --imports header is the same over every header import
-(vocabulary and idf again from the training binaries, min_df 2), with the same two log counts; the run name gains `-imph`.
+--imports header adds an EmbeddingBag over every header import name (vocabulary and idf fitted on the training binaries,
+min_df 2) and two log counts (log1p of the unreferenced and of the header imports) to the head input (<cache>/side/imports/,
+pipeline/s10_unused_import_features); the run name gains `-imph`.
 
 --select-on cell picks best_auc.pt by the validation cell-balanced AUC instead of the validation AUC, and the validation
 threshold of the AUC checkpoint (threshold_val, predictions_auc.csv) by the validation cell-balanced macro-F1 instead of
@@ -52,7 +51,6 @@ from common.config import BLOCK_INPUTS, CACHE, DIRECTIONS, ENCODERS, IMPORTS, RU
 from common.manifests import load_index, make_manifest
 from evaluation.metrics import cell_balanced, cell_weights, family_recall, floors, scores
 from evaluation.val_threshold import GRID, macro_f1
-from legacy.graph_transformer.model import GraphTransformer
 from pipeline.batching import loader
 from pipeline.model import HierGNN
 from pipeline.s03_tokenizer.vocab import TokenVocab
@@ -70,8 +68,7 @@ def parse_config(argv=None):
     ap.add_argument('--arch', choices=['x86', 'all', 'matched'], default='x86')
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--val-seed', type=int, default=None)
-    ap.add_argument('--no-graph', action='store_true')
-    ap.add_argument('--model', choices=['transformer', 'gnn'], default='transformer')
+    ap.add_argument('--model', choices=['gnn'], default='gnn')
     ap.add_argument('--encoder', choices=ENCODERS, default=None)
     ap.add_argument('--readout', choices=['fixed', 'gated'], default='fixed')
     ap.add_argument('--control', choices=['', 'no_edges', 'chain', 'shuffle', 'permute_types'], default='')
@@ -145,9 +142,7 @@ def check_supported(cfg: RunConfig):
 def build_model(cfg: RunConfig, vocab, d_vec=None, n_imports=0):
     """The network of `cfg`. With block_input='vec' there is no vocabulary (`vocab` None) and `d_vec` is the size of
     the precomputed block vectors; `n_imports` is the size of the import vocabulary of an `imports` run."""
-    if cfg.model == 'gnn':
-        return HierGNN(cfg, vocab.total if vocab else 0, d_vec, n_imports)
-    return GraphTransformer(cfg, vocab.total)
+    return HierGNN(cfg, vocab.total if vocab else 0, d_vec, n_imports)
 
 
 def open_block_vecs(cfg: RunConfig):
@@ -175,11 +170,10 @@ def stack_logits(cfg: RunConfig, manifest):
 
 
 def should_stop(cfg: RunConfig, epoch, best_f1_epoch, best_auc_epoch):
-    """Transformer: patience on val macro-F1 only. gnn: patience on the later of the F1 and AUC bests.
-    fixed_epochs > 0 never stops early."""
+    """Patience on the later of the F1 and AUC bests. fixed_epochs > 0 never stops early."""
     if cfg.fixed_epochs > 0:
         return False
-    last_best = best_f1_epoch if cfg.model == 'transformer' else max(best_f1_epoch, best_auc_epoch)
+    last_best = max(best_f1_epoch, best_auc_epoch)
     return epoch - last_best >= cfg.patience
 
 
@@ -214,7 +208,7 @@ def write_predictions(path, rows, by_split, threshold):
 
 def truncated_count(sizes):
     """Binaries whose kept blocks are fewer than their blocks; `sizes` are (n_segments_total, kept, total) triples
-    (kept and total are None on the transformer path, which does not record them)."""
+    (kept and total are None when the batch carries no block counts)."""
     return sum(kept is not None and kept < total for _, kept, total in sizes)
 
 

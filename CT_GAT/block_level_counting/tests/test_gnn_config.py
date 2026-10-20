@@ -17,7 +17,7 @@ def gnn(**kw):
 
 def test_defaults():
     cfg = RunConfig()
-    assert (cfg.model, cfg.encoder, cfg.readout, cfg.control, cfg.tag) == ('transformer', None, 'fixed', '', '')
+    assert (cfg.model, cfg.encoder, cfg.readout, cfg.control, cfg.tag) == ('gnn', None, 'fixed', '', '')
     assert (cfg.untyped, cfg.no_call_mp, cfg.stack_tfidf) == (False, False, False)
     assert (cfg.mask_tokens, cfg.drop_functions, cfg.drop_library, cfg.mask_blocks) == (0.0,) * 4
     assert (cfg.aux_recon, cfg.aux_edge, cfg.aux_weight) == (0.0, 0.0, 0.3)
@@ -25,26 +25,20 @@ def test_defaults():
     assert (cfg.direction, cfg.drop_edges, cfg.flip_edges, cfg.train_fraction) == ('both', 0.0, 0.0, 1.0)
 
 
-def test_block_encoder_and_segment_cap():
-    assert RunConfig().block_encoder == 'mean'
-    assert RunConfig(max_segment_blocks=64).segment_cap == 64
-    assert gnn().block_encoder == 'tfidf'
+def test_block_encoder():
+    assert RunConfig().block_encoder == 'tfidf'
     assert gnn(encoder='mean').block_encoder == 'mean'
-    assert gnn().segment_cap is None
 
 
 @pytest.mark.parametrize('kw', [
-    dict(model='gnn', no_graph=True),
-    dict(encoder='mean'), dict(readout='gated'), dict(control='chain'), dict(untyped=True),
-    dict(no_call_mp=True), dict(stack_tfidf=True), dict(mask_tokens=0.1), dict(drop_functions=0.1),
-    dict(drop_library=0.1), dict(mask_blocks=0.1), dict(aux_recon=0.1), dict(aux_edge=0.1),
+    dict(model='transformer'), dict(subgraph='lcc'), dict(imports='unreferenced'),
     dict(model='gnn', encoder='bert'), dict(model='gnn', readout='mean'), dict(model='gnn', control='rotate'),
     dict(model='gnn', untyped=True, control='permute_types'), dict(model='gnn', untyped=True, control='no_edges'),
     dict(model='gnn', mask_tokens=1.0), dict(model='gnn', drop_library=-0.1), dict(model='gnn', aux_edge=1.5),
     dict(model='cnn'),
-    dict(direction='forward'), dict(drop_edges=0.1), dict(flip_edges=0.1),
     dict(model='gnn', direction='sideways'), dict(model='gnn', drop_edges=1.0), dict(model='gnn', flip_edges=-0.1),
     dict(train_fraction=0.0), dict(train_fraction=1.5), dict(model='gnn', train_fraction=0.0),
+    dict(model='tokenseq', control='no_edges'),
 ])
 def test_rejected(kw):
     with pytest.raises(ValueError):
@@ -73,8 +67,6 @@ def test_variant_suffix_order():
     for control, suffix in (('no_edges', 'noedges'), ('chain', 'chain'), ('shuffle', 'shuffle'),
                             ('permute_types', 'permtypes')):
         assert gnn(control=control).variant == f'gnn-{suffix}'
-    assert RunConfig().variant == 'graph'
-    assert RunConfig(no_graph=True).variant == 'nograph'
 
 
 def test_new_fields_accepted():
@@ -91,8 +83,6 @@ def test_variant_new_suffixes():
     assert gnn(gnn_fn_layers=8).variant == 'gnn-L8' and gnn(gnn_bin_layers=4).variant == 'gnn-B4'
     assert gnn(gnn_fn_layers=3, gnn_bin_layers=2).variant == 'gnn'
     assert gnn(train_fraction=0.5).variant == 'gnn-tf50'
-    assert RunConfig(train_fraction=0.5).variant == 'graph-tf50'
-    assert RunConfig(train_fraction=0.25, no_graph=True).variant == 'nograph-tf25'
     full = gnn(control='shuffle', untyped=True, no_call_mp=True, stack_tfidf=True, mask_tokens=0.15,
                drop_functions=0.05, drop_library=0.4, mask_blocks=0.15, aux_recon=0.3, direction='forward',
                drop_edges=0.2, flip_edges=0.1, gnn_fn_layers=8, gnn_bin_layers=1, train_fraction=0.25,
@@ -105,18 +95,17 @@ def test_new_names():
     assert gnn(direction='forward').group == 'bundle_x86_gnn-fwd'
     assert gnn(gnn_fn_layers=8).group == 'bundle_x86_gnn-L8'
     assert gnn(train_fraction=0.25, protocol='kfold', fold=1).name == 'kfold1_x86_gnn-tf25_s0'
-    assert RunConfig(train_fraction=0.5, protocol='kfold', fold=0, seed=1).name == 'kfold0_x86_graph-tf50_s1'
+    assert RunConfig(train_fraction=0.5, protocol='kfold', fold=0, seed=1).name == 'kfold0_x86_gnn-tf50_s1'
     assert gnn(drop_edges=0.2, tag='t').name == 'bundle_x86_gnn-dedge20_s0_t'
 
 
 def test_names_and_groups():
-    assert RunConfig().name == 'bundle_x86_graph_s0'
-    assert RunConfig(protocol='kfold', fold=2, no_graph=True, seed=1).name == 'kfold2_x86_nograph_s1'
+    assert RunConfig().name == 'bundle_x86_gnn_s0'
     assert gnn(protocol='kfold', fold=0, control='shuffle').name == 'kfold0_x86_gnn-shuffle_s0'
     assert gnn(encoder='mean', control='no_edges').name == 'bundle_x86_gnn-noedges-enc-mean_s0'
     assert gnn(mask_tokens=0.15).group == 'bundle_x86_gnn-mtok15'
-    assert RunConfig(tag='t').name == 'bundle_x86_graph_s0_t'
-    assert RunConfig(tag='t').group == 'bundle_x86_graph_t'
+    assert RunConfig(tag='t').name == 'bundle_x86_gnn_s0_t'
+    assert RunConfig(tag='t').group == 'bundle_x86_gnn_t'
     assert gnn(tag='t', seed=2).name == 'bundle_x86_gnn_s2_t'
     assert gnn(protocol='kfold_v3', fold=3, arch='all').name == 'v3kfold3_all_gnn_s0'
     assert gnn(protocol='kfold_v3', fold=3, arch='all').group == 'kfold_v3_all_gnn'
@@ -125,11 +114,32 @@ def test_names_and_groups():
 
 
 def test_existing_run_names_unchanged():
+    """Every run directory whose options still exist is named as its config says. The directories of the options removed
+    in step 25 (model transformer: graph / nograph runs; subgraph lcc) are not read."""
     dirs = [d for d in RUNS.iterdir() if (d / 'config.json').exists() and d.name != 'baselines'
             and not d.name.startswith(('smoke_', 'cap512_'))]
     assert dirs
-    bad = [d.name for d in dirs if RunConfig.load(d / 'config.json').name != d.name]
+    cfgs = {d: RunConfig.try_load(d / 'config.json') for d in dirs}
+    kept = {d: c for d, c in cfgs.items() if c is not None}
+    assert len(kept) > len(dirs) // 2
+    removed = sorted(d.name for d, c in cfgs.items() if c is None)
+    assert all(('_graph_' in n or '_nograph_' in n or '-sg-lcc' in n) for n in removed), removed
+    bad = [d.name for d, c in kept.items() if c.name != d.name]
     assert not bad, bad
+
+
+def test_removed_options_are_rejected_on_load(tmp_path):
+    from common.config import RemovedOption
+    for raw in ('{"model": "transformer"}', '{"model": "gnn", "subgraph": "lcc", "budget": 20000}',
+                '{"model": "gnn", "imports": "unreferenced"}', '{"no_graph": true}',
+                '{"protocol": "bundle", "arch": "x86"}'):                       # no model field: a transformer run
+        path = tmp_path / 'config.json'
+        path.write_text(raw)
+        with pytest.raises(RemovedOption):
+            RunConfig.load(path)
+        assert RunConfig.try_load(path) is None
+    path.write_text('{"model": "gnn", "heads": 4, "fn_layers": 2, "max_segments": 4096}')
+    assert RunConfig.load(path) == RunConfig()                                # transformer-only fields are ignored
 
 
 def test_save_load_roundtrip(tmp_path):
@@ -172,15 +182,15 @@ def test_cli_new_flags():
 def test_cli_defaults_and_old_flags():
     cfg, out = parse_config([])
     assert cfg == RunConfig() and out is None
-    cfg, _ = parse_config(['--protocol', 'kfold', '--fold', '2', '--no-graph', '--seed', '1', '--d-model', '64',
+    cfg, _ = parse_config(['--protocol', 'kfold', '--fold', '2', '--seed', '1', '--d-model', '64',
                            '--lr', '1e-3', '--epochs', '3'])
-    assert cfg == RunConfig(protocol='kfold', fold=2, no_graph=True, seed=1, d_model=64, lr=1e-3, epochs=3)
-    assert cfg.name == 'kfold2_x86_nograph_s1'
+    assert cfg == RunConfig(protocol='kfold', fold=2, seed=1, d_model=64, lr=1e-3, epochs=3)
+    assert cfg.name == 'kfold2_x86_gnn_s1'
 
 
 @pytest.mark.parametrize('argv', [['--model', 'cnn'], ['--encoder', 'bert'], ['--control', 'rotate'],
-                                  ['--model', 'gnn', '--no-graph'], ['--mask-tokens', '0.1'],
-                                  ['--direction', 'sideways'], ['--direction', 'forward'], ['--drop-edges', '0.1'],
+                                  ['--model', 'transformer'], ['--no-graph'], ['--imports', 'unreferenced'],
+                                  ['--subgraph', 'lcc'], ['--direction', 'sideways'],
                                   ['--model', 'gnn', '--flip-edges', '1'], ['--train-fraction', '0']])
 def test_cli_rejects(argv):
     with pytest.raises(SystemExit):
@@ -203,7 +213,7 @@ def test_matched_arch_names_and_groups():
     assert gnn(protocol='kfold_v3', fold=0, arch='matched').name == 'v3kfold0_matched_gnn_s0'
     assert gnn(protocol='kfold_v3', fold=2, arch='all', control='no_edges').name == 'v3kfold2_all_gnn-noedges_s0'
     assert gnn(protocol='kfold_v3', fold=4, arch='matched', untyped=True).group == 'kfold_v3_matched_gnn-untyped'
-    assert RunConfig(protocol='kfold_v3', fold=1, arch='matched').name == 'v3kfold1_matched_graph_s0'
+    assert RunConfig(protocol='kfold_v3', fold=1, arch='matched').name == 'v3kfold1_matched_gnn_s0'
     with pytest.raises(ValueError):
         RunConfig(arch='matching')
 
@@ -215,7 +225,7 @@ def test_cache_field_is_not_part_of_names_or_groups(tmp_path):
     assert (tagged.name, tagged.group) == (base.name, base.group)
     tagged.save(tmp_path / 'config.json')
     assert RunConfig.load(tmp_path / 'config.json').cache == 'C:/elsewhere'
-    (tmp_path / 'old.json').write_text('{"protocol": "bundle", "arch": "x86"}')
+    (tmp_path / 'old.json').write_text('{"protocol": "bundle", "arch": "x86", "model": "gnn"}')
     assert RunConfig.load(tmp_path / 'old.json') == RunConfig()
     from evaluation import report
     assert 'cache' in report.LABELLED
@@ -299,8 +309,6 @@ def test_train_refuses_a_config_for_another_cache():
 def test_arch_balance_field_and_names():
     assert RunConfig().arch_balance is False
     assert gnn(arch_balance=True).variant == 'gnn-ab'
-    assert RunConfig(arch_balance=True).variant == 'graph-ab'
-    assert RunConfig(arch_balance=True, no_graph=True).variant == 'nograph-ab'
     assert gnn(control='no_edges', arch_balance=True).variant == 'gnn-noedges-ab'
     assert gnn(arch_balance=True, encoder='mean').variant == 'gnn-ab-enc-mean'
     assert gnn(arch_balance=True, readout='gated').variant == 'gnn-ab-gated'
@@ -309,7 +317,7 @@ def test_arch_balance_field_and_names():
     assert gnn(protocol='kfold_v3', fold=2, arch='all', arch_balance=True).name == 'v3kfold2_all_gnn-ab_s0'
     assert gnn(protocol='kfold_v3', fold=2, arch='all', arch_balance=True).group == 'kfold_v3_all_gnn-ab'
     assert gnn(arch_balance=True).group != gnn().group
-    for cfg in (RunConfig(), gnn(), gnn(control='shuffle'), RunConfig(no_graph=True), gnn(train_fraction=0.5)):
+    for cfg in (RunConfig(), gnn(control='shuffle'), gnn(train_fraction=0.5)):
         assert 'ab' not in cfg.variant.split('-')
 
 
@@ -318,7 +326,7 @@ def test_arch_balance_cli_and_roundtrip(tmp_path):
                            'all'])
     assert cfg == gnn(arch_balance=True, protocol='kfold_v3', fold=1, arch='all')
     assert cfg.name == 'v3kfold1_all_gnn-ab_s0'
-    assert parse_config(['--no-graph', '--arch-balance'])[0].name == 'bundle_x86_nograph-ab_s0'
+    assert parse_config(['--arch-balance'])[0].name == 'bundle_x86_gnn-ab_s0'
     assert parse_config([])[0].arch_balance is False
     cfg.save(tmp_path / 'config.json')
     assert RunConfig.load(tmp_path / 'config.json') == cfg
@@ -332,7 +340,7 @@ def test_arch_balance_cli_and_roundtrip(tmp_path):
 def test_step11_defaults_leave_every_name_unchanged():
     cfg = RunConfig()
     assert (cfg.select_on, cfg.subgraph, cfg.budget) == ('overall', 'cap', 0)
-    for c in (RunConfig(), RunConfig(no_graph=True), gnn(), gnn(control='shuffle', mask_blocks=0.15, arch_balance=True),
+    for c in (RunConfig(), gnn(control='shuffle', mask_blocks=0.15, arch_balance=True),
               gnn(encoder='mean', readout='gated', train_fraction=0.5)):
         assert not {'selcell', 'sg'} & set(c.variant.split('-'))
     assert gnn(mask_blocks=0.15).name == 'bundle_x86_gnn-mblk15_s0'
@@ -341,8 +349,6 @@ def test_step11_defaults_leave_every_name_unchanged():
 
 def test_select_on_suffix_and_names():
     assert gnn(select_on='cell').variant == 'gnn-selcell'
-    assert RunConfig(select_on='cell').variant == 'graph-selcell'
-    assert RunConfig(select_on='cell', no_graph=True, arch_balance=True).variant == 'nograph-ab-selcell'
     cfg = gnn(protocol='kfold_v3', fold=2, arch='all', control='no_edges', mask_blocks=0.15, arch_balance=True,
               select_on='cell')
     assert cfg.name == 'v3kfold2_all_gnn-noedges-mblk15-ab-selcell_s0'
@@ -351,13 +357,11 @@ def test_select_on_suffix_and_names():
 
 
 def test_subgraph_suffix_and_budget():
-    assert gnn(subgraph='lcc').variant == 'gnn-sg-lcc0k'
     assert gnn(budget=20000).variant == 'gnn-sg-cap20k'
     assert gnn(subgraph='cap', budget=5000).variant == 'gnn-sg-cap5k'
-    assert gnn(subgraph='lcc', budget=20000, mask_blocks=0.15).variant == 'gnn-mblk15-sg-lcc20k'
-    assert gnn(subgraph='lcc', budget=5000, select_on='cell', encoder='raw').variant == 'gnn-enc-raw-selcell-sg-lcc5k'
-    assert gnn(protocol='kfold', fold=3, mask_blocks=0.15, subgraph='lcc', budget=5000).name == (
-        'kfold3_x86_gnn-mblk15-sg-lcc5k_s0')
+    assert gnn(subgraph='cap', budget=20000, mask_blocks=0.15).variant == 'gnn-mblk15-sg-cap20k'
+    assert gnn(budget=5000, select_on='cell', encoder='raw').variant == 'gnn-enc-raw-selcell-sg-cap5k'
+    assert gnn(protocol='kfold', fold=3, mask_blocks=0.15, budget=5000).name == 'kfold3_x86_gnn-mblk15-sg-cap5k_s0'
 
 
 def test_budget_floor_and_small_budget_names():
@@ -383,8 +387,8 @@ def test_encoder_suffixes():
 
 @pytest.mark.parametrize('kw', [
     dict(model='gnn', select_on='both'), dict(select_on='bogus'), dict(model='gnn', subgraph='bfs'),
-    dict(model='gnn', budget=-1), dict(model='gnn', budget=99), dict(subgraph='lcc'), dict(budget=5000),
-    dict(model='gnn', encoder='sum'), dict(encoder='raw'),
+    dict(model='gnn', budget=-1), dict(model='gnn', budget=99), dict(subgraph='lcc'),
+    dict(model='gnn', encoder='sum'),
 ])
 def test_step11_rejected(kw):
     with pytest.raises(ValueError):
@@ -392,11 +396,11 @@ def test_step11_rejected(kw):
 
 
 def test_step11_cli_and_roundtrip(tmp_path):
-    argv = ['--model', 'gnn', '--select-on', 'cell', '--subgraph', 'lcc', '--budget', '20000', '--encoder', 'rawlog',
+    argv = ['--model', 'gnn', '--select-on', 'cell', '--subgraph', 'cap', '--budget', '20000', '--encoder', 'rawlog',
             '--mask-blocks', '0.15']
     cfg, _ = parse_config(argv)
-    assert cfg == gnn(select_on='cell', subgraph='lcc', budget=20000, encoder='rawlog', mask_blocks=0.15)
-    assert cfg.variant == 'gnn-mblk15-enc-rawlog-selcell-sg-lcc20k'
+    assert cfg == gnn(select_on='cell', subgraph='cap', budget=20000, encoder='rawlog', mask_blocks=0.15)
+    assert cfg.variant == 'gnn-mblk15-enc-rawlog-selcell-sg-cap20k'
     for enc in ('raw', 'presence'):
         assert parse_config(['--model', 'gnn', '--encoder', enc])[0].encoder == enc
     d = parse_config(['--model', 'gnn'])[0]

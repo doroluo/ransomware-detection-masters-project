@@ -35,12 +35,10 @@ METRICS = (('auc', 'AUC'), ('pr_auc', 'PR-AUC'), ('macro_f1', 'macro-F1'))
 BASELINES = {'tfidf': 'tfidf_sig_api_lr', 'structural': 'structural_lr',
              'wl0': 'wl_h0_lr', 'wl2': 'wl_h2_lr', 'wl2-shuffle': 'wl_h2_shuffle_lr',
              'tfidf-yanping': 'tfidf_yanping_lr', 'tfidf-hybrid': 'tfidf_hybrid_lr', 'tfidf-noapi': 'tfidf_noapi_lr',
-             'imports-unref': 'imports_unref_lr', 'imports-header': 'imports_header_lr',
-             'tfidf-imp': 'tfidf_sig_api_imp_lr'}
+             'imports-header': 'imports_header_lr'}
 # the baselines of `--vocab` and `--imports` live in directories of their own: kfold0_x86_s0_voc-yanping, kfold0_x86_s0_imp
 BASELINE_KIND = {'tfidf-yanping': '_voc-yanping', 'tfidf-hybrid': '_voc-hybrid', 'tfidf-noapi': '_voc-noapi',
-                 'imports-unref': '_imp',
-                 'imports-header': '_imp', 'tfidf-imp': '_imp'}
+                 'imports-header': '_imp'}
 FOLDS = range(5)
 KFOLD_PROTOCOLS = ('kfold', 'kfold_v3')
 BASELINE_PREFIX = {'kfold': 'kfold', 'kfold_v3': 'v3kfold'}
@@ -52,7 +50,7 @@ BASELINE_GROUP = re.compile(rf"({'|'.join(BASELINES)})(?:-tf(\d+))?(-ab)?")
 
 def baseline_method(group):
     """(method, directory suffix) for a baseline group such as `tfidf`, `structural-tf25` or `tfidf-ab` (`_tf25`, `_ab`
-    and `_tf50_ab` are the suffixes), `tfidf-yanping` (`_voc-yanping`), `tfidf-noapi` (`_voc-noapi`) or `imports-unref` (`_imp`), else None."""
+    and `_tf50_ab` are the suffixes), `tfidf-yanping` (`_voc-yanping`), `tfidf-noapi` (`_voc-noapi`) or `imports-header` (`_imp`), else None."""
     m = BASELINE_GROUP.fullmatch(group)
     return (BASELINES[m[1]], BASELINE_KIND.get(m[1], '') + (f'_tf{m[2]}' if m[2] else '') + ('_ab' if m[3] else '')) if m else None
 
@@ -127,8 +125,8 @@ def folds_by_seed(group, scope=('kfold', 'x86')):
                 out.setdefault(int(m[2]), {})[int(m[1])] = d
         return out
     for d in sorted(p for p in RUNS.iterdir() if (p / 'config.json').exists()):
-        cfg = RunConfig.load(d / 'config.json')
-        if cfg.protocol in KFOLD_PROTOCOLS and cfg.group == group and d.name == cfg.name:
+        cfg = RunConfig.try_load(d / 'config.json')
+        if cfg and cfg.protocol in KFOLD_PROTOCOLS and cfg.group == group and d.name == cfg.name:
             out.setdefault(cfg.seed, {})[cfg.fold] = d
     return out
 
