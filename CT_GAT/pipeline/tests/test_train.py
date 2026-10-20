@@ -38,7 +38,8 @@ def gnn(**kw):
 # ---- the registry ---------------------------------------------------------------------------------------------------
 
 def test_the_registry_serves_the_gnn_and_returns_a_fresh_spec_per_run():
-    assert MODELS == {'gnn': 's03b_cfg_feature.gnn.spec:GnnSpec'}
+    assert MODELS == {'gnn': 's03b_cfg_feature.gnn.spec:GnnSpec',
+                      'tokenseq': 's03a_transformer.token_sequence.spec:TokenSeqSpec'}
     a, b = spec_for(RunConfig()), spec_for(RunConfig())
     assert type(a) is GnnSpec and a is not b
     assert isinstance(a, ModelSpec) and a.name == 'gnn' and a.requires == ('index.csv', 'vocab.json', 'samples')
@@ -46,7 +47,8 @@ def test_the_registry_serves_the_gnn_and_returns_a_fresh_spec_per_run():
         assert callable(getattr(a, member))
 
 
-def test_a_model_without_a_spec_is_refused_by_name():
+def test_a_model_without_a_spec_is_refused_by_name(monkeypatch):
+    monkeypatch.delitem(MODELS, 'tokenseq')
     with pytest.raises(NotImplementedError, match="tokenseq.*MODELS"):
         spec_for(RunConfig(model='tokenseq', protocol='kfold', fold=0))
     with pytest.raises(NotImplementedError):
@@ -114,11 +116,12 @@ def test_block_vectors_stop_with_a_message_when_the_vectors_package_is_absent(mo
         GnnSpec().build(cfg, RunInfo(None, None))
 
 
-def test_in_this_checkout_the_vectors_package_is_absent_and_the_option_says_so():
-    if gnn_spec.vectors_package_present():
-        pytest.skip('stage 3c is present; the option reads its vectors')
+def test_with_stage_3c_present_the_option_reads_the_vectors_and_names_a_missing_directory(tmp_path, monkeypatch):
+    """Stage 3c is in this checkout: `--block-input vec` no longer stops at the package, it goes on to the vectors."""
+    assert gnn_spec.vectors_package_present()
+    monkeypatch.setattr(gnn_spec, 'CACHE', tmp_path)
     cfg = gnn(protocol='kfold', fold=0, block_input='vec', block_vec='ours_cap0_codebert')
-    with pytest.raises(ModuleNotFoundError, match='s03c_cfg_transformer'):
+    with pytest.raises(FileNotFoundError, match='ours_cap0_codebert'):
         gnn_spec.open_block_vecs(cfg)
 
 
