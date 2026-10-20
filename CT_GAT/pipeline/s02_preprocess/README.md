@@ -96,3 +96,29 @@ python preprocess_full.py --overwrite --num-blocks 8 --seed 0
 `--max-asm-bytes`, `--max-cfg-blocks`, and `--max-cfg-instructions` are accepted. The row passed into the run does not include assembly size or the original block and instruction counts, so those three limits do not skip samples.
 
 Each `<sha>.pt` holds the shared block ids, instruction token rows, block features, 64-dimensional block embeddings, and the directed edges among the selected blocks.
+
+## jsonl-only path (cache, tokenizer, subgraph)
+
+A second path through this stage reads only the CFG export (`*.jsonl.gz`) and never the assembly listing. It is a package (`cache/`, `tokenizer/`, `subgraph.py`, imported as `s02_preprocess.<module>` from `CT_GAT/pipeline`), so it does not touch `preprocess_full.py` or `tokenize_asm_gz.py`, which stay flat scripts (`preprocess_full.py` puts this folder on `sys.path` itself).
+
+| Module | What it does | Run from `CT_GAT/pipeline` |
+|---|---|---|
+| `cache/build_cache.py` | each export becomes `<cache>/samples/<sample_id>.npz` (token ids, block and function pointers, CFG and call edges, edge kinds, back edges), with `index.csv` and `vocab.json` beside it | `python -m s02_preprocess.cache.build_cache` |
+| `cache/check_cache.py` | checks every invariant of every built sample and compares a few against the bundle's own reader | `python -m s02_preprocess.cache.check_cache` |
+| `cache/folds.py` | the 5-fold family-holdout fold CSV of a dataset; families and goodware identity groups are never split | `python -m s02_preprocess.cache.folds --out <dir>` |
+| `tokenizer/` | `TokenVocab` maps the cache's global token ids to run ids by training document frequency; `token_table` lays out the tokens of a block selection | imported |
+| `subgraph.py` | `select_subgraph`: whole functions that fit a block budget (policy `cap`) | imported |
+
+Where the data lives is set per machine, not in the code: copy `datasets.json.example` to `datasets.json` (gitignored) and give each dataset its cache folder, the protocols that read it and the raw inputs it is built from; `--cache <name>` picks a dataset and `GT_CACHE` (a folder) overrides it. `common/paths.py` describes the order.
+
+**Which models read which path, and why.** The scripts above (`tokenize_asm_gz.py`, `preprocess_full.py`) feed the transformer in `s03a_transformer`. The models that read the cache are the graph models of `s03b_cfg_feature`, the frozen block-encoder path of `s03c_cfg_transformer`, the token-sequence model and the baselines; they land in the pull requests that follow this one. The reasons are in the team-pipeline review of the 3-block-level-counting branch, [`TEAM_PIPELINES_REVIEW.md`](https://github.com/doroluo/ransomware-detection-masters-project/blob/3764cc7abb5d7e8fd62938e56041c5d95ee5fcd6/CT_GAT/block_level_counting/docs/TEAM_PIPELINES_REVIEW.md) (to move to `docs/history/` with a later pull request):
+
+- Section 8 compares the team diagram with what exists and recommends dropping the box that pairs the listing with the CFG: the pairing fails on about 20% of ransomware but 1% of goodware, so the missing features themselves tell the label, and every token the cache needs is already in the `jsonl.gz`.
+- Section 11 reviews the streaming version of the two scripts here (main c7899f0): it fixes the memory use on the two 23 GB listings, but pairs fewer instructions on 35 of 60 rebuilt samples because a label line ending a function resets the address.
+- Section 12 shows why the pairing fails (the listing collapses the library functions that the CFG holds), measures it by label, family and size, and ranks the fixes; the first one is to take the per-instruction fields from the `jsonl.gz`, which is what the cache does.
+
+The cache builder takes the behaviour id of an instruction from `token_mapping.py`, which is not part of this package; `build_cache.py` says where it looks (`GT_TOKEN_MAPPING_DIR` or `sources.token_mapping` in `datasets.json`). `tokenize_asm_gz.py` is not a substitute: its API matcher gives a different id to 44 of the 12,327 API names of the first cache's vocabulary.
+
+`cache/folds.py` is the fold algorithm of `family_holdout/folds.py` (LLM_Classification history), restated for one corpus. Fed the family and group columns of the committed `folds_mendeley.csv` it returns that file's fold column on all 2,509 rows (`tests/test_folds.py`). Rebuilt from the bundle's `samples.csv` it does not: the bundle has neither the goodware mnemonic-stream groups (1,024 groups in the CSV, 1,169 one-file groups here) nor the original 2,509-file cohort (2,411 files join, 2,085 of them change fold). The module docstring has the details.
+
+Tests: from `CT_GAT/pipeline`, `python -m pytest -m "not real_data"` runs without any data; `python -m pytest` also runs the tests marked `real_data` when `datasets.json` (or `GT_CACHE`) names a cache.
