@@ -1,0 +1,40 @@
+{
+  "_comment": "Two epochs of R7 (--protocol kfold --fold 0 --model gnn --mask-blocks 0.15 --seed 0 --tag eqcheck --epochs 2) as the 3-block-level-counting branch (3764cc7, python -m training.train) trains it, with torch.use_deterministic_algorithms(True) and CUBLAS_WORKSPACE_CONFIG=:4096:8 (CUDA index_add_ and scatter_reduce are otherwise not reproducible from run to run: two undeterministic runs of the branch differ in the first epoch loss by 0.16). Recorded on 2026-10-20; the same command from experiments.train gave identical history.csv, predictions, checkpoints and metrics.",
+  "run": "kfold0_x86_gnn-mblk15_s0_eqcheck",
+  "torch": "2.11.0+cu128",
+  "gpu": "NVIDIA GeForce RTX 5080",
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 0.6543833982099423,
+      "val_macro_f1": 0.9606031552340277,
+      "val_accuracy": 0.9646017699115044,
+      "val_auc": 0.973009791400596,
+      "val_recall": 1.0
+    },
+    {
+      "epoch": 2,
+      "loss": 0.37648622705442325,
+      "val_macro_f1": 0.9456576387522679,
+      "val_accuracy": 0.9513274336283186,
+      "val_auc": 0.9476372924648787,
+      "val_recall": 0.993103448275862
+    }
+  ],
+  "best_epoch": 1,
+  "val_macro_f1": 0.9606031552340277,
+  "test": {
+    "n": 380,
+    "accuracy": 0.968421052631579,
+    "macro_f1": 0.9656460945033751,
+    "auc": 0.9766096579476861,
+    "pr_auc": 0.9740474948718809
+  },
+  "auc_checkpoint": {
+    "best_epoch": 1,
+    "val_auc": 0.973009791400596,
+    "threshold_val": 0.7000000000000001,
+    "test_auc": 0.9766096579476861,
+    "test_macro_f1": 0.9656460945033751
+  }
+}

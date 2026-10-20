@@ -1,0 +1,3 @@
+# the root .gitignore ignores *.npz and samples/; these test fixtures are recorded data and must be tracked
+!*.npz
+!samples/
