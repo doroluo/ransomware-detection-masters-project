@@ -50,7 +50,8 @@ need no change.
 
 CodeBERT, path 2 (typed edges), kfold x86, seed 0, five folds pooled: AUC 0.961, against 0.986 for the same GNN on the token bag
 (R7) and 0.982 for TF-IDF; the paired difference to R7 is -0.025 [-0.059, -0.005]. The frozen general-purpose encoder does not
-beat the counted tokens. The tables are in the project history (`docs/history/`, which arrives with a later pull request).
+beat the counted tokens. The tables are in the project history ([`docs/history/`](../docs/history/README.md); the runs are the plan
+`experiments/plans/paths_codebert.txt`).
 
 ## Tests
 

@@ -1,0 +1,15 @@
+# The packages of CT_GAT/pipeline (Python 3.12). From CT_GAT/pipeline:
+#   pip install -r requirements.txt
+# The first line adds the CPU wheel index of PyTorch, which is what a CI runner or a machine without CUDA needs; to train on a
+# GPU install the CUDA build of torch from https://pytorch.org first (the pin below is then already satisfied).
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0
+numpy==2.5.4
+scipy==1.18.1
+scikit-learn==1.9.1
+pytest==9.1.1
+
+# Optional, not installed by CI (the tests that need them skip with a reason):
+#   torch_geometric  the teammates' GAT pipelines in experiments/team_pipelines (also needs GT_TEAM_GNN_ROOT, GT_TEAM_MAIN_ROOT)
+#   psutil           experiments/team_pipelines/measure_rss.py
+#   transformers, safetensors   the CodeBERT block encoder (s03c_cfg_transformer/encoders/codebert.py), with HF_HOME set
