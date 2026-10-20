@@ -30,7 +30,7 @@ import logging
 import random
 import re
 import sys
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -307,11 +307,13 @@ def _api_stem(name: str) -> str:
     return _STDCALL.sub("", name.lower())
 
 
-def read_text_lines(path: Path) -> list[str]:
+def iter_text_lines(path: Path) -> Iterable[str]:
+    """Yield one listing line at a time so a large .asm.gz is not held as one string."""
     path = Path(path)
     opener = gzip.open if path.name.endswith(".gz") else open
     with opener(path, "rt", encoding="utf-8", errors="replace") as handle:
-        return handle.read().splitlines()
+        for line in handle:
+            yield line.rstrip("\r\n")
 
 
 def _iter_jsonl(path: Path) -> Iterable[dict[str, Any]]:
@@ -647,6 +649,52 @@ def _accepted_asm_line(line: str, record: dict[str, Any]) -> bool:
     return True
 
 
+def _consume_asm_line(
+    line: str,
+    state: dict[str, int | None],
+    function_rvas: dict[str, int],
+    collapsed: list[str],
+    issues: list[dict[str, Any]],
+) -> AsmInstruction | None:
+    """Update the label address from one listing line and return a code line."""
+    collapsed_name = _COLLAPSED.search(line)
+    if collapsed_name:
+        collapsed.append(collapsed_name.group(1).strip())
+    before = state.get("va")
+    tok._note_location(line, state)
+    after = state.get("va")
+    code = line.split(";", 1)[0].strip()
+    proc = _PROC.match(code)
+    if proc:
+        name = proc.group(1)
+        function_rva = function_rvas.get(name)
+        imagebase = state.get("imagebase") or 0
+        if function_rva is not None:
+            json_va = imagebase + function_rva
+            if after != before and after != json_va:
+                issues.append(
+                    {
+                        "problem": "label_va_disagrees_with_function_rva",
+                        "function": name,
+                        "label_va": after,
+                        "function_va": json_va,
+                    }
+                )
+            state["va"] = json_va
+    record = tok.parse_ida_instruction_line(line)
+    if record is None or not _accepted_asm_line(line, record):
+        return None
+    anchor = tok._current_rva(state)
+    if anchor is None:
+        issues.append({"problem": "asm_instruction_without_address", "raw_text": line.strip()})
+    return AsmInstruction(
+        raw_text=line.strip(),
+        mnemonic=tok._mnemonic(record["opcode"]).lower(),
+        anchor_rva=anchor,
+        record=record,
+    )
+
+
 def parse_asm_instructions(
     lines: Iterable[str],
     imagebase: int,
@@ -657,45 +705,11 @@ def parse_asm_instructions(
     issues = problems if problems is not None else []
     collapsed: list[str] = []
     state: dict[str, int | None] = {"imagebase": imagebase, "va": None}
-    parsed: list[AsmInstruction] = []
-    for line in lines:
-        collapsed_name = _COLLAPSED.search(line)
-        if collapsed_name:
-            collapsed.append(collapsed_name.group(1).strip())
-        before = state.get("va")
-        tok._note_location(line, state)
-        after = state.get("va")
-        code = line.split(";", 1)[0].strip()
-        proc = _PROC.match(code)
-        if proc:
-            name = proc.group(1)
-            function_rva = function_rvas.get(name)
-            if function_rva is not None:
-                json_va = imagebase + function_rva
-                if after != before and after != json_va:
-                    issues.append(
-                        {
-                            "problem": "label_va_disagrees_with_function_rva",
-                            "function": name,
-                            "label_va": after,
-                            "function_va": json_va,
-                        }
-                    )
-                state["va"] = json_va
-        record = tok.parse_ida_instruction_line(line)
-        if record is None or not _accepted_asm_line(line, record):
-            continue
-        anchor = tok._current_rva(state)
-        if anchor is None:
-            issues.append({"problem": "asm_instruction_without_address", "raw_text": line.strip()})
-        parsed.append(
-            AsmInstruction(
-                raw_text=line.strip(),
-                mnemonic=tok._mnemonic(record["opcode"]).lower(),
-                anchor_rva=anchor,
-                record=record,
-            )
-        )
+    parsed = [
+        item
+        for line in lines
+        if (item := _consume_asm_line(line, state, function_rvas, collapsed, issues)) is not None
+    ]
     return parsed, collapsed
 
 
@@ -778,6 +792,117 @@ def align_cfg_to_asm(
             report.add_missing_asm(
                 _json_gap(item, "no_asm_line_in_address_span", collapsed)
             )
+    return report
+
+
+def align_sampled_blocks(
+    cfg: FullCFG,
+    selected_keys: Sequence[tuple[int, int]],
+    lines: Iterable[str],
+    problems: list[dict[str, Any]],
+) -> MismatchReport:
+    """Attach assembly text for the sampled blocks without keeping every code line.
+
+    Listing lines are read one at a time. Only the open label span is stored,
+    and a span is discarded when it contains none of the sampled instructions.
+    Pairing inside a kept span still starts at the first instruction so a later
+    sampled block keeps its original position in that span.
+    """
+    report = MismatchReport()
+    selected = set(selected_keys)
+    grouped: dict[int, list[CfgInstruction]] = defaultdict(list)
+    for block in cfg.blocks.values():
+        for instruction in block.instructions:
+            grouped[instruction.rva].append(instruction)
+    for rva, rows in sorted(grouped.items()):
+        if len(rows) == 1:
+            continue
+        report.add_duplicate(
+            {
+                "rva": rva,
+                "count": len(rows),
+                "blocks": [list(row.block_key) for row in rows],
+            }
+        )
+
+    pairable = [
+        instruction
+        for block in _blocks_in_file_order(cfg)
+        for instruction in block.instructions
+        if len(grouped[instruction.rva]) == 1
+    ]
+    pairable.sort(key=lambda item: (item.rva, item.function_id, item.block_id, item.index_in_block))
+    pairable_rvas = [item.rva for item in pairable]
+    selected_rvas = sorted(
+        instruction.rva
+        for key in selected_keys
+        for instruction in cfg.blocks[key].instructions
+        if len(grouped[instruction.rva]) == 1
+    )
+    collapsed: list[str] = []
+    state: dict[str, int | None] = {"imagebase": cfg.imagebase, "va": None}
+    span_anchor: int | None = None
+    span_lines: list[AsmInstruction] = []
+    opened = False
+    placed: set[int] = set()
+
+    def flush(end_rva: int | None) -> None:
+        nonlocal span_lines
+        if span_anchor is None:
+            for item in span_lines:
+                report.add_missing_json(
+                    {"raw_text": item.raw_text, "reason": "asm_line_has_no_label_rva"}
+                )
+            span_lines = []
+            return
+        left = bisect_left(pairable_rvas, span_anchor)
+        right = len(pairable) if end_rva is None else bisect_left(pairable_rvas, end_rva)
+        json_rows = pairable[left:right]
+        if not any(instruction.block_key in selected for instruction in json_rows):
+            span_lines = []
+            return
+        for instruction in json_rows:
+            placed.add(id(instruction))
+        matched = 0
+        while matched < len(span_lines) and matched < len(json_rows):
+            if span_lines[matched].mnemonic != tok._mnemonic(json_rows[matched].mnemonic).lower():
+                break
+            if json_rows[matched].block_key in selected:
+                _attach_asm(json_rows[matched], span_lines[matched], cfg.imagebase)
+            matched += 1
+        for item in span_lines[matched:]:
+            report.add_missing_json(
+                {
+                    "raw_text": item.raw_text,
+                    "anchor_rva": span_anchor,
+                    "mnemonic": item.mnemonic,
+                    "reason": "no_cfg_instruction_in_address_span",
+                }
+            )
+        for item in json_rows[matched:]:
+            if item.block_key in selected:
+                report.add_missing_asm(_json_gap(item, "no_asm_line_in_address_span", collapsed))
+        span_lines = []
+
+    for line in lines:
+        item = _consume_asm_line(line, state, cfg.function_rvas, collapsed, problems)
+        anchor = tok._current_rva(state)
+        if not opened:
+            span_anchor = anchor
+            opened = True
+        elif anchor != span_anchor:
+            flush(anchor)
+            span_anchor = anchor
+        if item is not None and (span_anchor is None or bisect_left(selected_rvas, span_anchor) < len(selected_rvas)):
+            span_lines.append(item)
+    if opened:
+        flush(None)
+
+    for key in selected_keys:
+        for instruction in cfg.blocks[key].instructions:
+            if len(grouped[instruction.rva]) != 1 or id(instruction) in placed:
+                continue
+            report.add_missing_asm(_json_gap(instruction, "rva_before_any_asm_label", collapsed))
     return report
 
 
@@ -1095,7 +1220,7 @@ def _called_names_from_cfg(cfg: FullCFG, imports: dict[str, dict[str, Any]]) -> 
 def tokenize_selected_blocks(
     cfg: FullCFG,
     selected_keys: Sequence[tuple[int, int]],
-    asm_lines: Sequence[str],
+    asm_lines: Iterable[str],
     api_vocab: tok.ApiVocab,
     *,
     freeze_vocab: bool = False,
@@ -1671,14 +1796,6 @@ def process_sample(
 ) -> dict[str, Any]:
     """Load the full CFG, sample one subgraph, align it, and build model inputs."""
     cfg = load_cfg(cfg_path, file_id=file_id)
-    asm_lines = read_text_lines(asm_path)
-    problems: list[dict[str, Any]] = []
-    asm_instructions, collapsed = parse_asm_instructions(
-        asm_lines, cfg.imagebase, cfg.function_rvas, problems
-    )
-    report = align_cfg_to_asm(cfg, asm_instructions, collapsed)
-    report.add_format_problems(cfg.address_format_problems)
-    report.add_format_problems(problems)
     sampler = sample_signal_subgraph if sample_mode == "signal" else sample_connected_subgraph
     if sample_mode not in {"walk", "signal"}:
         raise ValueError(f"sample_mode must be 'walk' or 'signal', got {sample_mode!r}")
@@ -1688,10 +1805,19 @@ def process_sample(
         num_blocks=num_blocks,
         max_instructions=max_instructions,
     )
+    problems: list[dict[str, Any]] = []
+    report = align_sampled_blocks(
+        cfg,
+        sample.selected_keys,
+        iter_text_lines(asm_path),
+        problems,
+    )
+    report.add_format_problems(cfg.address_format_problems)
+    report.add_format_problems(problems)
     inventory = tokenize_selected_blocks(
         cfg,
         sample.selected_keys,
-        asm_lines,
+        iter_text_lines(asm_path),
         api_vocab,
         freeze_vocab=freeze_vocab,
     )
