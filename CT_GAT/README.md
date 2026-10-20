@@ -15,7 +15,8 @@ CT_GAT/
     Mendeley_Goodware/
   pipeline/
     s01_ida_export/
-      extract_cfg_with_ida.py   (IDA Pro export: jsonl.gz CFG + asm.gz listing; see its README)
+      extract_cfg_with_ida.py   (CFG export, jsonl.gz)
+      run_mendeley_asm.py       (listing export, asm.gz)
     s02_preprocess/
       tokenize_asm_gz.py
       preprocess_full.py
