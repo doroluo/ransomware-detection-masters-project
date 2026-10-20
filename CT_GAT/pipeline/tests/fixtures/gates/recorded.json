@@ -1,0 +1,22 @@
+{
+  "source": "3-block-level-counting at 3764cc7, evaluation/gates.py, report.py and stats.py, default 2000 resamples",
+  "runs_fingerprint": "050d7029aa8fb315668561d46d33fe0d29a96a22dd988a3e0c1fac9ab11bf37f",
+  "n_files_fingerprinted": 1923,
+  "outputs": {
+    "day1": "d6f620f77976921ba44e020b2a46072951030fa4300a220fe53e16ca34ff5682",
+    "day1b": "bb3b9cc45e84c2ef28b5a2a15159568354ff44c31cca98c8547dd9e3df7f56a6",
+    "v3": "62238eab87b5c5c66b62ad263104fab1996978d55acccfe68d61ed50d3356cc9",
+    "subgraph": "071a772fa800100c8959c641186f47b3c6f48283e5990bb4e785b13a1d3419cf",
+    "paths": "4ab416b6f116e4ddc27fa7411fbec7713a6a82d86bb2509296da03a30c53cd53",
+    "paths_codebert": "2540c54fa3775bfdfb1c73466b0d0898d45bd72e5daa11b9f856701b693276b4",
+    "vocab": "8632a0ec644ab9c837f81e7ae8c23ad7e57c08302fb0a190028f6d97296d4ef1",
+    "imports": "eb3afffbf3f24655c6d4be0f775a87c325f2e63df4bc8b6d752facd011a6e2c0",
+    "noapi": "060462074796b26075b1ae95d8f62986c4db3e7293d502daf800d3d8fd97317e",
+    "team": "be60e6de37be46ecf1f1a491da8109e85d22c8b67803ea5a46838f96fb51e15f",
+    "model1": "2e29f01047ca8559fa8627ef102b13e088042b362047cccdf96e5efa4fee4506",
+    "report": "7a79c7cd8cbab540ccb69c923232911d5bf2751a4bde1f06f938f07195c84224",
+    "stats_r7_r2": "d0b002989ba1ba4c56ca243563772ab04155a0b7eedf94f6494d80d232ad7ac4",
+    "stats_tfidf_r7": "d1b2f15e8090152e8b13a59ea82b66eefc285c66b21d8ee37d5fcdb8eeb706ba",
+    "stats_r7_noapi": "59b0fc3c2a87b43c4be65ba6b241faa14d1b21e846c8c13030c0c71aae879164"
+  }
+}
