@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Literal, Optional
 
-from common.paths import CACHE, COMBINED_CACHE, DEFAULT_CACHE, RUNS, cache_for, protocol_in  # noqa: F401
+from common.paths import CACHE, COMBINED_CACHE, DEFAULT_CACHE, EXPORT, RUNS, cache_for, protocol_in  # noqa: F401
 
 DIRECTIONS = ('both', 'forward', 'backward', 'undirected')
 DIRECTION_SUFFIX = {'forward': 'fwd', 'backward': 'bwd', 'undirected': 'undir'}
@@ -18,6 +18,9 @@ MIN_BUDGET = 100  # blocks; 0 means the binary cap
 VOCABS = ('ours', 'yanping', 'hybrid', 'noapi')
 IMPORTS = ('', 'unreferenced', 'header')
 IMPORT_SUFFIX = {'unreferenced': 'imp', 'header': 'imph'}
+MODELS = ('transformer', 'gnn', 'tokenseq')
+SEQ_LEN, MAX_WINDOWS = 512, 64      # Model 1 window length and training windows per binary (defaults: no name suffix)
+TOKENSEQ_VAL_SEED = 0                # the block export carves its validation split with seed 0
 
 
 @dataclass(frozen=True)
@@ -49,7 +52,7 @@ class RunConfig:
     grad_clip: float = 1.0
     num_workers: int = 2
 
-    model: Literal['transformer', 'gnn'] = 'transformer'
+    model: Literal['transformer', 'gnn', 'tokenseq'] = 'transformer'
     encoder: Optional[str] = None
     readout: str = 'fixed'
     control: str = ''
@@ -79,6 +82,8 @@ class RunConfig:
     block_vec: str = ''
     vocab: str = 'ours'
     imports: str = ''
+    seq_len: int = 512
+    max_windows: int = 64
     tag: str = ''
     cache: str = ''
 
@@ -91,10 +96,14 @@ class RunConfig:
             raise ValueError('kfold needs --fold and bundle must not have one')
         if self.fold is not None and not 0 <= self.fold < 5:
             raise ValueError(f'fold {self.fold}')
-        if self.model not in ('transformer', 'gnn'):
+        if self.model not in MODELS:
             raise ValueError(f'model {self.model}')
         if self.val_seed is not None and self.val_seed < 0:
             raise ValueError(f'val_seed {self.val_seed}')
+        if self.seq_len < 1 or self.max_windows < 1:
+            raise ValueError(f'seq_len and max_windows are at least 1: {self.seq_len}, {self.max_windows}')
+        if self.model != 'tokenseq' and (self.seq_len, self.max_windows) != (SEQ_LEN, MAX_WINDOWS):
+            raise ValueError("seq_len and max_windows need model='tokenseq'")
         if self.block_input not in BLOCK_INPUTS:
             raise ValueError(f'block_input {self.block_input}')
         if (self.block_input == 'vec') != bool(self.block_vec):
@@ -129,7 +138,9 @@ class RunConfig:
             raise ValueError(f'edge rates must be in [0, 1): {self.drop_edges}, {self.flip_edges}')
         if not 0 < self.train_fraction <= 1:
             raise ValueError(f'train_fraction must be in (0, 1]: {self.train_fraction}')
-        if self.model == 'gnn':
+        if self.model == 'tokenseq':
+            self.check_tokenseq()
+        elif self.model == 'gnn':
             if self.no_graph:
                 raise ValueError('no_graph applies to the transformer only')
             if self.untyped and self.control in ('permute_types', 'no_edges'):
@@ -154,6 +165,30 @@ class RunConfig:
             if used:
                 raise ValueError(f"{', '.join(used)} need model='gnn'")
 
+    def check_tokenseq(self):
+        """Model 1 reads the fold of a block export: its validation split is the export's carve (val_seed 0, forced here),
+        and none of the GNN, graph or weighting options exist for it."""
+        if self.protocol == 'bundle':
+            raise ValueError("model 'tokenseq' reads a fold of a block export and needs a kfold protocol")
+        if self.val_seed not in (None, TOKENSEQ_VAL_SEED):
+            raise ValueError(f"model 'tokenseq' uses the export's validation carve (val_seed {TOKENSEQ_VAL_SEED}), "
+                             f'not val_seed {self.val_seed}')
+        object.__setattr__(self, 'val_seed', TOKENSEQ_VAL_SEED)
+        rates = (self.mask_tokens, self.drop_functions, self.drop_library, self.mask_blocks, self.aux_recon, self.aux_edge,
+                 self.drop_edges, self.flip_edges)
+        unsupported = {'encoder': self.encoder is not None, 'readout': self.readout != 'fixed',
+                       'control': bool(self.control), 'untyped': self.untyped, 'no_call_mp': self.no_call_mp,
+                       'stack_tfidf': self.stack_tfidf, 'mask/drop/aux/edge rate': any(r > 0 for r in rates),
+                       'direction': self.direction != 'both', 'subgraph/budget': self.subgraph != 'cap' or self.budget != 0,
+                       'block_input/block_vec': self.block_input != 'tokens' or bool(self.block_vec),
+                       'vocab': self.vocab != 'ours', 'imports': bool(self.imports), 'no_graph': self.no_graph,
+                       'gnn_fn_layers/gnn_bin_layers': (self.gnn_fn_layers, self.gnn_bin_layers) != (3, 2),
+                       'train_fraction': self.train_fraction != 1.0, 'arch_balance': self.arch_balance,
+                       'select_on': self.select_on != 'overall', 'fixed_epochs': self.fixed_epochs > 0}
+        used = [k for k, v in unsupported.items() if v]
+        if used:
+            raise ValueError(f"{', '.join(used)} do not apply to model='tokenseq'")
+
     @property
     def block_encoder(self):
         return self.encoder or ('mean' if self.model == 'transformer' else 'tfidf')
@@ -168,6 +203,10 @@ class RunConfig:
         ab = ['ab'] if self.arch_balance else []
         sel = ['selcell'] if self.select_on == 'cell' else []
         vs = [f'vs{self.val_seed}'] if self.val_seed is not None and self.val_seed != self.seed else []
+        if self.model == 'tokenseq':
+            return '-'.join(['tokenseq'] + [f'{s}{n}' for s, n, default in (('L', self.seq_len, SEQ_LEN),
+                                                                             ('w', self.max_windows, MAX_WINDOWS))
+                                            if n != default])
         if self.model == 'transformer':
             return '-'.join(['nograph' if self.no_graph else 'graph'] + tf + ab + sel + vs)
         parts = ['gnn']

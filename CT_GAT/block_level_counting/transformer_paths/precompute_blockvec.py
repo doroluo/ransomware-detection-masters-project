@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from common.config import RUNS
+from common.config import EXPORT, RUNS
 from pipeline.s05_block_counting.block_vecs import BlockVecs, vec_dir  # noqa: F401
 from transformer_paths.block_export import sha_of_file
 from transformer_paths.encoder_contract import check_checkpoint, load_encoder
@@ -94,7 +94,7 @@ def main():
     ap.add_argument('--folds', type=int, nargs='*', default=list(range(5)))
     ap.add_argument('--device')
     args = ap.parse_args()
-    root = Path(args.export) if Path(args.export).exists() else RUNS / 'export' / args.export
+    root = Path(args.export) if Path(args.export).exists() else EXPORT / args.export
     precompute(root, args.encoder_name, args.folds, device=args.device)
 
 

@@ -10,7 +10,7 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from common.config import RUNS
+from common.config import EXPORT, RUNS
 from transformer_paths.encoder_contract import save_checkpoint
 from transformer_paths.reader import BlockStore
 
@@ -55,7 +55,7 @@ def main():
     ap.add_argument('--name', default='ref')
     ap.add_argument('--folds', type=int, nargs='*', default=list(range(5)))
     args = ap.parse_args()
-    root = Path(args.export) if Path(args.export).exists() else RUNS / 'export' / args.export
+    root = Path(args.export) if Path(args.export).exists() else EXPORT / args.export
     for path in write_reference_checkpoints(root, args.name, args.folds):
         print(path)
 

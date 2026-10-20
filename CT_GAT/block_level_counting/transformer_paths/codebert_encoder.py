@@ -38,7 +38,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from common.config import RUNS
+from common.config import EXPORT, RUNS
 from transformer_paths.encoder_contract import save_checkpoint
 from transformer_paths.reader import BlockStore
 
@@ -221,7 +221,7 @@ def main():
     ap.add_argument('--max-subword-len', type=int, default=256)
     ap.add_argument('--layer', type=int, default=-1)
     args = ap.parse_args()
-    root = Path(args.export) if Path(args.export).exists() else RUNS / 'export' / args.export
+    root = Path(args.export) if Path(args.export).exists() else EXPORT / args.export
     for path in write_checkpoints(root, args.name, args.folds, max_subword_len=args.max_subword_len, layer=args.layer):
         print(path, f'{path.stat().st_size / 1e6:.2f} MB')
 
