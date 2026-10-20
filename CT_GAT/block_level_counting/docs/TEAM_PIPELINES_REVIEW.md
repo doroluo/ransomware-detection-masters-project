@@ -99,31 +99,63 @@ folds, seeds 0 1 2):
   training binaries become UNK and the embedding is re-pooled, so nothing is fitted on test;
 - our own GNN also runs at the same 500-block cap (`b500`) so budget is not the difference.
 
-## 6. Results (partial, 2026-10-19)
+## 6. Results (final, 2026-10-20)
 
-kfold x86, 1,810 test binaries, AUC checkpoint at its validation threshold; pooled table seed 0, paired differences over
-seeds 0 1 2 (TF-IDF: seed 0 only).
+kfold x86, 1,810 test binaries (1,808 for sig500, which excludes the two 341 MB listings), AUC checkpoint at its validation
+threshold. The table is seed 0 pooled over the five folds; the paired differences use seeds 0 1 2 where both arms have them
+(TF-IDF, the header-imports LR and our b500 arms: seed 0 only, a direction). Source: `RUNS/gates_team.md` (written by
+`gates.py --stage team`); the same values come out of `python -m evaluation.stats`. Ransomware is the positive class.
 
 | model | AUC | PR-AUC | macro-F1 | accuracy | precision | recall | TP | FN | FP | TN |
 |---|---|---|---|---|---|---|---|---|---|---|
 | TF-IDF | 0.982 | 0.990 | 0.935 | 0.939 | 0.951 | 0.951 | 1079 | 55 | 55 | 621 |
 | header-imports LR | 0.985 | 0.991 | 0.954 | 0.957 | 0.971 | 0.960 | 1089 | 45 | 33 | 643 |
 | our typed GNN (R7), whole graph | 0.986 | 0.990 | 0.935 | 0.938 | 0.965 | 0.935 | 1060 | 74 | 38 | 638 |
-| A, opcode mode, 500 blocks | 0.956 | 0.975 | 0.850 | 0.854 | 0.939 | 0.820 | 930 | 204 | 60 | 616 |
-| A on CodeBERT vectors, 500 blocks | 0.791 | 0.872 | 0.723 | 0.724 | 0.925 | 0.608 | 690 | 444 | 56 | 620 |
+| our no-edge GNN (R2), whole graph | 0.977 | 0.983 | 0.941 | 0.945 | 0.964 | 0.947 | 1074 | 60 | 40 | 636 |
+| ours b500 typed (500 blocks) | 0.923 | 0.954 | 0.843 | 0.848 | 0.932 | 0.817 | 926 | 208 | 68 | 608 |
+| ours b500 no-edges (500 blocks) | 0.955 | 0.964 | 0.915 | 0.919 | 0.959 | 0.910 | 1032 | 102 | 44 | 632 |
+| A, `gnn500` (opcode mode, 500 blocks) | 0.956 | 0.975 | 0.850 | 0.854 | 0.939 | 0.820 | 930 | 204 | 60 | 616 |
+| A on CodeBERT vectors, `cb500` | 0.791 | 0.872 | 0.723 | 0.724 | 0.925 | 0.608 | 690 | 444 | 56 | 620 |
+| B, `sig500` (first build, 331ce0b) | 0.953 | 0.974 | 0.894 | 0.898 | 0.962 | 0.871 | 986 | 146 | 39 | 637 |
+| B, `sig500v2` (streaming build, c7899f0) | 0.948 | 0.972 | 0.874 | 0.886 | 0.881 | 0.945 | 1072 | 62 | 145 | 531 |
+| our GNN on the CodeBERT vectors (path 2) | 0.961 | 0.979 | 0.937 | 0.941 | 0.958 | 0.947 | 1074 | 60 | 47 | 629 |
 
-Against R7 (3 seeds): A opcode dAUC -0.025 [-0.043, -0.009], dmacro-F1 -0.072 [-0.136, -0.008]; A on CodeBERT vectors
-dAUC -0.159 [-0.221, -0.104], dmacro-F1 -0.184 [-0.242, -0.129]. Both lose on ransomware recall, not on false alarms.
-Still running: B (`sig500`), our GNN at the same 500-block cap (separates the cap from the model), and our GNN on the
-same CodeBERT vectors (paths 1 and 2, separates the vectors from Dorothy's GAT). B will also be reported on the subset
-whose selected instructions are at least 90% matched (section 4). Final tables: `RUNS/gates_team.md`,
-`RUNS/gates_paths_codebert.md`.
+Against R7 (3 seeds, second minus first): `gnn500` dAUC -0.025 [-0.043, -0.009], dmacro-F1 -0.072 [-0.136, -0.008]; `cb500` -0.159
+[-0.221, -0.104], -0.184 [-0.242, -0.129]; `sig500` -0.029 [-0.054, -0.010], -0.050 [-0.118, +0.014]; `sig500v2` -0.031 [-0.058, -0.009],
+-0.059 [-0.105, -0.007]. 3-seed means (AUC / macro-F1): `gnn500` 0.954 / 0.863, `cb500` 0.820 / 0.751, `sig500` 0.949 / 0.886,
+`sig500v2` 0.948 / 0.876, against R7 0.979 / 0.935. No team arm beats R7 under the pre-registered rule. A and `cb500` lose on ransomware
+recall, not on false alarms; `sig500v2` has the best recall of the team arms and the most false alarms (145).
 
-These runs pin the teammate code at `origin/gnn` 331ce0b. Since then `origin/gnn` 22d1230 lets `train_cfg.py` load
-`preprocess_full.py` subgraphs with edge attributes, `origin/yanping` 38c38e5 adds single-instruction tokenization to
-`tokenize_asm_gz.py`, and the new `origin/TokenSeqModel` (Janice) adds Model 1 (`src/models/token_sequence.py`) in a
-`src/` layout. That branch also deletes `CNN-ViT/`, the old `CT_GAT/` files and most of `meetings/`; check before it
-is merged anywhere.
+**The cap.** The teammates' pipelines select at most 500 blocks per binary; our models read the whole graph (up to a 500,000-block
+memory guard). To separate the cap from the model, our own GNN runs at the same budget (`ours b500`, `--subgraph cap --budget 500`:
+whole functions ranked non-library first, then API references, then size). The cap costs it: typed 0.986 -> 0.923, dAUC -0.063
+[-0.105, -0.029], dmacro-F1 -0.092 [-0.182, -0.003] (not shown non-inferior); no-edge 0.977 -> 0.955, -0.021 [-0.041, -0.004]. At
+equal budget (seed 0, a direction): `gnn500` and `sig500` are nominally above our b500 typed GNN (`gnn500` dAUC +0.032 [-0.002, +0.071];
+`sig500` +0.030 [-0.003, +0.068], dmacro-F1 +0.051 [+0.013, +0.104], the one interval that excludes zero) and level with our b500
+no-edge GNN (`gnn500` +0.001 [-0.018, +0.018]; `sig500` -0.002 [-0.025, +0.020], 1,808 binaries); our b500 no-edge GNN is above our
+b500 typed GNN (+0.032 [+0.003, +0.068]). No team arm passes the pre-registered rule against either b500 arm. The cap costs our own
+models 0.021 (no edges) to 0.063 (typed) AUC, which is of the size of the 0.025 to 0.031 AUC gap between `gnn500` / `sig500` /
+`sig500v2` and R7, so the gap cannot be assigned to the architecture. `cb500` is far lower than the rest (0.791) and the same GAT cannot be compared
+with our GNN on the vectors at equal budget: our GNN on the same CodeBERT vectors with the whole graph (path 2, seed 0 only) reaches
+0.961, dAUC -0.169 [-0.255, -0.095] against `cb500`, of which the cap is part. Path 2 is 0.025 below R7 (-0.025 [-0.059, -0.005]),
+macro-F1 level (+0.003 [-0.042, +0.066]), so the frozen vectors do not beat token counts.
+
+**The v2 build and the label leak.** `sig500v2` is a rebuild of pipeline B with Yanping's streaming `preprocess_full` (main c7899f0),
+which includes the two listings `sig500` had to leave out (peak 20.2 GB for each of them in the first build). It is not better:
+`sig500` -> `sig500v2` dAUC -0.001 [-0.011, +0.009], dmacro-F1 -0.009 [-0.039, +0.029] on the 1,808 binaries both have (3 seeds). Its
+listing-to-CFG match (section 12; `match_acceptance --skip-rebuild` on both finished builds, 2026-10-20) is also label-correlated, and
+more so than the first build's. The AUC of `1 - match rate` as a ransomware score is 0.543 [0.461, 0.635] for the first build
+(1,808 ids) and 0.747 [0.650, 0.827] for the second (all 1,810 ids), over 712 clusters each; the share of binaries with under 90% of
+their selected instructions matched is 21.0% of ransomware (238 of 1,132) and 3.4% of goodware (23 of 676) in the first build, and 32.9%
+(373 of 1,134) against 7.0% (47 of 676) in the second. The `endp` reset of section 11 is the added leak (section 12.4). Whether a trained
+model uses this is not measured here: the AUC of `sig500v2` is not higher (0.948 against 0.953), but its operating point moves toward
+recall and false alarms (precision 0.881 against 0.962, FP 145 against 39).
+
+These runs pin the teammate code at `origin/gnn` 331ce0b (A and the first B build) and main c7899f0 (B v2). Since then `origin/gnn`
+22d1230 lets `train_cfg.py` load `preprocess_full.py` subgraphs with edge attributes, `origin/yanping` 38c38e5 adds single-instruction
+tokenization to `tokenize_asm_gz.py`, and the new `origin/TokenSeqModel` (Janice) adds Model 1 (`src/models/token_sequence.py`) in a
+`src/` layout. That branch also deletes `CNN-ViT/`, the old `CT_GAT/` files and most of `meetings/`; check before it is merged
+anywhere. Model 1 itself is run through `token_sequence/` on our folds (`docs/PLAN_GNN.md`, "Final results", section 7).
 
 ## 7. Suggested fixes, in order of impact
 
@@ -150,7 +182,7 @@ is merged anywhere.
 | Randomly select subgraphs | `walk` / `signal` at a block budget | `s04_select_subgraph` (`cap`, `lcc`; whole graph by default) | **Use the whole graph, deterministic.** Every budget we tried lost AUC against the whole graph (cap 20k -0.011, cap 5k -0.016, lcc 20k -0.017, lcc 5k -0.011; none non-inferior), and at 500 blocks both A arms lost more. Random selection also makes a test prediction depend on a seed. Keep a deterministic cap only as a memory guard. |
 | `tokenize_selected_blocks()` | five channels: opcode, two operand roles, API id, behaviour | `s03_tokenizer`: `mn`, `sig`, `beh`, `api` | Settled: under the pre-registered 3-seed test the team's operand-role vocabulary tied ours (section "Vocabulary decision", `PLAN_GNN.md`). Either works; fit the API vocabulary on training binaries only. |
 | Model 1, token sequence | `origin/TokenSeqModel` `src/models/token_sequence.py` (new) | no sequence model on this branch; TF-IDF over the same tokens is the bag-of-tokens reference | Add to the same folds and report it next to TF-IDF: on this data the earlier graph-transformer sequence arms (mF1 0.906-0.916) stayed below TF-IDF (0.939). |
-| Model 2, block features + CFG | `FullBlockGAT` / `BlockGAT` | `s05_block_counting` + `s06`-`s08` GNN (R7) | Running both (section 6). |
+| Model 2, block features + CFG | `FullBlockGAT` / `BlockGAT` | `s05_block_counting` + `s06`-`s08` GNN (R7) | Both run (section 6). |
 | Model 3, block embeddings + CFG | 64-d pooled random embedding (B); CodeBERT (A) | `transformer_paths` path 2: any frozen block encoder, now CodeBERT on register-free text | Running (paths 1 and 2). A trained block encoder is the open slot. |
 | (missing) baselines | none | TF-IDF, header-imports LR, majority and x86-rule floors | **Add** to the diagram: every model is read against them. |
 | (missing) evaluation | one fixed split, random validation | 5-fold family holdout, family-held-out validation, paired bootstrap | **Add** as the box all three models feed. |
@@ -520,3 +552,9 @@ python -m experiments.team_pipelines.match_diagnosis  --build <her new dir> --ca
 It prints PASS or FAIL for five criteria and exits with status 0 only if all pass: (1) all 1,810 kfold-x86 ids built, none excluded; (2) the share of binaries with under 90% of their selected instructions matched within 2 points between ransomware and goodware; (3) the share under 50% below 1% for both labels; (4) the AUC of `1 - match rate` below 0.55; (5) a deterministic rebuild of 5 sampled ids, tensor for tensor (`torch.equal`), starting from the build's own vocabulary and embedder (`build_b --frozen-from`), because a fresh vocabulary numbers API names differently. The peak-RSS and sig500v3 criteria of the plan are not tested by the script; `measure_rss.py` and `gates.py --stage team` do those. With option 1 criteria 2 to 4 pass by construction and the script then checks mostly criteria 1 and 5. A partial build is evaluated on the ids it holds and marked partial.
 
 Current verdicts: first build, FAIL (criteria 1, 2 and 3 fail; criterion 4 passes at 0.543, interval [0.461, 0.635]; criterion 5 passes, 5 of 5 sampled ids rebuild identically with the frozen vocabulary). Second build, partial (1,350 of 1,810 ids): FAIL (1 of 5 pass): criterion 1 fails (460 ids missing), criterion 2 fails (33.9% against 7.2%, a gap of 26.6 points), criterion 3 fails (17.2% and 1.2%), criterion 4 fails (0.754, interval [0.666, 0.832]), criterion 5 passes (5 of 5 sampled ids rebuild identically with the frozen vocabulary). Both are expected to fail until the fix lands.
+
+Update 2026-10-20, second build finished (1,810 of 1,810 ids, nothing excluded; `match_acceptance --skip-rebuild`, so criterion 5 is not run):
+criterion 1 passes; criterion 2 fails (under 90%: ransomware 32.9%, 373 of 1,134, goodware 7.0%, 47 of 676, a gap of 25.9 points);
+criterion 3 fails (under 50%: ransomware 16.8%, 190 of 1,134, goodware 1.0%, 7 of 676); criterion 4 fails (AUC of `1 - match rate`
+0.747, interval [0.650, 0.827] over 712 clusters). The first build, re-run the same way, gives 0.543 [0.461, 0.635]. Section 6 uses
+both numbers.

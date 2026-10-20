@@ -536,3 +536,231 @@ Pooled 3-seed AUC: ours 0.974, yanping 0.980, hybrid 0.971.
 **Decision.** `vocab='ours'` stays the default (mnemonic, operand-category signature, behaviour id, API name).
 `--vocab yanping` remains available. The operand roles from the team's reader cannot separate stack memory from
 other memory in the 2.1 exports, which is consistent with the near-tie.
+
+## Final results (2026-10-20)
+
+All runs are finished. Every number below is read from `RUNS/gates_{noapi,team,v3,paths_codebert,model1,imports_header}.md` or
+reproduced with `python -m evaluation.stats` (the gates files and the command give the same values). Setup, unless a table says
+otherwise: kfold x86 on the v2 cache (5 family-holdout folds, 1,810 test binaries in 712 clusters); kfold_v3 `arch all` on the
+combined cache (5,652 test binaries in 2,586 clusters). Every GNN arm carries 15% block masking (`mblk15`): R7 is the typed
+GNN, R2 the same network with `--control no_edges`, R4 with degree-preserving shuffled edges. AUC checkpoint at its validation
+threshold. A table value is the mean over the listed seeds of the five-fold pooled metric; a difference is second minus first with
+the 95% paired cluster bootstrap interval (2,000 resamples; clusters are ransomware families and single goodware binaries). The
+pre-registered rule: a second arm beats the first when dAUC >= 0.01 and dmacro-F1 >= 0.02 and both intervals exclude zero.
+TF-IDF and the header-imports LR exist for seed 0 only, and the kfold_v3 arms for seed 0 only, so those comparisons are a direction,
+not the test.
+
+### 1. Does CFG structure help?
+
+kfold x86, 3 seeds x 5 folds:
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| R7 typed edges | 0.979 | 0.987 | 0.935 |
+| R2 no edges | 0.974 | 0.982 | 0.929 |
+| R4 shuffled edges | 0.962 | 0.977 | 0.925 |
+
+| first → second | dAUC [95% CI] | dPR-AUC [95% CI] | dmacro-F1 [95% CI] | rule |
+|---|---|---|---|---|
+| no edges → typed | +0.004 [-0.001, +0.010] | +0.004 [-0.000, +0.011] | +0.006 [-0.019, +0.026] | fails |
+| shuffled → typed | +0.017 [+0.001, +0.047] | +0.010 [+0.001, +0.026] | +0.010 [+0.001, +0.020] | fails (macro-F1 below +0.02) |
+| no edges → shuffled | -0.012 [-0.042, +0.004] | -0.005 [-0.022, +0.004] | -0.004 [-0.028, +0.014] | |
+
+kfold_v3 `arch all`, arch-balanced training (`-ab`), seed 0 (`gates_v3.md`):
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| R7 typed edges | 0.965 | 0.970 | 0.904 |
+| R2 no edges | 0.961 | 0.966 | 0.890 |
+| R4 shuffled edges | 0.956 | 0.964 | 0.907 |
+| TF-IDF, arch-balanced | 0.969 | 0.976 | 0.868 |
+
+| first → second | dAUC [95% CI] | dPR-AUC [95% CI] | dmacro-F1 [95% CI] |
+|---|---|---|---|
+| no edges → typed | +0.004 [-0.006, +0.015] | +0.004 [-0.006, +0.015] | +0.014 [-0.017, +0.051] |
+| shuffled → typed | +0.009 [-0.012, +0.030] | +0.006 [-0.007, +0.021] | -0.003 [-0.032, +0.033] |
+
+**Verdict: structure does not help.** On x86 the typed edges are 0.004 AUC above no edges, with an interval that includes zero,
+and macro-F1 does not follow. They beat shuffled edges on AUC, but random wiring is what loses: shuffled edges are 0.012 below
+no edges. On the all-architecture protocol, seed 0, typed edges are within noise of both controls. The unweighted R2, R4 and R7
+arms of the v3 protocol (no `-ab`) are not on disk and are not reported.
+
+### 2. Do imports explain the result?
+
+Header imports are the PE import table of the binary (`imports_header_lr`: TF-IDF logistic regression over the import names;
+`--imports header` for the GNN). kfold x86, seed 0 (`gates_imports_header.md`, `gates_team.md`):
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| TF-IDF (sig + api tokens) | 0.982 | 0.990 | 0.935 |
+| header imports, LR | 0.985 | 0.991 | 0.954 |
+| R7 typed (our GNN) | 0.986 | 0.990 | 0.935 |
+| R2 no edges | 0.977 | 0.983 | 0.941 |
+| R7 + header imports | 0.985 | 0.992 | 0.940 |
+
+kfold_v3 `arch all`, seed 0:
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| header imports, LR | 0.970 | 0.977 | 0.914 |
+| header imports, LR, arch-balanced | 0.966 | 0.974 | 0.908 |
+| R7 typed, arch-balanced | 0.965 | 0.970 | 0.904 |
+| R2 no edges, arch-balanced | 0.961 | 0.966 | 0.890 |
+
+| first → second (seed 0) | dAUC [95% CI] | dPR-AUC [95% CI] | dmacro-F1 [95% CI] |
+|---|---|---|---|
+| x86: header LR → R7 typed | +0.001 [-0.006, +0.009] | -0.001 [-0.008, +0.005] | -0.020 [-0.082, +0.020] |
+| x86: header LR → R2 no edges | -0.008 [-0.017, +0.001] | -0.008 [-0.019, -0.001] | -0.013 [-0.057, +0.019] |
+| x86: R7 → R7 + header imports | -0.001 [-0.013, +0.007] | +0.002 [-0.004, +0.009] | +0.006 [-0.075, +0.084] |
+| x86: header LR → R7 + header imports | +0.000 [-0.008, +0.008] | +0.001 [-0.004, +0.006] | -0.014 [-0.084, +0.031] |
+| v3: header LR (arch-balanced) → R7 typed (arch-balanced) | -0.001 [-0.021, +0.018] | -0.003 [-0.019, +0.010] | -0.004 [-0.058, +0.045] |
+| v3: header LR (arch-balanced) → R2 no edges (arch-balanced) | -0.005 [-0.025, +0.014] | -0.007 [-0.025, +0.008] | -0.018 [-0.077, +0.039] |
+
+**Verdict: a logistic regression on the import table ties our GNN** on both protocols (AUC 0.985 against 0.986 on x86, 0.966
+against 0.965 on v3), and feeding the same imports to the GNN adds nothing (-0.001). The variant that used only the imports no
+instruction references reached AUC 0.526 as a baseline; it was dropped from the code in step 25 and its GNN arm never ran.
+
+### 3. What do the API names carry?
+
+kfold x86, 3 seeds (`noapi` removes the `api` token kind, so a block holds its `mn`, `sig` and `beh` tokens only; TF-IDF rows
+seed 0). The seed-0 pooled R7 noapi row of `gates_noapi.md` reads 0.943; the table gives the 3-seed mean.
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| R7 typed | 0.979 | 0.987 | 0.935 |
+| R7 typed, noapi | 0.961 | 0.979 | 0.910 |
+| R2 no edges | 0.974 | 0.982 | 0.929 |
+| R2 no edges, noapi | 0.981 | 0.988 | 0.932 |
+| TF-IDF (sig + api) | 0.982 | 0.990 | 0.935 |
+| TF-IDF noapi (mn + sig + beh) | 0.976 | 0.984 | 0.908 |
+
+| first → second | dAUC [95% CI] | dPR-AUC [95% CI] | dmacro-F1 [95% CI] | note |
+|---|---|---|---|---|
+| R7 → R7 noapi (api removed) | -0.017 [-0.044, -0.001] | -0.008 [-0.023, +0.001] | -0.025 [-0.048, -0.007] | api loss shown |
+| R2 → R2 noapi (api removed) | +0.007 [-0.001, +0.018] | +0.005 [-0.000, +0.013] | +0.002 [-0.025, +0.030] | api loss not shown |
+| TF-IDF → TF-IDF noapi (seed 0) | -0.005 [-0.014, +0.007] | -0.007 [-0.015, -0.001] | -0.027 [-0.081, +0.012] | api loss not shown |
+| R2 noapi → R7 noapi | -0.019 [-0.050, +0.001] | -0.009 [-0.026, +0.002] | -0.021 [-0.086, +0.023] | edges vs none, no api |
+| TF-IDF → R2 noapi (seed 0) | +0.001 [-0.007, +0.012] | -0.002 [-0.010, +0.004] | +0.003 [-0.023, +0.028] | |
+| header LR → R2 noapi (seed 0) | -0.001 [-0.009, +0.006] | -0.003 [-0.012, +0.003] | -0.016 [-0.046, +0.008] | |
+
+**Verdict.** Removing the API names costs the typed GNN (0.017 AUC) but not the no-edge GNN, which is nominally better without
+them (+0.007, interval includes zero). The 3-seed no-edge model without API names is level with TF-IDF and with the header-imports LR.
+
+### 4. Depth and call graph
+
+kfold x86, 3 seeds. L3 is the default (3 message-passing layers over each function's CFG); `nocall` turns off message passing over
+the call graph.
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| R7 typed, L3 (default) | 0.979 | 0.987 | 0.935 |
+| R7 typed, L2 | 0.968 | 0.981 | 0.933 |
+| R7 typed, no call graph | 0.976 | 0.985 | 0.920 |
+
+| first → second | dAUC [95% CI] | dPR-AUC [95% CI] | dmacro-F1 [95% CI] | rule |
+|---|---|---|---|---|
+| L2 → L3 | +0.011 [-0.002, +0.037] | +0.005 [-0.002, +0.018] | +0.003 [-0.007, +0.014] | fails |
+| call graph off → on | +0.003 [-0.014, +0.020] | +0.001 [-0.007, +0.010] | +0.015 [-0.002, +0.040] | fails |
+
+**Verdict.** Neither the third CFG layer nor the call-graph message passing is shown to matter: every interval includes zero.
+
+### 5. The 500-block cap
+
+`ours b500` is `--subgraph cap --budget 500` (whole functions ranked non-library, then API references, then size, until 500 blocks),
+the budget of the teammates' pipelines. kfold x86, seed 0 (`gates_team.md`); the 3-seed mean is given where the arm has three
+seeds (our b500 arms ran seed 0 only).
+
+| arm | AUC | PR-AUC | macro-F1 | 3-seed AUC / macro-F1 |
+|---|---|---|---|---|
+| R7 typed, whole graph | 0.986 | 0.990 | 0.935 | 0.979 / 0.935 |
+| R2 no edges, whole graph | 0.977 | 0.983 | 0.941 | 0.974 / 0.929 |
+| ours b500 typed | 0.923 | 0.954 | 0.843 | |
+| ours b500 no edges | 0.955 | 0.964 | 0.915 | |
+| team gnn500 (their GAT, 57-d features) | 0.956 | 0.975 | 0.850 | 0.954 / 0.863 |
+| team cb500 (their GAT, CodeBERT vectors) | 0.791 | 0.872 | 0.723 | 0.820 / 0.751 |
+| team sig500 (their edge-typed GAT, 141-d subgraphs) | 0.953 | 0.974 | 0.894 | 0.949 / 0.886 |
+| team sig500v2 (rebuild with the streaming preprocess) | 0.948 | 0.972 | 0.874 | 0.948 / 0.876 |
+
+| first → second | dAUC [95% CI] | dmacro-F1 [95% CI] | seeds |
+|---|---|---|---|
+| R7 whole → ours b500 typed | -0.063 [-0.105, -0.029] | -0.092 [-0.182, -0.003] | 0 |
+| R2 whole → ours b500 no edges | -0.021 [-0.041, -0.004] | -0.026 [-0.088, +0.031] | 0 |
+| ours b500 typed → ours b500 no edges | +0.032 [+0.003, +0.068] | +0.073 [+0.023, +0.135] | 0 |
+| ours b500 typed → team gnn500 | +0.032 [-0.002, +0.071] | +0.007 [-0.069, +0.081] | 0 |
+| ours b500 no edges → team gnn500 | +0.001 [-0.018, +0.018] | -0.066 [-0.152, +0.015] | 0 |
+| R7 whole → team gnn500 | -0.025 [-0.043, -0.009] | -0.072 [-0.136, -0.008] | 0 1 2 |
+| R7 whole → team sig500 | -0.029 [-0.054, -0.010] | -0.050 [-0.118, +0.014] | 0 1 2 |
+| R7 whole → team sig500v2 | -0.031 [-0.058, -0.009] | -0.059 [-0.105, -0.007] | 0 1 2 |
+| R7 whole → team cb500 | -0.159 [-0.221, -0.104] | -0.184 [-0.242, -0.129] | 0 1 2 |
+| team sig500 → team sig500v2 | -0.001 [-0.011, +0.009] | -0.009 [-0.039, +0.029] | 0 1 2 |
+
+(The sig500 rows use the 1,808 binaries both arms have. Rows with seed 0 only are a direction, not the test.)
+
+**Verdict.** The cap costs our own models between 0.021 AUC (no edges) and 0.063 AUC (typed; not shown non-inferior), which is of
+the size of the 0.025 to 0.031 gap between the teammates' pipelines and our whole-graph R7. At the same 500 blocks, seed 0: gnn500
+and sig500 are nominally above our typed arm (gnn500 +0.032 [-0.002, +0.071] dAUC; sig500 +0.030 [-0.003, +0.068] dAUC and +0.051
+[+0.013, +0.104] dmacro-F1, the one interval that excludes zero), and level with our no-edge arm (+0.001 and -0.002). No team arm
+passes the pre-registered rule against either of our b500 arms. The streaming rebuild sig500v2 is not better than sig500 (-0.001).
+
+### 6. Model 3: our GNN on CodeBERT block vectors
+
+Frozen `microsoft/codebert-base` on the text of each block (signature and API strings of the export, no operands), whole graph,
+typed edges (path 2). kfold x86, seed 0 only (path 1, the no-edge twin, was not completed).
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| path 2: our GNN, typed, CodeBERT vectors | 0.961 | 0.979 | 0.937 |
+| R7 typed, token counts | 0.986 | 0.990 | 0.935 |
+| team cb500: their GAT on the same vectors, 500 blocks | 0.791 | 0.872 | 0.723 |
+
+| first → second | dAUC [95% CI] | dPR-AUC [95% CI] | dmacro-F1 [95% CI] |
+|---|---|---|---|
+| R7 → path 2 | -0.025 [-0.059, -0.005] | -0.011 [-0.030, -0.001] | +0.003 [-0.042, +0.066] |
+| path 2 → team cb500 | -0.169 [-0.255, -0.095] | -0.107 [-0.180, -0.062] | -0.214 [-0.313, -0.113] |
+
+**Verdict.** The vectors do not beat token counts: path 2 is 0.025 AUC below R7 and level on macro-F1. Our GNN on the vectors is far
+above the team GAT on the same vectors, but cb500 also runs under the 500-block cap, which by itself costs our own models 0.021 to 0.063 AUC
+in section 5, so the 0.169 is not all model.
+
+### 7. Model 1: the token-sequence transformer
+
+`token_sequence/`: one position per instruction or API reference, windows of 512, a two-layer transformer, window vectors averaged
+per binary, no graph. kfold x86; Model 1 has 3 seeds.
+
+| arm | seeds | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|---|
+| Model 1 tokenseq | 0 1 2 | 0.970 | 0.982 | 0.902 |
+| Model 1 tokenseq | 0 | 0.964 | 0.980 | 0.882 |
+| R7 typed | 0 1 2 | 0.979 | 0.987 | 0.935 |
+| R2 no edges | 0 1 2 | 0.974 | 0.982 | 0.929 |
+| TF-IDF | 0 | 0.982 | 0.990 | 0.935 |
+| header imports, LR | 0 | 0.985 | 0.991 | 0.954 |
+
+| first → second | seeds | dAUC [95% CI] | dPR-AUC [95% CI] | dmacro-F1 [95% CI] |
+|---|---|---|---|---|
+| TF-IDF → Model 1 | 0 | -0.018 [-0.034, -0.005] | -0.011 [-0.024, -0.003] | -0.053 [-0.127, +0.010] |
+| header LR → Model 1 | 0 | -0.021 [-0.039, -0.006] | -0.012 [-0.026, -0.003] | -0.072 [-0.143, -0.011] |
+| R7 → Model 1 | 0 1 2 | -0.009 [-0.021, +0.001] | -0.005 [-0.014, +0.003] | -0.033 [-0.101, +0.030] |
+| R2 → Model 1 | 0 1 2 | -0.005 [-0.016, +0.005] | -0.001 [-0.009, +0.007] | -0.027 [-0.092, +0.028] |
+
+**Verdict.** Model 1 does not beat any reference. It is behind the two baselines on seed 0 (AUC intervals below zero) and within the
+noise of the GNN arms over 3 seeds, with lower macro-F1 on every pair.
+
+### Removed in step 25: last readings
+
+Three options were removed from the code after the runs above (README, "Removed in step 25"); the run directories stay on disk. Their
+last results, kfold x86 seed 0, R7 typed with 15% block masking as the reference (0.986 AUC), from `RUNS/gates_subgraph.md` and
+`RUNS/gates_imports_header.md`: subgraph policy `lcc` at 20k blocks AUC 0.969 (dAUC -0.017 [-0.050, +0.001], 297 of 1,810 test binaries
+truncated) and at 5k blocks 0.975 (-0.011 [-0.023, -0.001], 537 truncated), both not non-inferior; the unreferenced-imports baseline
+(`imports_unref_lr`) AUC 0.526, which failed its gate, so `--imports unreferenced` never ran as a GNN arm. The graph transformer
+(`--model transformer`, 3 seeds with and without the graph) is last reported in the Day-1 results section above.
+
+### Headline
+
+A bag-of-blocks model over instruction tokens alone (R2 noapi: block token counts, no edges and no API names; AUC 0.981 over
+3 seeds) matches the table of PE imports (0.985) and TF-IDF (0.982): the paired differences on seed 0 are -0.001 [-0.009, +0.006]
+against the import table and +0.001 [-0.007, +0.012] against TF-IDF. CFG structure adds nothing. With the API names it is worth
++0.004 AUC [-0.001, +0.010] and fails the rule; without them the typed-edge model is 0.019 AUC below the no-edge one (interval
+-0.050 to +0.001). None of the other arms moves the number: a third CFG layer, call-graph message passing, header imports
+added to the GNN, CodeBERT block vectors, the token-sequence transformer and the teammates' GATs are all level with or below the
+no-edge bag of blocks and the import table. The signal is in the tokens and the imports, not in the graph.
