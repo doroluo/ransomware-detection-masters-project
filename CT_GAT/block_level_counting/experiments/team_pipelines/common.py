@@ -1,6 +1,6 @@
 """Shared adapter for running the teammates' GAT pipelines under our 5-fold x86 family holdout.
 
-Four pieces: a sha256-pinned import of the teammates' code (`import_team`), the fold manifests of the
+Four pieces: a sha256-pinned import of the teammates' code (`import_team`, two pinned sources), the fold manifests of the
 `kfold_x86_gnn-mblk15_s{seed}` runs (`fold_manifest`, `all_ids`), the sample_id -> cfg / asm file lookup
 (`paths_for`) and `write_run`, which writes a run directory that `evaluation/stats.py`, `report.py` and `gates.py`
 read like one of ours.
@@ -12,6 +12,7 @@ import csv
 import hashlib
 import importlib
 import json
+import os
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -30,6 +31,8 @@ from training.train import AUC_RULES, evaluate, truncated_count, val_threshold_o
 DOWNLOADS = Path('C:/Users/chaoa/Downloads')
 TEAM_ROOT = DOWNLOADS / 'rdmp-team-gnn'
 TEAM_COMMIT = '331ce0b'
+MAIN_ROOT = DOWNLOADS / 'rdmp-team-main'
+MAIN_COMMIT = 'c7899f0'
 MASTERS = DOWNLOADS / 'ransomware-detection-masters-project/reports'
 BUNDLE = MASTERS / 'google_drive_upload/2026-10-07/Mendeley_GNN_v1'
 ASM_DIR = MASTERS / 'ida_asm_mendeley_20261006/asm'
@@ -62,43 +65,98 @@ CLOSURE = {
 }
 
 
+# The second source: Yanping's streaming preprocess on main. The two files sit under CT_GAT/pipeline/s02_preprocess and
+# preprocess_full imports only tokenize_asm_gz (the OPCODE / OPERAND vocabulary sizes are literals there). The trainer's
+# graph loader and model, construct_blocks and train_cfg are not on main: they always come from the gnn source.
+STAGE = 'CT_GAT/pipeline/s02_preprocess/'
+MAIN_PINNED_SHA256 = {
+    STAGE + 'preprocess_full.py': 'dbddaae1e2bf14a386cdd90be1bfb4f1b5f3f0c013798f09ab8b36977ed2eb75',
+    STAGE + 'tokenize_asm_gz.py': 'c8e39522839688d15563d2da61634e51d1e086e18950fce1f07f808b4c87a05f',
+}
+MAIN_CLOSURE = {
+    'tokenize_asm_gz': (STAGE + 'tokenize_asm_gz.py',),
+    'preprocess_full': (STAGE + 'preprocess_full.py', STAGE + 'tokenize_asm_gz.py'),
+}
+
+DEFAULT_SOURCE = 'gnn-331ce0b'
+SOURCES = {
+    'gnn-331ce0b': {'root': TEAM_ROOT, 'commit': TEAM_COMMIT, 'pins': PINNED_SHA256, 'closure': CLOSURE,
+                    'dirs': ('CT_GAT/preprocessing', '.')},
+    'main-c7899f0': {'root': MAIN_ROOT, 'commit': MAIN_COMMIT, 'pins': MAIN_PINNED_SHA256, 'closure': MAIN_CLOSURE,
+                     'dirs': ('CT_GAT/pipeline/s02_preprocess', '.')},
+}
+
+
+def _source(source):
+    if source not in SOURCES:
+        raise KeyError(f'unknown teammate source {source}; known: {sorted(SOURCES)}')
+    return SOURCES[source]
+
+
+def source_pins(source=DEFAULT_SOURCE, module='preprocess_full'):
+    """{relative path: sha256} of the files that importing `module` from `source` runs (what a build records)."""
+    src = _source(source)
+    return {rel: src['pins'][rel] for rel in src['closure'][module]}
+
+
 def _sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def check_pins(module, root=TEAM_ROOT):
-    """Raise unless every teammate file that importing `module` runs has its pinned sha256 under `root`."""
-    if module not in CLOSURE:
-        raise KeyError(f'{module} is not a pinned teammate module; known: {sorted(CLOSURE)}')
-    for rel in CLOSURE[module]:
+def check_pins(module, root=None, source=DEFAULT_SOURCE):
+    """Raise unless every teammate file that importing `module` runs has its pinned sha256 under `root` (default: the
+    review worktree of `source`)."""
+    src = _source(source)
+    root = src['root'] if root is None else root
+    if module not in src['closure']:
+        raise KeyError(f'{module} is not a pinned teammate module of {source}; known: {sorted(src["closure"])}')
+    for rel in src['closure'][module]:
         path = Path(root) / rel
         if not path.is_file():
             raise FileNotFoundError(f'pinned teammate file missing: {path}')
         got = _sha256(path)
-        if got != PINNED_SHA256[rel]:
-            raise RuntimeError(f'{rel}: sha256 {got} does not match the pin {PINNED_SHA256[rel]} '
-                               f'(teammate commit {TEAM_COMMIT}) under {root}')
+        if got != src['pins'][rel]:
+            raise RuntimeError(f'{rel}: sha256 {got} does not match the pin {src["pins"][rel]} '
+                               f'(teammate commit {src["commit"]}) under {root}')
 
 
-def import_team(module, root=TEAM_ROOT):
-    """Import teammate `module` (a key of CLOSURE) from the review worktree `root` after checking the sha256 of every
-    file the import runs. The repository root and CT_GAT/preprocessing go first on sys.path, so the teammates' own
-    `tokenize_asm_gz`, `transformer_model` and `token_mapping` win over same-named modules of ours. Nothing is written
-    under `root`: bytecode caching is switched off for the import."""
-    check_pins(module, root)
-    for p in (Path(root) / 'CT_GAT/preprocessing', Path(root)):
-        if str(p) not in sys.path:
-            sys.path.insert(0, str(p))
+def _all_stems(module):
+    """Module names that importing `module` runs in any source (the stems to evict before a source switch)."""
+    return {Path(rel).stem for src in SOURCES.values() for rel in src['closure'].get(module, ())}
+
+
+def import_team(module, root=None, source=DEFAULT_SOURCE):
+    """Import teammate `module` from the review worktree `root` (default: that of `source`, 'gnn-331ce0b' or
+    'main-c7899f0') after checking the sha256 of every file the import runs. The source's directories go first on sys.path,
+    so its own `tokenize_asm_gz` (and, for the gnn source, `transformer_model` and `token_mapping`) win over same-named
+    modules of ours or of the other source. Before the import, the modules that `module` runs in any source are evicted
+    from sys.modules unless they are already the pinned file of this source, so importing one source never leaves the
+    other's modules loaded. Nothing is written under `root`: bytecode caching is switched off for the import."""
+    src = _source(source)
+    root = Path(src['root'] if root is None else root)
+    check_pins(module, root, source)
+    wanted = {Path(rel).stem: (root / rel).resolve() for rel in src['closure'][module]}
+    roots = [Path(o['root']).resolve() for o in SOURCES.values()] + [root.resolve()]
+    for stem in _all_stems(module):
+        loaded = sys.modules.get(stem)
+        if loaded is None:
+            continue
+        where = Path(getattr(loaded, '__file__', None) or '.').resolve()
+        if where != wanted.get(stem) and any(r in where.parents for r in roots):
+            del sys.modules[stem]           # another source's (or another root's) module: it must not stay loaded
+    own = [os.path.normcase(os.path.abspath(root / d)) for d in src['dirs']]
+    foreign = {os.path.normcase(os.path.abspath(Path(o['root']) / d)) for o in SOURCES.values() for d in o['dirs']} | set(own)
+    sys.path[:] = [p for p in sys.path if os.path.normcase(os.path.abspath(p)) not in foreign]
+    sys.path[0:0] = [str(Path(root / d)) for d in src['dirs']]
     keep, sys.dont_write_bytecode = sys.dont_write_bytecode, True
     try:
         mod = importlib.import_module(module)
     finally:
         sys.dont_write_bytecode = keep
-    for dep in CLOSURE[module]:
-        loaded = sys.modules.get(Path(dep).stem)
-        if loaded is not None and Path(loaded.__file__).resolve() != (Path(root) / dep).resolve():
-            raise ImportError(f'{Path(dep).stem} was imported from {loaded.__file__}, not the pinned '
-                              f'{Path(root) / dep}')
+    for stem, path in wanted.items():
+        loaded = sys.modules.get(stem)
+        if loaded is not None and Path(loaded.__file__).resolve() != path:
+            raise ImportError(f'{stem} was imported from {loaded.__file__}, not the pinned {path}')
     return mod
 
 

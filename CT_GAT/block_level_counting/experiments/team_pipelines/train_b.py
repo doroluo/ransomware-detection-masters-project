@@ -1,7 +1,13 @@
 """Pipeline B trainer: the teammates' FullBlockGAT (train_full_gat recipe) on the build_b.py subgraphs, our fold manifests.
 
-python -m experiments.team_pipelines.train_b --fold 0 --seed 0 --arm sig500 [--smoke N] [--device cuda|cpu]
-       (run from the block_level_counting root; reads RUNS/team/b_sig500 and never writes there)
+python -m experiments.team_pipelines.train_b --fold 0 --seed 0 --arm sig500|sig500v2 [--build DIR] [--smoke N] [--device cuda|cpu]
+       (run from the block_level_counting root; reads the build directory and never writes there)
+
+Arms. `sig500` reads the first build `RUNS/team/b_sig500` (teammate source gnn-331ce0b); `sig500v2` reads `RUNS/team/b_sig500_v2`
+(source main-c7899f0, Yanping's streaming preprocess). --build DIR overrides the directory of either arm; the build's
+`settings.json` names its source (none: gnn-331ce0b), the arm must match it, and the build's own `preprocess_full` is the one
+imported for the embedder and the pooling. The graph loader and the model are always the gnn source's (main has neither).
+Run names: `kfold{f}_x86_gnn_s{seed}_team-sig500` and `..._team-sig500v2`. Everything below is the same for both arms.
 
 The build fixed one API vocabulary over all 1,810 binaries and pooled the block embeddings with the embedder it saved
 (`channel_embedder.pt`). Per fold this script makes the vocabulary a training-set one again: every API id (>= FIRST_API_ID)
@@ -24,30 +30,44 @@ import csv
 import json
 import sys
 import time
+from pathlib import Path
 
 import torch
 
 from common.config import RUNS
-from experiments.team_pipelines.common import fold_manifest, import_team, sample_rows
+from experiments.team_pipelines.build_b import load_vocab_embedder, resolve_dir
+from experiments.team_pipelines.common import DEFAULT_SOURCE, SOURCES, fold_manifest, import_team, sample_rows, source_pins
 from experiments.team_pipelines.fit import run_arm, smoke_ids
 
-ARMS = ('sig500',)
+ARMS = ('sig500', 'sig500v2')
 B_DIR = RUNS / 'team' / 'b_sig500'
+B_V2_DIR = RUNS / 'team' / 'b_sig500_v2'
+ARM_DIR = {'sig500': B_DIR, 'sig500v2': B_V2_DIR}
+ARM_SOURCE = {'sig500': 'gnn-331ce0b', 'sig500v2': 'main-c7899f0'}
 HP = {'lr': 1e-3, 'weight_decay': 1e-4, 'batch_size': 16, 'epochs': 40, 'patience': 8}
 KIND_COLUMNS = ('api_none_count', 'api_unresolved_count', 'api_known_count')
 
 
+def read_settings(b_dir=B_DIR):
+    path = Path(b_dir) / 'settings.json'
+    return json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+
+
+def read_source(b_dir=B_DIR):
+    """The teammate source a build was made with (its settings.json `source`; the first build has none: gnn-331ce0b)."""
+    source = read_settings(b_dir).get('source', DEFAULT_SOURCE)
+    if source not in SOURCES:
+        raise SystemExit(f'{b_dir}/settings.json names the unknown source {source}')
+    return source
+
+
 def build_state(b_dir=B_DIR):
-    """(pp, embedder, done ids): the build's FiveChannelEmbedder state and the ids its checkpoint covers. The checkpoint
-    is read before the embedder: the embedder only ever gains rows, so a newer file is a superset of the one the
-    checkpoint was written with."""
-    pp = import_team('preprocess_full')
-    state = json.loads((b_dir / 'checkpoint.json').read_text(encoding='utf-8'))
-    vocab = pp.tok.load_api_vocab(b_dir / 'api_vocab.json')
-    embedder = pp.FiveChannelEmbedder(pp.api_table_size(vocab))
-    weights = torch.load(b_dir / 'channel_embedder.pt', map_location='cpu')
-    embedder.expand_api(int(weights['api_embedding.weight'].shape[0]))
-    embedder.load_state_dict(weights)
+    """(pp, embedder, done ids): the build's `preprocess_full` (from its own source), its FiveChannelEmbedder state and the
+    ids its checkpoint covers. The checkpoint is read before the embedder: the embedder only ever gains rows, so a newer
+    file is a superset of the one the checkpoint was written with."""
+    pp = import_team('preprocess_full', source=read_source(b_dir))
+    state = json.loads((Path(b_dir) / 'checkpoint.json').read_text(encoding='utf-8'))
+    _, embedder = load_vocab_embedder(b_dir, pp)
     embedder.eval()
     return pp, embedder, set(state['done'])
 
@@ -161,9 +181,13 @@ def read_build_log(b_dir):
     return out
 
 
-def run(arm, fold, seed, smoke=None, device=None, b_dir=B_DIR, log=print):
+def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print):
     if arm not in ARMS:
         raise ValueError(f'arm {arm}: one of {ARMS}')
+    b_dir = Path(ARM_DIR[arm] if b_dir is None else b_dir)
+    source = read_source(b_dir)
+    if source != ARM_SOURCE[arm]:
+        raise SystemExit(f'arm {arm} reads builds of {ARM_SOURCE[arm]}; {b_dir} was built with {source}')
     device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
     pp, embedder, done = build_state(b_dir)
     gl = import_team('graph_full_loader')
@@ -199,10 +223,10 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=B_DIR, log=print):
     log_rows = read_build_log(b_dir)
     sizes = {i: (None, int(graphs[i].x.size(0)), log_rows[i][0]) for i in want}
     in_dim, edge_dim = int(graphs[want[0]].x.size(1)), int(graphs[want[0]].edge_attr.size(1))
-    log(f'sig500: {len(graphs)} graphs built in {time.time() - t0:.0f} s, in_dim {in_dim}, edge_dim {edge_dim}')
+    log(f'{arm}: {len(graphs)} graphs built in {time.time() - t0:.0f} s, in_dim {in_dim}, edge_dim {edge_dim}')
     extra = {'in_dim': in_dim, 'edge_dim': edge_dim, 'n_api_ids_train': int(len(seen)),
              'n_api_ids_unseen_mapped': len(every - set(seen.tolist())), 'build_dir': str(b_dir),
-             'build_binaries': len(done)}
+             'build_binaries': len(done), 'build_source': source, 'build_pins': source_pins(source)}
     reasons = sorted(set(excluded.values()))
     return run_arm(arm=arm, fold=fold, seed=seed, graphs=graphs, sizes=sizes,
                    build_model=lambda: gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim), hp=HP, device=device,
@@ -215,10 +239,12 @@ def main(argv=None):
     ap.add_argument('--fold', type=int, required=True)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--arm', choices=ARMS, default='sig500')
+    ap.add_argument('--build', type=Path, help='build directory (default: b_sig500 for sig500, b_sig500_v2 for sig500v2)')
     ap.add_argument('--smoke', type=int, help='train on N available training ids for 2 epochs into a temp directory')
     ap.add_argument('--device', choices=['cuda', 'cpu'])
     args = ap.parse_args(argv)
-    out = run(args.arm, args.fold, args.seed, args.smoke, args.device)
+    out = run(args.arm, args.fold, args.seed, args.smoke, args.device,
+              resolve_dir(args.build) if args.build else None)
     if args.smoke:
         print(f"smoke: val AUC {out['val_auc']:.4f}, peak GPU {out['peak_gpu_mb']} MB, loss "
               f"{out['history'][0]['loss']} -> {out['history'][-1]['loss']}, temp dir {out['dir']} (not under {RUNS})")

@@ -23,6 +23,10 @@ nohup bash scripts/team_gpu_runs.sh > RUNS/logs/team_gpu_runs.log 2>&1 & # GPU, 
   torch threads (default 3, 6 of the 16 logical cores for the two A lanes while the build and the GPU queue's loaders run).
   Stop it with `touch RUNS/STOP_TEAM` (a file of its own; `RUNS/STOP` stops the GPU queue and not this); the run in flight finishes.
   One retry per failed run; logs in `RUNS/logs/<name>.log`.
+- `scripts/team_runs.sh --v2` runs the one lane `sig500v2` instead: `train_b --arm sig500v2` on `RUNS/team/b_sig500_v2` (the rebuild with
+  Yanping's streaming preprocess, below), seeds 0 1 2 x folds 0-4, run names `kfold{f}_x86_gnn_s{seed}_team-sig500v2`, CPU only. It
+  waits until that build's summary reports all 1810 binaries processed and none excluded. Same stop file, retry and skip rules;
+  `--dry` and `--check-build` work with it.
 - `scripts/team_gpu_runs.sh` (GPU; started by the owner once the queue is done). Waits for `master4 done` in
   `RUNS/logs/master4.log`, then runs our matched arms (`train.py --protocol kfold --arch x86 --model gnn --mask-blocks 0.15 --subgraph
   cap --budget 500 --tag b500`, typed and `--control no_edges`, seeds 0 1 2, folds 0-4: 30 runs, directories
@@ -46,9 +50,10 @@ plus under a minute of loading and prediction. The 15 runs of an arm therefore t
 ## What is here
 
 - `common.py`
-  - `import_team(module)`: imports a teammate module from the review worktree `C:/Users/chaoa/Downloads/rdmp-team-gnn`
-    after checking the sha256 of every teammate file the import runs against `PINNED_SHA256`. A mismatch raises with
-    the file name. Nothing is written into that worktree (bytecode caching is off during the import).
+  - `import_team(module, source='gnn-331ce0b')`: imports a teammate module from the review worktree of `source`
+    (`rdmp-team-gnn` or `rdmp-team-main`, see "Two teammate sources") after checking the sha256 of every teammate file the import
+    runs against that source's pins. A mismatch raises with the file name. Nothing is written into the worktree (bytecode
+    caching is off during the import).
   - `fold_manifest(fold, seed)`: our `make_manifest` for protocol `kfold`, arch `x86`, `val_seed=None`, as the
     `kfold_x86_gnn-mblk15_s{seed}` runs use. `all_ids()`: the 1,810 test ids of the five folds, sorted.
   - `paths_for(sample_id)`: the CFG (`Mendeley_GNN_v1/samples.csv` `cfg_path`) and the IDA listing
@@ -66,8 +71,15 @@ plus under a minute of loading and prediction. The 15 runs of an arm therefore t
 
 ```
 python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --seed 0 --out RUNS/team/b_sig500
-       [--limit N] [--ids <sample_id> ...]
+       [--source gnn-331ce0b|main-c7899f0] [--limit N] [--ids <sample_id> ...] [--frozen-from <build dir>]
 ```
+
+`--source` picks which pinned teammate code runs (see "Two teammate sources" below); the default `gnn-331ce0b` is what built
+`RUNS/team/b_sig500`, so the first build stays reproducible. `settings.json` records `source` and the sha256 `pins` of the files that
+`preprocess_full` runs; the checkpoint's settings carry `source` too, so resuming a directory with another source stops (a checkpoint
+without `source`, as the first build wrote, reads as `gnn-331ce0b`). `--frozen-from DIR` starts from DIR's `api_vocab.json` and
+`channel_embedder.pt` and calls `process_sample(freeze_vocab=True)`: ids and embeddings of two sources are then comparable sample by
+sample (the equivalence check).
 
 `RUNS/` at the start of `--out` is `graph_transformer_runs/`. For each of the 1,810 ids (sorted) it calls the
 teammates' `preprocess_full.process_sample(asm_path, cfg_path, ...)` with the explicit cfg path and `save_sample`, so no
@@ -147,14 +159,20 @@ python -m experiments.team_pipelines.train_a --fold k --seed s --arm gnn500|cb50
 
 The matched `--subgraph cap --budget 500` arm starts with `train.py --tag b500` (`RunConfig` accepts budgets from 100 blocks).
 
-## train_b.py (arm sig500)
+## train_b.py (arms sig500, sig500v2)
 
 ```
-python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500 [--smoke N] [--device cuda|cpu]
+python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig500v2 [--build DIR] [--smoke N] [--device cuda|cpu]
 ```
 
-- Inputs. `RUNS/team/b_sig500` of build_b, read only: the `.pt` of the ids in `checkpoint.json` (the embedder state saved
-  there), `api_vocab.json`, `channel_embedder.pt`, `build_log.csv`. A full run needs all 1,810 ids and stops otherwise.
+- Arms. `sig500` reads `RUNS/team/b_sig500` (source `gnn-331ce0b`), `sig500v2` reads `RUNS/team/b_sig500_v2` (source `main-c7899f0`).
+  `--build DIR` overrides the directory of either arm; the build's `settings.json` names its source and the arm must match it
+  (a mismatch stops). The build's own `preprocess_full` is imported for the embedder and the pooling (the constants and the
+  `FiveChannelEmbedder` are the same in both; `tests/test_team_pipelines.py` compares them); `graph_full_loader` and `gat_full_model`
+  exist only in the gnn source and always come from there. Everything else is identical for the two arms, and `metrics.json` records
+  `build_dir`, `build_source` and `build_pins`.
+- Inputs. The build directory, read only: the `.pt` of the ids in `checkpoint.json` (the embedder state saved
+  there), `api_vocab.json`, `channel_embedder.pt`, `build_log.csv`. A full run needs every id of the fold that the build did not exclude, and stops otherwise.
 - What is fitted where. The build's vocabulary covers all 1,810 binaries; per fold it is cut back to the training binaries:
   API ids (>= `FIRST_API_ID`) that no training binary uses become `UNK_API` in `instruction_ids[:, 3]`; the instruction
   vectors are re-embedded with `FiveChannelEmbedder` (the saved state, never trained) and re-pooled with
@@ -169,17 +187,62 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500 [--s
   patience 8 on the validation ransomware F1 at 0.5. Both selection rules, outputs and `--smoke` as in train_a.
   `n_segments_total` is empty (the build does not record the function count); `n_blocks_total` comes from `build_log.csv`.
 
-## Pins and environment
+## Two teammate sources
 
-- Teammate code: review worktree `C:/Users/chaoa/Downloads/rdmp-team-gnn`, detached at `331ce0b`. Pinned files:
-  `construct_blocks.py`, `train_cfg.py`, `CT_GAT/preprocessing/{preprocess_full, tokenize_asm_gz, graph_full_loader,
-  gat_full_model, train_full_gat, transformer_model, token_mapping}.py` (the last two are imported by `preprocess_full`).
-  Never modify, format or write into that worktree.
-- Python `C:/Users/chaoa/Downloads/gt_venv/Scripts/python.exe`: torch 2.11.0+cu128, torch_geometric 2.8.1,
-  transformers 5.20.2. CodeBERT (`microsoft/codebert-base`) is cached under `C:/Users/chaoa/Downloads/hf_home`; set
-  `HF_HOME=C:/Users/chaoa/Downloads/hf_home` for anything that loads it. `build_b.py` needs neither transformers nor a GPU.
+`common.SOURCES` holds two sha256-pinned sources; `import_team(module, source=...)` imports from one of them and `check_pins` checks
+the files first. A mismatch raises with the file name.
+
+| source | review worktree | commit | files (under the worktree) |
+|---|---|---|---|
+| `gnn-331ce0b` (default) | `C:/Users/chaoa/Downloads/rdmp-team-gnn` | 331ce0b | `construct_blocks.py`, `train_cfg.py`, `CT_GAT/preprocessing/{preprocess_full, tokenize_asm_gz, graph_full_loader, gat_full_model, train_full_gat, transformer_model, token_mapping}.py` |
+| `main-c7899f0` | `C:/Users/chaoa/Downloads/rdmp-team-main` | c7899f0 | `CT_GAT/pipeline/s02_preprocess/{preprocess_full, tokenize_asm_gz}.py` |
+
+`preprocess_full` and `tokenize_asm_gz` exist in both, under the same module names. Importing one from a source first evicts the
+other source's modules of that import (`preprocess_full`, `tokenize_asm_gz`, and the gnn source's `transformer_model` and
+`token_mapping`) from `sys.modules` and puts that source's directories first on `sys.path`; a module that is already the pinned file
+of the requested source stays loaded. Main's `preprocess_full` imports only `tokenize_asm_gz` (the opcode and operand vocabulary
+sizes are literals), and main has no graph loader or model: `graph_full_loader` and `gat_full_model` always come from the gnn source.
+Never modify, format or write into either worktree; the scripts set `PYTHONDONTWRITEBYTECODE=1`.
+
+Python `C:/Users/chaoa/Downloads/gt_venv/Scripts/python.exe`: torch 2.11.0+cu128, torch_geometric 2.8.1,
+transformers 5.20.2. CodeBERT (`microsoft/codebert-base`) is cached under `C:/Users/chaoa/Downloads/hf_home`; set
+`HF_HOME=C:/Users/chaoa/Downloads/hf_home` for anything that loads it. `build_b.py` needs neither transformers nor a GPU.
+
+## Yanping's streaming preprocess (step 21, main c7899f0)
+
+Her change: `iter_text_lines` streams the listing, `align_sampled_blocks` keeps only the label spans that hold sampled
+instructions, `process_sample` keeps its signature. What we found is in `docs/TEAM_PIPELINES_REVIEW.md` section 11. The tools:
+
+```
+# rebuild pipeline B with it (resumable, no exclusions); the first build is untouched
+python -m experiments.team_pipelines.build_b --source main-c7899f0 --sample signal --num-blocks 500 --seed 0 --out RUNS/team/b_sig500_v2
+bash scripts/team_runs.sh --v2          # waits for that build, then trains sig500v2 on seeds 0 1 2 x folds 0-4 (CPU)
+
+# equivalence on built samples: 60 ids of the first build (30 + 30, the 10 lowest-match included), same vocabulary and embedder
+python -m experiments.team_pipelines.compare_builds pick --build RUNS/team/b_sig500 --out ids60.json
+python -m experiments.team_pipelines.build_b --source main-c7899f0 --frozen-from RUNS/team/b_sig500 --out <tmp> --ids <the 60 ids>
+python -m experiments.team_pipelines.compare_builds compare --a RUNS/team/b_sig500 --b <tmp> --ids-file ids60.json
+
+# peak memory and wall time of one command (psutil poller over the process tree)
+python -m experiments.team_pipelines.measure_rss --out m.json -- <python> -m experiments.team_pipelines.build_b ... --ids <id>
+
+# share of binaries with < 50% and < 90% of the selected instructions matched, by label
+# (--among DIR: only the ids DIR also holds, to read a finished build against a partial one)
+python -m experiments.team_pipelines.match_rates --build RUNS/team/b_sig500_v2
+python -m experiments.team_pipelines.match_rates --build RUNS/team/b_sig500 --among RUNS/team/b_sig500_v2
+```
+
+`compare_builds compare` checks, per sample, `block_keys`, `instruction_matched`, `instruction_ids` columns 0, 1, 2 and 4, column 3
+(api), `block_features`, `edge_index` and `edge_attr`, and says which arrays differ and by how much. `gates.py --stage team` has the
+row `team sig500v2` and pairs it with `team sig500`, R7 and TF-IDF.
 
 ## Tests
+
+`tests/test_team_v2.py` (step 21): `build_b --source main-c7899f0` records source and pins and stops on another source; `--frozen-from`
+keeps the vocabulary and embedder; `train_b` arms read the build of their source and stop on a mismatch; `compare_builds`,
+`match_rates` and `measure_rss` on synthetic builds; the `--v2` lane's dry names equal `RunConfig` names; the gates pairs. In
+`tests/test_team_pipelines.py` both pin sets pass on their worktrees, a tampered copy of either raises, and importing one source never
+leaves the other's modules in `sys.modules`.
 
 `tests/test_team_pipelines.py` (CPU, about 35 s): the five test sets partition the 1,810 ids and no family or identity
 group is shared by train, val and test; `paths_for` resolves all 1,810 ids; a synthetic five-fold `write_run` arm is

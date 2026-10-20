@@ -149,32 +149,83 @@ def test_write_run_checks_the_ids_and_the_name(tmp_path):
         tp.write_run(tmp_path / cfg.name, cfg, rows, rows, 0.5, 0.5, {'best_epoch': 1})
 
 
-@pytest.mark.skipif(not tp.TEAM_ROOT.exists(), reason='needs the review worktree')
-def test_pin_check_passes_on_the_review_worktree_and_raises_on_a_tampered_copy(tmp_path):
-    for module in tp.CLOSURE:
-        tp.check_pins(module)
-    copy = tmp_path / 'rdmp-team-gnn'
-    for rel in tp.PINNED_SHA256:
+needs_worktrees = pytest.mark.skipif(not tp.TEAM_ROOT.exists() or not tp.MAIN_ROOT.exists(),
+                                     reason='needs the review worktrees (gnn 331ce0b and main c7899f0)')
+
+
+@needs_worktrees
+@pytest.mark.parametrize('source', sorted(tp.SOURCES))
+def test_pin_check_passes_on_the_review_worktree_and_raises_on_a_tampered_copy(tmp_path, source):
+    src = tp.SOURCES[source]
+    for module in src['closure']:
+        tp.check_pins(module, source=source)
+    copy = tmp_path / src['root'].name
+    for rel in src['pins']:
         (copy / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(tp.TEAM_ROOT / rel, copy / rel)
-    for module in tp.CLOSURE:
-        tp.check_pins(module, copy)
-    victim = copy / 'CT_GAT/preprocessing/tokenize_asm_gz.py'
+        shutil.copy2(src['root'] / rel, copy / rel)
+    for module in src['closure']:
+        tp.check_pins(module, copy, source)
+    victim = next(copy / rel for rel in src['pins'] if rel.endswith('tokenize_asm_gz.py'))
     victim.write_bytes(victim.read_bytes() + b'\n# tampered\n')
     with pytest.raises(RuntimeError, match='tokenize_asm_gz.py'):
-        tp.import_team('preprocess_full', root=copy)
+        tp.import_team('preprocess_full', root=copy, source=source)
     with pytest.raises(RuntimeError, match='tokenize_asm_gz.py'):
-        tp.check_pins('tokenize_asm_gz', copy)
-    tp.check_pins('train_cfg', copy)  # an untouched module of the same copy still passes
+        tp.check_pins('tokenize_asm_gz', copy, source)
     with pytest.raises(KeyError):
-        tp.check_pins('not_a_module', copy)
+        tp.check_pins('not_a_module', copy, source)
     with pytest.raises(FileNotFoundError):
-        tp.check_pins('construct_blocks', tmp_path / 'empty')
+        tp.check_pins('preprocess_full', tmp_path / 'empty', source)
+    if source == 'gnn-331ce0b':
+        tp.check_pins('train_cfg', copy)  # an untouched module of the same copy still passes
+        with pytest.raises(FileNotFoundError):
+            tp.check_pins('construct_blocks', tmp_path / 'empty')
+    else:
+        with pytest.raises(KeyError):      # main has no graph loader: it comes from the gnn source
+            tp.check_pins('graph_full_loader', copy, source)
+    with pytest.raises(KeyError):
+        tp.import_team('preprocess_full', source='not-a-source')
 
 
 def test_pins_cover_every_file_of_every_closure():
-    assert all(rel in tp.PINNED_SHA256 for files in tp.CLOSURE.values() for rel in files)
-    assert all(len(sha) == 64 for sha in tp.PINNED_SHA256.values())
+    for src in tp.SOURCES.values():
+        assert all(rel in src['pins'] for files in src['closure'].values() for rel in files)
+        assert all(len(sha) == 64 for sha in src['pins'].values())
+        assert set(src['pins']) == {rel for files in src['closure'].values() for rel in files}
+    assert tp.PINNED_SHA256 is tp.SOURCES[tp.DEFAULT_SOURCE]['pins'] and tp.DEFAULT_SOURCE == 'gnn-331ce0b'
+    assert set(tp.source_pins('main-c7899f0')) == {tp.STAGE + 'preprocess_full.py', tp.STAGE + 'tokenize_asm_gz.py'}
+
+
+def under(root):
+    """Loaded modules whose file lies under `root`."""
+    root = Path(root).resolve()
+    return sorted(n for n, m in list(sys.modules.items())
+                  if getattr(m, '__file__', None) and root in Path(m.__file__).resolve().parents)
+
+
+@needs_worktrees
+def test_importing_one_source_never_leaves_the_other_in_sys_modules():
+    old = tp.import_team('preprocess_full', source='gnn-331ce0b')
+    assert under(tp.MAIN_ROOT) == []
+    assert {'preprocess_full', 'tokenize_asm_gz', 'transformer_model', 'token_mapping'} <= set(under(tp.TEAM_ROOT))
+    new = tp.import_team('preprocess_full', source='main-c7899f0')
+    assert new is not old and under(tp.TEAM_ROOT) == []                     # nothing of the gnn source is left loaded
+    assert under(tp.MAIN_ROOT) == ['preprocess_full', 'tokenize_asm_gz']
+    assert Path(new.tok.__file__).resolve() == (tp.MAIN_ROOT / tp.STAGE / 'tokenize_asm_gz.py').resolve()
+    assert Path(sys.path[0]) == tp.MAIN_ROOT / 'CT_GAT/pipeline/s02_preprocess' and not any(
+        Path(p).resolve() == (tp.TEAM_ROOT / 'CT_GAT/preprocessing').resolve() for p in sys.path)
+    # both define the same sizes, so a payload pooled with one source's embedder is valid for the other's pooling
+    for name in ('FIRST_API_ID', 'NO_API', 'UNK_API', 'BEHAVIOR_VOCAB_SIZE'):
+        assert getattr(new.tok, name) == getattr(old.tok, name)
+    assert (new.OPCODE_VOCAB_SIZE, new.OPERAND_VOCAB_SIZE) == (old.OPCODE_VOCAB_SIZE, old.OPERAND_VOCAB_SIZE)
+    assert new.HANDCRAFTED_FEATURE_NAMES == old.HANDCRAFTED_FEATURE_NAMES
+    back = tp.import_team('preprocess_full')
+    assert back is not new and under(tp.MAIN_ROOT) == []
+    assert Path(back.__file__).resolve() == (tp.TEAM_ROOT / 'CT_GAT/preprocessing/preprocess_full.py').resolve()
+    again = tp.import_team('preprocess_full')                                # same source twice: the loaded module is kept
+    assert again is back
+    gl = tp.import_team('graph_full_loader')                                  # a gnn-only module does not evict the main pair
+    tp.import_team('preprocess_full', source='main-c7899f0')
+    assert tp.import_team('graph_full_loader') is gl and under(tp.TEAM_ROOT) == ['graph_full_loader']
 
 
 # ---- step 18: Pipeline A / B trainers -------------------------------------------------------------------------------
@@ -196,7 +247,7 @@ def pinned_team_modules():
     """Other test modules import our own CT_GAT/preprocessing modules under the teammates' names (token_mapping,
     tokenize_asm_gz, ...). For this module those are set aside, the teammates' pinned ones are imported afresh, and
     everything (sys.modules, sys.path) is put back afterwards."""
-    stems = {Path(f).stem for files in tp.CLOSURE.values() for f in files}
+    stems = {Path(f).stem for src in tp.SOURCES.values() for files in src['closure'].values() for f in files}
     saved_path, aside = list(sys.path), {s: sys.modules.pop(s) for s in stems if s in sys.modules}
     yield
     for s in stems:
@@ -494,8 +545,10 @@ def test_team_groups_are_the_names_the_trainers_write():
     assert arms['header-imports LR'] == 'imports-header' and arms['TF-IDF'] == 'tfidf'
     pairs = gates.TEAM_PAIRS
     for ref in ('TF-IDF', 'R7 typed, whole graph', 'ours b500 typed'):
-        assert [b for a, b in pairs if a == ref and b.startswith('team ')] == ['team gnn500', 'team cb500', 'team sig500']
-    assert ('path 2: typed, CodeBERT vectors', 'team cb500') in pairs and gates.TEAM_COST in pairs and len(pairs) == 11
+        v2 = ['team sig500v2'] if ref != 'ours b500 typed' else []                  # sig500v2: against sig500, R7 and TF-IDF
+        assert [b for a, b in pairs if a == ref and b.startswith('team ')] == ['team gnn500', 'team cb500', 'team sig500'] + v2
+    assert ('team sig500', 'team sig500v2') in pairs
+    assert ('path 2: typed, CodeBERT vectors', 'team cb500') in pairs and gates.TEAM_COST in pairs and len(pairs) == 14
 
 
 def test_team_gates_print_missing_arms(tmp_path, monkeypatch):
@@ -539,6 +592,7 @@ def test_team_gates_from_synthetic_runs(tmp_path, monkeypatch):
     fake_group(runs, lambda f, s: tp.team_config(f, s, 'gnn500'), 0.4)                                  # weak
     fake_group(runs, lambda f, s: tp.team_config(f, s, 'cb500'), 1.5)                                   # strong
     fake_group(runs, lambda f, s: tp.team_config(f, s, 'sig500'), 0.7, seeds=(0, 1))                    # seed 2 missing
+    fake_group(runs, lambda f, s: tp.team_config(f, s, 'sig500v2'), 0.9)                                # the v2 arm, 3 seeds
     monkeypatch.setattr(stats, 'RUNS', runs)
     gates.pooled.cache_clear()
     text = '\n'.join(gates.team(60))
@@ -546,7 +600,8 @@ def test_team_gates_from_synthetic_runs(tmp_path, monkeypatch):
     ops = {l.split('|')[1].strip(): [c.strip() for c in l.split('|')[2:-1]]
            for l in text.splitlines() if l.startswith('| ') and l.count('|') == 12 and l.split('|')[1].strip() in dict(gates.TEAM_ARMS)}
     assert len(ops) == len(gates.TEAM_ARMS)
-    for arm in ('TF-IDF', 'R7 typed, whole graph', 'ours b500 typed', 'team gnn500', 'team cb500', 'team sig500'):
+    for arm in ('TF-IDF', 'R7 typed, whole graph', 'ours b500 typed', 'team gnn500', 'team cb500', 'team sig500',
+                'team sig500v2'):
         auc, pr, f1, acc, prec, rec, tp_, fn, fp, tn = ops[arm]
         tp_, fn, fp, tn = int(tp_), int(fn), int(fp), int(tn)
         assert tp_ + fn == 1134 and fp + tn == 676                          # ransomware / goodware in the five test folds
@@ -566,3 +621,6 @@ def test_team_gates_from_synthetic_runs(tmp_path, monkeypatch):
     assert pair[gates.TEAM_COST] in ('non-inferior', 'not shown non-inferior')
     assert 'seeds [0, 1] only' in pair[('R7 typed, whole graph', 'team sig500')]                     # the seeds complete in both
     assert pair[('path 2: typed, CodeBERT vectors', 'team cb500')] == 'missing'
+    assert 'seeds [0, 1] only' in pair[('team sig500', 'team sig500v2')]                          # sig500 has no seed 2
+    assert pair[('R7 typed, whole graph', 'team sig500v2')] in ('beats', 'does not beat')           # 3 seeds in both
+    assert 'seeds [0] only' in pair[('TF-IDF', 'team sig500v2')]

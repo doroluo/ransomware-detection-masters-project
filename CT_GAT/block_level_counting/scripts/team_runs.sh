@@ -14,13 +14,19 @@
 # <name>", the first log kept as <name>.log.try1), not when RUNS/STOP_TEAM exists. Per-run logs: RUNS/logs/<name>.log. The names
 # are RunConfig.name of experiments.team_pipelines.common.team_config (tests/test_team_pipelines.py checks it).
 # --dry prints "run <name> <module args>" for every run in lane order (gnn500, cb500, sig500) and writes nothing.
+# --v2 runs the one lane sig500v2 instead of the three: train_b --arm sig500v2 on RUNS/team/b_sig500_v2, the rebuild with Yanping's
+#   streaming preprocess (build_b --source main-c7899f0), seeds 0 1 2 x folds 0-4 (15 runs `kfold{f}_x86_gnn_s{seed}_team-sig500v2`).
+#   It waits for that build's summary to report all 1810 binaries processed and none excluded (an excluded id or a build that
+#   ended early stops the lane with a message). The other flags work as without it.
 # GT_PY / GT_RUNS override the interpreter / runs directory.
 cd "$(dirname "$0")/.."
 PY=${GT_PY:-/c/Users/chaoa/Downloads/gt_venv/Scripts/python.exe}
 R=${GT_RUNS:-/c/Users/chaoa/Downloads/graph_transformer_runs}
 STOP=$R/STOP_TEAM
-BUILD=$R/team/b_sig500
-DRY=0; [ "$1" = --dry ] && DRY=1
+DRY=0; V2=0; CHECK=0
+for a in "$@"; do case $a in --dry) DRY=1;; --v2) V2=1;; --check-build) CHECK=1;; esac; done
+ARM=sig500; BUILD=$R/team/b_sig500
+[ $V2 = 1 ] && { ARM=sig500v2; BUILD=$R/team/b_sig500_v2; }
 export TEAM_THREADS=${TEAM_THREADS:-3} CUDA_VISIBLE_DEVICES=-1 PYTHONUNBUFFERED=1   # unbuffered: the per-run log shows each epoch as it ends
 [ $DRY = 0 ] && mkdir -p $R/logs
 
@@ -41,29 +47,33 @@ lane() { arm=$1; mod=$2; shift; shift
   done; done; }
 
 # build_done: 0 when the build summary accounts for all 1810 binaries (total 1810, processed + excluded == 1810: build_b --exclude
-# lists the ids it left out on purpose); 2 when it says less (the build ended early); 1 while it is absent or unreadable
+# lists the ids it left out on purpose; with --v2 nothing may be excluded); 2 when it says less (the build ended early);
+# 1 while it is absent or unreadable
 build_done() { f=$BUILD/build_summary.json; [ -f $f ] || return 1
-  $PY -c "import json,sys; s=json.load(open(sys.argv[1])); sys.exit(0 if s['total'] == 1810 and s['processed'] + len(s.get('excluded', {})) == 1810 else 2)" $f
+  $PY -c "import json,sys; s=json.load(open(sys.argv[1])); n = len(s.get('excluded', {})); sys.exit(0 if s['total'] == 1810 and s['processed'] + n == 1810 and (n == 0 or sys.argv[2] == '0') else 2)" $f $V2
   return $?; }
 
-if [ "$1" = --check-build ]; then build_done; rc=$?
+if [ $CHECK = 1 ]; then build_done; rc=$?
   case $rc in 0) echo "build complete";; 2) echo "build incomplete";; *) echo "build summary absent";; esac; exit 0; fi
 
 sig_lane() {
-  if [ $DRY = 1 ]; then echo "wait $BUILD/build_summary.json reports processed + excluded == 1810/1810"
-  else echo "sig500 lane waiting for the pipeline-B build $(date +%T)"
+  if [ $DRY = 1 ]; then
+    if [ $V2 = 1 ]; then echo "wait $BUILD/build_summary.json reports processed == 1810/1810, none excluded"
+    else echo "wait $BUILD/build_summary.json reports processed + excluded == 1810/1810"; fi
+  else echo "$ARM lane waiting for the pipeline-B build $(date +%T)"
     while true; do
       [ -f $STOP ] && { echo "stopped while waiting for the build"; return; }
       build_done; rc=$?
       [ $rc = 0 ] && break
-      [ $rc = 2 ] && { echo "build_summary.json is incomplete: $(tr -d '\n ' < $BUILD/build_summary.json | cut -c1-120); not running sig500"; return; }
+      [ $rc = 2 ] && { echo "build_summary.json is incomplete: $(tr -d '\n ' < $BUILD/build_summary.json | cut -c1-120); not running $ARM"; return; }
       sleep 120
     done
     echo "pipeline-B build complete $(date +%T)"; fi
-  lane sig500 train_b; }
+  lane $ARM train_b; }
 
 echo "team_runs start $(date +%T) TEAM_THREADS=$TEAM_THREADS dry=$DRY"
-if [ $DRY = 1 ]; then lane gnn500 train_a; lane cb500 train_a --block-vec ours_cap0_codebert; sig_lane
+if [ $V2 = 1 ]; then sig_lane
+elif [ $DRY = 1 ]; then lane gnn500 train_a; lane cb500 train_a --block-vec ours_cap0_codebert; sig_lane
 else
   lane gnn500 train_a &
   lane cb500 train_a --block-vec ours_cap0_codebert &

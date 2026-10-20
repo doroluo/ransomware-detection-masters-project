@@ -1,8 +1,13 @@
 """Pipeline B preprocessing: the teammates' `preprocess_full.process_sample` over the 1,810 kfold x86 binaries.
 
 python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --seed 0 --out RUNS/team/b_sig500
-       [--limit N] [--ids <sample_id> ...] [--exclude <sample_id> ... --exclude-reason TEXT]
+       [--source gnn-331ce0b|main-c7899f0] [--limit N] [--ids <sample_id> ...] [--exclude <sample_id> ... --exclude-reason TEXT]
+       [--frozen-from <build dir>]
        (run from the block_level_counting root; a leading RUNS/ in --out is graph_transformer_runs)
+
+--source picks the pinned teammate code (common.SOURCES): `gnn-331ce0b` (default; the v1 build `b_sig500`) or `main-c7899f0`
+(Yanping's streaming `preprocess_full`; the v2 build `b_sig500_v2`). The source and its sha256 pins go to `settings.json`, the
+source also to the checkpoint's settings, so a resume with another source stops.
 
 For every id (sorted) the CFG from the Mendeley bundle and the IDA listing from ida_asm_mendeley_20261006 go through
 `process_sample` with the explicit cfg path, no size cap (the caps live in the teammates' `main`, which is not called),
@@ -13,6 +18,9 @@ under <out>, never under the teammates' tree. A rerun resumes: it loads that sta
 rebuilds every other id (a sample finished after the last checkpoint used vocabulary ids the saved vocabulary may lack).
 A sample that raises stops the build with its id; nothing is skipped. `build_log.csv`: sample_id, status,
 n_blocks_total, n_blocks_kept, seconds.
+
+--frozen-from DIR (equivalence checks): start from DIR's `api_vocab.json` and `channel_embedder.pt` (read only) and call
+`process_sample(freeze_vocab=True)`, so the token and embedding ids of two sources are comparable sample by sample.
 
 --exclude: ids that are left out on purpose (a listing `process_sample` cannot hold in memory), with --exclude-reason. They are
 not attempted, count as neither built nor failed, and are written with the reason to `settings.json` (next to the checkpoint's own
@@ -34,7 +42,8 @@ from pathlib import Path
 import torch
 
 from common.config import RUNS
-from experiments.team_pipelines.common import all_ids, import_team, paths_for, sample_rows
+from experiments.team_pipelines.common import (DEFAULT_SOURCE, SOURCES, all_ids, import_team, paths_for, sample_rows,
+                                               source_pins)
 
 SAVE_EVERY = 50
 LOG_FIELDS = ('sample_id', 'status', 'n_blocks_total', 'n_blocks_kept', 'seconds')
@@ -53,23 +62,36 @@ def save_state(out, pp, vocab, embedder, done, settings):
         json.dumps({'settings': settings, 'done': sorted(done), 'api_names': len(vocab.names)}), encoding='utf-8'))
 
 
+def load_vocab_embedder(directory, pp):
+    """(vocab, embedder) from a build directory's api_vocab.json and channel_embedder.pt (the embedder is grown to the
+    saved table first)."""
+    directory = Path(directory)
+    vocab = pp.tok.load_api_vocab(directory / 'api_vocab.json')
+    embedder = pp.FiveChannelEmbedder(pp.api_table_size(vocab))
+    weights = torch.load(directory / 'channel_embedder.pt', map_location='cpu')
+    embedder.expand_api(int(weights['api_embedding.weight'].shape[0]))
+    embedder.load_state_dict(weights)
+    return vocab, embedder
+
+
 def load_state(out, pp, settings):
-    """(vocab, embedder, done ids) from `out`, or a fresh pair seeded with settings['seed'] when it has none."""
+    """(vocab, embedder, done ids) from `out`, or a fresh pair seeded with settings['seed'] (or the pair of
+    settings['frozen_from']) when it has none."""
     ckpt = out / 'checkpoint.json'
     if not ckpt.is_file():
+        if settings.get('frozen_from'):
+            vocab, embedder = load_vocab_embedder(settings['frozen_from'], pp)
+            return vocab, embedder, set()
         torch.manual_seed(settings['seed'])
         vocab = pp.tok.ApiVocab()
         return vocab, pp.FiveChannelEmbedder(pp.api_table_size(vocab)), set()
     state = json.loads(ckpt.read_text(encoding='utf-8'))
-    if state['settings'] != settings:
-        raise SystemExit(f"{out} was built with {state['settings']}, this run asks for {settings}")
-    vocab = pp.tok.load_api_vocab(out / 'api_vocab.json')
+    saved = {'source': DEFAULT_SOURCE, **state['settings']}      # a checkpoint of the first build has no source
+    if saved != settings:
+        raise SystemExit(f"{out} was built with {saved}, this run asks for {settings}")
+    vocab, embedder = load_vocab_embedder(out, pp)
     if len(vocab.names) != state['api_names']:
         raise SystemExit(f"{out}/api_vocab.json has {len(vocab.names)} names, the checkpoint says {state['api_names']}")
-    embedder = pp.FiveChannelEmbedder(pp.api_table_size(vocab))
-    weights = torch.load(out / 'channel_embedder.pt', map_location='cpu')
-    embedder.expand_api(int(weights['api_embedding.weight'].shape[0]))
-    embedder.load_state_dict(weights)
     return vocab, embedder, set(state['done'])
 
 
@@ -84,11 +106,19 @@ def drop_unfinished(out, done):
     return gone
 
 
+def resolve_dir(path):
+    """`path`, with a leading RUNS/ meaning graph_transformer_runs."""
+    return RUNS.joinpath(*path.parts[1:]) if path.parts and path.parts[0] == 'RUNS' else path
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--sample', choices=['signal', 'walk'], default='signal')
     ap.add_argument('--num-blocks', type=int, default=500)
     ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--source', choices=sorted(SOURCES), default=DEFAULT_SOURCE,
+                    help='pinned teammate code (default: the one the first build used)')
+    ap.add_argument('--frozen-from', type=Path, help='start from the vocabulary and embedder of this build directory and freeze the vocabulary')
     ap.add_argument('--out', type=Path, required=True)
     ap.add_argument('--limit', type=int, help='the first N ids in sorted order')
     ap.add_argument('--ids', nargs='+', help='only these sample ids')
@@ -110,9 +140,11 @@ def main(argv=None):
     if not_in_build:
         raise SystemExit(f'--exclude ids that are not among the ids of this build: {not_in_build}')
     excluded = {i: args.exclude_reason for i in sorted(set(args.exclude))}
-    pp = import_team('preprocess_full')
-    settings = {'sample': args.sample, 'num_blocks': args.num_blocks, 'seed': args.seed}
-    out = RUNS.joinpath(*args.out.parts[1:]) if args.out.parts and args.out.parts[0] == 'RUNS' else args.out
+    pp = import_team('preprocess_full', source=args.source)
+    settings = {'sample': args.sample, 'num_blocks': args.num_blocks, 'seed': args.seed, 'source': args.source}
+    if args.frozen_from:
+        settings['frozen_from'] = str(resolve_dir(args.frozen_from))
+    out = resolve_dir(args.out)
     out.mkdir(parents=True, exist_ok=True)
     vocab, embedder, done = load_state(out, pp, settings)
     built_excluded = sorted(set(excluded) & done)
@@ -121,7 +153,7 @@ def main(argv=None):
     dropped = drop_unfinished(out, done)
     todo = [i for i in ids if i not in done and i not in excluded]
     atomic(out / 'settings.json', lambda p: p.write_text(
-        json.dumps({**settings, 'excluded': excluded}, indent=2), encoding='utf-8'))
+        json.dumps({**settings, 'pins': source_pins(args.source), 'excluded': excluded}, indent=2), encoding='utf-8'))
     print(f'{out}: {len(ids)} ids, {len(ids) - len(todo) - len(excluded)} done in the checkpoint, {len(excluded)} excluded, '
           f'{dropped} unfinished files removed, {len(todo)} to build', flush=True)
 
@@ -140,7 +172,7 @@ def main(argv=None):
                 result = pp.process_sample(
                     asm_path, cfg_path, label=row['label'], seed=args.seed, api_vocab=vocab,
                     num_blocks=args.num_blocks, sample_mode=args.sample, file_id=sample_id,
-                    channel_embedder=embedder,
+                    channel_embedder=embedder, freeze_vocab=bool(args.frozen_from),
                     dataset_metadata={'sample_id': sample_id, 'label': row['label'], 'arch': row['arch'],
                                       'family': row['family'], 'fold': row['fold']})
                 pp.save_sample(result, out)

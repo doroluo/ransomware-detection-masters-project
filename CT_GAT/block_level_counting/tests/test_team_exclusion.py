@@ -183,7 +183,8 @@ def test_build_b_excludes_by_id_and_records_why(tmp_path):
     assert saved['excluded'] == settings['excluded'] == {other: WHY}
     assert settings['sample'] == 'signal' and settings['num_blocks'] == 500
     ckpt = json.loads((out / 'checkpoint.json').read_text(encoding='utf-8'))
-    assert ckpt['settings'] == {'sample': 'signal', 'num_blocks': 500, 'seed': 0} and ckpt['done'] == [small]   # format unchanged
+    assert ckpt['settings'] == {'sample': 'signal', 'num_blocks': 500, 'seed': 0, 'source': 'gnn-331ce0b'}
+    assert ckpt['done'] == [small]
     assert train_b.read_excluded(out) == {other: WHY}
     again = build_b.main(args)
     assert again['built_this_run'] == 0 and again['processed'] == 1
