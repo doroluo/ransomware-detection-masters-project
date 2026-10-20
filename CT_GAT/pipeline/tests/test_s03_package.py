@@ -61,7 +61,8 @@ def test_the_placeholder_is_gone_and_the_stages_are_packages():
     assert sorted(p.name for p in S03C.glob('*.py')) == ['__init__.py', 'block_export.py', 'encoder_contract.py',
                                                           'precompute_blockvec.py']
     assert sorted(p.name for p in (S03C / 'encoders').glob('*.py')) == ['__init__.py', 'codebert.py', 'reference.py']
-    assert (S03A / 'transformer_model.py').is_file()                    # the teammates' file is where it was
+    assert not (S03A / 'transformer_model.py').exists()                 # removed by PR #8: it was only a placeholder
+    assert (S03A / 'token_sequence.py').is_file()                       # Janice's script, beside the package of the same name
 
 
 def test_the_stage_imports_only_the_package_and_the_libraries():
@@ -163,14 +164,19 @@ def test_checkpoints_of_the_branch_layout_still_load(tmp_path):
         ec.load_encoder(path)
 
 
-def test_the_teammates_files_of_stage_3a_still_import():
-    r = subprocess.run([sys.executable, '-c', "import sys; sys.path.insert(0, 's03a_transformer'); import transformer_model; "
-                        "print('ok')"], cwd=ROOT, capture_output=True, text=True, env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'})
-    assert r.returncode == 0 and r.stdout.strip() == 'ok', r.stderr
+def test_the_teammates_files_of_stage_2_still_import():
     r = subprocess.run([sys.executable, '-c', "import sys; sys.path.insert(0, 's02_preprocess'); import tokenize_asm_gz, "
                         "preprocess_full; print('ok')"], cwd=ROOT, capture_output=True, text=True,
                        env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'})
     assert r.returncode == 0 and r.stdout.strip() == 'ok', r.stderr
+
+
+@pytest.mark.xfail(strict=True, reason="s03a_transformer/token_sequence.py (Janice, PR #8) and the token_sequence/ package share one "
+                   "name; the package wins the import, so her file cannot be imported. Known issue, to be fixed separately.")
+def test_importing_token_sequence_gives_janices_file_not_the_package():
+    import importlib
+    module = importlib.import_module('s03a_transformer.token_sequence')
+    assert Path(module.__file__).resolve() == (S03A / 'token_sequence.py').resolve()
 
 
 def test_the_earlier_stages_read_nothing_of_these_at_import_time(tmp_path):
