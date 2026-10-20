@@ -17,7 +17,7 @@ CT_GAT/
     s01_ida_export/
     s02_preprocess/
       tokenize_asm_gz.py
-      preprocess_full_gnn.py
+      preprocess_full.py
     s03a_transformer/
     s03b_cfg_feature/
     s03c_cfg_transformer/
@@ -40,14 +40,14 @@ data/Mendeley_*/samples/<split>/<family>/<sha>.jsonl.gz
         │     processed/mendeley_splits/{train,test}.csv
         │     processed/api_vocab.json
         │
-        └─ preprocess_full_gnn.py
+        └─ preprocess_full.py
               processed/cfg_subgraphs/<sha>.manifest.json
               processed/cfg_subgraphs/<sha>.pt
               processed/cfg_subgraphs/channel_embedder.pt
               processed/api_vocab.json
 ```
 
-`preprocess_full_gnn.py` loads the whole CFG, keeps one subgraph, aligns those instructions to the IDA listing by label address, and tokenizes only the selected lines. The same blocks are written for the sequence model, the handcrafted-feature graph, and the embedding graph.
+`preprocess_full.py` loads the whole CFG, keeps one subgraph, aligns those instructions to the IDA listing by label address, and tokenizes only the selected lines. The same blocks are written for the sequence model, the handcrafted-feature graph, and the embedding graph.
 
 ## tokenize_asm_gz.py
 
@@ -73,7 +73,7 @@ python tokenize_asm_gz.py --pe-root path/to/pe/files
 
 `--pe-root` is optional. Files there must be named `<sha256>.exe`, `.dll`, or `.pe`. The Mendeley folders have no original binaries, so a normal run takes imports from the IDA `extrn` list.
 
-## preprocess_full_gnn.py
+## preprocess_full.py
 
 Set `--num-blocks` or `--max-instructions` (or both). The saved piece can be smaller than the request when the connected region runs out of blocks.
 
@@ -84,11 +84,11 @@ Goodware and ransomware, and train and test, share one `processed/cfg_subgraphs/
 The manifest stores mismatch counts and up to 32 examples of each gap. Each saved sample also rewrites `processed/api_vocab.json`. `--freeze-vocab` keeps that file unchanged and maps an unseen API name to id 75.
 
 ```bash
-python preprocess_full_gnn.py --num-blocks 8 --seed 0
-python preprocess_full_gnn.py --root ../../data/Mendeley_Goodware --limit 1 --num-blocks 8 --seed 0
-python preprocess_full_gnn.py --sample-id <sha256> --num-blocks 8 --seed 0
-python preprocess_full_gnn.py --split train --sample signal --num-blocks 64 --seed 0
-python preprocess_full_gnn.py --overwrite --num-blocks 8 --seed 0
+python preprocess_full.py --num-blocks 8 --seed 0
+python preprocess_full.py --root ../../data/Mendeley_Goodware --limit 1 --num-blocks 8 --seed 0
+python preprocess_full.py --sample-id <sha256> --num-blocks 8 --seed 0
+python preprocess_full.py --split train --sample signal --num-blocks 64 --seed 0
+python preprocess_full.py --overwrite --num-blocks 8 --seed 0
 ```
 
 `--max-asm-bytes`, `--max-cfg-blocks`, and `--max-cfg-instructions` are accepted. The row passed into the run does not include assembly size or the original block and instruction counts, so those three limits do not skip samples.
