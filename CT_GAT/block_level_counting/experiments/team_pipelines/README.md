@@ -188,15 +188,16 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig5
   patience 8 on the validation ransomware F1 at 0.5. Both selection rules, outputs and `--smoke` as in train_a.
   `n_segments_total` is empty (the build does not record the function count); `n_blocks_total` comes from `build_log.csv`.
 
-## Two teammate sources
+## Three teammate sources
 
-`common.SOURCES` holds two sha256-pinned sources; `import_team(module, source=...)` imports from one of them and `check_pins` checks
+`common.SOURCES` holds three sha256-pinned sources; `import_team(module, source=...)` imports from one of them and `check_pins` checks
 the files first. A mismatch raises with the file name.
 
 | source | review worktree | commit | files (under the worktree) |
 |---|---|---|---|
 | `gnn-331ce0b` (default) | `C:/Users/chaoa/Downloads/rdmp-team-gnn` | 331ce0b | `construct_blocks.py`, `train_cfg.py`, `CT_GAT/preprocessing/{preprocess_full, tokenize_asm_gz, graph_full_loader, gat_full_model, train_full_gat, transformer_model, token_mapping}.py` |
 | `main-c7899f0` | `C:/Users/chaoa/Downloads/rdmp-team-main` | c7899f0 | `CT_GAT/pipeline/s02_preprocess/{preprocess_full, tokenize_asm_gz}.py` |
+| `main-fix` | `C:/Users/chaoa/Downloads/rdmp-team-yfix` (detached) | head of branch `s02-endp-library-fix` (the PR into main) | the same two files with the `endp` fix and the library-function skip (`build_b --include-library` restores the old sampling) |
 
 `preprocess_full` and `tokenize_asm_gz` exist in both, under the same module names. Importing one from a source first evicts the
 other source's modules of that import (`preprocess_full`, `tokenize_asm_gz`, and the gnn source's `transformer_model` and

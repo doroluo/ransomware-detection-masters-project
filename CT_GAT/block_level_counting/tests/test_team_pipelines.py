@@ -149,8 +149,8 @@ def test_write_run_checks_the_ids_and_the_name(tmp_path):
         tp.write_run(tmp_path / cfg.name, cfg, rows, rows, 0.5, 0.5, {'best_epoch': 1})
 
 
-needs_worktrees = pytest.mark.skipif(not tp.TEAM_ROOT.exists() or not tp.MAIN_ROOT.exists(),
-                                     reason='needs the review worktrees (gnn 331ce0b and main c7899f0)')
+needs_worktrees = pytest.mark.skipif(not tp.TEAM_ROOT.exists() or not tp.MAIN_ROOT.exists() or not tp.FIX_ROOT.exists(),
+                                     reason='needs the review worktrees (gnn 331ce0b, main c7899f0 and the fix branch)')
 
 
 @needs_worktrees

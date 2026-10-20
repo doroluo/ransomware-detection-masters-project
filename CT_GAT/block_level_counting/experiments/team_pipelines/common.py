@@ -1,6 +1,6 @@
 """Shared adapter for running the teammates' GAT pipelines under our 5-fold x86 family holdout.
 
-Four pieces: a sha256-pinned import of the teammates' code (`import_team`, two pinned sources), the fold manifests of the
+Four pieces: a sha256-pinned import of the teammates' code (`import_team`, three pinned sources), the fold manifests of the
 `kfold_x86_gnn-mblk15_s{seed}` runs (`fold_manifest`, `all_ids`), the sample_id -> cfg / asm file lookup
 (`paths_for`) and `write_run` (now `evaluation/run_io.py`, re-exported here), which writes a run directory that
 `evaluation/stats.py`, `report.py` and `gates.py` read like one of ours.
@@ -30,6 +30,8 @@ TEAM_ROOT = DOWNLOADS / 'rdmp-team-gnn'
 TEAM_COMMIT = '331ce0b'
 MAIN_ROOT = DOWNLOADS / 'rdmp-team-main'
 MAIN_COMMIT = 'c7899f0'
+FIX_ROOT = DOWNLOADS / 'rdmp-team-yfix'       # detached review worktree of origin s02-endp-library-fix (the PR into main)
+FIX_COMMIT = '817bab5'
 MASTERS = DOWNLOADS / 'ransomware-detection-masters-project/reports'
 BUNDLE = MASTERS / 'google_drive_upload/2026-10-07/Mendeley_GNN_v1'
 ASM_DIR = MASTERS / 'ida_asm_mendeley_20261006/asm'
@@ -74,6 +76,12 @@ MAIN_CLOSURE = {
     'tokenize_asm_gz': (STAGE + 'tokenize_asm_gz.py',),
     'preprocess_full': (STAGE + 'preprocess_full.py', STAGE + 'tokenize_asm_gz.py'),
 }
+# The third source: the same two files with the `endp` and library-function fixes (branch s02-endp-library-fix). Hashes of the
+# files as checked out in FIX_ROOT (CRLF), like the pins above.
+FIX_PINNED_SHA256 = {
+    STAGE + 'preprocess_full.py': 'a41c62e19a2853a90c68ac775ec71ff3e4c097e0616d598d945ad8d498901691',
+    STAGE + 'tokenize_asm_gz.py': 'e7b13fccfa512d11fba1105b4e2125fe720604175fcf9cb166e04ea1eb50acda',
+}
 
 DEFAULT_SOURCE = 'gnn-331ce0b'
 SOURCES = {
@@ -81,6 +89,8 @@ SOURCES = {
                     'dirs': ('CT_GAT/preprocessing', '.')},
     'main-c7899f0': {'root': MAIN_ROOT, 'commit': MAIN_COMMIT, 'pins': MAIN_PINNED_SHA256, 'closure': MAIN_CLOSURE,
                      'dirs': ('CT_GAT/pipeline/s02_preprocess', '.')},
+    'main-fix': {'root': FIX_ROOT, 'commit': FIX_COMMIT, 'pins': FIX_PINNED_SHA256, 'closure': MAIN_CLOSURE,
+                 'dirs': ('CT_GAT/pipeline/s02_preprocess', '.')},
 }
 
 
@@ -123,8 +133,8 @@ def _all_stems(module):
 
 
 def import_team(module, root=None, source=DEFAULT_SOURCE):
-    """Import teammate `module` from the review worktree `root` (default: that of `source`, 'gnn-331ce0b' or
-    'main-c7899f0') after checking the sha256 of every file the import runs. The source's directories go first on sys.path,
+    """Import teammate `module` from the review worktree `root` (default: that of `source`, 'gnn-331ce0b',
+    'main-c7899f0' or 'main-fix') after checking the sha256 of every file the import runs. The source's directories go first on sys.path,
     so its own `tokenize_asm_gz` (and, for the gnn source, `transformer_model` and `token_mapping`) win over same-named
     modules of ours or of the other source. Before the import, the modules that `module` runs in any source are evicted
     from sys.modules unless they are already the pinned file of this source, so importing one source never leaves the

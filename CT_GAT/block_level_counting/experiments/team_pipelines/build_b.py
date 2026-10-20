@@ -1,7 +1,7 @@
 """Pipeline B preprocessing: the teammates' `preprocess_full.process_sample` over the 1,810 kfold x86 binaries.
 
 python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --seed 0 --out RUNS/team/b_sig500
-       [--source gnn-331ce0b|main-c7899f0] [--limit N] [--ids <sample_id> ...] [--exclude <sample_id> ... --exclude-reason TEXT]
+       [--source gnn-331ce0b|main-c7899f0|main-fix] [--include-library] [--limit N] [--ids <sample_id> ...] [--exclude <sample_id> ... --exclude-reason TEXT]
        [--frozen-from <build dir>]
        (run from the block_level_counting root; a leading RUNS/ in --out is graph_transformer_runs)
 
@@ -18,6 +18,10 @@ under <out>, never under the teammates' tree. A rerun resumes: it loads that sta
 rebuilds every other id (a sample finished after the last checkpoint used vocabulary ids the saved vocabulary may lack).
 A sample that raises stops the build with its id; nothing is skipped. `build_log.csv`: sample_id, status,
 n_blocks_total, n_blocks_kept, seconds.
+
+--include-library (source main-fix only): sample the blocks of library functions too, as the older sources do (the default of
+main-fix skips them). It goes to `process_sample(include_library=True)` and to `settings.json`; without the flag neither
+changes, so earlier builds resume.
 
 --frozen-from DIR (equivalence checks): start from DIR's `api_vocab.json` and `channel_embedder.pt` (read only) and call
 `process_sample(freeze_vocab=True)`, so the token and embedding ids of two sources are comparable sample by sample.
@@ -118,6 +122,8 @@ def main(argv=None):
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--source', choices=sorted(SOURCES), default=DEFAULT_SOURCE,
                     help='pinned teammate code (default: the one the first build used)')
+    ap.add_argument('--include-library', action='store_true',
+                    help='main-fix only: sample blocks of library functions too (the older sources always do)')
     ap.add_argument('--frozen-from', type=Path, help='start from the vocabulary and embedder of this build directory and freeze the vocabulary')
     ap.add_argument('--out', type=Path, required=True)
     ap.add_argument('--limit', type=int, help='the first N ids in sorted order')
@@ -140,8 +146,12 @@ def main(argv=None):
     if not_in_build:
         raise SystemExit(f'--exclude ids that are not among the ids of this build: {not_in_build}')
     excluded = {i: args.exclude_reason for i in sorted(set(args.exclude))}
+    if args.include_library and args.source != 'main-fix':
+        raise SystemExit('--include-library is a parameter of the main-fix source only')
     pp = import_team('preprocess_full', source=args.source)
     settings = {'sample': args.sample, 'num_blocks': args.num_blocks, 'seed': args.seed, 'source': args.source}
+    if args.include_library:
+        settings['include_library'] = True
     if args.frozen_from:
         settings['frozen_from'] = str(resolve_dir(args.frozen_from))
     out = resolve_dir(args.out)
@@ -173,6 +183,7 @@ def main(argv=None):
                     asm_path, cfg_path, label=row['label'], seed=args.seed, api_vocab=vocab,
                     num_blocks=args.num_blocks, sample_mode=args.sample, file_id=sample_id,
                     channel_embedder=embedder, freeze_vocab=bool(args.frozen_from),
+                    **({'include_library': True} if args.include_library else {}),
                     dataset_metadata={'sample_id': sample_id, 'label': row['label'], 'arch': row['arch'],
                                       'family': row['family'], 'fold': row['fold']})
                 pp.save_sample(result, out)
