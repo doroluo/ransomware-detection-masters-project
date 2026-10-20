@@ -8,8 +8,15 @@ scores (max), and a behavior head (encrypt/decrypt/file read/write).
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import torch
 import torch.nn as nn
+
+_S02_DIR = Path(__file__).resolve().parents[1] / "s02_preprocess"
+if str(_S02_DIR) not in sys.path:
+    sys.path.insert(0, str(_S02_DIR))
 
 from tokenize_asm_gz import BEHAVIOR_VOCAB_SIZE, HEAD_BEHAVIOR_NAMES
 

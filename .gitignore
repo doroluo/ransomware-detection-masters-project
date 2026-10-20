@@ -1,0 +1,37 @@
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Generated data
+CT_GAT/data/
+CT_GAT/processed/
+**/processed_graphs/
+graph_transformer_runs/
+*.pt
+*.npz
+*.npy
+*.ckpt
+
+# Samples and binaries never go in git (binaries stay on the VM)
+ransomware_files/
+samples/
+*.exe
+*.dll
+*.bin
+*.sys
+*.zip
+*.7z
