@@ -149,3 +149,46 @@ is merged anywhere.
 | Model 3, block embeddings + CFG | 64-d pooled random embedding (B); CodeBERT (A) | `transformer_paths` path 2: any frozen block encoder, now CodeBERT on register-free text | Running (paths 1 and 2). A trained block encoder is the open slot. |
 | (missing) baselines | none | TF-IDF, header-imports LR, majority and x86-rule floors | **Add** to the diagram: every model is read against them. |
 | (missing) evaluation | one fixed split, random validation | 5-fold family holdout, family-held-out validation, paired bootstrap | **Add** as the box all three models feed. |
+
+## 9. Target architecture (adopted 2026-10-19)
+
+```mermaid
+flowchart TD
+    A["IDA export jsonl.gz (no asm.gz)"] --> B["CFG cache: blocks, typed edges, call edges, tokens (s02)"]
+    B --> C["Whole graph, deterministic (s04; 500k-block cap only as a memory guard)"]
+    C --> D["Tokenizer, vocab 'ours', fitted on training binaries (s03)"]
+    D --> M1["Model 1: token sequence (Janice's model, through an adapter)"]
+    D --> M2["Model 2: block counts + CFG (HierGNN)"]
+    D --> ENC["Frozen block encoder (transformer_paths): CodeBERT now, our own pretrained encoder later"]
+    ENC --> M3["Model 3: block embeddings + CFG (same HierGNN, --block-input vec)"]
+    BASE["Baselines: header-imports LR, TF-IDF, majority and x86-rule floors"] --> EV
+    M1 --> EV
+    M2 --> EV
+    M3 --> EV
+    EV["Evaluation: x86 5-fold family holdout and v3 all-arch; AUC, PR-AUC, accuracy, precision, recall, macro-F1, confusion matrix; paired cluster bootstrap over 3 seeds x 5 folds"]
+```
+
+Removed from the team diagram, with the evidence in section 8: the `asm.gz` input and the RVA/mnemonic match (a
+label-correlated alignment failure, and one listing needs more than 20 GB of RAM), and random subgraph selection (every
+budget lost to the whole graph). Added: the baselines and evaluation boxes.
+
+Why the baselines box matters: the header-imports LR, which reads only the PE import table, ties our typed GNN on x86
+(0.985 vs 0.986 AUC) and on v3 (0.966-0.970 vs 0.965 AUC, paired difference inside the noise), and on v3 it catches more
+x64 ransomware (0.91-0.94 recall vs 0.83). The open question is whether any code model adds anything beyond imports; the
+`noapi` ablation (block tokens without `dll!function` names, `gates.py --stage noapi`) tests it.
+
+## 10. Model 1 adapter contract (for `origin/TokenSeqModel`)
+
+To put Model 1 in the same tables, it needs to read our folds and write our prediction format; nothing else in
+`src/models/token_sequence.py` has to change.
+
+- Input: the block export `RUNS/export/ours_cap0` (`transformer_paths/EXPORT_SCHEMA.md`): per fold, `fold{k}/manifest.json`
+  gives train / val / test sample ids (validation already held out by family), and the store gives each binary's blocks
+  as token ids in a per-fold vocabulary fitted on that fold's training binaries. Do not build a vocabulary from test
+  binaries.
+- Training: train on `train`, choose the epoch and the decision threshold on `val` only, never look at `test`.
+- Output, per fold and seed, a run directory written with `experiments/team_pipelines/common.write_run`
+  (`predictions.csv`, `predictions_auc.csv` with `sample_id, split, label, prob, pred, arch, family, fold`, and
+  `metrics.json`), so `stats.py` and `gates.py` pair it with every other model on identical test ids.
+- Report seeds 0 1 2 over folds 0-4. The earlier sequence transformers on this data reached macro-F1 0.906-0.916 against
+  TF-IDF's 0.939, so compare Model 1 with TF-IDF first.
