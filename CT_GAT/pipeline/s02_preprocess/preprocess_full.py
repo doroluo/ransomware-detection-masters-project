@@ -1965,7 +1965,7 @@ def _cfg_path_for_asm(asm_path: Path) -> Path:
     raise CfgSchemaError(f"cannot derive a CFG path from {asm_path}")
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", action="append", type=Path, dest="roots")
     parser.add_argument("--split", choices=["train", "test", "all"], default="all")
@@ -2013,16 +2013,18 @@ def main() -> None:
     parser.add_argument(
         "--freeze-vocab",
         action="store_true",
-        help="Keep the shared API vocabulary unchanged. Unseen names use UNK_API.",
+        help="Keep the shared API vocabulary unchanged for every split. Unseen names use UNK_API.",
     )
     parser.add_argument("--vocab", type=Path, default=tok.API_VOCAB_PATH)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     if args.num_blocks is None and args.max_instructions is None:
         parser.error("set --num-blocks or --max-instructions")
 
     roots = [path.resolve() for path in (args.roots or tok.DEFAULT_ROOTS)]
     selected = tok._selected_rows(roots, args.split, args.architecture, args.sample_id)
+    # The vocabulary grows on training rows only: they go first, in every root, and every other split is frozen.
+    selected.sort(key=lambda row: row["split"] != "train")
     if args.limit is not None:
         selected = selected[: args.limit]
     full_run = args.limit is None and args.sample_id is None and not args.freeze_vocab
@@ -2076,7 +2078,7 @@ def main() -> None:
                 sample_mode=args.sample,
                 include_library=args.include_library,
                 split=row["split"],
-                freeze_vocab=args.freeze_vocab,
+                freeze_vocab=args.freeze_vocab or row["split"] != "train",
                 file_id=sample_id,
                 channel_embedder=embedder,
                 dataset_metadata=row,
