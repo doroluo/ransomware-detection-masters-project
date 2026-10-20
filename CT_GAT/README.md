@@ -14,21 +14,17 @@ CT_GAT/
     Mendeley_Ransomware/
     Mendeley_Goodware/
   pipeline/
+    s01_ida_export/
     s02_preprocess/
       tokenize_asm_gz.py
       preprocess_full_gnn.py
+    s03a_transformer/
+    s03b_cfg_feature/
+    s03c_cfg_transformer/
   processed/
     api_vocab.json
-    mendeley_sequences/
-    mendeley_splits/
     cfg_subgraphs/
   README.md
-```
-
-`data/` and `processed/` stay next to this file. The scripts live in `pipeline/s02_preprocess/` and resolve `CT_GAT` two folders up from that directory. Run them from `CT_GAT/pipeline/s02_preprocess/`.
-
-```bash
-cd CT_GAT/pipeline/s02_preprocess
 ```
 
 PyTorch is required. `pefile` is used only when `tokenize_asm_gz.py` is given `--pe-root`.
