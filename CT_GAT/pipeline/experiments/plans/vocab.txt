@@ -1,0 +1,21 @@
+# Vocabulary experiment: TF-IDF and the no-edge GNN over the reader's operand-role vocabulary (yanping) and the hybrid one,
+# kfold x86, seed 0. Needs <cache>/side/yanping/ (python -m experiments.side_arrays.import_reader_side).
+# Source queue: queue_gnn.sh --stage vocab (GPU budget 600 minutes).
+#     python -m experiments.queue --plan experiments/plans/vocab.txt --budget-min 600
+
+baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --vocab yanping
+baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --vocab hybrid
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab yanping
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab yanping
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab yanping
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab yanping
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab yanping
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab hybrid
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab hybrid
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab hybrid
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab hybrid
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab hybrid
+
+report
+gates vocab
+val_threshold

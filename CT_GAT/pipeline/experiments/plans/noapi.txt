@@ -1,0 +1,23 @@
+# Api-token ablation: TF-IDF over mn + sig + beh, then the typed GNN with --vocab noapi, kfold x86, 15% block masking,
+# seeds 0 1 2, folds 0-4 (15 runs, seed by seed).
+# Source script: scripts/noapi_runs.sh.
+#     python -m experiments.queue --plan experiments/plans/noapi.txt
+
+baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --vocab noapi
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 0 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 1 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 2 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 3 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 4 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 0 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 1 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 2 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 3 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --vocab noapi
+train --protocol kfold --fold 4 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --vocab noapi
+
+gates noapi

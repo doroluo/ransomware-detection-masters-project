@@ -277,7 +277,7 @@ def truncated_share(group):
 def chain_line(chain_bar):
     path = stats.RUNS / 'subgraph_chain.json'
     if not path.exists():
-        return f'- Chain merge: not measured ({path.name} is missing; run subgraph_chain.py).'
+        return f'- Chain merge: not measured ({path.name} is missing; run python -m experiments.subgraph_chain).'
     c = json.loads(path.read_text(encoding='utf-8'))
     verdict = ('a chain-merge policy is worth building' if c['reduction'] >= chain_bar
                else f'below the {100 * chain_bar:.0f}% bar, so no chain-merge policy is built')

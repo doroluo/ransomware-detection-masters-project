@@ -1,0 +1,26 @@
+cpu baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0
+run kfold0_x86_gnn-noedges_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --control no_edges
+run kfold1_x86_gnn-noedges_s0 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --control no_edges
+run kfold2_x86_gnn-noedges_s0 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --control no_edges
+run kfold3_x86_gnn-noedges_s0 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --control no_edges
+run kfold4_x86_gnn-noedges_s0 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --control no_edges
+run kfold0_x86_gnn-noedges-enc-mean_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --control no_edges --encoder mean
+run kfold1_x86_gnn-noedges-enc-mean_s0 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --control no_edges --encoder mean
+run kfold2_x86_gnn-noedges-enc-mean_s0 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --control no_edges --encoder mean
+run kfold3_x86_gnn-noedges-enc-mean_s0 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --control no_edges --encoder mean
+run kfold4_x86_gnn-noedges-enc-mean_s0 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --control no_edges --encoder mean
+run kfold0_x86_gnn_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn
+run kfold1_x86_gnn_s0 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn
+run kfold2_x86_gnn_s0 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn
+run kfold3_x86_gnn_s0 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn
+run kfold4_x86_gnn_s0 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn
+run kfold0_x86_gnn-untyped_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --untyped
+run kfold1_x86_gnn-untyped_s0 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --untyped
+run kfold2_x86_gnn-untyped_s0 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --untyped
+run kfold3_x86_gnn-untyped_s0 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --untyped
+run kfold4_x86_gnn-untyped_s0 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --untyped
+run kfold0_x86_gnn-shuffle_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --control shuffle
+run kfold1_x86_gnn-shuffle_s0 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --control shuffle
+run kfold2_x86_gnn-shuffle_s0 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --control shuffle
+run kfold3_x86_gnn-shuffle_s0 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --control shuffle
+run kfold4_x86_gnn-shuffle_s0 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --control shuffle

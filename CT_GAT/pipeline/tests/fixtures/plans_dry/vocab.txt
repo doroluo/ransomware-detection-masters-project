@@ -1,0 +1,12 @@
+cpu baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --vocab yanping
+cpu baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --vocab hybrid
+run kfold0_x86_gnn-noedges-mblk15-voc-yanping_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab yanping
+run kfold1_x86_gnn-noedges-mblk15-voc-yanping_s0 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab yanping
+run kfold2_x86_gnn-noedges-mblk15-voc-yanping_s0 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab yanping
+run kfold3_x86_gnn-noedges-mblk15-voc-yanping_s0 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab yanping
+run kfold4_x86_gnn-noedges-mblk15-voc-yanping_s0 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab yanping
+run kfold0_x86_gnn-noedges-mblk15-voc-hybrid_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab hybrid
+run kfold1_x86_gnn-noedges-mblk15-voc-hybrid_s0 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab hybrid
+run kfold2_x86_gnn-noedges-mblk15-voc-hybrid_s0 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab hybrid
+run kfold3_x86_gnn-noedges-mblk15-voc-hybrid_s0 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab hybrid
+run kfold4_x86_gnn-noedges-mblk15-voc-hybrid_s0 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab hybrid

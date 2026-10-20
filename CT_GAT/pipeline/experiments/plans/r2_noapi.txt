@@ -1,0 +1,20 @@
+# The no-edge GNN without api tokens (R2 noapi), kfold x86, 15% block masking, seeds 0 1 2, folds 0-4 (15 runs,
+# seed by seed). Follow-up to the api-token ablation of the plan `noapi`.
+# Source script: followup_r2noapi.sh of the run host.
+#     python -m experiments.queue --plan experiments/plans/r2_noapi.txt
+
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 0 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 1 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 2 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 3 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 4 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 0 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 1 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 2 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 3 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
+train --protocol kfold --fold 4 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --control no_edges --vocab noapi
