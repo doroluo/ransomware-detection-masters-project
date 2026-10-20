@@ -14,7 +14,7 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 import torch
 
-from common.config import RUNS
+from common.config import EXPORT
 from transformer_paths.block_export import sha_of_ids
 from transformer_paths.reader import BlockStore, FoldView
 
@@ -168,7 +168,7 @@ def main():
     ap.add_argument('--export', required=True, help='export root, or a name under RUNS/export')
     ap.add_argument('--fold', type=int, required=True)
     args = ap.parse_args()
-    export_root = Path(args.export) if Path(args.export).exists() else RUNS / 'export' / args.export
+    export_root = Path(args.export) if Path(args.export).exists() else EXPORT / args.export
     print(json.dumps(check_checkpoint(args.ckpt, export_root, args.fold), indent=1))
     print('contract ok')
 

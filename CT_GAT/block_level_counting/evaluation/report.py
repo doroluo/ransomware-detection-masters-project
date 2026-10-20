@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 from sklearn.metrics import average_precision_score
 
-from common.config import RUNS, RunConfig, cache_for
+from common.config import MAX_WINDOWS, RUNS, SEQ_LEN, RunConfig, cache_for
 from common.manifests import load_index, make_manifest
 from evaluation.metrics import family_recall, floors, scores
 
@@ -35,7 +35,8 @@ DEFAULTS = asdict(RunConfig())
 LABELLED = ('protocol', 'fold', 'arch', 'seed', 'no_graph', 'num_workers', 'model', 'encoder', 'readout', 'control',
             'untyped', 'no_call_mp', 'stack_tfidf', 'mask_tokens', 'drop_functions', 'drop_library', 'mask_blocks',
             'aux_recon', 'aux_edge', 'direction', 'drop_edges', 'flip_edges', 'gnn_fn_layers', 'gnn_bin_layers',
-            'train_fraction', 'arch_balance', 'select_on', 'subgraph', 'budget', 'vocab', 'imports', 'cache')
+            'train_fraction', 'arch_balance', 'select_on', 'subgraph', 'budget', 'vocab', 'imports', 'seq_len', 'max_windows',
+            'cache')
 CONTROL_LABELS = {'no_edges': 'no-edges', 'shuffle': 'shuffle', 'chain': 'chain', 'permute_types': 'permuted types'}
 
 
@@ -43,6 +44,10 @@ def model_label(cfg):
     """Readable arm name; every field in LABELLED that affects the arm shows up here, so overrides skip them."""
     tf = [f'train {round(100 * cfg.train_fraction)}%'] if cfg.train_fraction < 1 else []
     ab = ['arch-bal'] if cfg.arch_balance else []
+    if cfg.model == 'tokenseq':
+        return ' '.join(['Model 1 token-sequence'] + [f'{s}{n}' for s, n, default in (('L', cfg.seq_len, SEQ_LEN),
+                                                                                     ('w', cfg.max_windows, MAX_WINDOWS))
+                                                      if n != default])
     if cfg.model == 'transformer':
         return ' '.join([f"{'no-graph' if cfg.no_graph else 'graph'} transformer"] + tf + ab
                         + (['cell-select'] if cfg.select_on == 'cell' else []))
@@ -148,7 +153,9 @@ def model_runs():
         cfg = RunConfig.load(d / 'config.json')
         if d.name != cfg.name:
             continue
-        overrides = {k: v for k, v in asdict(cfg).items() if k not in LABELLED and v != DEFAULTS[k]}
+        # tokenseq forces val_seed to the export's carve (0), which is not an override
+        overrides = {k: v for k, v in asdict(cfg).items()
+                     if k not in LABELLED and v != DEFAULTS[k] and not (cfg.model == 'tokenseq' and k == 'val_seed')}
         groups[(cfg.protocol, cfg.arch, model_label(cfg) + (f' {overrides}' if overrides else ''))].append((cfg, d))
     return groups
 

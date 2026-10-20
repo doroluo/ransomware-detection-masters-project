@@ -2,8 +2,8 @@
 
 Four pieces: a sha256-pinned import of the teammates' code (`import_team`, two pinned sources), the fold manifests of the
 `kfold_x86_gnn-mblk15_s{seed}` runs (`fold_manifest`, `all_ids`), the sample_id -> cfg / asm file lookup
-(`paths_for`) and `write_run`, which writes a run directory that `evaluation/stats.py`, `report.py` and `gates.py`
-read like one of ours.
+(`paths_for`) and `write_run` (now `evaluation/run_io.py`, re-exported here), which writes a run directory that
+`evaluation/stats.py`, `report.py` and `gates.py` read like one of ours.
 
 Run scripts as modules from the block_level_counting root (`python -m experiments.team_pipelines.build_b`): run as a
 file, this directory would sit first on sys.path and shadow our `common` package.
@@ -11,7 +11,6 @@ file, this directory would sit first on sys.path and shadow our `common` package
 import csv
 import hashlib
 import importlib
-import json
 import os
 import sys
 from functools import lru_cache
@@ -21,11 +20,9 @@ if __name__ == 'common':
     raise ImportError('run experiments/team_pipelines scripts with python -m experiments.team_pipelines.<script> '
                       'from the block_level_counting root, not as files')
 
-import numpy as np
-
 from common.config import RUNS, RunConfig
 from common.manifests import load_index, make_manifest
-from evaluation.metrics import family_recall, floors
+from evaluation.run_io import _check_cover, write_run  # noqa: F401  (re-exported: the team trainers and tests import them from here)
 from training.train import AUC_RULES, evaluate, truncated_count, val_threshold_of, write_predictions  # noqa: F401
 
 DOWNLOADS = Path('C:/Users/chaoa/Downloads')
@@ -223,90 +220,3 @@ def team_row(sample_id):
 def team_config(fold, seed, arm):
     """The RunConfig of a team arm; its `.name` is the run directory name (`kfold{f}_x86_gnn_s{seed}_team-<arm>`)."""
     return RunConfig(protocol='kfold', fold=fold, arch='x86', seed=seed, model='gnn', tag=f'team-{arm}')
-
-
-def _check_cover(name, by_split, manifest, excluded=()):
-    """The predictions hold exactly the manifest's validation and test ids minus the explicitly `excluded` ones."""
-    skip = set(excluded)
-    for split, rows in (('val', manifest.val), ('test', manifest.test)):
-        ids = list(by_split[split][0])
-        want = sorted(r['sample_id'] for r in rows if r['sample_id'] not in skip)
-        if sorted(ids) != want:
-            raise AssertionError(f'{name}: {split} predictions hold {len(set(ids))} distinct of {len(ids)} ids, the '
-                                 f'manifest has {len(want)}; missing {sorted(set(want) - set(ids))[:5]}, '
-                                 f'extra {sorted(set(ids) - set(want))[:5]}')
-
-
-def write_run(run_dir, cfg, rows_f1, rows_auc, thr_f1, thr_auc, extra, excluded=(), excluded_reason=''):
-    """Write one team run directory that the harness reads like its own.
-
-    run_dir     the directory; its name must equal cfg.name (team_config(...).name)
-    rows_f1     {'val': (ids, probs, sizes), 'test': (ids, probs, sizes)} of the best-validation-macro-F1 state, with
-                sizes = (n_segments_total, n_blocks_kept, n_blocks_total) per sample (as training/train.py's predict)
-    rows_auc    the same for the best-validation-AUC state
-    thr_f1      validation threshold (GRID, val_threshold_of) of the F1 state: metrics only. predictions.csv is
-                thresholded at cfg.threshold (0.5), as training/train.py writes it
-    thr_auc     validation threshold of the AUC state: predictions_auc.csv and the AUC block of metrics.json
-    extra       must hold best_epoch and epochs_run; auc_best_epoch, val_auc, val_macro_f1 and other keys are kept
-    excluded    sample ids deliberately left out of this run (a binary the arm's build could not process): the row sets
-                must cover the manifest's validation and test ids minus these, no more and no fewer; metrics.json records
-                them as `excluded` with `excluded_reason`, and evaluation/stats.py prints them where it pairs the run
-                with an arm that has those binaries. An empty list keeps the exact-coverage check.
-    Both row sets must cover exactly the manifest's validation and test ids (less `excluded`). The metrics come from
-    evaluation/metrics.py through training.train's helpers."""
-    run_dir = Path(run_dir)
-    if run_dir.name != cfg.name:
-        raise ValueError(f'run directory {run_dir.name} is not the RunConfig name {cfg.name}')
-    for key in ('best_epoch', 'epochs_run'):
-        if key not in extra:
-            raise KeyError(f'extra needs {key}')
-    manifest = fold_manifest(cfg.fold, cfg.seed)
-    excluded = sorted(set(excluded))
-    if excluded and not excluded_reason:
-        raise ValueError('excluded ids need an excluded_reason')
-    unknown = sorted(set(excluded) - {r['sample_id'] for r in manifest.train + manifest.val + manifest.test})
-    if unknown:
-        raise ValueError(f'excluded ids that are in no split of the fold: {unknown}')
-    for name, rows in (('rows_f1', rows_f1), ('rows_auc', rows_auc)):
-        _check_cover(name, rows, manifest, excluded)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    cfg.save(run_dir / 'config.json')
-    manifest.save(run_dir / 'manifest.json')
-    index_rows = manifest.val + manifest.test
-    write_predictions(run_dir / 'predictions.csv', index_rows, rows_f1, cfg.threshold)
-    write_predictions(run_dir / 'predictions_auc.csv', index_rows, rows_auc, thr_auc)
-
-    by_id = {r['sample_id']: r for r in manifest.test}
-    labels = np.array([r['label'] for r in manifest.train])
-
-    def test_scores(rows, threshold):
-        ids, probs, _ = rows['test']
-        return evaluate(manifest.test, ids, probs, threshold)
-
-    def test_family_recall(rows, threshold):
-        ids, probs, _ = rows['test']
-        return family_recall([by_id[i]['label'] for i in ids], (np.asarray(probs) >= threshold).astype(int),
-                             [by_id[i]['family'] for i in ids])
-
-    ids = rows_f1['test'][0]
-    metrics = {
-        'run': cfg.name, 'select_on': cfg.select_on, 'best_epoch': extra['best_epoch'],
-        'epochs_run': extra['epochs_run'], 'val_macro_f1': extra.get('val_macro_f1'),
-        'truncated_test': truncated_count(rows_f1['test'][2]),
-        'test': test_scores(rows_f1, cfg.threshold),
-        'floors': floors(labels, [by_id[i]['label'] for i in ids], [by_id[i]['arch'] for i in ids]),
-        'family_recall': test_family_recall(rows_f1, cfg.threshold),
-        'selection': {
-            'f1': {'best_epoch': extra['best_epoch'], 'threshold_val': thr_f1,
-                   'test_at_val_threshold': test_scores(rows_f1, thr_f1)},
-            'auc': {'rule': AUC_RULES[cfg.select_on], 'best_epoch': extra.get('auc_best_epoch'),
-                    'val_auc': extra.get('val_auc'), 'threshold_val': thr_auc,
-                    'test': test_scores(rows_auc, thr_auc), 'test_at_half': test_scores(rows_auc, 0.5),
-                    'family_recall': test_family_recall(rows_auc, thr_auc)},
-        },
-    }
-    metrics.update({k: v for k, v in extra.items() if k not in metrics})
-    if excluded:
-        metrics.update(excluded=excluded, excluded_reason=excluded_reason)
-    (run_dir / 'metrics.json').write_text(json.dumps(metrics, indent=2), encoding='utf-8')
-    return metrics

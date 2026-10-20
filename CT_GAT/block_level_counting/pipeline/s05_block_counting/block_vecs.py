@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from common.config import RUNS
+from common.config import EXPORT
 from transformer_paths.reader import BlockStore
 
 
@@ -45,7 +45,7 @@ class BlockVecs:
 
 def export_root_of(meta):
     root = Path(meta['export_root'])
-    return root if root.exists() else RUNS / 'export' / meta['export']
+    return root if root.exists() else EXPORT / meta['export']
 
 
 class BlockVecSource:

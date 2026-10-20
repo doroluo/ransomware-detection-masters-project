@@ -136,6 +136,8 @@ def loss_weight_fn(cfg: RunConfig, rows, device):
 
 
 def check_supported(cfg: RunConfig):
+    if cfg.model == 'tokenseq':
+        raise NotImplementedError("model 'tokenseq' trains with python -m token_sequence.train, not training/train.py")
     if cfg.aux_recon > 0 or cfg.aux_edge > 0:
         raise NotImplementedError('--aux-recon / --aux-edge are deferred')
 

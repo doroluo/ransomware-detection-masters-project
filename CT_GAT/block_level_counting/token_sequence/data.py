@@ -118,14 +118,23 @@ class FoldSequences:
     `FoldSequences(root, fold, 'train')` cannot reach the test binaries. Item i is a dict for `collate`.
 
     Windows are random (at most `max_windows`, offset and choice seeded by (seed, epoch, i)) for the 'train' split and
-    all of them in order for 'val' and 'test'; `set_epoch` changes the draw."""
+    all of them in order for 'val' and 'test'; `set_epoch` changes the draw. `subset` (store binary indices, all of them
+    in the split) keeps only those binaries, in the order given (smoke runs)."""
 
-    def __init__(self, export_root, fold: int, split: str, L: int = 512, max_windows: int = 64, seed: int = 0) -> None:
+    def __init__(self, export_root, fold: int, split: str, L: int = 512, max_windows: int = 64, seed: int = 0,
+                 subset=None) -> None:
         if split not in SPLITS:
             raise ValueError(f'split {split}: one of {SPLITS}')
         self.fold, self.split, self.L, self.max_windows, self.seed, self.epoch = fold, split, L, max_windows, seed, 0
         store = export_root if isinstance(export_root, BlockStore) else BlockStore(export_root)
         self.view = FoldView(store, fold, split)
+        self._binaries = self.view.binaries()
+        if subset is not None:
+            subset = np.asarray(subset, dtype=np.int64)
+            if not np.isin(subset, self._binaries).all():
+                raise ValueError(f'subset holds binaries that are not in the {split} split of fold {fold}')
+            self._binaries = subset
+        self._positions = None
         self.n_ids = int(self.view.data['vocab']['n_ids'])
         self.export_sha = store.export_sha
 
@@ -133,16 +142,35 @@ class FoldSequences:
         self.epoch = epoch
 
     def __len__(self) -> int:
-        return len(self.view.binaries())
+        return len(self._binaries)
 
     def binary(self, i: int) -> int:
-        return int(self.view.binaries()[i])
+        return int(self._binaries[i])
 
     def sample_ids(self):
-        return self.view.sample_ids()
+        return [self.view.store.binaries[b]['sample_id'] for b in self._binaries]
 
     def labels(self):
-        return [int(self.view.store.binaries[b]['label']) for b in self.view.binaries()]
+        return [int(self.view.store.binaries[b]['label']) for b in self._binaries]
+
+    def positions(self) -> np.ndarray:
+        """[len(self)] number of positions (instructions plus API references) of each binary, from the token kinds alone
+        (no regrouping), computed once."""
+        if self._positions is None:
+            store = self.view.store
+            out = np.zeros(len(self), dtype=np.int64)
+            for i in range(len(self)):
+                first, last = store.block_range(self.binary(i))
+                kinds = np.asarray(store.tok_kind[int(store.blk_tok_ptr[first]):int(store.blk_tok_ptr[last])])
+                out[i] = np.count_nonzero(kinds == 0) + np.count_nonzero(kinds == 3)
+            self._positions = out
+        return self._positions
+
+    def n_windows(self, i: int) -> int:
+        """Windows item i has: ceil(N / L) in 'val' and 'test'; in 'train' at most min(ceil(N / L), max_windows) (the random
+        offset can drop the last one), so it is an upper bound there."""
+        n = -(-int(self.positions()[i]) // self.L)
+        return min(n, self.max_windows) if self.split == 'train' else n
 
     def stream(self, i: int) -> Stream:
         return instruction_stream(self.view, self.binary(i))

@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from common.config import CACHE, RUNS, RunConfig
+from common.config import CACHE, EXPORT, RUNS, RunConfig
 from common.manifests import Manifest, load_index, load_sample, make_manifest
 from pipeline.batching import keep_functions
 from pipeline.s03_tokenizer.block_tokens import token_table
@@ -274,13 +274,15 @@ def export_sha_of(root, folds):
 
 
 def resolve_out(out):
-    """`RUNS/export/<name>` (or an absolute path) -> a path under RUNS/export; anything else is refused."""
+    """`RUNS/export/<name>` (or an absolute path) -> a path under the export directory (RUNS/export, or GT_EXPORT);
+    anything else is refused."""
     path = Path(out)
     if path.parts and path.parts[0] == 'RUNS':
-        path = RUNS.joinpath(*path.parts[1:])
+        rest = path.parts[1:]
+        path = EXPORT.joinpath(*rest[1:]) if rest[:1] == ('export',) else RUNS.joinpath(*rest)
     path = path.resolve()
-    if (RUNS / 'export').resolve() not in path.parents:
-        raise ValueError(f"exports go under {RUNS / 'export'}: {out}")
+    if EXPORT.resolve() not in path.parents:
+        raise ValueError(f"exports go under {EXPORT}: {out}")
     return path
 
 

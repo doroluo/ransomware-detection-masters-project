@@ -55,6 +55,36 @@ validation or test id. `'train'` draws random windows (seeded by `(seed, epoch, 
 * `BinaryTokenSequence(model)`: encodes every window, averages the window vectors of each binary over its non-empty windows
   and applies the head, giving logits `[n_binaries, 2]`. `window_chunk` bounds how many windows are encoded at once.
 
+## Training
+
+```bash
+python -m token_sequence.train --protocol kfold --arch x86 --fold 0 --seed 0 [--seq-len 512 --max-windows 64]
+    [--export ours_cap0] [--device cuda|cpu] [--smoke N] [--epochs 40 --patience 8] [--window-budget 128]
+bash scripts/model1_runs.sh [--dry]          # seeds 0 1 2 x folds 0-4, then report.py and gates.py --stage model1
+```
+
+`train.py` trains `BinaryTokenSequence(Model1TokenSequence)` on one fold of the export (`ours_cap0` under `RUNS/export`, or
+`GT_EXPORT`). The run is a `RunConfig` with `model='tokenseq'`: name `kfold<f>_x86_tokenseq_s<seed>`, with `-L<n>` / `-w<n>`
+only for a non-default `seq_len` / `max_windows`. Its `val_seed` is forced to 0, the carve of the export's fold manifests, and
+is never printed in the name; none of the GNN options (controls, masking, vectors, weightings, ...) is accepted.
+
+* Loss: cross entropy with the class weight `N / (2 n_class)` of the training labels. AdamW lr 3e-4, weight decay 0.01,
+  gradient clip 1.0, bf16 autocast on CUDA.
+* Batches: whole binaries, in a per-epoch random order, whose windows add up to at most `--window-budget` (a binary with
+  more windows than that is alone), so the peak GPU memory is set by the budget. Evaluation runs every window of every
+  binary in order under `no_grad`, in chunks of the same size.
+* Each epoch records the validation AUC and the macro-F1 at 0.5 in `history.csv`. `best.pt` is the epoch of the best macro-F1
+  (predictions at 0.5), `best_auc.pt` that of the best AUC (predictions at the `val_threshold` maximiser of the validation
+  macro-F1). Training stops when the AUC has not improved for `patience` epochs. The test split is read once, after training.
+* The run directory is written by `evaluation/run_io.write_run` with the export's manifest, so `metrics.json`, `predictions.csv`
+  and `predictions_auc.csv` have the layout of a GNN run, and `evaluation/stats.py`, `report.py` and `gates.py --stage model1`
+  read it.
+* `--smoke N`: N training binaries (half of each class), N validation and N test binaries, 2 epochs, a temporary directory
+  (never under `RUNS`). It prints s/epoch, peak GPU and RAM, and projects the time of a full fold run from the windows and
+  positions of the whole split.
+
+Tests: `python -m pytest tests/test_model1_trainer.py tests/test_harness_prep.py`.
+
 ## Credit
 
 The encoder is Janice Park's `Model1TokenSequence` (`src/models/token_sequence.py` on `origin/TokenSeqModel`): positional
