@@ -39,10 +39,11 @@ An arm that is not on disk is reported as missing.
 
 Stage team reads the teammates' GAT pipelines run under our folds (experiments/team_pipelines; `scripts/team_runs.sh` and
 `scripts/team_gpu_runs.sh`): TF-IDF, the header-imports LR, R7 and R2 with 15% block masking, our matched cap-500 arms (typed and
-no-edges, `--subgraph cap --budget 500 --tag b500`), team gnn500, cb500 and sig500 (`team-<arm>` tags) and path 2 on the CodeBERT
+no-edges, `--subgraph cap --budget 500 --tag b500`), team gnn500, cb500, sig500 and sig500v2 (`team-<arm>` tags) and path 2 on the CodeBERT
 vectors. The pooled seed-0 table adds accuracy, precision, recall and the confusion matrix of every arm (ransomware = positive
 class, AUC checkpoint at its validation threshold); each team arm is paired against TF-IDF, R7 and our b500 typed arm, cb500
-against path 2 (same vectors, their GAT against our GNN), and our b500 typed arm against R7 (what the 500-block cap costs). The
+against path 2 (same vectors, their GAT against our GNN), sig500v2 (the rebuild with Yanping's streaming preprocess) against
+sig500, R7 and TF-IDF, and our b500 typed arm against R7 (what the 500-block cap costs). The
 paired differences use the seeds 0 1 2 complete in both arms and carry the pre-registered rule of PLAN_GNN.md section 5.
 Missing arms print as missing.
 
@@ -581,13 +582,15 @@ TEAM_ARMS = (('TF-IDF', 'tfidf'), ('header-imports LR', 'imports-header'),
              ('ours b500 typed', RunConfig(**TEAM_CAP).group),
              ('ours b500 no-edges', RunConfig(**TEAM_CAP, control='no_edges').group),
              ('team gnn500', team_group('gnn500')), ('team cb500', team_group('cb500')),
-             ('team sig500', team_group('sig500')),
+             ('team sig500', team_group('sig500')), ('team sig500v2', team_group('sig500v2')),
              ('path 2: typed, CodeBERT vectors', dict(CB_ARMS)['path 2: typed, CodeBERT vectors']))
-TEAM_OF = tuple(a for a, _ in TEAM_ARMS if a.startswith('team '))
+TEAM_V2 = 'team sig500v2'
+TEAM_OF = tuple(a for a, _ in TEAM_ARMS if a.startswith('team ') and a != TEAM_V2)
 TEAM_COST = ('R7 typed, whole graph', 'ours b500 typed')
 TEAM_PAIRS = (tuple(('TF-IDF', a) for a in TEAM_OF) + tuple(('R7 typed, whole graph', a) for a in TEAM_OF)
               + tuple(('ours b500 typed', a) for a in TEAM_OF)
-              + (('path 2: typed, CodeBERT vectors', 'team cb500'), TEAM_COST))
+              + (('path 2: typed, CodeBERT vectors', 'team cb500'), TEAM_COST)
+              + (('team sig500', TEAM_V2), ('R7 typed, whole graph', TEAM_V2), ('TF-IDF', TEAM_V2)))
 
 
 def operating_points(arms):
@@ -631,7 +634,9 @@ def team(resamples):
              "the teammates' pipelines use), typed and with `--control no_edges`. `team gnn500` is the teammates' BlockGAT "
              "on their 57-d opcode / API-group / structure features, `team cb500` the same GAT on the CodeBERT vectors "
              f"`{CB_VEC}` of the same 500 blocks, `team sig500` their edge-typed GAT on the 141-d subgraph features "
-             "(`experiments/team_pipelines`), all trained on our folds and validation split. The pooled table is seed 0; "
+             "(`experiments/team_pipelines`), `team sig500v2` the same trainer on a rebuild of those subgraphs with Yanping's "
+             "streaming `preprocess_full` (main c7899f0, including the two listings sig500 had to leave out; sig500 against "
+             "sig500v2 is read on the binaries both have), all trained on our folds and validation split. The pooled table is seed 0; "
              f"the paired differences, second minus first for the AUC checkpoint at its validation threshold, use the seeds "
              f"complete in both arms (queue seeds {list(TEAM_SEEDS)}), with the 95% paired cluster bootstrap interval "
              f"({resamples} resamples). Pre-registered rule (PLAN_GNN.md section 5): a second arm beats the first when dAUC >= "
