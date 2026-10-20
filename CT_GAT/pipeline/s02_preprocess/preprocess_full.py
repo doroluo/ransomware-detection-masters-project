@@ -1975,7 +1975,8 @@ def _cfg_path_for_asm(asm_path: Path) -> Path:
     raise CfgSchemaError(f"cannot derive a CFG path from {asm_path}")
 
 
-def main(argv: Sequence[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the preprocess. The exit status is 1 when any sample failed (see ``failures.json`` in the output folder)."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", action="append", type=Path, dest="roots")
     parser.add_argument("--split", choices=["train", "test", "all"], default="all")
@@ -2021,6 +2022,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="Rebuild samples that already have a .pt file.",
     )
     parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Stop at the first sample that fails. By default the run goes on and lists every failure in failures.json.",
+    )
+    parser.add_argument(
         "--freeze-vocab",
         action="store_true",
         help="Keep the shared API vocabulary unchanged for every split. Unseen names use UNK_API.",
@@ -2051,7 +2057,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     saved = 0
     skipped = 0
     oversized = 0
-    failed = 0
+    failures: list[dict[str, str]] = []
     for row in selected:
         sample_id = row["sample_id"]
         tensor_path = args.output / f"{sample_id}.pt"
@@ -2103,8 +2109,17 @@ def main(argv: Sequence[str] | None = None) -> None:
             saved += 1
         except Exception as error:
             logger.error("failed %s: %s", sample_id, error)
-            failed += 1
+            failures.append({"sample_id": sample_id, "error": f"{type(error).__name__}: {error}"})
             gc.collect()
+            if args.fail_fast:
+                break
+    failed = len(failures)
+    failures_path = args.output / "failures.json"
+    if failures:
+        args.output.mkdir(parents=True, exist_ok=True)
+        failures_path.write_text(json.dumps(failures, indent=2), encoding="utf-8")
+    elif failures_path.is_file():
+        failures_path.unlink()
     if saved:
         logger.info("wrote %s", embedder_path)
     if full_run and (saved or skipped) and not failed:
@@ -2116,7 +2131,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         oversized,
         failed,
     )
+    if failed:
+        logger.error("%s sample(s) failed, listed in %s", failed, failures_path)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

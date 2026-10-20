@@ -18,12 +18,18 @@ def sha(n):
     return f'{n:064x}'
 
 
-def run(tmp_path, roots, *extra, out='out', vocab='vocab.json', seed=0):
-    """Run `main` on the roots; returns (output folder, vocabulary file)."""
+def run_status(tmp_path, roots, *extra, out='out', vocab='vocab.json', seed=0):
+    """Run `main` on the roots; returns (exit status, output folder, vocabulary file)."""
     out_dir, vocab_path = tmp_path / out, tmp_path / vocab
     argv = [arg for root in roots for arg in ('--root', str(root))]
     argv += ['--num-blocks', '8', '--seed', str(seed), '--output', str(out_dir), '--vocab', str(vocab_path), *extra]
-    pf.main(argv)
+    return pf.main(argv), out_dir, vocab_path
+
+
+def run(tmp_path, roots, *extra, **kwargs):
+    """`run_status` for a run that must succeed; returns (output folder, vocabulary file)."""
+    status, out_dir, vocab_path = run_status(tmp_path, roots, *extra, **kwargs)
+    assert status == 0
     return out_dir, vocab_path
 
 
@@ -92,3 +98,46 @@ def test_new_api_rows_depend_on_the_seed_and_the_row_only():
     three = pf.FiveChannelEmbedder(tok.FIRST_API_ID, seed=8)
     three.expand_api(tok.FIRST_API_ID + 5)
     assert not torch.equal(one.api_embedding.weight[tok.FIRST_API_ID:], three.api_embedding.weight[tok.FIRST_API_ID:])
+
+
+# ---- 3. a failed sample is recorded and fails the run --------------------------------------------------------------
+
+def corrupt(path):
+    col.write_gz(path, 'this is not json')
+
+
+def collection_with_one_bad_sample(tmp_path):
+    root = col.write_collection(tmp_path / 'c', [
+        (sha(1), 'train', 1, ['CreateFileW']),
+        (sha(2), 'train', 0, ['CloseHandle']),
+        (sha(3), 'test', 1, ['CreateFileW']),
+    ])
+    corrupt(root / 'samples' / 'train' / 'fam' / f'{sha(1)}.jsonl.gz')
+    return root
+
+
+def test_a_failed_sample_is_listed_and_the_run_goes_on_and_exits_non_zero(tmp_path):
+    root = collection_with_one_bad_sample(tmp_path)
+    status, out_dir, _ = run_status(tmp_path, [root])
+    assert status == 1
+    failures = json.loads((out_dir / 'failures.json').read_text(encoding='utf-8'))
+    assert [item['sample_id'] for item in failures] == [sha(1)]
+    assert 'CfgSchemaError' in failures[0]['error'] and 'not JSON' in failures[0]['error']
+    assert sorted(path.stem for path in out_dir.glob('*.pt') if path.stem != 'channel_embedder') == [sha(2), sha(3)]
+
+
+def test_fail_fast_stops_at_the_first_failure(tmp_path):
+    root = collection_with_one_bad_sample(tmp_path)
+    status, out_dir, _ = run_status(tmp_path, [root], '--fail-fast')
+    assert status == 1
+    assert [item['sample_id'] for item in json.loads((out_dir / 'failures.json').read_text(encoding='utf-8'))] == [sha(1)]
+    assert not list(out_dir.glob(f'{sha(2)}.pt')) and not list(out_dir.glob(f'{sha(3)}.pt'))
+
+
+def test_a_clean_run_exits_zero_and_removes_an_old_failures_file(tmp_path):
+    root = three_samples(tmp_path, 'ok')
+    out_dir = tmp_path / 'out'
+    out_dir.mkdir()
+    (out_dir / 'failures.json').write_text('[]', encoding='utf-8')
+    status, out_dir, _ = run_status(tmp_path, [root])
+    assert status == 0 and not (out_dir / 'failures.json').exists()
