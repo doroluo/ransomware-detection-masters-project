@@ -555,7 +555,11 @@ def _note_location(line: str, state: dict[str, int | None]) -> None:
     code = line.split(";", 1)[0].strip()
     if not code or code.startswith("."):
         return
-    va = _va_from_token(code.split()[0])
+    tokens = code.split()
+    if len(tokens) == 2 and tokens[1].lower() in ("endp", "ends"):
+        # ``sub_401E80 endp`` closes a function. Its name is the function start, not a new label address.
+        return
+    va = _va_from_token(tokens[0])
     if va is not None:
         state["va"] = va
 
