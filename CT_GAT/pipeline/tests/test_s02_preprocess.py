@@ -241,3 +241,12 @@ def test_load_cfg_keeps_the_library_flag(tmp_path):
     with gzip.open(path, 'wt', encoding='utf-8') as handle:
         handle.write('\n'.join(json.dumps(record) for record in records) + '\n')
     assert pf.load_cfg(path).library_functions == {0}
+
+
+def test_the_signal_sampler_returns_a_union_of_functions_that_need_not_be_connected():
+    cfg = mixed_cfg()
+    cfg.library_functions = set()
+    sample = pf.sample_signal_subgraph(cfg, seed=0, num_blocks=8)
+    assert len({key[0] for key in sample.selected_keys}) > 1
+    assert not pf.connected_keys(sample.selected_keys, sample.edges)
+    assert 'not one connected subgraph' in pf.sample_signal_subgraph.__doc__

@@ -1,4 +1,4 @@
-"""Sample one connected CFG subgraph and align it with the IDA listing.
+"""Sample one CFG subgraph and align it with the IDA listing.
 
 The Mendeley export is schema ``ida-cfg-research/2.1``. Each ``.jsonl.gz``
 holds a header, one record per function, string records, and a footer.
@@ -15,9 +15,12 @@ function RVA is known. It does not store a virtual address on every
 instruction. Alignment therefore buckets instructions by those label RVAs
 and pairs CFG instructions with assembly lines inside each bucket.
 
-Sampling uses block instruction counts and CFG edges only. The same selected
-blocks feed the sequence model, the handcrafted-feature graph, and the
-tokenizer-embedding graph.
+Sampling uses block instruction counts and CFG edges only. ``--sample walk``
+returns one connected subgraph grown from a random block. ``--sample signal``
+returns the blocks of the top-ranked whole functions, which need not be
+connected (CFG edges never leave a function, so it is usually several
+components). The same selected blocks feed the sequence model, the
+handcrafted-feature graph, and the tokenizer-embedding graph.
 """
 
 from __future__ import annotations
@@ -1070,12 +1073,15 @@ def sample_signal_subgraph(
     max_instructions: int | None = None,
     include_library: bool = False,
 ) -> SampledSubgraph:
-    """Keep whole functions that reference imports, highest signal first.
+    """Keep the blocks of whole functions that reference imports, highest signal first.
 
-    A random walk often stays in library code and never reaches the payload.
-    Functions are taken in import-call order so the block budget is spent on
-    the code the classifier can actually use. Edges stay the original directed
-    CFG inside the kept blocks.
+    The result is the union of the top-ranked functions' blocks, cut at the
+    block budget, not one connected subgraph: CFG edges stay inside a
+    function, so the kept blocks form one component per function (and
+    ``connected_keys`` is never called). A random walk often stays in library
+    code and never reaches the payload. Functions are taken in import-call
+    order so the block budget is spent on the code the classifier can actually
+    use. Edges stay the original directed CFG inside the kept blocks.
 
     Library functions are visited only after every non-library function, and
     only when the budget is still not filled: ``num_blocks`` blocks selected,
