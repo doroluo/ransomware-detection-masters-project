@@ -322,3 +322,40 @@ def test_process_sample_reads_the_listing_once_and_matches_the_two_pass_result(t
         new_ids = result['models']['model1']['instruction_ids'].tolist()
         assert old_ids == new_ids
         assert inventory == result['manifest']['import_inventory']
+
+
+# ---- 8. what a run saves, and when ---------------------------------------------------------------------------------
+
+def test_limit_and_sample_id_runs_never_write_the_shared_vocabulary(tmp_path):
+    root = three_samples(tmp_path, 'limit')
+    vocab_path = tmp_path / 'shared.json'
+    vocab_path.write_text(json.dumps(['Existing']), encoding='utf-8')
+    run(tmp_path, [root], '--limit', '2', out='limited', vocab='shared.json')
+    run(tmp_path, [root], '--sample-id', sha(2), out='one', vocab='shared.json')
+    assert json.loads(vocab_path.read_text(encoding='utf-8')) == ['Existing']
+    run(tmp_path, [root], out='full', vocab='shared.json')
+    assert json.loads(vocab_path.read_text(encoding='utf-8'))[0] == 'Existing' and len(json.loads(vocab_path.read_text(encoding='utf-8'))) > 1
+
+
+@pytest.mark.parametrize('every, writes', [(50, 1), (2, 2), (1, 3)])
+def test_vocabulary_and_embedder_are_saved_at_checkpoints_and_once_at_the_end(tmp_path, monkeypatch, every, writes):
+    root = three_samples(tmp_path, 'saves')
+    calls = []
+    real_vocab, real_torch_save = tok.save_api_vocab, torch.save
+    monkeypatch.setattr(tok, 'save_api_vocab', lambda vocab, path: calls.append('vocab') or real_vocab(vocab, path))
+    monkeypatch.setattr(pf.torch, 'save', lambda obj, path, *a, **k: calls.append(Path(path).name) or real_torch_save(obj, path, *a, **k))
+    run(tmp_path, [root], '--checkpoint-every', str(every))
+    assert calls.count('vocab') == writes and calls.count('channel_embedder.pt') == writes
+
+
+def test_a_rerun_skips_the_samples_of_the_checkpoint_and_rebuilds_the_rest(tmp_path):
+    import os
+    root = three_samples(tmp_path, 'resume')
+    out_dir, _ = run(tmp_path, [root])
+    assert json.loads((out_dir / 'checkpoint.json').read_text(encoding='utf-8'))['done'] == sorted([sha(1), sha(2), sha(3)])
+    for sample_id in (sha(1), sha(2), sha(3)):
+        os.utime(out_dir / f'{sample_id}.pt', (1, 1))
+    (out_dir / 'checkpoint.json').write_text(json.dumps({'done': [sha(1), sha(3)]}), encoding='utf-8')
+    run(tmp_path, [root])
+    stamps = {sample_id: (out_dir / f'{sample_id}.pt').stat().st_mtime for sample_id in (sha(1), sha(2), sha(3))}
+    assert stamps[sha(1)] == 1 and stamps[sha(3)] == 1 and stamps[sha(2)] > 1

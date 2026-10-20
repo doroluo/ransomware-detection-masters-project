@@ -2097,6 +2097,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Rebuild samples that already have a .pt file.",
     )
     parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=50,
+        help="Save the embedder and the shared vocabulary after this many new samples, and at the end of the run.",
+    )
+    parser.add_argument(
         "--fail-fast",
         action="store_true",
         help="Stop at the first sample that fails. By default the run goes on and lists every failure in failures.json.",
@@ -2125,11 +2131,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     embedder = FiveChannelEmbedder(api_table_size(vocab), seed=args.seed)
     embedder_path = args.output / "channel_embedder.pt"
     can_resume = embedder_path.is_file() and not args.overwrite
+    # checkpoint.json lists the samples whose embedder rows and vocabulary ids are on disk. It is kept when the
+    # vocabulary on disk is the one the samples used: a full run writes it, a frozen run leaves it unchanged.
+    # --limit and --sample-id runs never write the shared vocabulary, so they do not resume.
+    checkpoint_path = args.output / "checkpoint.json"
+    resumable = full_run or args.freeze_vocab
+    done: set[str] = set()
     if can_resume:
         state = torch.load(embedder_path, map_location="cpu")
         embedder.expand_api(int(state["api_embedding.weight"].shape[0]))
         embedder.load_state_dict(state)
         logger.info("resumed embedder %s", embedder_path)
+        if checkpoint_path.is_file():
+            done = set(json.loads(checkpoint_path.read_text(encoding="utf-8"))["done"])
+
+    def save_state() -> None:
+        args.output.mkdir(parents=True, exist_ok=True)
+        torch.save(embedder.state_dict(), embedder_path)
+        if full_run:
+            tok.save_api_vocab(vocab, args.vocab)
+        if resumable:
+            checkpoint_path.write_text(json.dumps({"done": sorted(done)}), encoding="utf-8")
+
+    since_save = 0
     saved = 0
     skipped = 0
     oversized = 0
@@ -2141,7 +2165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         asm_bytes = int(row.get("asm_bytes") or 0)
         cfg_blocks = int(row.get("num_blocks") or 0)
         cfg_instructions = int(row.get("num_instructions") or 0)
-        if can_resume and tensor_path.is_file():
+        if can_resume and sample_id in done and tensor_path.is_file():
             logger.info("skip existing %s", sample_id)
             skipped += 1
             continue
@@ -2179,12 +2203,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 dataset_metadata=row,
             )
             save_sample(result, args.output)
-            args.output.mkdir(parents=True, exist_ok=True)
-            torch.save(embedder.state_dict(), embedder_path)
-            tok.save_api_vocab(vocab, args.vocab)
             del result
             gc.collect()
             saved += 1
+            done.add(sample_id)
+            since_save += 1
+            if since_save >= args.checkpoint_every:
+                save_state()
+                since_save = 0
         except Exception as error:
             logger.error("failed %s: %s", sample_id, error)
             failures.append({"sample_id": sample_id, "error": f"{type(error).__name__}: {error}"})
@@ -2199,10 +2225,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             path.write_text(json.dumps(items, indent=2), encoding="utf-8")
         elif path.is_file():
             path.unlink()
+    if since_save:
+        save_state()
     if saved:
         logger.info("wrote %s", embedder_path)
-    if full_run and (saved or skipped) and not failed:
-        logger.info("wrote %s", args.vocab)
+        if full_run:
+            logger.info("wrote %s", args.vocab)
     logger.info(
         "saved %s skipped %s oversized %s failed %s",
         saved,
