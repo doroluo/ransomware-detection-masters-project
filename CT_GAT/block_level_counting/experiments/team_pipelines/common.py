@@ -31,7 +31,7 @@ TEAM_COMMIT = '331ce0b'
 MAIN_ROOT = DOWNLOADS / 'rdmp-team-main'
 MAIN_COMMIT = 'c7899f0'
 FIX_ROOT = DOWNLOADS / 'rdmp-team-yfix'       # detached review worktree of origin s02-endp-library-fix (the PR into main)
-FIX_COMMIT = '817bab5'
+FIX_COMMIT = '145ed35'
 MASTERS = DOWNLOADS / 'ransomware-detection-masters-project/reports'
 BUNDLE = MASTERS / 'google_drive_upload/2026-10-07/Mendeley_GNN_v1'
 ASM_DIR = MASTERS / 'ida_asm_mendeley_20261006/asm'
@@ -79,7 +79,7 @@ MAIN_CLOSURE = {
 # The third source: the same two files with the `endp` and library-function fixes (branch s02-endp-library-fix). Hashes of the
 # files as checked out in FIX_ROOT (CRLF), like the pins above.
 FIX_PINNED_SHA256 = {
-    STAGE + 'preprocess_full.py': 'a41c62e19a2853a90c68ac775ec71ff3e4c097e0616d598d945ad8d498901691',
+    STAGE + 'preprocess_full.py': '2ad59852376d7849d417ccd90a2c16d496b375cbf851ffae4902f6215d8bc23a',
     STAGE + 'tokenize_asm_gz.py': 'e7b13fccfa512d11fba1105b4e2125fe720604175fcf9cb166e04ea1eb50acda',
 }
 
