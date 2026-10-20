@@ -79,21 +79,28 @@ python tokenize_asm_gz.py --pe-root path/to/pe/files
 
 Set `--num-blocks` or `--max-instructions` (or both). The saved piece can be smaller than the request when the connected region runs out of blocks.
 
-`--sample walk` (the default) grows one connected subgraph from a random block. `--sample signal` fills the same budget from functions that call imports. Either way, the transformer and the graph models receive that same set of blocks.
+`--sample walk` (the default) grows one connected subgraph from a random block. `--sample signal` fills the same budget with the blocks of whole functions that call imports, highest signal first; they come from several functions, so the result is not one connected subgraph. Either way, the transformer and the graph models receive that same set of blocks.
 
-Goodware and ransomware, and train and test, share one `processed/cfg_subgraphs/channel_embedder.pt`. A later run reloads it and skips a sample that already has a `.pt`. `--overwrite` builds a new embedder and rebuilds those samples. The embedding tables are a random starting point; this script does not train them.
+**Library functions are skipped.** The listing holds one `COLLAPSED FUNCTION` line for each function IDA marks as library, so its blocks can never be paired with assembly. `load_cfg` keeps the `library` flag of each function record and both samplers leave those blocks out. `signal` visits library functions only after every other function and only if the block budget is still not filled; `walk` never leaves its function, so it uses library blocks only when every function of the binary is a library function. `--include-library` restores the old sampling.
 
-The manifest stores mismatch counts and up to 32 examples of each gap. Each saved sample also rewrites `processed/api_vocab.json`. `--freeze-vocab` keeps that file unchanged and maps an unseen API name to id 75.
+**Vocabulary and embedder.** The API vocabulary grows on `train` rows only: a run processes the train rows of every `--root` first, then every other split with the vocabulary frozen (an unseen name maps to id 75). `--freeze-vocab` freezes it for the train rows too. The embedder is seeded with `--seed`, and rows it adds when the vocabulary grows depend only on the seed and the API id. Goodware and ransomware, and train and test, share one `processed/cfg_subgraphs/channel_embedder.pt`; the embedding tables are a random starting point, this script does not train them.
+
+**Saving and resuming.** The embedder and `processed/api_vocab.json` are saved every `--checkpoint-every` samples (default 50) and at the end; `--limit` and `--sample-id` runs never write the shared vocabulary. `checkpoint.json` in the output folder lists the samples that the saved vocabulary and embedder cover, and a rerun skips only those. The folder also keeps `settings.json` (sample mode, seed, budgets, `--include-library`, `--freeze-vocab`, split order, sha256 of the two source files). A rerun with other settings, or into a folder of samples without that file, stops; `--overwrite` rebuilds the folder with the new settings.
+
+**Where the CFG is.** The `cfg_path` column of the splits CSV (relative to the collection root) names it; without that column it is the listing's name with `.jsonl.gz`. `--cfg-root` points at a separate CFG tree: the column is read relative to it, or the listing's path under the collection root is repeated under it. A splits CSV without a `collection` column uses the folder name.
+
+**Failures and caps.** A sample that raises is recorded in `failures.json` (id and error) and the run goes on; the exit status is 1 when any sample failed, and `--fail-fast` stops at the first. `--max-asm-bytes`, `--max-cfg-blocks` and `--max-cfg-instructions` read `asm_bytes`, `num_blocks` and `num_instructions` of the splits CSV; they are off (0) by default, and every sample a cap skips is logged and listed in `skipped.json` with its reason. The listing is decompressed and scanned once per sample.
+
+The manifest stores mismatch counts and up to 32 examples of each gap. `missing_asm_count` counts the selected instructions with no listing line, not the instructions that share an RVA with another one (those are never paired and are in `duplicate_count`).
 
 ```bash
 python preprocess_full.py --num-blocks 8 --seed 0
 python preprocess_full.py --root ../../data/Mendeley_Goodware --limit 1 --num-blocks 8 --seed 0
 python preprocess_full.py --sample-id <sha256> --num-blocks 8 --seed 0
 python preprocess_full.py --split train --sample signal --num-blocks 64 --seed 0
+python preprocess_full.py --include-library --cfg-root <cfg tree> --fail-fast --num-blocks 8 --seed 0
 python preprocess_full.py --overwrite --num-blocks 8 --seed 0
 ```
-
-`--max-asm-bytes`, `--max-cfg-blocks`, and `--max-cfg-instructions` are accepted. The row passed into the run does not include assembly size or the original block and instruction counts, so those three limits do not skip samples.
 
 Each `<sha>.pt` holds the shared block ids, instruction token rows, block features, 64-dimensional block embeddings, and the directed edges among the selected blocks.
 
