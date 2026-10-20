@@ -43,6 +43,11 @@ the macro-F1. best.pt, the F1 checkpoint and its threshold are unchanged. As the
 AUC bests, the AUC rule also moves the stopping epoch. metrics.json records the rule (`select_on`, `selection.auc.rule`).
 
 --out names the run directory instead of the config's name (smoke runs).
+
+--model tokenseq trains Model 1, the token-sequence transformer of s03a_transformer/token_sequence, on a fold of a block export
+(`--protocol kfold --fold <k>`); its loop is its own and the registry hands the run over to it. It takes four more flags,
+refused for other models: --export <name or directory> (default ours_cap0, under the export directory), --device cuda|cpu,
+--smoke N (N binaries, 2 epochs, a temporary directory) and --window-budget N (windows per batch). See that package's README.
 """
 import argparse
 import csv
@@ -66,7 +71,11 @@ from s04_evaluation.metrics import cell_balanced, cell_weights
 from s04_evaluation.val_threshold import GRID, macro_f1
 
 
-def parse_config(argv=None):
+MODEL_OPTIONS = ('export', 'device', 'smoke', 'window_budget')      # the flags of `--model tokenseq` that are not RunConfig fields
+
+
+def parse_args(argv=None):
+    """(RunConfig, --out, options): `options` holds the flags of MODEL_OPTIONS that were given, for the model that owns them."""
     ap = argparse.ArgumentParser()
     ap.add_argument('--protocol', choices=['bundle', 'kfold', 'kfold_v3'], default='bundle')
     ap.add_argument('--fold', type=int)
@@ -82,6 +91,10 @@ def parse_config(argv=None):
     ap.add_argument('--vocab', choices=VOCABS, default='ours')
     ap.add_argument('--imports', choices=IMPORTS, default='')
     ap.add_argument('--out', help='run directory name override (default: derived from the config)')
+    ap.add_argument('--export', help="--model tokenseq: the block export, a directory or a name under the export directory")
+    ap.add_argument('--device', choices=['cuda', 'cpu'], help='--model tokenseq: default cuda when available')
+    ap.add_argument('--smoke', type=int, help='--model tokenseq: N train binaries, 2 epochs, temporary directory')
+    ap.add_argument('--window-budget', type=int, help='--model tokenseq: windows per batch')
     done = {a.dest for a in ap._actions}
     for f in fields(RunConfig):
         if f.name in done:
@@ -93,10 +106,19 @@ def parse_config(argv=None):
             ap.add_argument(flag, type=type(f.default), default=f.default)
     args = vars(ap.parse_args(argv))
     out = args.pop('out')
+    options = {k: v for k, v in ((k, args.pop(k)) for k in MODEL_OPTIONS) if v is not None}
     try:
-        return RunConfig(**args), out
+        cfg = RunConfig(**args)
     except ValueError as e:
         ap.error(str(e))
+    if options and cfg.model != 'tokenseq':
+        ap.error(f"--{', --'.join(k.replace('_', '-') for k in options)} belong to --model tokenseq")
+    return cfg, out, options
+
+
+def parse_config(argv=None):
+    """(RunConfig, --out) of a command line; the flags that only `--model tokenseq` takes are in `parse_args`."""
+    return parse_args(argv)[:2]
 
 
 def to_device(batch, device):
@@ -179,9 +201,14 @@ def write_run_as(out_name, cfg, *args, **kw):
     return metrics
 
 
-def run(cfg: RunConfig, out_name=None):
+def run(cfg: RunConfig, out_name=None, **options):
+    """One run. `options` are the flags of MODEL_OPTIONS, for a model that owns its loop (`spec.run`, `tokenseq`)."""
     spec = spec_for(cfg)
     spec.check(cfg)
+    if hasattr(spec, 'run'):
+        return spec.run(cfg, out_name, **options)
+    if options:
+        raise ValueError(f'model {spec.name} takes none of {", ".join(options)}')
     if cfg.cache and cfg.cache not in load_registry() and Path(cfg.cache) != CACHE:
         raise ValueError(f'config says cache {cfg.cache} but this process reads {CACHE}')
     check_requires(spec, CACHE)
@@ -271,7 +298,8 @@ def run(cfg: RunConfig, out_name=None):
 
 
 def main():
-    run(*parse_config())
+    cfg, out, options = parse_args()
+    run(cfg, out, **options)
 
 
 if __name__ == '__main__':

@@ -67,8 +67,9 @@ fixes the run names. The spec class is imported on first use and instantiated on
 
 ## Options that need another stage
 
-`--block-input vec` reads block vectors that `s03c_cfg_transformer/precompute_blockvec.py` writes. Where that package is not
-present the command stops at once with a message that names it. `--vocab yanping|hybrid` reads `<cache>/side/yanping/`, which
+`--block-input vec` reads block vectors that `s03c_cfg_transformer/precompute_blockvec.py` writes (export, encoder checkpoints,
+precompute: see that stage's README); without the vectors of `--block-vec` the command stops at once with a missing-file error.
+The check that stage 3c itself is present stays in `gnn/spec.py` for a checkout that removed it. `--vocab yanping|hybrid` reads `<cache>/side/yanping/`, which
 `experiments/side_arrays` writes. `--stack-tfidf` reads `<runs>/baselines/<dir>/stack_logits.csv` (`s04_evaluation/baselines.py
 --stack-logits`). `--imports header` reads `<cache>/side/imports/`; `gnn/s10_unused_import_features/import_side.py` writes it.
 
