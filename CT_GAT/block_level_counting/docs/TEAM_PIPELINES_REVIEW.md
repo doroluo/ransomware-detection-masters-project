@@ -230,3 +230,293 @@ Her version is less correct here: those lines are in the listing at the right ad
 - New, the `selected_rvas` filter (896) drops a line only when no selected instruction lies at or above the span's address, so lines of all spans before the last selected instruction are buffered until the next label and discarded at 861-863. The memory is bounded by the largest code span, not by the selected ones; a function with millions of code lines and no inner label would still be held whole.
 - New, a selected block whose span is never opened (no label at or below its address, or an address the listing does not have) is left unmatched and reported as `rva_before_any_asm_label` (901-905), the only case that gets that reason. The report keeps 32 examples per kind, so only its counts say how many instructions are affected, and those are inflated by the `endp` case above.
 - New, line splitting: `splitlines()` is replaced by iterating the text handle, so form feeds and the other Unicode line boundaries no longer split a line; the 60-sample comparison shows no effect from this.
+
+## 12. Why the match fails, and how to check a fix
+
+Note for Yanping on the listing-to-CFG match in pipeline B. We measured it on the first build (`RUNS/team/b_sig500`, `preprocess_full` of 331ce0b, 1,808 of 1,810 binaries) and replayed 80 single samples through her pinned functions (`load_cfg`, `parse_asm_instructions`, `align_cfg_to_asm`, and `align_sampled_blocks` for the second source), with the example limit of her mismatch report lifted in memory. None of her files was edited and no new listing or CFG parser was written. The tools are `experiments/team_pipelines/match_diagnosis.py` and `match_acceptance.py` (README, "Match diagnosis and acceptance"). All 80 replays reproduce the build's own matched count exactly.
+
+**The finding in one line.** The listings do not contain the code of the functions IDA marked as library functions: each is one line `; [000002BA BYTES: COLLAPSED FUNCTION initialize_pointers(void)]`, and the CFG has all of them. Of the instructions lost in the 80 replayed samples, 99.8% (ransomware) and 96.7% (goodware) belong to such functions; mnemonic disagreements and the other causes below are 0.2% of the ransomware loss and 3.3% of the goodware loss. The label gap exists because ransomware samples are mostly statically linked library code (C runtime, Go runtime, MFC) and the `signal` sampler ranks whole functions by imports and calls, which, in the worst samples, selects functions that are all library functions (this is read off the replayed samples, not measured over the whole build). The earlier hypothesis in section 4, two IDA runs that disagree on packed code, is not what the data show.
+
+Evidence that the listing is the missing side, from the CFG records themselves. Every function record in the `.jsonl.gz` carries `library` and `thunk` flags. For `05e06709523f` (ryuk, 533 functions) 438 functions are `library` and none of them has a `proc` line in the listing, while 94 of the 95 non-library functions do (the 95th is a thunk with a COLLAPSED marker); 371 of the 438 library functions have a COLLAPSED marker under the same name, and the other 67 are neither listed nor matched to a marker by name. Names fail to match when the marker carries the demangled form, as in `48976d7bf38c`, where the CFG's `?initialize_pointers@@YAHXZ` is `initialize_pointers(void)` in the listing; we did not check these 67 one by one. Over the 80 replayed samples the CFG holds 75,015 functions; 29,090 have a label at their entry, the listing has 44,035 collapsed markers, and 1,845 procedures are listed under another spelling of their name (IDA turns `.` into `_`: the Go function `unicode.init` is `unicode_init`). 29,090 + 44,035 + 1,845 = 74,970 of 75,015.
+
+### 12.1 Match rate by label, family and size (1,808 binaries of the first build)
+
+| label | binaries | mean match | below 50% | below 90% | exactly 0 |
+|---|---|---|---|---|---|
+| ransomware | 1132 | 0.855 | 187 (16.5%) | 238 (21.0%) | 1.7% |
+| goodware | 676 | 0.978 | 7 (1.0%) | 23 (3.4%) | 0.0% |
+
+The AUC of `1 - match rate` as a ransomware score is 0.543, with a 95% interval of [0.461, 0.635] from 1,000 resamples of the 712 clusters (one per ransomware family, one per goodware binary, as `evaluation/stats.py` draws them). The point estimate is low because most binaries of both labels sit at or near 1.0 (63% of the ransomware and 67% of the goodware binaries match completely), so the rank statistic is decided in the tails and by ties; the interval is wide and its upper end is above 0.6. The label signal sits in the tail (the 21% against 3.4%), which a rank statistic over all binaries understates. The ten worst families:
+
+| family | binaries | mean match | below 50% | below 90% |
+|---|---|---|---|---|
+| lorenz | 15 | 0.295 | 100.0% | 100.0% |
+| stop | 35 | 0.297 | 82.9% | 82.9% |
+| pysa | 38 | 0.314 | 100.0% | 100.0% |
+| playcrypt | 43 | 0.574 | 44.2% | 76.7% |
+| blackbasta | 26 | 0.586 | 53.8% | 57.7% |
+| gandcrab | 49 | 0.599 | 42.9% | 46.9% |
+| nefilim | 25 | 0.658 | 36.0% | 44.0% |
+| ryuk | 33 | 0.666 | 27.3% | 54.5% |
+| mountlocker | 5 | 0.821 | 20.0% | 20.0% |
+| karma | 13 | 0.828 | 23.1% | 23.1% |
+
+Fourteen of the 36 ransomware families match at 99% or better on average (netwalker, blackcat, blackmatter, bluesky, darkside, hive, lockbit and others at 1.000), so the effect is a property of the binaries, not of ransomware as such. The goodware pool `goodware` (562) has 3.7% below 90%, the held-out `goodware_test` (114) 1.8%; the full per-family table is in the JSON of `match_diagnosis`.
+
+Lost share by function length (selected instructions of one function, from the saved tensors, all 1,808 binaries):
+
+| label | length | functions | selected | lost | lost share | fully lost functions |
+|---|---|---|---|---|---|---|
+| ransomware | 1-9 | 5927 | 9542 | 3773 | 39.5% | 3597 |
+| ransomware | 10-49 | 2669 | 73160 | 3564 | 4.9% | 137 |
+| ransomware | 50-199 | 8053 | 947354 | 118465 | 12.5% | 996 |
+| ransomware | 200-999 | 6111 | 2324397 | 235015 | 10.1% | 523 |
+| ransomware | 1000+ | 842 | 2458802 | 126542 | 5.1% | 76 |
+| goodware | 1-9 | 1513 | 3727 | 1389 | 37.3% | 923 |
+| goodware | 10-49 | 2394 | 61152 | 4000 | 6.5% | 210 |
+| goodware | 50-199 | 3934 | 424878 | 13950 | 3.3% | 84 |
+| goodware | 200-999 | 1921 | 732057 | 9015 | 1.2% | 17 |
+| goodware | 1000+ | 321 | 646549 | 2232 | 0.3% | 2 |
+
+Functions of 1 to 9 instructions are lost most often in both labels (37-40%); the label gap is in the long functions, where ransomware loses 5-12% against 0.3-3%. In the replay, where the label spans (CFG instructions between two listing labels) are known:
+
+| span length | spans | selected | lost | lost share |
+|---|---|---|---|---|
+| 1-9 | 5123 | 19872 | 139 | 0.7% |
+| 10-49 | 2605 | 50731 | 955 | 1.9% |
+| 50-199 | 313 | 24231 | 3100 | 12.8% |
+| 200-999 | 137 | 33298 | 17625 | 52.9% |
+| 1000+ | 143 | 96439 | 91553 | 94.9% |
+
+A span of a few instructions is a function that has a label and a listing; a span of 200 or more is a label followed by collapsed functions that have none, so the CFG rows of all of them are bucketed under the last label before them and nothing is left to pair with.
+
+### 12.2 What the unmatched instructions are
+
+The gap reports in the manifests (counts only; the report keeps 32 examples per kind) summed over the first build. Scope: for 331ce0b the alignment covers the whole CFG, so the columns count every CFG instruction, not only the selected ones; for the second source they count selected instructions and are inflated by the `endp` reset (section 11).
+
+| label | manifests | selected instr. | CFG instr. without listing line | listing lines without CFG instr. | duplicate RVAs | address problems |
+|---|---|---|---|---|---|---|
+| ransomware | 1132 | 5813255 | 18876058 | 3784738 | 185915 | 1 |
+| goodware | 676 | 1868363 | 1188764 | 592594 | 21441 | 1 |
+
+Reasons of the retained examples: ransomware `collapsed_function` 16,785, `no_asm_line_in_address_span` 7,424, `rva_before_any_asm_label` 804; goodware `collapsed_function` 12,976, `no_asm_line_in_address_span` 2,981. Her `collapsed_function` test is a substring match of the CFG name in the marker, so it misses every function whose marker is demangled; those fall under `no_asm_line_in_address_span`.
+
+The replay sorts every unmatched selected instruction of 80 samples into one cause. The samples are the 30 lowest-match samples, the 10 lowest-match goodware samples, and 20 random samples per label that lose some but not all (seed 0). Counts are instructions.
+
+| cause | ransomware | goodware |
+|---|---|---|
+| (i) listing label missing below the RVA | 0 | 1 |
+| (ii) lost after a mnemonic disagreement | 0 | 23 |
+| (iii) function without listing lines | 100024 | 13289 |
+| (iv) duplicate RVA (skipped on purpose by the pairing) | 217 | 408 |
+| (v) a label kind her address rule does not read | 21 | 15 |
+| (vi) `endp` reset | 0 | 0 |
+| (vii) other | 0 | 0 |
+| selected instructions replayed | 157795 | 67402 |
+| unmatched | 100262 | 13736 |
+
+Cause (iii) splits into the function being a COLLAPSED FUNCTION under the CFG's own name (ransomware 69,190, goodware 11,874) and the function having no label at its entry while its marker could not be matched by name (ransomware 30,834, goodware 1,415); the second group is the demangled and sanitised names above, counted by the label census (the unlabelled functions equal the collapsed markers to within 0.1%). Code labels without an address (`def_`, `nullsub_`, `j_` and other names) number 20,093 `named`, 141 `def_` and 86 `j_` over the 80 listings; only 36 instructions (cause v) were lost after a disagreement in a span that holds one. No listing line without a label address occurred (`lines_without_label` 0 in all 80). (vi) is zero because these are first-source builds; section 11 and 12.4 cover the second source.
+
+Mnemonic disagreements: the first disagreement of a label span, as (listing, CFG) pair, with the instructions lost after it. There are five in the 80 samples, and none is a prefix, a `retn`/`ret` spelling, a filler or data printed as code.
+
+| pair (listing, CFG) | spans | lost |
+|---|---|---|
+| mov, retn | 3 | 21 |
+| lea, push | 1 | 16 |
+| mov, jmp | 1 | 14 |
+| call, push | 1 | 7 |
+| jmp, call | 1 | 1 |
+
+### 12.3 The ten worst samples
+
+Ten lowest-match samples of distinct (family, selected instructions) pairs; several others are copies of the same binary (seven ryuk binaries have the same 2,499 selected instructions and all lose them). `selected`, `matched` and the listing census are from the replay. Each excerpt is at most 8 lines of her listing file for the first function with an unmatched selected instruction that has a marker.
+
+| sample | family | match | selected | CFG functions | with a label | collapsed markers |
+|---|---|---|---|---|---|---|
+| `9e6be0a3bf10` | nefilim | 0.000 | 4587 | 2584 | 1 | 2318 |
+| `148845af1fc1` | nefilim | 0.000 | 4135 | 2539 | 1 | 2245 |
+| `f0aec57001a1` | phobos | 0.000 | 3065 | 3639 | 413 | 3225 |
+| `05e06709523f` | ryuk | 0.000 | 2839 | 533 | 94 | 439 |
+| `2ec5256a7edb` | ryuk | 0.000 | 2499 | 421 | 69 | 352 |
+| `d236d64b7bf9` | conti | 0.000 | 2402 | 1438 | 303 | 1136 |
+| `48976d7bf38c` | blackbasta | 0.000 | 2271 | 2151 | 866 | 1281 |
+| `1fe9b489c25b` | revil | 0.049 | 2537 | 387 | 54 | 333 |
+| `dc6b0e8c1e9c` | revil | 0.050 | 2463 | 391 | 54 | 337 |
+| `54ac8cbce477` | goodware | 0.058 | 2213 | 173 | 13 | 160 |
+
+`9e6be0a3bf10` (Go; the function is `unicode.init`, 4,587 selected instructions):
+
+```
+                align 10h
+; [000000E1 BYTES: COLLAPSED FUNCTION unicode_isExcludingLatin]
+                align 10h
+; [0000551A BYTES: COLLAPSED FUNCTION unicode_init]
+                align 10h
+; [000001E5 BYTES: COLLAPSED FUNCTION reflect_makeMethodValue]
+                align 10h
+; [00000062 BYTES: COLLAPSED FUNCTION reflect_name_tagLen]
+```
+
+`148845af1fc1` (Go; the same function, 4,135 selected instructions):
+
+```
+                align 10h
+; [000000CF BYTES: COLLAPSED FUNCTION unicode_isExcludingLatin]
+                align 10h
+; [00004EE8 BYTES: COLLAPSED FUNCTION unicode_init]
+                align 10h
+; [000001BC BYTES: COLLAPSED FUNCTION reflect_makeMethodValue]
+                align 10h
+; [00000065 BYTES: COLLAPSED FUNCTION reflect_name_tagLen]
+```
+
+`f0aec57001a1` (`@SysUtils@_16771` and its neighbours):
+
+```
+; [000000BC BYTES: COLLAPSED FUNCTION unknown_libname_421]
+; [00000049 BYTES: COLLAPSED FUNCTION unknown_libname_422]
+                align 4
+; [00000661 BYTES: COLLAPSED FUNCTION unknown_libname_423]
+                align 4
+; [00000061 BYTES: COLLAPSED FUNCTION Graphics::CopyPalette(uint)]
+                align 4
+; [0000020C BYTES: COLLAPSED FUNCTION unknown_libname_424]
+```
+
+`05e06709523f` (`__input_l`, 5,786 bytes of C runtime):
+
+```
+                align 10h
+; [0000005F BYTES: COLLAPSED FUNCTION _ValidateLocalCookies]
+                align 10h
+; [0000169A BYTES: COLLAPSED FUNCTION __input_l]
+                align 4
+jpt_35007A2C    dd offset loc_35007BA2  ; DATA XREF: __input_l+42C↑r
+                dd offset loc_35007A33  ; jump table for switch statement
+                dd offset loc_35007A54
+```
+
+`2ec5256a7edb` (`___security_init_cookie`):
+
+```
+; [00000028 BYTES: COLLAPSED FUNCTION ___scrt_uninitialize_crt]
+; [0000003B BYTES: COLLAPSED FUNCTION __onexit]
+; [00000015 BYTES: COLLAPSED FUNCTION _atexit]
+; [0000009C BYTES: COLLAPSED FUNCTION ___security_init_cookie]
+
+; =============== S U B R O U T I N E =======================================
+
+```
+
+`d236d64b7bf9` (MFC; `unknown_libname_56`, after the last listed function `sub_408CAA`):
+
+```
+sub_408CAA      endp
+
+; [0000007E BYTES: COLLAPSED FUNCTION CWnd::PrepareForHelp(void)]
+; [000005C2 BYTES: COLLAPSED FUNCTION unknown_libname_56]
+                db 8Bh, 0FFh
+jpt_408FBA      dd offset loc_40903D, offset loc_40904F, offset loc_40904F
+                                        ; DATA XREF: unknown_libname_56+1B3↑r
+                dd offset loc_40904F, offset loc_409069, offset loc_409085 ; jump table for switch statement
+```
+
+`48976d7bf38c` (the CFG name is the mangled `?initialize_pointers@@YAHXZ`; the marker carries the demangled name):
+
+```
+; [00000027 BYTES: COLLAPSED FUNCTION __Xtime_get_ticks]
+; [00000055 BYTES: COLLAPSED FUNCTION _xtime_get]
+; [0000001F BYTES: COLLAPSED FUNCTION __Cnd_broadcast]
+; [000002BA BYTES: COLLAPSED FUNCTION initialize_pointers(void)]
+; [00000026 BYTES: COLLAPSED FUNCTION ___crtGetSystemTimePreciseAsFileTime]
+; [0000001A BYTES: COLLAPSED FUNCTION unknown_libname_34]
+; [00000063 BYTES: COLLAPSED FUNCTION _Init_atexit::~_Init_atexit(void)]
+                db 5 dup(0CCh)
+```
+
+`1fe9b489c25b` (`___scrt_fastfail`):
+
+```
+                retn
+sub_4017E5      endp
+
+; [0000011B BYTES: COLLAPSED FUNCTION ___scrt_fastfail]
+; [00000033 BYTES: COLLAPSED FUNCTION ___scrt_get_show_window_mode]
+; [00000044 BYTES: COLLAPSED FUNCTION ___scrt_is_managed_app]
+
+; =============== S U B R O U T I N E =======================================
+```
+
+`dc6b0e8c1e9c` (revil, `___scrt_fastfail` again, another build of the same program):
+
+```
+                retn
+sub_401846      endp
+
+; [0000011A BYTES: COLLAPSED FUNCTION ___scrt_fastfail]
+; [00000031 BYTES: COLLAPSED FUNCTION ___scrt_get_show_window_mode]
+; [00000005 BYTES: COLLAPSED FUNCTION j_UserMathErrorFunction]
+; [00000043 BYTES: COLLAPSED FUNCTION ___scrt_is_managed_app]
+```
+
+`54ac8cbce477` (goodware, `___tmainCRTStartup`; 13 of 173 functions have a listing):
+
+```
+                pop     ecx
+                pop     ebp
+                retn
+; [0000017E BYTES: COLLAPSED FUNCTION ___tmainCRTStartup]
+; [0000000A BYTES: COLLAPSED FUNCTION start]
+; [00000042 BYTES: COLLAPSED FUNCTION __CxxUnhandledExceptionFilter(_EXCEPTION_POINTERS *)]
+
+; =============== S U B R O U T I N E =======================================
+```
+
+### 12.4 The second source (main c7899f0) on the partial rebuild
+
+The rebuild with her streaming `preprocess_full` is not finished: the checkpoint of `RUNS/team/b_sig500_v2` held 1,350 of 1,810 ids when this was measured and there is no `build_summary.json` yet, so criterion 1 cannot pass and everything below is for those 1,350 ids, next to the same 1,350 ids of the first build. To redo it on the finished build, run the two commands of 12.6 on `RUNS/team/b_sig500_v2` once `build_summary.json` reports 1,810 processed.
+
+| on the same 1,350 ids | first source (331ce0b) | second source (c7899f0) |
+|---|---|---|
+| ransomware mean match | 0.850 | 0.809 |
+| ransomware below 90% | 186 of 853 (21.8%) | 289 of 853 (33.9%) |
+| ransomware below 50% | 145 of 853 (17.0%) | 147 of 853 (17.2%) |
+| goodware mean match | 0.977 | 0.964 |
+| goodware below 90% | 18 of 497 (3.6%) | 36 of 497 (7.2%) |
+| goodware below 50% | 6 of 497 (1.2%) | 6 of 497 (1.2%) |
+| AUC of 1 - match rate | 0.547, interval [0.462, 0.634] | 0.754, interval [0.666, 0.832] |
+
+The `endp` reset of section 11 shows up as a leak of its own: it moves instructions from "matched" to "unmatched" mostly in ransomware, which raises the AUC from 0.547 to 0.754 and the ransomware below-90% share by 12 points, while the below-50% tail is unchanged (the collapsed functions, which it does not touch). The replay of 50 samples of the second build (15 lowest-match, 5 lowest-match goodware, 15 random lossy samples per label; all 50 reproduce the build's matched count) classifies cause (vi) as instructions that the first source's alignment pairs and the second source's does not:
+
+| cause | ransomware | goodware |
+|---|---|---|
+| (i) listing label missing below the RVA | 0 | 0 |
+| (ii) lost after a mnemonic disagreement | 0 | 44 |
+| (iii) function without listing lines | 46672 | 9207 |
+| (iv) duplicate RVA | 152 | 448 |
+| (v) a label kind her address rule does not read | 0 | 0 |
+| (vi) `endp` reset | 7428 | 1037 |
+| (vii) other | 0 | 1 |
+| selected instructions replayed | 126147 | 52538 |
+| unmatched | 54252 | 10737 |
+
+So in the second build the collapsed functions still dominate the loss (86% of the ransomware and 86% of the goodware instructions lost), and the `endp` reset adds 14% and 10% on top. Both have to go: option 1 of 12.5 removes them together, option 3(a) removes only the second.
+
+### 12.5 Fix options, ranked
+
+1. **Take the per-instruction fields from the `.jsonl.gz`** and make the listing optional. Each instruction record has `rva`, `size`, `mnemonic`, the structured `operands` (`category` register / phrase / immediate / code_target, `register`, `immediate`, `target_rva`), `is_call`, `import_ids`, `call_resolution`, `code_refs` and `data_refs`; each function record has `library` and `thunk`. The opcode and operand-class channels, the call and import channels and the API channel (through `import_ids` and `call_resolution`) can be built from these without the listing. This removes causes (i) to (vii) for every instruction in one step, makes the match rate 100% by construction, needs no 23 GB listing in memory, and takes away the ransomware-only tail that makes `1 - match rate` a label feature. What it costs: the operand classes come from the structured operand (`MEM_STACK_REF` needs the base register, `MEM_GLOBAL_REF` the absence of one), so the token ids differ slightly from the ones built from listing text; sig500 must be rerun and compared with sig500v3. Where the listing is kept (comments with API names for `call eax`), pairing becomes optional enrichment, and its match rate should be logged and not used as a gate.
+2. **Re-export the listings so that library functions are expanded and every line carries its address.** With the bodies of the collapsed functions in the file, causes (iii) and (iv) disappear and pairing could use addresses instead of order. It depends on a new export of the listings, and the two largest listings (23 GB each) get larger when expanded; the CFG already has everything that is missing, so this is a longer route to the same result as 1.
+3. **Harden the pairing**, which is worth doing whichever of 1 or 2 is chosen, but fixes little alone. (a) The `endp` reset: leave the label address alone on `endp` and `ends` lines, or ignore a span whose end is not above its start (section 11). (b) Treat a function without listing lines as a known case: do not pair it, give its instructions the CFG-derived tokens of option 1 and not the unknown-opcode tokens, and do not count it as unmatched. (c) Read `library` from the function record to decide this, not the substring test on the marker name (which misses demangled and sanitised names). (d) Match procedure names after the same sanitising IDA applies (`.` and other non-identifier characters become `_`), so `unicode.init` finds `unicode_init proc near`. (e) After a mnemonic disagreement, re-anchor at the next listing label and keep pairing, instead of dropping the rest of the span. (f) Make the build fail a sample, or at least print it, when the match rate is under 90%, and count duplicate RVAs separately from losses (they are skipped on purpose, 408 goodware instructions in the replay).
+
+### 12.6 How to check a fix
+
+Run `match_acceptance.py` on her rebuilt output (a directory with the `<id>.pt`, `<id>.manifest.json`, `checkpoint.json`, `settings.json` and `build_summary.json` that `build_b.py` writes, or the same layout from her own script):
+
+```
+python -m experiments.team_pipelines.match_acceptance --build <her new dir>
+python -m experiments.team_pipelines.match_diagnosis  --build <her new dir> --cache gaps.json --json diag.json
+```
+
+It prints PASS or FAIL for five criteria and exits with status 0 only if all pass: (1) all 1,810 kfold-x86 ids built, none excluded; (2) the share of binaries with under 90% of their selected instructions matched within 2 points between ransomware and goodware; (3) the share under 50% below 1% for both labels; (4) the AUC of `1 - match rate` below 0.55; (5) a deterministic rebuild of 5 sampled ids, tensor for tensor (`torch.equal`), starting from the build's own vocabulary and embedder (`build_b --frozen-from`), because a fresh vocabulary numbers API names differently. The peak-RSS and sig500v3 criteria of the plan are not tested by the script; `measure_rss.py` and `gates.py --stage team` do those. With option 1 criteria 2 to 4 pass by construction and the script then checks mostly criteria 1 and 5. A partial build is evaluated on the ids it holds and marked partial.
+
+Current verdicts: first build, FAIL (criteria 1, 2 and 3 fail; criterion 4 passes at 0.543, interval [0.461, 0.635]; criterion 5 passes, 5 of 5 sampled ids rebuild identically with the frozen vocabulary). Second build, partial (1,350 of 1,810 ids): FAIL (1 of 5 pass): criterion 1 fails (460 ids missing), criterion 2 fails (33.9% against 7.2%, a gap of 26.6 points), criterion 3 fails (17.2% and 1.2%), criterion 4 fails (0.754, interval [0.666, 0.832]), criterion 5 passes (5 of 5 sampled ids rebuild identically with the frozen vocabulary). Both are expected to fail until the fix lands.

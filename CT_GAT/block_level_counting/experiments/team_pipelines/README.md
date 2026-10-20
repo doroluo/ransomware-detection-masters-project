@@ -64,6 +64,7 @@ plus under a minute of loading and prediction. The 15 runs of an arm therefore t
     `training/train.py`'s (`write_predictions`, `evaluate`) over `evaluation/metrics.py`; the rows must be exactly the
     manifest's validation and test ids. `manifest.json` is not in the rubric but `report.py` reads it for the floors.
   - `team_row(sample_id)`: the row `construct_blocks` expects (bundle `samples.csv` row, int `label`, `cfg_file`).
+- `match_diagnosis.py`, `match_acceptance.py`: why the listing-to-CFG match fails and the PASS/FAIL checks for a fix (step 24, below).
 - `build_b.py`, `build_a.py`: the two preprocessing builds; `train_a.py`, `train_b.py`: the trainers; `fit.py`: the
   teammates' training loop on our manifests (shared by both trainers). See below.
 
@@ -235,6 +236,48 @@ python -m experiments.team_pipelines.match_rates --build RUNS/team/b_sig500 --am
 `compare_builds compare` checks, per sample, `block_keys`, `instruction_matched`, `instruction_ids` columns 0, 1, 2 and 4, column 3
 (api), `block_features`, `edge_index` and `edge_attr`, and says which arrays differ and by how much. `gates.py --stage team` has the
 row `team sig500v2` and pairs it with `team sig500`, R7 and TF-IDF.
+
+## Match diagnosis and acceptance (step 24)
+
+Why the listing-to-CFG match fails and how to tell a fix from a non-fix: `docs/TEAM_PIPELINES_REVIEW.md` section 12. We deliver the
+diagnosis and the acceptance checks; the fix is Yanping's. Both scripts read a build's saved tensors (and, for the gap reports,
+its manifests) and call the teammates' pinned functions only through `import_team`; nothing is written under `RUNS/team/`.
+Listing lines are parsed and aligned only by the teammates' functions; `match_diagnosis` itself reads raw listing text in two places, to count
+label, `proc` and `endp` lines and to quote COLLAPSED FUNCTION markers. Python is `C:/Users/chaoa/Downloads/gt_venv/Scripts/python.exe`, CPU only (`CUDA_VISIBLE_DEVICES=-1`), run from the
+`block_level_counting` root.
+
+```
+# the diagnosis of the first build. The replay covers 80 samples (30 lowest-match, 10 lowest-match goodware, 20 random lossy ones
+# per label), about 35 minutes on a busy machine; --replay-cache keeps one JSON per replayed sample so an interrupted run resumes,
+# --cache keeps the manifest gap reports (8.8 GB of JSON, 70 s to read); --replay-worst 0 --replay-goodware 0 --replay-partial 0
+# skips the replay
+python -m experiments.team_pipelines.match_diagnosis --build RUNS/team/b_sig500 --cache <gaps.json> --replay-cache <dir> --json v1.json --markdown v1.md --csv v1.csv
+
+# the same on the rebuild with her streaming preprocess, once RUNS/team/b_sig500_v2/build_summary.json reports processed 1810
+# (on a partial build the tables cover the ids it holds)
+python -m experiments.team_pipelines.match_diagnosis --build RUNS/team/b_sig500_v2 --cache <file_v2.json> --json v2.json --markdown v2.md --csv v2.csv
+
+# PASS or FAIL of a build against the five acceptance criteria of the plan; exit status 0 only if all pass
+python -m experiments.team_pipelines.match_acceptance --build RUNS/team/b_sig500
+python -m experiments.team_pipelines.match_acceptance --build RUNS/team/b_sig500_v2          # her rebuilt output: run this
+python -m experiments.team_pipelines.match_acceptance --build <her new dir> --skip-rebuild      # quick: criteria 1-4, never PASS
+```
+
+`match_diagnosis` prints, per label and per family, the share of binaries with under 50% and under 90% of their selected
+instructions matched and the mean; the 10 worst families; the AUC of `1 - match rate` as a ransomware score with a 95% interval over
+clusters (`fam:<family>` for ransomware, `id:<sample_id>` for goodware, as `evaluation/stats.py`); the lost share by function
+length; the gap reports of the manifests; and, for the lowest-match samples, a replay with the teammates' own alignment that sorts
+every unmatched selected instruction into one cause (the list is in the module docstring). The replay reads the whole listing
+and CFG of a sample, so a listing above `--max-listing-mb` (60 MB compressed) is skipped and listed. `--source` is read from the
+build's `settings.json`.
+
+`match_acceptance` checks (1) all 1,810 ids built and none excluded, (2) the under-90% share of the two labels within 2 points,
+(3) the under-50% share below 1% for both, (4) the AUC of `1 - match rate` below 0.55, (5) a deterministic rebuild of 5 ids drawn
+with `random.Random(0)`: `build_b --frozen-from <build>` into a temporary directory, every tensor `torch.equal` to the build's.
+The rebuild keeps the build's own vocabulary and embedder, because a fresh vocabulary numbers API names differently and its tensors
+could not be compared; it takes a minute or two per ordinary listing and several minutes for the largest ones. On a build that
+is not complete, criteria 2-4 are computed on the ids it holds and marked partial. Tests: `tests/test_match_diagnosis.py`
+(synthetic builds and a fake pinned module; one real small binary built and replayed with both sources).
 
 ## Tests
 
