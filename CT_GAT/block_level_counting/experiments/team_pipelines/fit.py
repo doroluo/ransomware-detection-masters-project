@@ -121,11 +121,14 @@ def smoke_ids(manifest, available, n):
 
 
 def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=None, smoke_split=None, extra=None,
-            log=print):
+            log=print, excluded=(), excluded_reason=''):
     """Train one (arm, fold, seed). graphs / sizes map sample_id -> PyG Data / (n_segments, kept, total); build_model is
     called after torch.manual_seed(seed). Without `smoke` every id of the fold's manifest must be in graphs and the run is
     written to RUNS/<team_config name>. With smoke=N it trains on N available training ids for 2 epochs and writes only
-    a temp directory (a mkdtemp, never under RUNS; smoke_split = (train ids, val ids) overrides the choice): returns that directory's path and the history."""
+    a temp directory (a mkdtemp, never under RUNS; smoke_split = (train ids, val ids) overrides the choice): returns that directory's path and the history.
+    `excluded` (ids, with `excluded_reason`): binaries the arm's build could not process; they are left out of the training,
+    validation and test ids and recorded in metrics.json (common.write_run). Every other binary of the manifest still needs
+    a graph."""
     tc = import_team('train_cfg')
     threads = configure_threads()
     manifest = fold_manifest(fold, seed)
@@ -140,15 +143,17 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
         log(f'smoke {cfg.name}: train {len(train_ids)} val {len(val_ids)} (temp dir {out}, 2 epochs, device {device}, '
             f'{threads} torch threads)')
     else:
-        need = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test]
+        skip = set(excluded)
+        need = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test if r['sample_id'] not in skip]
         missing = [i for i in need if i not in graphs]
         if missing:
-            raise SystemExit(f'{len(missing)} of the fold\'s {len(need)} binaries have no graph, e.g. {missing[:3]}')
-        train_ids = [r['sample_id'] for r in manifest.train]
-        val_ids = [r['sample_id'] for r in manifest.val]
+            raise SystemExit(f"{len(missing)} of the fold's {len(need)} binaries have no graph, e.g. {missing[:3]}")
+        train_ids = [r['sample_id'] for r in manifest.train if r['sample_id'] not in skip]
+        val_ids = [r['sample_id'] for r in manifest.val if r['sample_id'] not in skip]
+        test_ids = [r['sample_id'] for r in manifest.test if r['sample_id'] not in skip]
         out = RUNS / cfg.name
-        log(f'{cfg.name}: train {len(train_ids)} val {len(val_ids)} test {len(manifest.test)} device {device}, '
-            f'{threads} torch threads')
+        log(f'{cfg.name}: train {len(train_ids)} val {len(val_ids)} test {len(test_ids)} device {device}, '
+            f'{threads} torch threads' + (f', {len(skip)} excluded ({excluded_reason})' if skip else ''))
     result = fit(model, train_ids, val_ids, graphs, hp=hp, seed=seed, device=device, log=log)
     history = result['history']
     peak = max(h['peak_gpu_mb'] for h in history)
@@ -166,8 +171,7 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
     for rule in ('f1', 'auc'):
         model.load_state_dict(result[f'{rule}_state'])
         by_split[rule] = {}
-        for split, ids in (('val', [r['sample_id'] for r in manifest.val]),
-                           ('test', [r['sample_id'] for r in manifest.test])):
+        for split, ids in (('val', val_ids), ('test', test_ids)):
             ids_out, probs, size, _ = predict_rows(tc, model, ids, graphs, sizes, device, hp['batch_size'])
             by_split[rule][split] = (ids_out, probs, size)
         states[rule] = result[f'{rule}_state']
@@ -185,7 +189,8 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
             'recipe': {**hp, 'arm': arm, 'selection_f1': 'ransomware F1 at 0.5 (train_cfg.metrics_at), stop on it',
                        'selection_auc': 'validation AUC, tracked while training', 'device': str(device)},
             **(extra or {})}
-    metrics = write_run(out, cfg, by_split['f1'], by_split['auc'], thr_f1, thr_auc, info)
+    metrics = write_run(out, cfg, by_split['f1'], by_split['auc'], thr_f1, thr_auc, info, excluded=sorted(skip),
+                        excluded_reason=excluded_reason)
     write_history(out / 'history.csv', history)
     torch.save(states['f1'], out / 'best.pt')
     torch.save(states['auc'], out / 'best_auc.pt')

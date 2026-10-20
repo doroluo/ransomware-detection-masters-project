@@ -436,7 +436,7 @@ def test_team_runs_dry_names_equal_run_config_names():
     runs = [l.split() for l in lines if l.startswith('run ')]
     assert len(runs) == 45 and lines[0].startswith('team_runs start') and lines[-1].startswith('team_runs done')
     waits = [l for l in lines if l.startswith('wait ')]
-    assert len(waits) == 1 and waits[0].endswith('/team/b_sig500/build_summary.json reports 1810/1810')
+    assert len(waits) == 1 and waits[0].endswith('/team/b_sig500/build_summary.json reports processed + excluded == 1810/1810')
     seen = []
     for _, name, module, *argv in runs:
         opt = dict(zip(argv[::2], argv[1::2]))

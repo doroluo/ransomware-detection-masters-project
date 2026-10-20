@@ -7,7 +7,7 @@ from common.config import RunConfig
 from common.manifests import load_sample
 from legacy.graph_transformer.encode import encode_binary_transformer
 from pipeline.s03_tokenizer.block_tokens import token_table
-from pipeline.s03_tokenizer.vocab import TokenVocab
+from pipeline.s03_tokenizer.vocab import TokenVocab, uses_reader
 from pipeline.s04_select_subgraph import subgraph
 from pipeline.s04_select_subgraph.subgraph import select_subgraph
 from pipeline.s05_block_counting.weights import token_weights
@@ -64,7 +64,8 @@ precomputed vector of each kept block (`vecs`, a BlockVecSource); block masking 
             hit = rng.random(len(ins_pos[0])) < cfg.mask_tokens
             for j in range(len(ins_pos)):
                 tokens[ins_pos[j][hit]] = mask_of_kind[j]
-            tokens[api_pos[rng.random(len(api_pos)) < cfg.mask_tokens]] = mask_of_kind[-1]
+            if getattr(vocab, 'has_api', True):
+                tokens[api_pos[rng.random(len(api_pos)) < cfg.mask_tokens]] = mask_of_kind[-1]
         if rng is not None and cfg.mask_blocks > 0:
             hit = rng.random(n_blk) < cfg.mask_blocks
             in_hit = np.repeat(hit, per_block)
@@ -131,7 +132,7 @@ class BinaryDataset(torch.utils.data.Dataset):
         i, epoch = item
         row = self.rows[i]
         rng = None if epoch is None else np.random.default_rng([self.cfg.seed, epoch, i])
-        z = load_sample(row['sample_id'], ytok=self.cfg.vocab != 'ours')
+        z = load_sample(row['sample_id'], ytok=uses_reader(self.cfg.vocab))
         out = encode_binary(z, self.vocab, self.cfg, rng, row['sample_id'], self.vecs)
         out['label'], out['sample_id'] = row['label'], row['sample_id']
         if self.stack is not None:

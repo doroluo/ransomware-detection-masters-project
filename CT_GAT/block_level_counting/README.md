@@ -42,7 +42,7 @@ default; the other policies are options. Step 5 can take precomputed block vecto
 |---|---|---|---|---|
 | 1 IDA export | `pipeline/s01_ida_export` | (README only; the export runs on the VM) | PE binary → `<sha256>.jsonl.gz` | none |
 | 2 Build CFG cache | `pipeline/s02_build_cfg_cache` | `build_cache.py`, `check_cache.py` | exports → `samples/<id>.npz`, `index.csv`, `vocab.json` | `GT_CACHE` (env), `protocol` picks the cache |
-| 3 Tokenizer | `pipeline/s03_tokenizer` | `TokenVocab`, `token_table`, `ranges`, `import_reader_side` (converter) | npz arrays (and `side/yanping` for `vocab` ≠ `ours`) → `tokens`, `tok_offsets` | `min_df`, `vocab` (`ours`, `yanping`, `hybrid`) |
+| 3 Tokenizer | `pipeline/s03_tokenizer` | `TokenVocab`, `token_table`, `ranges`, `import_reader_side` (converter) | npz arrays (and `side/yanping` for `vocab` ≠ `ours`) → `tokens`, `tok_offsets` | `min_df`, `vocab` (`ours`, `yanping`, `hybrid`, `noapi`) |
 | 4 Select subgraph | `pipeline/s04_select_subgraph` | `select_subgraph`, `cap_functions`, `MAX_BINARY_BLOCKS`, `chain_reduction`; `keep_functions` in `batching.py` | functions of a binary → kept functions, `seg_len`, `seg_feat`, `blk_seg`, `blk_pos` | `subgraph` (`cap`, `lcc`), `budget`, `drop_functions`, `drop_library`, `batch_blocks` |
 | 5 Block-level counting | `pipeline/s05_block_counting` | `token_weights`, `BlockEncoder`, `BlockVecEncoder`, `BlockVecs`, `BlockVecSource` | `tokens`, `tok_weights`, `blk_feat` → block vectors `[B, d]`; with `block_input='vec'`: `blk_vec`, `blk_feat` → block vectors | `encoder` (`tfidf`, `mean`, `raw`, `presence`, `rawlog`), `mask_blocks`, `mask_tokens`, `d_model`, `block_input` (`tokens`, `vec`), `block_vec` |
 | 6 GNN over block CFG | `pipeline/s06_gnn_block_cfg` | `block_edges`, `control_edges`, `drop_and_flip_edges`, `DirGINELayer` | block vectors, `edge_seg/src/dst/type` → block vectors | `gnn_fn_layers`, `direction`, `control`, `untyped`, `drop_edges`, `flip_edges` |
@@ -144,6 +144,12 @@ one reader opcode id per cache mnemonic.
   `beh`, the reader's two operand ids, and `api`. `TokenVocab` cuts the reader kinds on the training binaries like `mn`, `sig` and
   `api` (document frequency at least `min_df`, UNK = 0, one `[MASK]` id per kind); `beh` stays whole as before. The run name gains
   `-voc-<name>`; `--vocab ours` (the default) leaves every name, vocabulary and checkpoint as it was.
+- `--vocab noapi` (the api-token ablation, `gnn-mblk15-voc-noapi`): the block bag holds `mn`, `sig` and `beh` and no `api` token; `TokenVocab`
+  has no `api` kind, offset, mask id or idf slot, and `token_table` returns an empty `api_pos`. The header-import features (`--imports`) are a
+  separate switch and are untouched. The matching TF-IDF is `baselines.py --vocab noapi`: method `tfidf_noapi_lr` over `mn`, `sig` and `beh`
+  (the kinds of this vocabulary; the default `tfidf_sig_api_lr` counts `sig` and `api`), plus `tfidf_sig_lr` (the default's kinds minus api),
+  in `kfold<f>_x86_s0_voc-noapi`; gate group `tfidf-noapi`. `scripts/noapi_runs.sh` runs the baseline, the 15 GNN runs (seeds 0 1 2, folds 0-4)
+  and `gates.py --stage noapi`.
 - `--imports unreferenced`: `ImportVocab` keeps the import identities that are unreferenced in at least `min_df` (2) training binaries,
   with idf; an `EmbeddingBag` over the binary's kept names (weights: idf, L2-normalised), plus log1p(#unreferenced) and log1p(#header
   imports), enter the head. The run name gains `-imp`. "Unreferenced" means no instruction of the export references the import; it is
@@ -232,7 +238,8 @@ with TF-IDF.
   `RunConfig.imports` has two values, `unreferenced` (`-imp`) and `header` (`-imph`); both are `ImportVocab(which=...)` and share the bag and the
   head input. A new set of imports is a key of `WHICH` in `imports_feat.py`, a value of `IMPORTS` and `IMPORT_SUFFIX` in `common/config.py`,
   and an arm in `gates.py` (`IMP_ARMS`, `IMP_PAIRS`) and `queue_gnn.sh`.
-- Reader-based vocabularies: a kind of `VOCAB_KINDS` in `pipeline/s03_tokenizer/vocab.py` and a column of `ytok`.
+- Reader-based vocabularies: a kind of `VOCAB_KINDS` in `pipeline/s03_tokenizer/vocab.py` and a column of `ytok`. A vocabulary lists its
+  per-instruction kinds in `VOCAB_INSN_KINDS` and says in `VOCAB_API` whether the `api` kind follows them (`noapi`: it does not).
 
 A new `RunConfig` field also needs a change in `common/config.py`. Check that `RunConfig().name` and the names of
 existing runs stay the same.

@@ -1,10 +1,8 @@
-"""Run-id tokens of a block selection: [mn | sig | beh | api] per block (the kinds of `vocab.insn_kinds` and then api for
-another vocabulary), with each token's kind."""
+"""Run-id tokens of a block selection: [mn | sig | beh | api] per block (the kinds of `vocab.insn_kinds` and then api when
+`vocab.has_api`), with each token's kind."""
 import numpy as np
 
-from pipeline.s03_tokenizer.vocab import insn_values
-
-OURS_INSN_KINDS = ('mn', 'sig', 'beh')
+from pipeline.s03_tokenizer.vocab import OURS_INSN_KINDS, insn_values
 
 
 def ranges(starts, lengths):
@@ -20,11 +18,15 @@ def ranges(starts, lengths):
 def token_table(z, vocab, blk):
     """Run-id tokens of the blocks in the order [insn kind 0 | kind 1 | ... | api] within each block, with each token's
     kind (index into `vocab.kinds`). For the default vocabulary the kinds are mn, sig, beh, api; a vocabulary object
-    without `insn_kinds` (the block export's identity vocabulary) is that one. `z['ytok']` serves the reader kinds."""
+    without `insn_kinds` (the block export's identity vocabulary) is that one. `z['ytok']` serves the reader kinds. A
+    vocabulary without api kind (`has_api` false) has no api tokens: `api_pos` is empty and the blocks hold the instruction
+    tokens only."""
     kinds = getattr(vocab, 'insn_kinds', OURS_INSN_KINDS)
+    has_api = getattr(vocab, 'has_api', True)
     width = len(kinds)
     insn_ptr, api_ptr = z['blk_insn_ptr'].astype(np.int64), z['blk_api_ptr'].astype(np.int64)
-    n_ins, n_apis = insn_ptr[blk + 1] - insn_ptr[blk], api_ptr[blk + 1] - api_ptr[blk]
+    n_ins = insn_ptr[blk + 1] - insn_ptr[blk]
+    n_apis = api_ptr[blk + 1] - api_ptr[blk] if has_api else np.zeros(len(n_ins), dtype=np.int64)
     ins, apis = ranges(insn_ptr[blk], n_ins), ranges(api_ptr[blk], n_apis)
     per_block = width * n_ins + n_apis
     tok_offsets = np.cumsum(per_block) - per_block
@@ -38,6 +40,7 @@ def token_table(z, vocab, blk):
     for j, k in enumerate(kinds):
         tokens[ins_pos[j]] = vocab.lut[k][insn_values(z, k)[ins]] + vocab.offset[k]
         kind[ins_pos[j]] = j
-    tokens[api_pos] = vocab.lut['api'][z['api'][apis]] + vocab.offset['api']
-    kind[api_pos] = width
+    if has_api:
+        tokens[api_pos] = vocab.lut['api'][z['api'][apis]] + vocab.offset['api']
+        kind[api_pos] = width
     return tokens, kind, tok_offsets, per_block, ins_pos, api_pos

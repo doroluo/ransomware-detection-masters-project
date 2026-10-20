@@ -15,7 +15,7 @@ SELECT_ON = ('overall', 'cell')
 SUBGRAPH_POLICIES = ('cap', 'lcc')
 BLOCK_INPUTS = ('tokens', 'vec')
 MIN_BUDGET = 100  # blocks; 0 means the binary cap
-VOCABS = ('ours', 'yanping', 'hybrid')
+VOCABS = ('ours', 'yanping', 'hybrid', 'noapi')
 IMPORTS = ('', 'unreferenced', 'header')
 IMPORT_SUFFIX = {'unreferenced': 'imp', 'header': 'imph'}
 

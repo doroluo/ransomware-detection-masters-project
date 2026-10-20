@@ -167,17 +167,19 @@ def team_config(fold, seed, arm):
     return RunConfig(protocol='kfold', fold=fold, arch='x86', seed=seed, model='gnn', tag=f'team-{arm}')
 
 
-def _check_cover(name, by_split, manifest):
+def _check_cover(name, by_split, manifest, excluded=()):
+    """The predictions hold exactly the manifest's validation and test ids minus the explicitly `excluded` ones."""
+    skip = set(excluded)
     for split, rows in (('val', manifest.val), ('test', manifest.test)):
         ids = list(by_split[split][0])
-        want = sorted(r['sample_id'] for r in rows)
+        want = sorted(r['sample_id'] for r in rows if r['sample_id'] not in skip)
         if sorted(ids) != want:
             raise AssertionError(f'{name}: {split} predictions hold {len(set(ids))} distinct of {len(ids)} ids, the '
                                  f'manifest has {len(want)}; missing {sorted(set(want) - set(ids))[:5]}, '
                                  f'extra {sorted(set(ids) - set(want))[:5]}')
 
 
-def write_run(run_dir, cfg, rows_f1, rows_auc, thr_f1, thr_auc, extra):
+def write_run(run_dir, cfg, rows_f1, rows_auc, thr_f1, thr_auc, extra, excluded=(), excluded_reason=''):
     """Write one team run directory that the harness reads like its own.
 
     run_dir     the directory; its name must equal cfg.name (team_config(...).name)
@@ -188,7 +190,11 @@ def write_run(run_dir, cfg, rows_f1, rows_auc, thr_f1, thr_auc, extra):
                 thresholded at cfg.threshold (0.5), as training/train.py writes it
     thr_auc     validation threshold of the AUC state: predictions_auc.csv and the AUC block of metrics.json
     extra       must hold best_epoch and epochs_run; auc_best_epoch, val_auc, val_macro_f1 and other keys are kept
-    Both row sets must cover exactly the manifest's validation and test ids. The metrics come from
+    excluded    sample ids deliberately left out of this run (a binary the arm's build could not process): the row sets
+                must cover the manifest's validation and test ids minus these, no more and no fewer; metrics.json records
+                them as `excluded` with `excluded_reason`, and evaluation/stats.py prints them where it pairs the run
+                with an arm that has those binaries. An empty list keeps the exact-coverage check.
+    Both row sets must cover exactly the manifest's validation and test ids (less `excluded`). The metrics come from
     evaluation/metrics.py through training.train's helpers."""
     run_dir = Path(run_dir)
     if run_dir.name != cfg.name:
@@ -197,8 +203,14 @@ def write_run(run_dir, cfg, rows_f1, rows_auc, thr_f1, thr_auc, extra):
         if key not in extra:
             raise KeyError(f'extra needs {key}')
     manifest = fold_manifest(cfg.fold, cfg.seed)
+    excluded = sorted(set(excluded))
+    if excluded and not excluded_reason:
+        raise ValueError('excluded ids need an excluded_reason')
+    unknown = sorted(set(excluded) - {r['sample_id'] for r in manifest.train + manifest.val + manifest.test})
+    if unknown:
+        raise ValueError(f'excluded ids that are in no split of the fold: {unknown}')
     for name, rows in (('rows_f1', rows_f1), ('rows_auc', rows_auc)):
-        _check_cover(name, rows, manifest)
+        _check_cover(name, rows, manifest, excluded)
     run_dir.mkdir(parents=True, exist_ok=True)
     cfg.save(run_dir / 'config.json')
     manifest.save(run_dir / 'manifest.json')
@@ -236,5 +248,7 @@ def write_run(run_dir, cfg, rows_f1, rows_auc, thr_f1, thr_auc, extra):
         },
     }
     metrics.update({k: v for k, v in extra.items() if k not in metrics})
+    if excluded:
+        metrics.update(excluded=excluded, excluded_reason=excluded_reason)
     (run_dir / 'metrics.json').write_text(json.dumps(metrics, indent=2), encoding='utf-8')
     return metrics

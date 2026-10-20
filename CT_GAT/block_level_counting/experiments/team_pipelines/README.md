@@ -19,7 +19,7 @@ nohup bash scripts/team_gpu_runs.sh > RUNS/logs/team_gpu_runs.log 2>&1 & # GPU, 
 
 - `scripts/team_runs.sh` (CPU only: `--device cpu` and `CUDA_VISIBLE_DEVICES=-1`). Three lanes side by side, each over seeds 0 1 2
   and folds 0-4 (45 runs): `train_a --arm gnn500`, `train_a --arm cb500` (CodeBERT vectors `ours_cap0_codebert`), and `train_b --arm
-  sig500`, which waits until `RUNS/team/b_sig500/build_summary.json` reports 1810 of 1810 binaries. Each trainer uses `TEAM_THREADS`
+  sig500`, which waits until `RUNS/team/b_sig500/build_summary.json` accounts for all 1810 binaries (processed + excluded == 1810). Each trainer uses `TEAM_THREADS`
   torch threads (default 3, 6 of the 16 logical cores for the two A lanes while the build and the GPU queue's loaders run).
   Stop it with `touch RUNS/STOP_TEAM` (a file of its own; `RUNS/STOP` stops the GPU queue and not this); the run in flight finishes.
   One retry per failed run; logs in `RUNS/logs/<name>.log`.
@@ -87,6 +87,16 @@ other `.pt` (finished after the last checkpoint, with API ids the saved vocabula
 `build_log.csv` can hold a second row for such an id. Rows added to the embedder after a resume are initialised from a
 different RNG state than in an uninterrupted run. A different `--sample / --num-blocks / --seed` on an existing `<out>`
 stops. A sample that raises stops the build with its id and a traceback; nothing is skipped.
+
+Exclusion: `--exclude <id> ... --exclude-reason TEXT` leaves ids out on purpose. They are not attempted, count as neither built nor
+failed, and are written with the reason to `<out>/settings.json` (the checkpoint's own settings are unchanged, so an earlier build still
+resumes) and to `build_summary.json` as `excluded`; a build with `processed` + the number excluded = `total` is finished, which is what
+`team_runs.sh` waits for. Pass the same `--exclude` on every resume. The one exclusion so far is
+`bbbf38de4f40754f235441a8e6a4c8bdb9365dab7f5cfcdac77dbb4d6236360b`: `process_sample` raises `MemoryError` reading its 341 MB `asm.gz`
+(`read_text_lines`), also when that sample is built alone (peak 20.2 GB resident on a 32 GB machine). The failing code is the teammates'
+pinned `preprocess_full.py`, which is not edited. `train_b` then runs on the manifest ids minus the excluded one (training, validation and
+test of every fold; the other 1,809 are unchanged), `common.write_run(excluded=, excluded_reason=)` records it in `metrics.json`, and
+`stats.py` / `gates.py` print "N excluded from both arms: <ids> (<reason>)" under every paired difference that involves a sig500 run.
 
 Each manifest json is 3-6 MB (about 8 GB for the full build); the `.pt` files are about 0.5 MB.
 

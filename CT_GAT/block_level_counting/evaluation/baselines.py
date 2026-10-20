@@ -2,7 +2,7 @@
 
 python baselines.py --protocol bundle --arch x86 --seed 0 1 2 | --protocol kfold --fold 0 1 2 3 4 --arch all
 | --protocol kfold_v3 --fold 0 1 2 3 4 --arch all|matched (combined cache unless GT_CACHE is set)
-[--train-fraction 0.5] [--arch-balance] [--val-seed 0] [--stack-logits] [--vocab yanping|hybrid] [--imports]
+[--train-fraction 0.5] [--arch-balance] [--val-seed 0] [--stack-logits] [--vocab yanping|hybrid|noapi] [--imports]
 
 Fit on the run's training manifest (validation families held out, as for the model), scored on its validation and
 test sets. Writes <out-root>/<protocol[fold]>_<arch>_s<seed>/{metrics.json, predictions.csv} with out-root
@@ -15,10 +15,15 @@ cells of the training manifest (the weights train.py gives the loss), passed as 
 output directory gets the suffix `_ab` and metrics.json records `arch_balance`. Every `test` block carries
 `cell_balanced` (each class x arch cell weighs equally).
 
---vocab yanping|hybrid replaces the sig + api count features by the token kinds of that GNN vocabulary (yanping: the
+--vocab yanping|hybrid|noapi replaces the sig + api count features by the token kinds of that GNN vocabulary (yanping: the
 reader's three ids per instruction plus api; hybrid: mn, beh and the reader's two operand ids plus api; each kind its own
 columns, the document-frequency cut on the training manifest as for sig and api) and writes one method, `tfidf_<vocab>_lr`,
-to the directory with the suffix `_voc-<vocab>`. It needs <cache>/side/yanping/ (import_reader_side.py).
+to the directory with the suffix `_voc-<vocab>`. yanping and hybrid need <cache>/side/yanping/ (import_reader_side.py).
+
+The default TF-IDF (`tfidf_sig_api_lr`) counts two kinds, `sig` and `api`. `--vocab noapi` is the api-token ablation: its
+method `tfidf_noapi_lr` counts the kinds of the GNN vocabulary `noapi`, mn, sig and beh (the instruction kinds of `ours`, no
+api), so the GNN arm `--vocab noapi` and this baseline see the same tokens. The default's kinds minus api (sig alone) are
+written beside it as `tfidf_sig_lr`, to read the ablation both ways.
 
 --imports writes `imports_unref_lr` (the unreferenced import identities, kept when unreferenced in >= min_df training
 binaries), `imports_header_lr` (every header import identity, same cut) and `tfidf_sig_api_imp_lr` (the sig + api counts
@@ -52,7 +57,7 @@ from common.manifests import load_index, make_manifest
 from evaluation.metrics import cell_weights, family_recall, floors, scores
 from evaluation.val_threshold import GRID, macro_f1
 from pipeline.s03_tokenizer.import_reader_side import load_ytok
-from pipeline.s03_tokenizer.vocab import VOCAB_KINDS, Y_KINDS, Y_SIZES
+from pipeline.s03_tokenizer.vocab import VOCAB_KINDS, Y_KINDS, Y_SIZES, uses_reader
 from pipeline.s10_unused_import_features.imports_feat import ImportVocab
 
 
@@ -71,15 +76,16 @@ def load_features(rows, sizes):
 
 
 def load_vocab_features(rows, sizes, vocab):
-    """Count vectors of the token kinds of GNN vocabulary `vocab` (yanping, hybrid), the kinds side by side."""
+    """Count vectors of the token kinds of GNN vocabulary `vocab` (yanping, hybrid, noapi), the kinds side by side."""
     kinds = VOCAB_KINDS[vocab]
     width = {**sizes, **Y_SIZES}
     counts = {k: [] for k in kinds}
     for r in rows:
         with np.load(CACHE / 'samples' / f"{r['sample_id']}.npz") as z:
             cols = {k: z[k] for k in kinds if k not in Y_KINDS}
-        ytok = load_ytok(CACHE, r['sample_id'])
-        cols.update({k: ytok[:, int(k[1])] for k in kinds if k in Y_KINDS})
+        if uses_reader(vocab):
+            ytok = load_ytok(CACHE, r['sample_id'])
+            cols.update({k: ytok[:, int(k[1])] for k in kinds if k in Y_KINDS})
         for k in kinds:
             ids, n = np.unique(cols[k], return_counts=True)
             counts[k].append(sp.csr_matrix((n, (np.zeros(len(ids)), ids)), shape=(1, width[k])))
@@ -217,7 +223,14 @@ def features_and_models(cfg: RunConfig, sizes, train, val, test, vocab, imports,
         x_tr, x_va, x_te = (load_vocab_features(rows, sizes, vocab) for rows in (train, val, test))
         keep = np.asarray((x_tr > 0).sum(0)).ravel() >= cfg.min_df
         x = [m[:, keep] for m in (x_tr, x_va, x_te)]
-        return {f'tfidf_{vocab}_lr': (tfidf_lr(x[0], class_weight), *x)}, int(keep.sum()), {}
+        models = {f'tfidf_{vocab}_lr': (tfidf_lr(x[0], class_weight), *x)}
+        if vocab == 'noapi':
+            sig = np.zeros(x_tr.shape[1], dtype=bool)
+            start = sum(sizes[k] for k in VOCAB_KINDS[vocab][:VOCAB_KINDS[vocab].index('sig')])
+            sig[start:start + sizes['sig']] = True
+            xs = [m[:, keep & sig] for m in (x_tr, x_va, x_te)]
+            models['tfidf_sig_lr'] = (tfidf_lr(xs[0], class_weight), *xs)
+        return models, int(keep.sum()), {}
     x_train_tok, x_train_st = load_features(train, sizes)
     x_val_tok, x_val_st = load_features(val, sizes)
     x_test_tok, x_test_st = load_features(test, sizes)

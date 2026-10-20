@@ -8,7 +8,9 @@ for those trained on a train-fraction subset, `tfidf-ab` for the arch-balanced o
 protocol and arch of the other group
 (`kfold_v3_all_gnn` -> the kfold_v3 all baselines); --protocol / --arch override that, and two baseline groups
 without an override mean kfold x86. Per seed present
-(with all five folds) in both groups, the pooled out-of-fold test predictions are matched by sample_id. Clusters are
+(with all five folds) in both groups, the pooled out-of-fold test predictions are matched by sample_id and the
+binaries both have are compared; those that one arm declares as excluded (`excluded` in its metrics.json) are named in the
+output as "N excluded from both arms". Clusters are
 ransomware families and single goodware binaries; every resample draws clusters with replacement and is applied to
 every seed and both groups. Prints the mean difference (b - a) over seeds and its 95% percentile interval for AUC,
 PR-AUC and macro-F1: at 0.5 for `f1` (predictions.csv), at each run's validation threshold for `auc`
@@ -32,11 +34,12 @@ from evaluation.metrics import cell_weights
 METRICS = (('auc', 'AUC'), ('pr_auc', 'PR-AUC'), ('macro_f1', 'macro-F1'))
 BASELINES = {'tfidf': 'tfidf_sig_api_lr', 'structural': 'structural_lr',
              'wl0': 'wl_h0_lr', 'wl2': 'wl_h2_lr', 'wl2-shuffle': 'wl_h2_shuffle_lr',
-             'tfidf-yanping': 'tfidf_yanping_lr', 'tfidf-hybrid': 'tfidf_hybrid_lr',
+             'tfidf-yanping': 'tfidf_yanping_lr', 'tfidf-hybrid': 'tfidf_hybrid_lr', 'tfidf-noapi': 'tfidf_noapi_lr',
              'imports-unref': 'imports_unref_lr', 'imports-header': 'imports_header_lr',
              'tfidf-imp': 'tfidf_sig_api_imp_lr'}
 # the baselines of `--vocab` and `--imports` live in directories of their own: kfold0_x86_s0_voc-yanping, kfold0_x86_s0_imp
-BASELINE_KIND = {'tfidf-yanping': '_voc-yanping', 'tfidf-hybrid': '_voc-hybrid', 'imports-unref': '_imp',
+BASELINE_KIND = {'tfidf-yanping': '_voc-yanping', 'tfidf-hybrid': '_voc-hybrid', 'tfidf-noapi': '_voc-noapi',
+                 'imports-unref': '_imp',
                  'imports-header': '_imp', 'tfidf-imp': '_imp'}
 FOLDS = range(5)
 KFOLD_PROTOCOLS = ('kfold', 'kfold_v3')
@@ -49,7 +52,7 @@ BASELINE_GROUP = re.compile(rf"({'|'.join(BASELINES)})(?:-tf(\d+))?(-ab)?")
 
 def baseline_method(group):
     """(method, directory suffix) for a baseline group such as `tfidf`, `structural-tf25` or `tfidf-ab` (`_tf25`, `_ab`
-    and `_tf50_ab` are the suffixes), `tfidf-yanping` (`_voc-yanping`) or `imports-unref` (`_imp`), else None."""
+    and `_tf50_ab` are the suffixes), `tfidf-yanping` (`_voc-yanping`), `tfidf-noapi` (`_voc-noapi`) or `imports-unref` (`_imp`), else None."""
     m = BASELINE_GROUP.fullmatch(group)
     return (BASELINES[m[1]], BASELINE_KIND.get(m[1], '') + (f'_tf{m[2]}' if m[2] else '') + ('_ab' if m[3] else '')) if m else None
 
@@ -152,6 +155,20 @@ def load_group(group, selection, scope=('kfold', 'x86')):
     return complete, partial
 
 
+def group_exclusions(group, scope=('kfold', 'x86')):
+    """{sample_id: reason} that the runs of `group` declare as left out on purpose (`excluded` / `excluded_reason` in
+    metrics.json, written by experiments/team_pipelines/common.write_run). Empty for baselines and ordinary runs."""
+    out = {}
+    if baseline_method(group):
+        return out
+    for by_fold in folds_by_seed(group, scope).values():
+        for d in by_fold.values():
+            path = d / 'metrics.json'
+            m = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+            out.update({i: m.get('excluded_reason', '') for i in m.get('excluded', [])})
+    return out
+
+
 def metrics_weighted(p: Preds, order, grp, w):
     """(AUC, PR-AUC, macro-F1) of p with integer-like sample weights w; equals the metrics of the samples repeated
     w times. Ties in prob share a threshold (as sklearn does)."""
@@ -217,11 +234,16 @@ def compare(group_a, group_b, selection='f1', resamples=2000, seed=0, seeds=None
         raise MissingGroup(f'{group_a} and {group_b} share no complete seed')
     ids = [set(loaded[g][0][s].ids.tolist()) for g in (group_a, group_b) for s in seeds]
     common = np.array(sorted(set.intersection(*ids)))
+    declared = {}
+    for g in (group_a, group_b):
+        declared.update(group_exclusions(g, scopes.get(g, ('kfold', 'x86'))))
+    left_out = sorted((set.union(*ids) - set(common.tolist())) & set(declared))
     fields = ('ids', 'y', 'prob', 'pred', 'cluster', 'arch', 'truncated')
     pick = lambda p: Preds(*(getattr(p, f)[np.isin(p.ids, common)] for f in fields))
     result, n_clusters = paired_bootstrap({s: pick(loaded[group_a][0][s]) for s in seeds},
                                           {s: pick(loaded[group_b][0][s]) for s in seeds}, resamples, seed, balanced)
     info = {'seeds': seeds, 'n': len(common), 'n_clusters': n_clusters, 'balanced': balanced,
+            'excluded': left_out, 'excluded_reason': '; '.join(sorted({declared[i] for i in left_out})),
             'skipped': {g: partial for g, (_, partial) in loaded.items() if partial}}
     return result, info
 
@@ -233,6 +255,9 @@ def fmt_block(group_a, group_b, selection, resamples, result, info):
              f"{info['n_clusters']} clusters. Differences are b - a, 95% percentile interval."
              + (' Cell-balanced: every test sample weighted N / (C n_cell) by its class x arch cell.'
                 if info.get('balanced') else ''), '']
+    if info.get('excluded'):
+        lines += [f"{len(info['excluded'])} excluded from both arms: {', '.join(info['excluded'])} "
+                  f"({info['excluded_reason']}). The differences are on the {info['n']} binaries both arms have.", '']
     if info['skipped']:
         lines += [f"Seeds without all five folds are left out: {info['skipped']}.", '']
     lines += ['| metric | a | b | b - a | 95% CI |', '|---|---|---|---|---|']

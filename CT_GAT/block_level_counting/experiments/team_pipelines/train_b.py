@@ -15,7 +15,9 @@ its stored `block_embeddings` (1e-5) and api-kind columns (exactly). The graphs 
 relation + back-edge bit: edge_dim 8). Model `FullBlockGAT` with its defaults; recipe of train_full_gat.py (AdamW lr 1e-3,
 weight decay 1e-4, class-weighted cross-entropy, batch 16, 40 epochs, patience 8 on the validation ransomware F1 at 0.5),
 fit.py for the loop and both selection rules. Only ids listed in the build's checkpoint.json are used (their embedder state
-is the one saved with it); a full run needs all 1,810. --smoke N: N available training ids, 2 epochs, temp dir only.
+is the one saved with it); a full run needs all 1,810, less the ids the build excluded (`build_b --exclude`, read from the
+build's settings.json): those are left out of training, validation and test and recorded in metrics.json (`excluded`,
+`excluded_reason`). --smoke N: N available training ids, 2 epochs, temp dir only.
 """
 import argparse
 import csv
@@ -48,6 +50,12 @@ def build_state(b_dir=B_DIR):
     embedder.load_state_dict(weights)
     embedder.eval()
     return pp, embedder, set(state['done'])
+
+
+def read_excluded(b_dir=B_DIR):
+    """{sample_id: reason} of the ids the build left out on purpose (its settings.json); {} when none or no file."""
+    path = b_dir / 'settings.json'
+    return dict(json.loads(path.read_text(encoding='utf-8')).get('excluded', {})) if path.is_file() else {}
 
 
 def block_counts(tok, instruction_ids, matched, insn_to_block, n_blocks):
@@ -161,7 +169,8 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=B_DIR, log=print):
     gl = import_team('graph_full_loader')
     gm = import_team('gat_full_model')
     manifest = fold_manifest(fold, seed)
-    want = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test]
+    excluded = read_excluded(b_dir)
+    want = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test if r['sample_id'] not in excluded]
     t0 = time.time()
     split = None
     if smoke:
@@ -173,7 +182,7 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=B_DIR, log=print):
         if missing:
             raise SystemExit(f'the build covers {len(done)} binaries; {len(missing)} of this fold\'s {len(want)} are '
                              f'missing from checkpoint.json, e.g. {missing[:3]}')
-        train_ids = [r['sample_id'] for r in manifest.train]
+        train_ids = [r['sample_id'] for r in manifest.train if r['sample_id'] not in excluded]
     payloads = {i: load_slim(b_dir, i) for i in want}
     first = train_ids[0]
     err = check_repool(pp, embedder, payloads[first])
@@ -194,9 +203,11 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=B_DIR, log=print):
     extra = {'in_dim': in_dim, 'edge_dim': edge_dim, 'n_api_ids_train': int(len(seen)),
              'n_api_ids_unseen_mapped': len(every - set(seen.tolist())), 'build_dir': str(b_dir),
              'build_binaries': len(done)}
+    reasons = sorted(set(excluded.values()))
     return run_arm(arm=arm, fold=fold, seed=seed, graphs=graphs, sizes=sizes,
                    build_model=lambda: gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim), hp=HP, device=device,
-                   smoke=smoke, smoke_split=split, extra=extra, log=log)
+                   smoke=smoke, smoke_split=split, extra=extra, log=log, excluded=sorted(excluded),
+                   excluded_reason='; '.join(reasons))
 
 
 def main(argv=None):

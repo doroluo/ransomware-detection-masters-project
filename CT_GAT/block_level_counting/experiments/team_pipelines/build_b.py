@@ -1,8 +1,8 @@
 """Pipeline B preprocessing: the teammates' `preprocess_full.process_sample` over the 1,810 kfold x86 binaries.
 
 python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --seed 0 --out RUNS/team/b_sig500
-       [--limit N] [--ids <sample_id> ...]       (run from the block_level_counting root;
-a leading RUNS/ in --out is graph_transformer_runs)
+       [--limit N] [--ids <sample_id> ...] [--exclude <sample_id> ... --exclude-reason TEXT]
+       (run from the block_level_counting root; a leading RUNS/ in --out is graph_transformer_runs)
 
 For every id (sorted) the CFG from the Mendeley bundle and the IDA listing from ida_asm_mendeley_20261006 go through
 `process_sample` with the explicit cfg path, no size cap (the caps live in the teammates' `main`, which is not called),
@@ -13,6 +13,12 @@ under <out>, never under the teammates' tree. A rerun resumes: it loads that sta
 rebuilds every other id (a sample finished after the last checkpoint used vocabulary ids the saved vocabulary may lack).
 A sample that raises stops the build with its id; nothing is skipped. `build_log.csv`: sample_id, status,
 n_blocks_total, n_blocks_kept, seconds.
+
+--exclude: ids that are left out on purpose (a listing `process_sample` cannot hold in memory), with --exclude-reason. They are
+not attempted, count as neither built nor failed, and are written with the reason to `settings.json` (next to the checkpoint's own
+settings, which stay as they were so an earlier build resumes) and to `build_summary.json` as `excluded`; there `processed` +
+the number excluded = `total` is a finished build. Pass the same --exclude on every resume: an id that is not excluded is
+attempted again. An id the checkpoint already holds cannot be excluded.
 """
 import argparse
 import csv
@@ -86,6 +92,8 @@ def main(argv=None):
     ap.add_argument('--out', type=Path, required=True)
     ap.add_argument('--limit', type=int, help='the first N ids in sorted order')
     ap.add_argument('--ids', nargs='+', help='only these sample ids')
+    ap.add_argument('--exclude', nargs='+', default=[], metavar='ID', help='sample ids left out of the build on purpose')
+    ap.add_argument('--exclude-reason', help='why they are left out (required with --exclude)')
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format='%(levelname)s %(message)s')
 
@@ -96,15 +104,26 @@ def main(argv=None):
     if args.limit is not None:
         ids = ids[:args.limit]
     ids = sorted(ids)
+    if bool(args.exclude) != bool(args.exclude_reason):
+        raise SystemExit('--exclude and --exclude-reason go together')
+    not_in_build = sorted(set(args.exclude) - set(ids))
+    if not_in_build:
+        raise SystemExit(f'--exclude ids that are not among the ids of this build: {not_in_build}')
+    excluded = {i: args.exclude_reason for i in sorted(set(args.exclude))}
     pp = import_team('preprocess_full')
     settings = {'sample': args.sample, 'num_blocks': args.num_blocks, 'seed': args.seed}
     out = RUNS.joinpath(*args.out.parts[1:]) if args.out.parts and args.out.parts[0] == 'RUNS' else args.out
     out.mkdir(parents=True, exist_ok=True)
     vocab, embedder, done = load_state(out, pp, settings)
+    built_excluded = sorted(set(excluded) & done)
+    if built_excluded:
+        raise SystemExit(f'the checkpoint already holds {built_excluded}: they cannot be excluded')
     dropped = drop_unfinished(out, done)
-    todo = [i for i in ids if i not in done]
-    print(f'{out}: {len(ids)} ids, {len(ids) - len(todo)} done in the checkpoint, {dropped} unfinished files removed, '
-          f'{len(todo)} to build', flush=True)
+    todo = [i for i in ids if i not in done and i not in excluded]
+    atomic(out / 'settings.json', lambda p: p.write_text(
+        json.dumps({**settings, 'excluded': excluded}, indent=2), encoding='utf-8'))
+    print(f'{out}: {len(ids)} ids, {len(ids) - len(todo) - len(excluded)} done in the checkpoint, {len(excluded)} excluded, '
+          f'{dropped} unfinished files removed, {len(todo)} to build', flush=True)
 
     log_path = out / 'build_log.csv'
     new_log = not log_path.exists()
@@ -150,11 +169,11 @@ def main(argv=None):
                       flush=True)
     save_state(out, pp, vocab, embedder, done, settings)
     wall = time.time() - t_start
-    summary = {'processed': len(done & set(ids)), 'total': len(ids), 'built_this_run': built,
+    summary = {'processed': len(done & set(ids)), 'total': len(ids), 'excluded': excluded, 'built_this_run': built,
                'wall_seconds_this_run': round(wall, 1), 'api_names': len(vocab.names), 'settings': settings}
     (out / 'build_summary.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
     print(f"processed {summary['processed']}/{summary['total']} in {wall:.0f} s this run "
-          f"({built} built); vocabulary {len(vocab.names)} names", flush=True)
+          f"({built} built, {len(excluded)} excluded); vocabulary {len(vocab.names)} names", flush=True)
     return summary
 
 

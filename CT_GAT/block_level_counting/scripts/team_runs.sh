@@ -3,8 +3,10 @@
 # Three lanes run side by side, all on the CPU (--device cpu and CUDA_VISIBLE_DEVICES=-1, so the GPU queue is not touched):
 #   gnn500  train_a --arm gnn500, seeds 0 1 2, folds 0-4 (seed by seed)
 #   cb500   train_a --arm cb500 on the CodeBERT block vectors ours_cap0_codebert, seeds 0 1 2, folds 0-4
-#   sig500  waits until RUNS/team/b_sig500/build_summary.json reports 1810 of 1810 binaries, then train_b --arm sig500,
-#           seeds 0 1 2, folds 0-4. An incomplete summary (the build stopped early) ends the lane with a message.
+#   sig500  waits until RUNS/team/b_sig500/build_summary.json accounts for all 1810 binaries (processed + excluded == 1810:
+#           the ids `build_b --exclude` left out on purpose count), then train_b --arm sig500, seeds 0 1 2, folds 0-4 (train_b
+#           leaves the excluded ids out of every split). An incomplete summary (the build stopped early) ends the lane with a
+#           message. `--check-build` prints whether the summary is complete, incomplete or absent, and exits.
 # Each trainer uses TEAM_THREADS torch threads (default 3): the two A lanes take 6 of the 16 logical cores while the pipeline-B
 # build (one process) and the GPU queue's loaders keep the rest; the sig500 lane starts only when the build is done.
 # A run is skipped when RUNS/<name>/metrics.json exists. RUNS/STOP_TEAM (a file of its own: it never stops the GPU queue, whose
@@ -38,12 +40,17 @@ lane() { arm=$1; mod=$2; shift; shift
     run kfold${f}_x86_gnn_s${s}_team-${arm} experiments.team_pipelines.$mod --fold $f --seed $s --arm $arm --device cpu "$@"
   done; done; }
 
-# build_done: 0 when the build summary says 1810 of 1810; 2 when it says less (the build ended early); 1 while it is absent
+# build_done: 0 when the build summary accounts for all 1810 binaries (total 1810, processed + excluded == 1810: build_b --exclude
+# lists the ids it left out on purpose); 2 when it says less (the build ended early); 1 while it is absent or unreadable
 build_done() { f=$BUILD/build_summary.json; [ -f $f ] || return 1
-  grep -q '"processed": 1810,' $f && grep -q '"total": 1810,' $f && return 0; return 2; }
+  $PY -c "import json,sys; s=json.load(open(sys.argv[1])); sys.exit(0 if s['total'] == 1810 and s['processed'] + len(s.get('excluded', {})) == 1810 else 2)" $f
+  return $?; }
+
+if [ "$1" = --check-build ]; then build_done; rc=$?
+  case $rc in 0) echo "build complete";; 2) echo "build incomplete";; *) echo "build summary absent";; esac; exit 0; fi
 
 sig_lane() {
-  if [ $DRY = 1 ]; then echo "wait $BUILD/build_summary.json reports 1810/1810"
+  if [ $DRY = 1 ]; then echo "wait $BUILD/build_summary.json reports processed + excluded == 1810/1810"
   else echo "sig500 lane waiting for the pipeline-B build $(date +%T)"
     while true; do
       [ -f $STOP ] && { echo "stopped while waiting for the build"; return; }
