@@ -220,6 +220,7 @@ with TF-IDF.
 - `docs/GRAPHS_AND_TOKENS.md`: which file builds the graphs and tokenizes, step by step. The vocabulary is settled: `ours` (see the vocabulary decision in `docs/PLAN_GNN.md`).
 - `docs/RESULTS.md`: the results table that `report.py` generates.
 - `experiments/side_arrays/SIDE_EXPERIMENTS.md`: the side-array and WL experiments.
+- `docs/TEAM_PIPELINES_REVIEW.md`: review of the `gnn` / `yanping` pipelines, how they run on our folds, their results, and the team diagram mapped onto this code. `experiments/team_pipelines/README.md`: how to run them.
 
 ## Where new work goes
 
