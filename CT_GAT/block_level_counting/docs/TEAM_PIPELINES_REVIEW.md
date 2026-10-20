@@ -133,6 +133,11 @@ is merged anywhere.
 4. B: freeze the API vocabulary on training samples (`--split train` first, then `--freeze-vocab` for test); seed or
    train the embedding; turn the size caps off or apply the same exclusions to every model.
 5. B: investigate the alignment gaps before trusting B's numbers; log the per-sample match rate.
+   Also stream the listing: `read_text_lines` (`preprocess_full.py` line 302) does `handle.read().splitlines()`, which
+   holds the whole decompressed listing in memory. Two Mendeley listings are 341 MB compressed but 23 GB and 890 million
+   lines uncompressed, 99.9% of them `db`/`dd` data lines for a payload of a few hundred MB, while their code is only
+   3.2k-3.7k blocks; they need more than 20 GB of RAM and were excluded from B with that reason. Iterating the gzip handle
+   line by line and keeping only instruction lines fixes it; reading `jsonl.gz` alone (section 9) avoids it.
 6. A: make `--limit` take a balanced prefix; fail or list per-sample errors; check graphs against the split.
 
 ## 8. The team diagram (2026-10-19) against what exists
