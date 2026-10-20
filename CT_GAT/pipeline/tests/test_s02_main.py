@@ -279,3 +279,46 @@ def test_a_changed_source_file_is_a_change_of_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(pf, '_run_settings', edited)
     with pytest.raises(SystemExit):
         run(tmp_path, [root])
+
+
+# ---- 7. one pass over the listing ----------------------------------------------------------------------------------
+
+def five_samples(tmp_path):
+    apis = [['CreateFileW'], ['CreateFileW', 'RegSetValueExW'], ['CloseHandle', 'CreateFileW', 'ReadFile'], [], ['WriteFile']]
+    return col.write_collection(tmp_path / 'five', [(sha(i + 1), 'train', i % 2, names) for i, names in enumerate(apis)])
+
+
+def test_the_collector_gives_the_rows_of_collect_ida_imports(tmp_path):
+    root = five_samples(tmp_path)
+    paths = sorted(root.rglob('*.asm.gz'))
+    for path in paths:
+        lines = list(pf.iter_text_lines(path))
+        collector = tok.IdaImportCollector()
+        for line in lines:
+            collector.feed(line)
+        assert collector.rows == tok.collect_ida_imports(lines)
+    assert any(tok.collect_ida_imports(pf.iter_text_lines(path)) for path in paths)
+
+
+def test_process_sample_reads_the_listing_once_and_matches_the_two_pass_result(tmp_path, monkeypatch):
+    root = five_samples(tmp_path)
+    reads = []
+    real = pf.iter_text_lines
+    monkeypatch.setattr(pf, 'iter_text_lines', lambda path: reads.append(path) or real(path))
+    for index in range(5):
+        sample_id = sha(index + 1)
+        asm = root / 'samples' / 'train' / 'fam' / f'{sample_id}.asm.gz'
+        cfg_path = asm.with_name(f'{sample_id}.jsonl.gz')
+        reads.clear()
+        result = pf.process_sample(asm, cfg_path, label=index % 2, seed=0, api_vocab=tok.ApiVocab(), num_blocks=8,
+                                   file_id=sample_id)
+        assert len(reads) == 1
+        # the two-pass flow: align, then tokenize with a second scan of the listing for the imports
+        cfg = pf.load_cfg(cfg_path)
+        sample = pf.sample_connected_subgraph(cfg, seed=0, num_blocks=8)
+        pf.align_sampled_blocks(cfg, sample.selected_keys, real(asm), [])
+        inventory = pf.tokenize_selected_blocks(cfg, sample.selected_keys, real(asm), tok.ApiVocab())
+        old_ids = [instruction.token_ids for key in sample.selected_keys for instruction in cfg.blocks[key].instructions]
+        new_ids = result['models']['model1']['instruction_ids'].tolist()
+        assert old_ids == new_ids
+        assert inventory == result['manifest']['import_inventory']

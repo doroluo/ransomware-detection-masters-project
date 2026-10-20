@@ -1270,9 +1270,15 @@ def tokenize_selected_blocks(
     api_vocab: tok.ApiVocab,
     *,
     freeze_vocab: bool = False,
+    ida_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Tokenize only the selected instructions, using one shared API vocabulary."""
-    ida_rows = tok.collect_ida_imports(asm_lines)
+    """Tokenize only the selected instructions, using one shared API vocabulary.
+
+    ``ida_rows`` are the listing's import rows when the caller collected them already (``process_sample`` does,
+    in the pass that aligns the blocks); without them ``asm_lines`` is read for them.
+    """
+    if ida_rows is None:
+        ida_rows = tok.collect_ida_imports(asm_lines)
     imports = _merge_sample_imports(cfg, ida_rows)
     if not freeze_vocab:
         for info in imports.values():
@@ -1864,10 +1870,17 @@ def process_sample(
         include_library=include_library,
     )
     problems: list[dict[str, Any]] = []
+    imports = tok.IdaImportCollector()
+
+    def listing_once() -> Iterable[str]:
+        for line in iter_text_lines(asm_path):
+            imports.feed(line)
+            yield line
+
     report = align_sampled_blocks(
         cfg,
         sample.selected_keys,
-        iter_text_lines(asm_path),
+        listing_once(),
         problems,
     )
     report.add_format_problems(cfg.address_format_problems)
@@ -1875,9 +1888,10 @@ def process_sample(
     inventory = tokenize_selected_blocks(
         cfg,
         sample.selected_keys,
-        iter_text_lines(asm_path),
+        (),
         api_vocab,
         freeze_vocab=freeze_vocab,
+        ida_rows=imports.rows,
     )
     embedder = channel_embedder or FiveChannelEmbedder(api_table_size(api_vocab))
     embedder.expand_api(api_table_size(api_vocab))

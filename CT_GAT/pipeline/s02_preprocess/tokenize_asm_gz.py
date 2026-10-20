@@ -691,37 +691,47 @@ def imports_from_pe(path: Path) -> list[dict[str, Any]]:
         pe.close()
 
 
-def collect_ida_imports(lines: Iterable[str]) -> list[dict[str, Any]]:
-    """Read ``extrn`` names and the ``Imports from DLL`` header above them.
+class IdaImportCollector:
+    """Read ``extrn`` names and the ``Imports from DLL`` header above them, one listing line at a time.
 
     These rows are file-level imports. They are not execution evidence.
     """
-    rows: list[dict[str, Any]] = []
-    dll: str | None = None
-    delay = False
-    for line in lines:
+
+    def __init__(self) -> None:
+        self.rows: list[dict[str, Any]] = []
+        self._dll: str | None = None
+        self._delay = False
+
+    def feed(self, line: str) -> None:
         header = _IMPORT_HEADER.search(line)
         if header:
-            delay = header.group("kind").lower().startswith("delay")
-            dll = header.group("dll").rstrip(".,")
-            continue
+            self._delay = header.group("kind").lower().startswith("delay")
+            self._dll = header.group("dll").rstrip(".,")
+            return
         code = line.split(";", 1)[0]
         if re.search(r"\b(?:proc|segment)\b", code, re.IGNORECASE):
-            dll = None
-            delay = False
+            self._dll = None
+            self._delay = False
         match = _EXTRN.search(code)
         if match is None:
-            continue
-        rows.append(
+            return
+        self.rows.append(
             {
                 "name": re.sub(r"^__imp_+", "", match.group("symbol")),
-                "dll": dll,
+                "dll": self._dll,
                 "ordinal": None,
                 "iat_rva": None,
-                "delay": delay,
+                "delay": self._delay,
             }
         )
-    return rows
+
+
+def collect_ida_imports(lines: Iterable[str]) -> list[dict[str, Any]]:
+    """The import rows of a whole listing (see ``IdaImportCollector``)."""
+    collector = IdaImportCollector()
+    for line in lines:
+        collector.feed(line)
+    return collector.rows
 
 
 def _merge_imports(
