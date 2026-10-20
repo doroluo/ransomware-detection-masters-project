@@ -42,9 +42,11 @@ def test_the_teammates_preprocessing_scripts_still_import(cwd, folder):
     assert r.returncode == 0 and r.stdout.strip() == 'ok', r.stderr
 
 
-def test_the_transformer_model_still_imports_through_its_own_shim():
-    r = run("import sys; sys.path.insert(0, 's03a_transformer'); import transformer_model; print('ok')", ROOT)
-    assert r.returncode == 0 and r.stdout.strip() == 'ok', r.stderr
+def test_the_transformer_model_placeholder_is_gone():
+    """PR #8 removed Yanping's placeholder `s03a_transformer/transformer_model.py`; nothing may import it any more."""
+    assert not (ROOT / 's03a_transformer' / 'transformer_model.py').exists()
+    r = run("import sys; sys.path.insert(0, 's03a_transformer'); import transformer_model", ROOT)
+    assert r.returncode != 0 and 'ModuleNotFoundError' in r.stderr, r.stderr
 
 
 def test_every_module_of_the_package_imports_without_a_datasets_file(tmp_path):
