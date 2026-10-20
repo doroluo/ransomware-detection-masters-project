@@ -1,10 +1,13 @@
 """The family-holdout fold builder (s02_preprocess/cache/folds.py).
 
-What is tested: the assignment is the algorithm that wrote tests/fixtures/folds_mendeley.csv (a copy of
-results/family_holdout/folds_mendeley.csv of the LLM_Classification history). Fed that CSV's own `family` and `group`
-columns it returns its `fold` column on every row. What is not reproduced: the CSV rebuilt from the bundle's samples.csv,
-because the bundle lacks the goodware stream-hash groups and the original 2,509-file cohort; the last test records that as
-a strict xfail so that it turns into a failure the day the inputs exist.
+What passes: the builder reproduces the committed fold assignment. Fed the `family` and `group` columns of
+tests/fixtures/folds_mendeley.csv (a copy of results/family_holdout/folds_mendeley.csv of the LLM_Classification history) it
+returns that file's `fold` column on all 2,509 rows.
+
+What is not possible: regenerating that CSV from the Mendeley bundle. The original goodware groups were hashes of each file's
+mnemonic stream (1,024 groups), computed from files that are not in the bundle; the bundle's `identity_group` is one group per
+file (1,169), and the original cohort (2,509 files) is larger than the bundle's eligible rows (2,411; 2,085 of the 2,411 that
+join change fold). The last test records this as a strict xfail, so that it fails loudly if the missing inputs ever appear.
 """
 import collections
 import csv
@@ -154,9 +157,11 @@ def test_report_counts_labels_and_architectures_per_fold():
 
 
 @pytest.mark.real_data
-@pytest.mark.xfail(strict=True, reason='the bundle has neither the goodware stream-hash groups nor the 2,509-file cohort '
-                                       'of folds_mendeley.csv (2,411 files join, 2,085 of them change fold)')
-def test_regenerating_folds_mendeley_from_the_bundle_gives_the_committed_csv():
+@pytest.mark.xfail(strict=True, reason='cannot be regenerated from the bundle: the original goodware groups were mnemonic-stream '
+                                       'hashes that are not in it, and the original cohort had 2,509 files against 2,411 '
+                                       'eligible here (2,085 of the 2,411 joined files change fold)')
+def test_regeneration_from_the_bundle_is_not_possible_because_the_original_goodware_groups_are_not_in_it():
+    """Expected to fail: the assertion is what regeneration would have to satisfy."""
     committed = {r['sha256']: r for r in read_fixture()}
     from s02_preprocess.cache.build_cache import corpus_root, read_aliases
     aliases = read_aliases(corpus_root('mendeley'))

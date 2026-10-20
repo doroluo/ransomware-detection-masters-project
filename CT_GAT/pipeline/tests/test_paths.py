@@ -84,8 +84,8 @@ def test_sources_come_from_the_environment_then_the_registry():
     assert source_for('collections', {}, REGISTRY) == Path('raw/coll')                 # defined by a later dataset
     with pytest.raises(MissingSource, match='GT_FOLDS_V3.*datasets.json.example'):
         source_for('folds_v3', {}, REGISTRY)
-    with pytest.raises(MissingSource, match='GT_TOKEN_MAPPING_DIR'):
-        source_for('token_mapping', {}, {})
+    with pytest.raises(MissingSource, match='GT_READER_ROOT'):
+        source_for('reader_root', {}, {})
 
 
 def test_runs_and_exports():

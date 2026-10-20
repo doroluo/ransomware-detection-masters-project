@@ -1,11 +1,8 @@
 """Edge kind and DFS back-edge rules of cache v2, and the append-only vocab, on synthetic data (no cache needed)."""
 import json
-import sys
 from types import SimpleNamespace
 
 import numpy as np
-import pytest
-
 from s02_preprocess.cache import build_cache
 from s02_preprocess.cache.build_cache import EDGE_KINDS, FCB_EXTERN, FCB_INDJUMP, classify_edge_kind, dfs_back_edges, is_cond
 
@@ -74,7 +71,7 @@ def local_npz(path, mn):
 
 
 # the nine behaviour categories of vocab.json['beh'] (an enumeration of names, not the rules that assign them): the
-# test gives `finalize` this stand-in for token_mapping, which is not part of this package
+# test gives `finalize` this stand-in for token_mapping
 BEHAVIOR_NAMES = ('NONE', 'CRYPTO_OPCODE', 'DECRYPT', 'ENCRYPT', 'KEY_SETUP', 'FILE_ENUM', 'FILE_READ', 'FILE_WRITE',
                   'FILE_DELETE')
 
@@ -102,37 +99,3 @@ def test_finalize_appends_and_keeps_earlier_ids(tmp_path, monkeypatch):
         assert [g['vocab_sha'] for g in generations] == [str(z['vocab_sha']), sha]
     assert [g['sizes']['mn'] for g in generations] == [2, 4]
     assert build_cache.finalize([a, b])[2] == 0
-
-
-def hide_token_mapping(monkeypatch, then_real=False):
-    """build_cache.importlib.import_module raises ImportError for token_mapping on the first call (and on every call unless
-    `then_real`), as on a machine where the module is not on sys.path."""
-    real, calls = build_cache.importlib.import_module, []
-
-    def fake(name, *args):
-        calls.append(name)
-        if name == 'token_mapping' and not (then_real and len(calls) > 1):
-            raise ImportError(name)
-        return real(name, *args)
-    monkeypatch.setattr(build_cache.importlib, 'import_module', fake)
-
-
-def test_the_behaviour_rules_are_not_part_of_the_package(monkeypatch, tmp_path):
-    """Without token_mapping on sys.path and without a configured folder, building says what is missing."""
-    monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'absent.json'))
-    monkeypatch.delenv('GT_TOKEN_MAPPING_DIR', raising=False)
-    hide_token_mapping(monkeypatch)
-    with pytest.raises(ImportError, match='GT_TOKEN_MAPPING_DIR'):
-        build_cache.behavior_rules()
-
-
-def test_the_behaviour_rules_are_found_through_the_configured_folder(monkeypatch, tmp_path):
-    (tmp_path / 'token_mapping.py').write_text('BEHAVIOR_MAP = {"NONE": 0}\n', encoding='utf-8')
-    monkeypatch.setenv('GT_TOKEN_MAPPING_DIR', str(tmp_path))
-    monkeypatch.setattr(sys, 'path', list(sys.path))
-    monkeypatch.delitem(sys.modules, 'token_mapping', raising=False)
-    hide_token_mapping(monkeypatch, then_real=True)
-    try:
-        assert build_cache.behavior_rules().BEHAVIOR_MAP == {'NONE': 0}
-    finally:
-        sys.modules.pop('token_mapping', None)

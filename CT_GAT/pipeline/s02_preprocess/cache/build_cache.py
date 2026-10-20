@@ -15,9 +15,9 @@ that cache's vocab.json and the npz of rows it already holds, so those files sta
 Inputs (common/paths.py `source_for`; GT_BUNDLE, GT_COLLECTIONS, GT_FOLDS, GT_FOLDS_V3 or "sources" in datasets.json):
 the Mendeley_GNN_v1 bundle, the collection-cfg-asm/1 collections, the Mendeley fold CSV and the v3 fold files.
 
-Behaviour tags: each instruction's behaviour id comes from `token_mapping.py` (`categorize_behavior`,
-`_match_api_in_operands`, `strip_opcode_prefixes`, `BEHAVIOR_MAP`), the module the caches were built with. It is not part of
-this package: it is found through GT_TOKEN_MAPPING_DIR / "token_mapping" in datasets.json, or on sys.path. It is not
+Behaviour tags: each instruction's behaviour id comes from `s02_preprocess/token_mapping.py` (`categorize_behavior`,
+`_match_api_in_operands`, `strip_opcode_prefixes`, `BEHAVIOR_MAP`), the module the caches were built with. It is Yanping's
+file, copied unchanged from origin/yanping (tests/test_token_mapping.py pins its sha256). It is not
 `s02_preprocess/tokenize_asm_gz.py`: that module's `_matched_api` assigns a different id to 57 of the 86,127 API names of
 the combined cache's vocabulary (44 of 12,327 in the v2 cache), so a cache built with it would not be this cache.
 """
@@ -26,12 +26,10 @@ import array
 import csv
 import gzip
 import hashlib
-import importlib
 import json
 import math
 import os
 import shutil
-import sys
 import time
 from multiprocessing import Pool
 from pathlib import Path
@@ -40,6 +38,7 @@ import numpy as np
 
 from common.config import CACHE, DEFAULT_CACHE
 from common.paths import UNSET, source_for
+from s02_preprocess import token_mapping
 
 CORPUS_NAMES = ('mendeley', 'ransomware_balanced', 'balanced_goodware')
 SCHEMA = 'ida-cfg-research/2.1'
@@ -57,17 +56,8 @@ INDEX_FIELDS = ('sample_id', 'label', 'split', 'arch', 'family', 'identity_group
 
 
 def behavior_rules():
-    """The `token_mapping` module the caches were built with (see the module docstring for where it is found)."""
-    try:
-        return importlib.import_module('token_mapping')
-    except ImportError:
-        pass
-    try:
-        folder = source_for('token_mapping')
-    except Exception as exc:
-        raise ImportError('token_mapping.py is needed to assign behaviour ids and is not on sys.path; ' + str(exc)) from exc
-    sys.path.insert(0, str(folder))
-    return importlib.import_module('token_mapping')
+    """The `token_mapping` module the caches were built with (the file beside this package, unchanged)."""
+    return token_mapping
 
 
 def corpus_root(corpus):

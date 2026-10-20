@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to datasets.json (gitignored) and edit the paths for this machine. A relative path is relative to this file. 'cache' is the folder build_cache writes (samples/, index.csv, vocab.json); 'protocols' are the --protocol values that read it by default; --cache <name> picks a dataset by name, GT_CACHE (a folder) beats both. 'sources' are the raw inputs a cache is built from, and where runs go; each has an environment variable that wins (GT_BUNDLE, GT_COLLECTIONS, GT_FOLDS, GT_FOLDS_V3, GT_READER_ROOT, GT_TOKEN_MAPPING_DIR, GT_RUNS). 'token_mapping' is the folder holding token_mapping.py, the module the caches' behaviour ids come from; it is not part of this package.",
+  "_comment": "Copy to datasets.json (gitignored) and edit the paths for this machine. A relative path is relative to this file. 'cache' is the folder build_cache writes (samples/, index.csv, vocab.json); 'protocols' are the --protocol values that read it by default; --cache <name> picks a dataset by name, GT_CACHE (a folder) beats both. 'sources' are the raw inputs a cache is built from, and where runs go; each has an environment variable that wins (GT_BUNDLE, GT_COLLECTIONS, GT_FOLDS, GT_FOLDS_V3, GT_READER_ROOT, GT_RUNS).",
 
   "v2": {
     "cache": "C:/Users/you/Downloads/graph_transformer_cache_v2",
@@ -10,7 +10,6 @@
       "folds": "C:/Users/you/Downloads/family_holdout/folds_mendeley.csv",
       "folds_v3": "C:/Users/you/Downloads/family_holdout_v3",
       "reader_root": "C:/Users/you/Downloads/ida_features/out",
-      "token_mapping": "C:/Users/you/Downloads/token_mapping_dir",
       "runs": "C:/Users/you/Downloads/graph_transformer_runs"
     }
   },

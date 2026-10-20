@@ -33,7 +33,6 @@ SOURCES = {
     'folds': ('GT_FOLDS', 'the Mendeley family-holdout fold CSV (folds_mendeley.csv)'),
     'folds_v3': ('GT_FOLDS_V3', 'the folder with folds_all.csv and arch_matched.csv'),
     'reader_root': ('GT_READER_ROOT', "the team's operand-role reader output"),
-    'token_mapping': ('GT_TOKEN_MAPPING_DIR', 'the folder with token_mapping.py'),
     'runs': ('GT_RUNS', 'the run directories'),
 }
 
