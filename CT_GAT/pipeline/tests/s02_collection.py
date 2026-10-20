@@ -46,11 +46,12 @@ def write_gz(path, text):
         handle.write(text)
 
 
-def write_collection(root, samples, cfg_root=None, with_cfg_path=False, extra_columns=None):
+def write_collection(root, samples, cfg_root=None, with_cfg_path=False, extra_columns=None, drop_columns=()):
     """samples: [(sample_id, split, label, [api, ...])], each optionally followed by a dict of extra CSV columns. The CFG sits next to the listing, or under `cfg_root` (same
     relative path) when it is given; `with_cfg_path` also puts it in a `cfg_path` column (relative to the root)."""
     root = Path(root)
-    fields = CSV_FIELDS + (['cfg_path'] if with_cfg_path else []) + list(extra_columns or [])
+    fields = [name for name in CSV_FIELDS + (['cfg_path'] if with_cfg_path else []) + list(extra_columns or [])
+              if name not in drop_columns]
     rows = {'train': [], 'test': []}
     for sample_id, split, label, apis, *more in samples:
         asm_rel = f'samples/{split}/fam/{sample_id}.asm.gz'

@@ -1969,6 +1969,26 @@ def _cfg_path_for_asm(asm_path: Path) -> Path:
     raise CfgSchemaError(f"cannot derive a CFG path from {asm_path}")
 
 
+def _cfg_path_for_row(row: dict[str, str], cfg_root: Path | None) -> Path:
+    """Where the CFG of a splits-CSV row is.
+
+    The row's ``cfg_path`` column (relative to the collection root) wins; without it the CFG is named like the
+    listing. ``cfg_root`` moves both to a separate tree: the column is read relative to it, and a derived name keeps
+    the listing's path relative to its collection root.
+    """
+    root = Path(row["root"])
+    base = root if cfg_root is None else cfg_root
+    if row.get("cfg_path"):
+        path = (base / row["cfg_path"]).resolve()
+        if base.resolve() not in path.parents:
+            raise CfgSchemaError(f"unsafe CFG path: {row['cfg_path']}")
+        return path
+    asm_path = Path(row["asm_path"])
+    if cfg_root is not None:
+        asm_path = cfg_root / asm_path.relative_to(root)
+    return _cfg_path_for_asm(asm_path)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the preprocess. The exit status is 1 when any sample failed (see ``failures.json`` in the output folder)."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1990,6 +2010,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--include-library",
         action="store_true",
         help="Sample blocks of library functions too. By default they are skipped: the listing has no code for them.",
+    )
+    parser.add_argument(
+        "--cfg-root",
+        type=Path,
+        help="Folder that holds the CFGs when they are not beside the listings. A cfg_path column of the splits CSV is "
+        "read relative to it, otherwise the CFG keeps the listing's path relative to its collection root.",
     )
     parser.add_argument("--output", type=Path, default=tok.PROJECT_ROOT / "processed" / "cfg_subgraphs")
     parser.add_argument(
@@ -2076,8 +2102,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             oversized += 1
             continue
         asm_path = Path(row["asm_path"])
-        cfg_path = _cfg_path_for_asm(asm_path)
         try:
+            cfg_path = _cfg_path_for_row(row, args.cfg_root)
             if not cfg_path.is_file():
                 raise CfgSchemaError(f"missing CFG: {cfg_path}")
             result = process_sample(

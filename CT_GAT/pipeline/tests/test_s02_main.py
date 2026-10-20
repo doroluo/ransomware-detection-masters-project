@@ -1,4 +1,5 @@
 """`preprocess_full.main` end to end on tiny collection folders (see s02_collection.py)."""
+import csv
 import json
 import sys
 from pathlib import Path
@@ -178,3 +179,53 @@ def test_a_cap_skips_the_right_samples_and_records_them(tmp_path, flag, value, s
     word = {'--max-asm-bytes': 'asm_bytes', '--max-cfg-blocks': 'blocks', '--max-cfg-instructions': 'instructions'}[flag]
     assert all(word in item['reason'] for item in recorded)
     assert built(out_dir) == [i for i in (sha(1), sha(2), sha(3)) if i not in expected]
+
+
+# ---- 5. where the CFG is -------------------------------------------------------------------------------------------
+
+def one_each(tmp_path, name, **kwargs):
+    return col.write_collection(tmp_path / name, [(sha(1), 'train', 1, ['CreateFileW']), (sha(3), 'test', 0, ['CloseHandle'])],
+                                **kwargs)
+
+
+@pytest.mark.parametrize('with_cfg_path', [False, True])
+def test_the_cfg_beside_the_listing_or_named_by_the_cfg_path_column(tmp_path, with_cfg_path):
+    root = one_each(tmp_path, 'beside', with_cfg_path=with_cfg_path)
+    out_dir, _ = run(tmp_path, [root])
+    assert built(out_dir) == [sha(1), sha(3)]
+
+
+@pytest.mark.parametrize('with_cfg_path', [False, True])
+def test_cfg_root_points_at_a_separate_cfg_tree(tmp_path, with_cfg_path):
+    cfg_tree = tmp_path / 'cfgs'
+    root = one_each(tmp_path, 'apart', cfg_root=cfg_tree, with_cfg_path=with_cfg_path)
+    assert not list(root.rglob('*.jsonl.gz'))
+    status, out_dir, _ = run_status(tmp_path, [root])
+    assert status == 1 and built(out_dir) == []        # without --cfg-root the CFG is missing
+    assert 'missing CFG' in json.loads((out_dir / 'failures.json').read_text(encoding='utf-8'))[0]['error']
+    out_dir, _ = run(tmp_path, [root], '--cfg-root', str(cfg_tree), out='with_root')
+    assert built(out_dir) == [sha(1), sha(3)]
+
+
+def test_a_cfg_path_that_leaves_the_root_is_refused(tmp_path):
+    root = one_each(tmp_path, 'escape', with_cfg_path=True)
+    for split in ('train', 'test'):
+        path = root / 'splits' / f'{split}.csv'
+        with path.open(newline='', encoding='utf-8') as handle:
+            rows = list(csv.DictReader(handle))
+        for row in rows:
+            row['cfg_path'] = '../' + row['cfg_path']
+        with path.open('w', newline='', encoding='utf-8') as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+    status, out_dir, _ = run_status(tmp_path, [root])
+    assert status == 1 and 'unsafe CFG path' in json.loads((out_dir / 'failures.json').read_text(encoding='utf-8'))[0]['error']
+
+
+def test_a_splits_csv_without_a_collection_column_uses_the_folder_name(tmp_path):
+    root = one_each(tmp_path, 'nocollection', drop_columns=('collection',))
+    rows = tok._selected_rows([root], 'all', None, None)
+    assert {row['collection'] for row in rows} == {'nocollection'}
+    out_dir, _ = run(tmp_path, [root])
+    assert built(out_dir) == [sha(1), sha(3)]
