@@ -1445,11 +1445,16 @@ class FiveChannelEmbedder(nn.Module):
     behavior lookups. Index 0 stays the zero vector, which covers padding,
     ``NO_API``, and behavior ``NONE``. The tables are trainable. A saved
     block vector is the pool of these lookups, not a mean of the integer ids.
+
+    With ``seed`` set, every row added by ``expand_api`` is drawn from a
+    generator seeded by that seed and the row index, so the same API id gets
+    the same vector whatever the order and size of the growth steps.
     """
 
-    def __init__(self, api_vocab_size: int, d_model: int = BLOCK_EMBED_DIM) -> None:
+    def __init__(self, api_vocab_size: int, d_model: int = BLOCK_EMBED_DIM, seed: int | None = None) -> None:
         super().__init__()
         self.d_model = d_model
+        self.seed = seed
         if api_vocab_size < tok.FIRST_API_ID:
             api_vocab_size = tok.FIRST_API_ID
         self.opcode_embedding = nn.Embedding(OPCODE_VOCAB_SIZE, d_model, padding_idx=0)
@@ -1463,8 +1468,13 @@ class FiveChannelEmbedder(nn.Module):
             return
         fresh = nn.Embedding(api_vocab_size, self.d_model, padding_idx=0)
         with torch.no_grad():
-            fresh.weight[: self.api_embedding.num_embeddings] = self.api_embedding.weight
+            known = self.api_embedding.num_embeddings
+            fresh.weight[:known] = self.api_embedding.weight
             fresh.weight[0].zero_()
+            if self.seed is not None:
+                for row in range(known, api_vocab_size):
+                    generator = torch.Generator().manual_seed(self.seed * 1_000_003 + row)
+                    fresh.weight[row] = torch.randn(self.d_model, generator=generator)
         self.api_embedding = fresh
 
     def embed_tokens(self, token_ids: torch.Tensor) -> torch.Tensor:
@@ -2029,7 +2039,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         selected = selected[: args.limit]
     full_run = args.limit is None and args.sample_id is None and not args.freeze_vocab
     vocab = tok.load_api_vocab(args.vocab)
-    embedder = FiveChannelEmbedder(api_table_size(vocab))
+    torch.manual_seed(args.seed)
+    embedder = FiveChannelEmbedder(api_table_size(vocab), seed=args.seed)
     embedder_path = args.output / "channel_embedder.pt"
     can_resume = embedder_path.is_file() and not args.overwrite
     if can_resume:

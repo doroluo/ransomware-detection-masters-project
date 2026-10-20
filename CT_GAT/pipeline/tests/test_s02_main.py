@@ -51,3 +51,44 @@ def test_split_all_and_split_train_build_the_same_vocabulary(tmp_path):
     _, vocab_train = run(tmp_path, [a], '--split', 'train', out='train', vocab='train.json')
     assert vocab_all.read_text(encoding='utf-8') == vocab_train.read_text(encoding='utf-8')
     assert json.loads(vocab_all.read_text(encoding='utf-8')) == ['CloseHandle']
+
+
+# ---- 2. the embedder is seeded -----------------------------------------------------------------------------------
+
+def three_samples(tmp_path, name):
+    return col.write_collection(tmp_path / name, [
+        (sha(1), 'train', 1, ['CreateFileW']),
+        (sha(2), 'train', 0, ['CreateFileW', 'RegSetValueExW']),
+        (sha(3), 'test', 1, ['CloseHandle']),
+    ])
+
+
+def block_embeddings(out_dir):
+    return {sample_id: torch.load(out_dir / f'{sample_id}.pt', weights_only=False)['block_embeddings']
+            for sample_id in (sha(1), sha(2), sha(3))}
+
+
+def test_two_fresh_runs_give_identical_block_embeddings(tmp_path):
+    root = three_samples(tmp_path, 'c')
+    first, _ = run(tmp_path, [root], out='first', vocab='v1.json')
+    torch.manual_seed(999)                       # whatever the process did in between
+    second, _ = run(tmp_path, [root], out='second', vocab='v2.json')
+    a, b = block_embeddings(first), block_embeddings(second)
+    for sample_id in a:
+        assert a[sample_id].numel() and torch.equal(a[sample_id], b[sample_id])
+    other, _ = run(tmp_path, [root], out='other', vocab='v3.json', seed=1)
+    assert not torch.equal(block_embeddings(other)[sha(1)], a[sha(1)])
+
+
+def test_new_api_rows_depend_on_the_seed_and_the_row_only():
+    one = pf.FiveChannelEmbedder(tok.FIRST_API_ID, seed=7)
+    one.expand_api(tok.FIRST_API_ID + 2)
+    one.expand_api(tok.FIRST_API_ID + 5)
+    torch.manual_seed(123)
+    two = pf.FiveChannelEmbedder(tok.FIRST_API_ID, seed=7)
+    two.expand_api(tok.FIRST_API_ID + 5)
+    assert torch.equal(one.api_embedding.weight[tok.FIRST_API_ID:], two.api_embedding.weight[tok.FIRST_API_ID:])
+    assert float(one.api_embedding.weight[0].detach().abs().sum()) == 0.0
+    three = pf.FiveChannelEmbedder(tok.FIRST_API_ID, seed=8)
+    three.expand_api(tok.FIRST_API_ID + 5)
+    assert not torch.equal(one.api_embedding.weight[tok.FIRST_API_ID:], three.api_embedding.weight[tok.FIRST_API_ID:])
