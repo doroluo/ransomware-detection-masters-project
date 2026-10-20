@@ -1,6 +1,6 @@
 {
   "sample_id": "905ea119ad8d3e54cd228c458a1b5681abc1f35df782977a23812ec4efa0288a",
-  "source": "C:\\Users\\chaoa\\Downloads\\ransomware-detection-masters-project\\reports\\google_drive_upload\\2026-10-07\\Mendeley_GNN_v1\\cfg\\ransomware\\train\\wastedlocker\\905ea119ad8d3e54cd228c458a1b5681abc1f35df782977a23812ec4efa0288a.jsonl.gz",
+  "source": "<Mendeley_GNN_v1>/cfg/ransomware/train/wastedlocker/905ea119ad8d3e54cd228c458a1b5681abc1f35df782977a23812ec4efa0288a.jsonl.gz",
   "source_sha256": "d66d677dbed932f3dc9182780cec11cc39ea7e1d89169d67c9c14e8619a34cfa",
   "reader_sha256": "65e70bba6e3c14c518c3c94953dfc5964f8836271b0e9d896939995e9bdb54be",
   "token_mapping_sha256": "f5bcf9ff82eda59ba77aa4e93e8e0c88ae9ae2b0fdfd54b408322760b102e6ac",

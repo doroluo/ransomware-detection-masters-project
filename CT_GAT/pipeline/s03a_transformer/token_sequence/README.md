@@ -65,7 +65,8 @@ python -m s03a_transformer.token_sequence.train --fold 0 --seed 0 ...     # the 
 
 Both run from `CT_GAT/pipeline`. `tokenseq` is registered in `common/registry.py` (`spec.py`). The registry's loop is the loop
 of the graph models, so the spec owns its run (`run`) and `experiments.train` hands the run over to `train.py`. Seeds 0 1 2
-x folds 0-4 are a plan of the experiment queue (a later pull request), then `s04_evaluation/report.py` and
+x folds 0-4 are the plan `experiments/plans/model1.txt` of the experiment queue (`python -m experiments.queue --plan
+experiments/plans/model1.txt`), then `s04_evaluation/report.py` and
 `gates.py --stage model1`.
 
 `train.py` trains `BinaryTokenSequence(Model1TokenSequence)` on one fold of the export (`ours_cap0` under `<runs>/export`, or

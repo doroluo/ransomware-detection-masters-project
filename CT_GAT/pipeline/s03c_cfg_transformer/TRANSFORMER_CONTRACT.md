@@ -71,5 +71,5 @@ $PY -m s03c_cfg_transformer.precompute_blockvec --encoder-name codebert --export
 ```
 
 The vectors land in `<cache_v2>/side/blockvec/ours_cap0_codebert/fold{k}/`; `python -m experiments.train --block-input vec
---block-vec ours_cap0_codebert` reads them (path 2; `--control no_edges` for path 1), and the experiment queue of a later pull request runs
-both on seeds 0 1 2. The encoder is not fitted to our data, so the validation split may follow `--seed` (no `--val-seed`).
+--block-vec ours_cap0_codebert` reads them (path 2; `--control no_edges` for path 1), and the experiment queue runs
+both on seeds 0 1 2 (`experiments/plans/paths_codebert.txt`). The encoder is not fitted to our data, so the validation split may follow `--seed` (no `--val-seed`).

@@ -1,0 +1,20 @@
+run kfold0_x86_gnn-mblk15-L2_s1 --protocol kfold --fold 0 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --gnn-fn-layers 2
+run kfold1_x86_gnn-mblk15-L2_s1 --protocol kfold --fold 1 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --gnn-fn-layers 2
+run kfold2_x86_gnn-mblk15-L2_s1 --protocol kfold --fold 2 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --gnn-fn-layers 2
+run kfold3_x86_gnn-mblk15-L2_s1 --protocol kfold --fold 3 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --gnn-fn-layers 2
+run kfold4_x86_gnn-mblk15-L2_s1 --protocol kfold --fold 4 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --gnn-fn-layers 2
+run kfold0_x86_gnn-mblk15-L2_s2 --protocol kfold --fold 0 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --gnn-fn-layers 2
+run kfold1_x86_gnn-mblk15-L2_s2 --protocol kfold --fold 1 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --gnn-fn-layers 2
+run kfold2_x86_gnn-mblk15-L2_s2 --protocol kfold --fold 2 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --gnn-fn-layers 2
+run kfold3_x86_gnn-mblk15-L2_s2 --protocol kfold --fold 3 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --gnn-fn-layers 2
+run kfold4_x86_gnn-mblk15-L2_s2 --protocol kfold --fold 4 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --gnn-fn-layers 2
+run kfold0_x86_gnn-nocall-mblk15_s1 --protocol kfold --fold 0 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --no-call-mp
+run kfold1_x86_gnn-nocall-mblk15_s1 --protocol kfold --fold 1 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --no-call-mp
+run kfold2_x86_gnn-nocall-mblk15_s1 --protocol kfold --fold 2 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --no-call-mp
+run kfold3_x86_gnn-nocall-mblk15_s1 --protocol kfold --fold 3 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --no-call-mp
+run kfold4_x86_gnn-nocall-mblk15_s1 --protocol kfold --fold 4 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --no-call-mp
+run kfold0_x86_gnn-nocall-mblk15_s2 --protocol kfold --fold 0 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --no-call-mp
+run kfold1_x86_gnn-nocall-mblk15_s2 --protocol kfold --fold 1 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --no-call-mp
+run kfold2_x86_gnn-nocall-mblk15_s2 --protocol kfold --fold 2 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --no-call-mp
+run kfold3_x86_gnn-nocall-mblk15_s2 --protocol kfold --fold 3 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --no-call-mp
+run kfold4_x86_gnn-nocall-mblk15_s2 --protocol kfold --fold 4 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --no-call-mp

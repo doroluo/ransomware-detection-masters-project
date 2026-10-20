@@ -1,0 +1,48 @@
+cpu baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0
+cpu baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch matched --seed 0
+cpu baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0 --arch-balance
+run v3kfold0_all_gnn-noedges-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges --arch-balance
+run v3kfold1_all_gnn-noedges-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges --arch-balance
+run v3kfold2_all_gnn-noedges-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges --arch-balance
+run v3kfold3_all_gnn-noedges-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges --arch-balance
+run v3kfold4_all_gnn-noedges-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges --arch-balance
+run v3kfold0_all_gnn-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --arch-balance
+run v3kfold1_all_gnn-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --arch-balance
+run v3kfold2_all_gnn-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --arch-balance
+run v3kfold3_all_gnn-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --arch-balance
+run v3kfold4_all_gnn-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --arch-balance
+run v3kfold0_all_gnn-shuffle-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle --arch-balance
+run v3kfold1_all_gnn-shuffle-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle --arch-balance
+run v3kfold2_all_gnn-shuffle-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle --arch-balance
+run v3kfold3_all_gnn-shuffle-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle --arch-balance
+run v3kfold4_all_gnn-shuffle-mblk15-ab-selcell_s0 --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle --arch-balance
+run v3kfold0_all_gnn-noedges-mblk15-selcell_s0 --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+run v3kfold1_all_gnn-noedges-mblk15-selcell_s0 --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+run v3kfold2_all_gnn-noedges-mblk15-selcell_s0 --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+run v3kfold3_all_gnn-noedges-mblk15-selcell_s0 --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+run v3kfold4_all_gnn-noedges-mblk15-selcell_s0 --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+run v3kfold0_all_gnn-mblk15-selcell_s0 --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+run v3kfold1_all_gnn-mblk15-selcell_s0 --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+run v3kfold2_all_gnn-mblk15-selcell_s0 --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+run v3kfold3_all_gnn-mblk15-selcell_s0 --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+run v3kfold4_all_gnn-mblk15-selcell_s0 --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+run v3kfold0_all_gnn-shuffle-mblk15-selcell_s0 --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+run v3kfold1_all_gnn-shuffle-mblk15-selcell_s0 --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+run v3kfold2_all_gnn-shuffle-mblk15-selcell_s0 --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+run v3kfold3_all_gnn-shuffle-mblk15-selcell_s0 --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+run v3kfold4_all_gnn-shuffle-mblk15-selcell_s0 --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+run v3kfold0_matched_gnn-noedges-mblk15-selcell_s0 --protocol kfold_v3 --fold 0 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+run v3kfold1_matched_gnn-noedges-mblk15-selcell_s0 --protocol kfold_v3 --fold 1 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+run v3kfold2_matched_gnn-noedges-mblk15-selcell_s0 --protocol kfold_v3 --fold 2 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+run v3kfold3_matched_gnn-noedges-mblk15-selcell_s0 --protocol kfold_v3 --fold 3 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+run v3kfold4_matched_gnn-noedges-mblk15-selcell_s0 --protocol kfold_v3 --fold 4 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+run v3kfold0_matched_gnn-mblk15-selcell_s0 --protocol kfold_v3 --fold 0 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+run v3kfold1_matched_gnn-mblk15-selcell_s0 --protocol kfold_v3 --fold 1 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+run v3kfold2_matched_gnn-mblk15-selcell_s0 --protocol kfold_v3 --fold 2 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+run v3kfold3_matched_gnn-mblk15-selcell_s0 --protocol kfold_v3 --fold 3 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+run v3kfold4_matched_gnn-mblk15-selcell_s0 --protocol kfold_v3 --fold 4 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+run v3kfold0_matched_gnn-shuffle-mblk15-selcell_s0 --protocol kfold_v3 --fold 0 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+run v3kfold1_matched_gnn-shuffle-mblk15-selcell_s0 --protocol kfold_v3 --fold 1 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+run v3kfold2_matched_gnn-shuffle-mblk15-selcell_s0 --protocol kfold_v3 --fold 2 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+run v3kfold3_matched_gnn-shuffle-mblk15-selcell_s0 --protocol kfold_v3 --fold 3 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+run v3kfold4_matched_gnn-shuffle-mblk15-selcell_s0 --protocol kfold_v3 --fold 4 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle

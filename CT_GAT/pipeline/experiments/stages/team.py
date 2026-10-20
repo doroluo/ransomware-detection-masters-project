@@ -1,7 +1,7 @@
 """Stage team.
 
-Stage team reads the teammates' GAT pipelines run under our folds (experiments/team_pipelines; `scripts/team_runs.sh` and
-`scripts/team_gpu_runs.sh`): TF-IDF, the header-imports LR, R7 and R2 with 15% block masking, our matched cap-500 arms (typed and
+Stage team reads the teammates' GAT pipelines run under our folds (experiments/team_pipelines, and the queue plans
+`team` and `paths_codebert`): TF-IDF, the header-imports LR, R7 and R2 with 15% block masking, our matched cap-500 arms (typed and
 no-edges, `--subgraph cap --budget 500 --tag b500`), team gnn500, cb500, sig500 and sig500v2 (`team-<arm>` tags) and path 2 on the CodeBERT
 vectors. The pooled seed-0 table adds accuracy, precision, recall and the confusion matrix of every arm (ransomware = positive
 class, AUC checkpoint at its validation threshold); each team arm is paired against TF-IDF, R7 and our b500 typed arm, cb500

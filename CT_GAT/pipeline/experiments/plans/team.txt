@@ -1,0 +1,40 @@
+# Matched arms of the 500-block comparison with the teammates' pipelines: R7 typed and its no-edge twin with
+# --subgraph cap --budget 500 --tag b500, kfold x86, 15% block masking, seeds 0 1 2, folds 0-4 (30 runs, seed by seed).
+# The teammates' own trainers run separately (experiments/team_pipelines/README.md); the CodeBERT arms are the plan
+# `paths_codebert`. `gates team` reads all of them and lists what is missing.
+# Source script: scripts/team_gpu_runs.sh.
+#     python -m experiments.queue --plan experiments/plans/team.txt
+
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 0 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 1 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 2 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 3 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 4 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 0 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 1 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 2 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 3 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 4 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 0 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 1 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 2 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 3 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 4 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 0 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 1 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 2 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 3 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+train --protocol kfold --fold 4 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+
+report
+gates team

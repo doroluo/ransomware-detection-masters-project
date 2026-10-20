@@ -1,0 +1,30 @@
+run kfold0_x86_gnn-mblk15-sg-cap500_s0_b500 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold1_x86_gnn-mblk15-sg-cap500_s0_b500 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold2_x86_gnn-mblk15-sg-cap500_s0_b500 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold3_x86_gnn-mblk15-sg-cap500_s0_b500 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold4_x86_gnn-mblk15-sg-cap500_s0_b500 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold0_x86_gnn-mblk15-sg-cap500_s1_b500 --protocol kfold --fold 0 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold1_x86_gnn-mblk15-sg-cap500_s1_b500 --protocol kfold --fold 1 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold2_x86_gnn-mblk15-sg-cap500_s1_b500 --protocol kfold --fold 2 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold3_x86_gnn-mblk15-sg-cap500_s1_b500 --protocol kfold --fold 3 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold4_x86_gnn-mblk15-sg-cap500_s1_b500 --protocol kfold --fold 4 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold0_x86_gnn-mblk15-sg-cap500_s2_b500 --protocol kfold --fold 0 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold1_x86_gnn-mblk15-sg-cap500_s2_b500 --protocol kfold --fold 1 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold2_x86_gnn-mblk15-sg-cap500_s2_b500 --protocol kfold --fold 2 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold3_x86_gnn-mblk15-sg-cap500_s2_b500 --protocol kfold --fold 3 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold4_x86_gnn-mblk15-sg-cap500_s2_b500 --protocol kfold --fold 4 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500
+run kfold0_x86_gnn-noedges-mblk15-sg-cap500_s0_b500 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold1_x86_gnn-noedges-mblk15-sg-cap500_s0_b500 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold2_x86_gnn-noedges-mblk15-sg-cap500_s0_b500 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold3_x86_gnn-noedges-mblk15-sg-cap500_s0_b500 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold4_x86_gnn-noedges-mblk15-sg-cap500_s0_b500 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold0_x86_gnn-noedges-mblk15-sg-cap500_s1_b500 --protocol kfold --fold 0 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold1_x86_gnn-noedges-mblk15-sg-cap500_s1_b500 --protocol kfold --fold 1 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold2_x86_gnn-noedges-mblk15-sg-cap500_s1_b500 --protocol kfold --fold 2 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold3_x86_gnn-noedges-mblk15-sg-cap500_s1_b500 --protocol kfold --fold 3 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold4_x86_gnn-noedges-mblk15-sg-cap500_s1_b500 --protocol kfold --fold 4 --arch x86 --seed 1 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold0_x86_gnn-noedges-mblk15-sg-cap500_s2_b500 --protocol kfold --fold 0 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold1_x86_gnn-noedges-mblk15-sg-cap500_s2_b500 --protocol kfold --fold 1 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold2_x86_gnn-noedges-mblk15-sg-cap500_s2_b500 --protocol kfold --fold 2 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold3_x86_gnn-noedges-mblk15-sg-cap500_s2_b500 --protocol kfold --fold 3 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges
+run kfold4_x86_gnn-noedges-mblk15-sg-cap500_s2_b500 --protocol kfold --fold 4 --arch x86 --seed 2 --model gnn --mask-blocks 0.15 --subgraph cap --budget 500 --tag b500 --control no_edges

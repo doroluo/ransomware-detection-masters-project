@@ -1,0 +1,76 @@
+# Day 1b: learning curves (train fraction 0.5 and 0.25), masking, edge perturbations, direction and depth arms,
+# kfold x86, seed 0.
+# Source queue: queue_gnn.sh --stage day1b (GPU budget 600 minutes).
+#     python -m experiments.queue --plan experiments/plans/day1b.txt --budget-min 600
+
+baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --train-fraction 0.5
+baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --train-fraction 0.25
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-tokens 0.15
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-tokens 0.15
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-tokens 0.15
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-tokens 0.15
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-tokens 0.15
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --drop-functions 0.05 --drop-library 0.4
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --drop-functions 0.05 --drop-library 0.4
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --drop-functions 0.05 --drop-library 0.4
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --drop-functions 0.05 --drop-library 0.4
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --drop-functions 0.05 --drop-library 0.4
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --direction undirected
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --direction undirected
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --direction undirected
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --direction undirected
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --direction undirected
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --direction forward
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --direction forward
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --direction forward
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --direction forward
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --direction forward
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --drop-functions 0.15
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --drop-functions 0.15
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --drop-functions 0.15
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --drop-functions 0.15
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --drop-functions 0.15
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --train-fraction 0.5
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --train-fraction 0.5
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --train-fraction 0.5
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --train-fraction 0.5
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --train-fraction 0.5
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --train-fraction 0.25
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --train-fraction 0.25
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --train-fraction 0.25
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --train-fraction 0.25
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --train-fraction 0.25
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --drop-edges 0.2
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --drop-edges 0.2
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --drop-edges 0.2
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --drop-edges 0.2
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --drop-edges 0.2
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --flip-edges 0.2
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --flip-edges 0.2
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --flip-edges 0.2
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --flip-edges 0.2
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --flip-edges 0.2
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-tokens 0.5
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-tokens 0.5
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-tokens 0.5
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-tokens 0.5
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-tokens 0.5
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --direction backward
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --direction backward
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --direction backward
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --direction backward
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --direction backward
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --gnn-fn-layers 8
+train --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --gnn-fn-layers 8
+train --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --gnn-fn-layers 8
+train --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --gnn-fn-layers 8
+train --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --gnn-fn-layers 8
+
+report
+gates day1b
+val_threshold

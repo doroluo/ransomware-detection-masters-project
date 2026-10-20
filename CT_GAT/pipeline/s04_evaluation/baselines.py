@@ -133,6 +133,15 @@ def baseline_name(cfg: RunConfig):
     return split.name.replace('_gnn', '')
 
 
+def output_name(cfg: RunConfig, vocab='ours', imports=False):
+    """Directory name of one baseline run under <runs>/baselines: the split's name, then `_voc-<vocab>` or `_imp`, `_tf<pct>`
+    for a train fraction below 1 and `_ab` with --arch-balance. The experiment queue reads it to skip finished baselines."""
+    tf = f'_tf{round(100 * cfg.train_fraction)}' if cfg.train_fraction < 1 else ''
+    ab = '_ab' if cfg.arch_balance else ''
+    kind = f'_voc-{vocab}' if vocab != 'ours' else '_imp' if imports else ''
+    return baseline_name(cfg) + kind + tf + ab
+
+
 STACK_SPLITS = 5
 
 
@@ -268,10 +277,7 @@ def run(cfg: RunConfig, sizes, out_root=None, vocab='ours', imports=False):
     fit_args = ({'logisticregression__sample_weight': cell_weights(y_train, [r['arch'] for r in train])}
                 if cfg.arch_balance else {})
     models, n_keep, n_features = features_and_models(cfg, sizes, train, val, test, vocab, imports, class_weight)
-    tf = f'_tf{round(100 * cfg.train_fraction)}' if cfg.train_fraction < 1 else ''
-    ab = '_ab' if cfg.arch_balance else ''
-    kind = f'_voc-{vocab}' if vocab != 'ours' else '_imp' if imports else ''
-    out = Path(out_root or RUNS / 'baselines') / (baseline_name(cfg) + kind + tf + ab)
+    out = Path(out_root or RUNS / 'baselines') / output_name(cfg, vocab, imports)
     out.mkdir(parents=True, exist_ok=True)
     metrics = {'protocol': cfg.protocol, 'fold': cfg.fold, 'arch': cfg.arch, 'seed': cfg.seed,
                'train_fraction': cfg.train_fraction, 'arch_balance': cfg.arch_balance, 'cache': str(CACHE),
@@ -306,7 +312,7 @@ def run(cfg: RunConfig, sizes, out_root=None, vocab='ours', imports=False):
                                           for m, v in metrics['methods'].items()}}), flush=True)
 
 
-def main():
+def parse_args(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--protocol', choices=['bundle', 'kfold', 'kfold_v3'], default='bundle')
     ap.add_argument('--fold', type=int, nargs='*', default=[None])
@@ -319,20 +325,29 @@ def main():
     ap.add_argument('--vocab', choices=VOCABS, default='ours', help='TF-IDF over the tokens of this GNN vocabulary')
     ap.add_argument('--imports', action='store_true', help='the import methods (see the docstring)')
     ap.add_argument('--out-root', help='default: graph_transformer_runs/baselines')
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.stack_logits and (args.vocab != 'ours' or args.imports):
         ap.error('--stack-logits is not combined with --vocab or --imports')
     if args.vocab != 'ours' and args.imports:
         ap.error('--vocab and --imports are separate runs')
+    return args
+
+
+def configs(args):
+    """The RunConfig of every (fold, seed) of parsed arguments, folds outermost, as `main` runs them."""
+    return [RunConfig(protocol=args.protocol, fold=fold, arch=args.arch, seed=seed, val_seed=args.val_seed,
+                      train_fraction=args.train_fraction, arch_balance=args.arch_balance)
+            for fold in args.fold for seed in args.seed]
+
+
+def main(argv=None):
+    args = parse_args(argv)
     sizes = {k: len(v) for k, v in json.loads((CACHE / 'vocab.json').read_text(encoding='utf-8')).items()}
-    for fold in args.fold:
-        for seed in args.seed:
-            cfg = RunConfig(protocol=args.protocol, fold=fold, arch=args.arch, seed=seed, val_seed=args.val_seed,
-                            train_fraction=args.train_fraction, arch_balance=args.arch_balance)
-            if args.stack_logits:
-                write_stack_logits(cfg, sizes, args.out_root)
-            else:
-                run(cfg, sizes, args.out_root, args.vocab, args.imports)
+    for cfg in configs(args):
+        if args.stack_logits:
+            write_stack_logits(cfg, sizes, args.out_root)
+        else:
+            run(cfg, sizes, args.out_root, args.vocab, args.imports)
 
 
 if __name__ == '__main__':

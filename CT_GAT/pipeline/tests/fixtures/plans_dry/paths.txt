@@ -1,0 +1,8 @@
+cpu baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --stack-logits
+run kfold0_x86_gnn-stack-mblk15_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --stack-tfidf
+run kfold1_x86_gnn-stack-mblk15_s0 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --stack-tfidf
+run kfold2_x86_gnn-stack-mblk15_s0 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --stack-tfidf
+run kfold3_x86_gnn-stack-mblk15_s0 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --stack-tfidf
+run kfold4_x86_gnn-stack-mblk15_s0 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --stack-tfidf
+run kfold0_x86_gnn-noedges-mblk15-bv-ours_cap0_ref_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --val-seed 0 --block-input vec --block-vec ours_cap0_ref --control no_edges
+run kfold0_x86_gnn-mblk15-bv-ours_cap0_ref_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --val-seed 0 --block-input vec --block-vec ours_cap0_ref

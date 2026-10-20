@@ -1,0 +1,58 @@
+# Combined cache, kfold_v3, seed 0: CPU baselines (all, matched, all arch-balanced), then the block-masked arms with
+# cell-balanced checkpoint selection for arch all and matched, the arch-balanced (-ab) arms first.
+# The runs read the combined cache because that dataset of datasets.json lists the protocol kfold_v3 (GT_CACHE overrides).
+# Source queue: queue_gnn.sh --stage v3 (GPU budget 600 minutes).
+#     python -m experiments.queue --plan experiments/plans/v3.txt --budget-min 600
+
+baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0
+baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch matched --seed 0
+baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0 --arch-balance
+train --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges --arch-balance
+train --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges --arch-balance
+train --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges --arch-balance
+train --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges --arch-balance
+train --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges --arch-balance
+train --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --arch-balance
+train --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --arch-balance
+train --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --arch-balance
+train --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --arch-balance
+train --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --arch-balance
+train --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle --arch-balance
+train --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle --arch-balance
+train --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle --arch-balance
+train --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle --arch-balance
+train --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle --arch-balance
+train --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+train --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+train --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+train --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+train --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+train --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+train --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+train --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+train --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+train --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+train --protocol kfold_v3 --fold 0 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+train --protocol kfold_v3 --fold 1 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+train --protocol kfold_v3 --fold 2 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+train --protocol kfold_v3 --fold 3 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+train --protocol kfold_v3 --fold 4 --arch all --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+train --protocol kfold_v3 --fold 0 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+train --protocol kfold_v3 --fold 1 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+train --protocol kfold_v3 --fold 2 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+train --protocol kfold_v3 --fold 3 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+train --protocol kfold_v3 --fold 4 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control no_edges
+train --protocol kfold_v3 --fold 0 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+train --protocol kfold_v3 --fold 1 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+train --protocol kfold_v3 --fold 2 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+train --protocol kfold_v3 --fold 3 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+train --protocol kfold_v3 --fold 4 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell
+train --protocol kfold_v3 --fold 0 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+train --protocol kfold_v3 --fold 1 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+train --protocol kfold_v3 --fold 2 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+train --protocol kfold_v3 --fold 3 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+train --protocol kfold_v3 --fold 4 --arch matched --seed 0 --model gnn --mask-blocks 0.15 --select-on cell --control shuffle
+
+report
+gates v3
+val_threshold
