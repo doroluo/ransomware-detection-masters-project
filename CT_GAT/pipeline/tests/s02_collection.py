@@ -47,12 +47,12 @@ def write_gz(path, text):
 
 
 def write_collection(root, samples, cfg_root=None, with_cfg_path=False, extra_columns=None):
-    """samples: [(sample_id, split, label, [api, ...])]. The CFG sits next to the listing, or under `cfg_root` (same
+    """samples: [(sample_id, split, label, [api, ...])], each optionally followed by a dict of extra CSV columns. The CFG sits next to the listing, or under `cfg_root` (same
     relative path) when it is given; `with_cfg_path` also puts it in a `cfg_path` column (relative to the root)."""
     root = Path(root)
     fields = CSV_FIELDS + (['cfg_path'] if with_cfg_path else []) + list(extra_columns or [])
     rows = {'train': [], 'test': []}
-    for sample_id, split, label, apis in samples:
+    for sample_id, split, label, apis, *more in samples:
         asm_rel = f'samples/{split}/fam/{sample_id}.asm.gz'
         cfg_rel = f'samples/{split}/fam/{sample_id}.jsonl.gz'
         write_gz(root / asm_rel, listing(apis))
@@ -62,6 +62,7 @@ def write_collection(root, samples, cfg_root=None, with_cfg_path=False, extra_co
                'asm_status': 'ok', 'asm_path': asm_rel}
         if with_cfg_path:
             row['cfg_path'] = cfg_rel
+        row.update(more[0] if more else {})
         rows[split].append(row)
     (root / 'splits').mkdir(parents=True, exist_ok=True)
     for split, split_rows in rows.items():

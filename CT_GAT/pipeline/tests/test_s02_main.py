@@ -141,3 +141,40 @@ def test_a_clean_run_exits_zero_and_removes_an_old_failures_file(tmp_path):
     (out_dir / 'failures.json').write_text('[]', encoding='utf-8')
     status, out_dir, _ = run_status(tmp_path, [root])
     assert status == 0 and not (out_dir / 'failures.json').exists()
+
+
+# ---- 4. the size caps read the splits CSV and are off by default -------------------------------------------------
+
+CAP_COLUMNS = ['asm_bytes', 'num_blocks', 'num_instructions']
+
+
+def sized_collection(tmp_path):
+    return col.write_collection(tmp_path / 'sized', [
+        (sha(1), 'train', 1, ['CreateFileW'], {'asm_bytes': 900, 'num_blocks': 4, 'num_instructions': 40}),
+        (sha(2), 'train', 0, ['CloseHandle'], {'asm_bytes': 100, 'num_blocks': 9, 'num_instructions': 40}),
+        (sha(3), 'test', 1, ['CreateFileW'], {'asm_bytes': 100, 'num_blocks': 4, 'num_instructions': 40}),
+    ], extra_columns=CAP_COLUMNS)
+
+
+def built(out_dir):
+    return sorted(path.stem for path in out_dir.glob('*.pt') if path.stem != 'channel_embedder')
+
+
+def test_no_cap_is_set_by_default(tmp_path):
+    out_dir, _ = run(tmp_path, [sized_collection(tmp_path)])
+    assert built(out_dir) == [sha(1), sha(2), sha(3)] and not (out_dir / 'skipped.json').exists()
+
+
+@pytest.mark.parametrize('flag, value, skipped', [
+    ('--max-asm-bytes', '500', sha(1)),
+    ('--max-cfg-blocks', '5', sha(2)),
+    ('--max-cfg-instructions', '30', None),
+])
+def test_a_cap_skips_the_right_samples_and_records_them(tmp_path, flag, value, skipped):
+    out_dir, _ = run(tmp_path, [sized_collection(tmp_path)], flag, value)
+    recorded = json.loads((out_dir / 'skipped.json').read_text(encoding='utf-8'))
+    expected = [sha(1), sha(2), sha(3)] if skipped is None else [skipped]
+    assert [item['sample_id'] for item in recorded] == expected
+    word = {'--max-asm-bytes': 'asm_bytes', '--max-cfg-blocks': 'blocks', '--max-cfg-instructions': 'instructions'}[flag]
+    assert all(word in item['reason'] for item in recorded)
+    assert built(out_dir) == [i for i in (sha(1), sha(2), sha(3)) if i not in expected]

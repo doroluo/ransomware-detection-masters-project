@@ -1251,6 +1251,9 @@ def _selected_rows(roots: list[Path], split: str, architecture: str | None, samp
                         "collection": row["collection"],
                         "split": split_name,
                         "asm_path": str(asm_path),
+                        "asm_bytes": row.get("asm_bytes") or "",
+                        "num_blocks": row.get("num_blocks") or "",
+                        "num_instructions": row.get("num_instructions") or "",
                     }
     return list(seen.values())
 

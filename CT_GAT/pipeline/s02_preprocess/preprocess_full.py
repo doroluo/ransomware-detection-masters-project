@@ -74,12 +74,6 @@ UNKNOWN_EDGE_TYPE_ID = EDGE_TYPE_TO_ID["unknown"]
 # Keep a few examples for the manifest. Full gap lists are large enough to
 # exhaust a small machine while json is being written.
 MISMATCH_EXAMPLE_LIMIT = 32
-# Uncompressed IDA listings and full CFGs above these sizes do not fit in a
-# ~4 GB RAM host. The block and instruction caps sit just above the largest
-# sample that has completed on this machine.
-DEFAULT_MAX_ASM_BYTES = 200_000_000
-DEFAULT_MAX_CFG_BLOCKS = 80_000
-DEFAULT_MAX_CFG_INSTRUCTIONS = 450_000
 FCB_INDJUMP = 1
 FCB_EXTERN = 6
 
@@ -2001,20 +1995,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--max-asm-bytes",
         type=int,
-        default=DEFAULT_MAX_ASM_BYTES,
-        help="Skip an uncompressed listing larger than this many bytes. 0 keeps every sample.",
+        default=0,
+        help="Skip an uncompressed listing larger than this many bytes (asm_bytes of the splits CSV). 0, the default, sets no cap.",
     )
     parser.add_argument(
         "--max-cfg-blocks",
         type=int,
-        default=DEFAULT_MAX_CFG_BLOCKS,
-        help="Skip a CFG with more blocks than this. 0 disables the limit.",
+        default=0,
+        help="Skip a CFG with more blocks than this (num_blocks of the splits CSV). 0, the default, sets no cap.",
     )
     parser.add_argument(
         "--max-cfg-instructions",
         type=int,
-        default=DEFAULT_MAX_CFG_INSTRUCTIONS,
-        help="Skip a CFG with more instructions than this. 0 disables the limit.",
+        default=0,
+        help="Skip a CFG with more instructions than this (num_instructions of the splits CSV). 0, the default, sets no cap.",
     )
     parser.add_argument(
         "--overwrite",
@@ -2058,6 +2052,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     skipped = 0
     oversized = 0
     failures: list[dict[str, str]] = []
+    skipped_over_cap: list[dict[str, str]] = []
     for row in selected:
         sample_id = row["sample_id"]
         tensor_path = args.output / f"{sample_id}.pt"
@@ -2077,6 +2072,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             reasons.append(f"instructions={cfg_instructions}")
         if reasons:
             logger.warning("skip %s: %s", sample_id, ", ".join(reasons))
+            skipped_over_cap.append({"sample_id": sample_id, "reason": ", ".join(reasons)})
             oversized += 1
             continue
         asm_path = Path(row["asm_path"])
@@ -2115,11 +2111,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 break
     failed = len(failures)
     failures_path = args.output / "failures.json"
-    if failures:
-        args.output.mkdir(parents=True, exist_ok=True)
-        failures_path.write_text(json.dumps(failures, indent=2), encoding="utf-8")
-    elif failures_path.is_file():
-        failures_path.unlink()
+    for path, items in ((failures_path, failures), (args.output / "skipped.json", skipped_over_cap)):
+        if items:
+            args.output.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(items, indent=2), encoding="utf-8")
+        elif path.is_file():
+            path.unlink()
     if saved:
         logger.info("wrote %s", embedder_path)
     if full_run and (saved or skipped) and not failed:
