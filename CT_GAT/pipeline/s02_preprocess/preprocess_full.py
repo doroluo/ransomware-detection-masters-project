@@ -206,6 +206,7 @@ class FullCFG:
     header: dict[str, Any]
     schema_notes: list[str] = field(default_factory=list)
     address_format_problems: list[dict[str, Any]] = field(default_factory=list)
+    library_functions: set[int] = field(default_factory=set)
 
     @property
     def instruction_count(self) -> int:
@@ -489,6 +490,7 @@ def load_cfg(path: Path, file_id: str | None = None) -> FullCFG:
     edges: list[CfgEdge] = []
     function_rvas: dict[str, int] = {}
     seen_function_ids: set[int] = set()
+    library_functions: set[int] = set()
     address_problems: list[dict[str, Any]] = []
     odd_rvas: list[int] = []
 
@@ -506,6 +508,8 @@ def load_cfg(path: Path, file_id: str | None = None) -> FullCFG:
         if function_id in seen_function_ids:
             raise CfgSchemaError(f"function id {function_id} appears more than once")
         seen_function_ids.add(function_id)
+        if function.get("library"):
+            library_functions.add(function_id)
         function_rvas[function_name] = function_rva
         block_ids: list[int] = []
         for block in function["blocks"]:
@@ -613,6 +617,7 @@ def load_cfg(path: Path, file_id: str | None = None) -> FullCFG:
         header=header,
         schema_notes=notes,
         address_format_problems=address_problems,
+        library_functions=library_functions,
     )
 
 
@@ -975,12 +980,25 @@ def induced_edges(edges: Sequence[CfgEdge], selected: set[tuple[int, int]]) -> l
     return sorted(kept, key=lambda edge: (edge.src, edge.dst, edge.edge_type or ""))
 
 
+def _sampling_keys(cfg: FullCFG, include_library: bool) -> list[tuple[int, int]]:
+    """Blocks a sampler may pick: those of non-library functions, or every block with ``include_library``.
+
+    The IDA listing holds no code for a library function (one COLLAPSED FUNCTION line), so its blocks can never be
+    paired with assembly. When every function is a library function there is nothing else to pick and all blocks are used.
+    """
+    if include_library:
+        return list(cfg.blocks)
+    kept = [key for key in cfg.blocks if key[0] not in cfg.library_functions]
+    return kept or list(cfg.blocks)
+
+
 def sample_connected_subgraph(
     cfg: FullCFG,
     *,
     seed: int,
     num_blocks: int | None = None,
     max_instructions: int | None = None,
+    include_library: bool = False,
 ) -> SampledSubgraph:
     """Grow one connected subgraph from a seeded start block.
 
@@ -988,6 +1006,13 @@ def sample_connected_subgraph(
     be followed either way during the walk. Saved edges keep their original
     direction. A basic block is added whole or not at all. The start block is
     kept even when it alone is larger than ``max_instructions``.
+
+    Blocks of library functions are skipped: the start block and every
+    neighbor come from non-library functions. The walk never leaves its
+    function (CFG edges stay inside one), so a smaller function is not topped
+    up with library blocks, which would not be connected to it. Only a binary
+    whose functions are all library functions is walked over its library
+    blocks. ``include_library=True`` walks over every block.
     """
     if num_blocks is None and max_instructions is None:
         raise ValueError("set num_blocks or max_instructions")
@@ -998,7 +1023,8 @@ def sample_connected_subgraph(
     if not cfg.blocks:
         raise ValueError("CFG has no blocks")
 
-    keys = sorted(cfg.blocks, key=lambda key: (cfg.blocks[key].start_rva, key[0], key[1]))
+    keys = sorted(_sampling_keys(cfg, include_library), key=lambda key: (cfg.blocks[key].start_rva, key[0], key[1]))
+    allowed = set(keys)
     rng = random.Random(seed)
     start = keys[rng.randrange(len(keys))]
     selected = [start]
@@ -1013,7 +1039,7 @@ def sample_connected_subgraph(
         ordered = list(neighbors[node])
         rng.shuffle(ordered)
         for neighbor in ordered:
-            if neighbor in chosen:
+            if neighbor in chosen or neighbor not in allowed:
                 continue
             if num_blocks is not None and len(selected) >= num_blocks:
                 break
@@ -1047,6 +1073,7 @@ def sample_signal_subgraph(
     seed: int,
     num_blocks: int | None = None,
     max_instructions: int | None = None,
+    include_library: bool = False,
 ) -> SampledSubgraph:
     """Keep whole functions that reference imports, highest signal first.
 
@@ -1054,6 +1081,14 @@ def sample_signal_subgraph(
     Functions are taken in import-call order so the block budget is spent on
     the code the classifier can actually use. Edges stay the original directed
     CFG inside the kept blocks.
+
+    Library functions are visited only after every non-library function, and
+    only when the budget is still not filled: ``num_blocks`` blocks selected,
+    or, when only ``max_instructions`` is set, at least one block selected.
+    They keep the same order (import-call score, then a seeded shuffle of the
+    functions without imports), so a binary made only of library code still
+    gets a sample. ``include_library=True`` ranks library and other functions
+    together, as before.
     """
     if num_blocks is None and max_instructions is None:
         raise ValueError("set num_blocks or max_instructions")
@@ -1064,46 +1099,62 @@ def sample_signal_subgraph(
     for key in cfg.blocks:
         by_function[key[0]].append(key)
 
+    library_ids = set() if include_library else cfg.library_functions
     ranked = []
     filler = []
+    library_ranked = []
+    library_filler = []
     for function_id, keys in by_function.items():
         ordered = sorted(keys, key=lambda key: (cfg.blocks[key].start_rva, key[1]))
         score = sum(_block_signal(cfg.blocks[key]) for key in ordered)
         start = cfg.blocks[ordered[0]].start_rva
-        bucket = ranked if score else filler
+        if function_id in library_ids:
+            bucket = library_ranked if score else library_filler
+        else:
+            bucket = ranked if score else filler
         bucket.append((score, start, function_id, ordered))
-    ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
-    random.Random(seed).shuffle(filler)
+    rng = random.Random(seed)
+    for group, rest in ((ranked, filler), (library_ranked, library_filler)):
+        group.sort(key=lambda item: (-item[0], item[1], item[2]))
+        rng.shuffle(rest)
 
     selected: list[tuple[int, int]] = []
     chosen: set[tuple[int, int]] = set()
     total = 0
-    for _score, _start, _function_id, keys in ranked + filler:
-        if num_blocks is not None and len(selected) >= num_blocks:
-            break
-        block_order = sorted(
-            keys,
-            key=lambda key: (-_block_signal(cfg.blocks[key]), cfg.blocks[key].start_rva, key[1]),
-        )
-        for key in block_order:
+
+    def take(functions: list[tuple[int, int, int, list[tuple[int, int]]]]) -> None:
+        nonlocal total
+        for _score, _start, _function_id, keys in functions:
             if num_blocks is not None and len(selected) >= num_blocks:
                 break
-            extra = cfg.blocks[key].instruction_count
-            if (
-                max_instructions is not None
-                and selected
-                and total + extra > max_instructions
-            ):
-                continue
-            selected.append(key)
-            chosen.add(key)
-            total += extra
+            block_order = sorted(
+                keys,
+                key=lambda key: (-_block_signal(cfg.blocks[key]), cfg.blocks[key].start_rva, key[1]),
+            )
+            for key in block_order:
+                if num_blocks is not None and len(selected) >= num_blocks:
+                    break
+                extra = cfg.blocks[key].instruction_count
+                if (
+                    max_instructions is not None
+                    and selected
+                    and total + extra > max_instructions
+                ):
+                    continue
+                selected.append(key)
+                chosen.add(key)
+                total += extra
+
+    take(ranked + filler)
+    if not selected or (num_blocks is not None and len(selected) < num_blocks):
+        take(library_ranked + library_filler)
     if not selected:
         return sample_connected_subgraph(
             cfg,
             seed=seed,
             num_blocks=num_blocks,
             max_instructions=max_instructions,
+            include_library=include_library,
         )
     return SampledSubgraph(
         seed=seed,
@@ -1788,6 +1839,7 @@ def process_sample(
     num_blocks: int | None = None,
     max_instructions: int | None = None,
     sample_mode: str = "walk",
+    include_library: bool = False,
     split: str | None = None,
     freeze_vocab: bool = False,
     file_id: str | None = None,
@@ -1804,6 +1856,7 @@ def process_sample(
         seed=seed,
         num_blocks=num_blocks,
         max_instructions=max_instructions,
+        include_library=include_library,
     )
     problems: list[dict[str, Any]] = []
     report = align_sampled_blocks(
@@ -1928,6 +1981,11 @@ def main() -> None:
         default="walk",
         help="walk grows from a random block. signal keeps import-calling functions first.",
     )
+    parser.add_argument(
+        "--include-library",
+        action="store_true",
+        help="Sample blocks of library functions too. By default they are skipped: the listing has no code for them.",
+    )
     parser.add_argument("--output", type=Path, default=tok.PROJECT_ROOT / "processed" / "cfg_subgraphs")
     parser.add_argument(
         "--max-asm-bytes",
@@ -2016,6 +2074,7 @@ def main() -> None:
                 num_blocks=args.num_blocks,
                 max_instructions=args.max_instructions,
                 sample_mode=args.sample,
+                include_library=args.include_library,
                 split=row["split"],
                 freeze_vocab=args.freeze_vocab,
                 file_id=sample_id,
