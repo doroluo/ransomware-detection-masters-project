@@ -155,6 +155,10 @@ def test_match_rates_per_label_shares(tmp_path):
     assert (g['n'], g['n_below_50'], g['n_below_90'], g['share_below_90']) == (2, 0, 1, 0.5)
     text = match_rates.format_table(summary, 'b')
     assert '| ransomware | 4 | 0.638 | 1 (25.0%) | 2 (50.0%) | 25.0% |' in text and '| goodware | 2 | 0.900 |' in text
+    fake_build(tmp_path / 'partial', {'r1': payloads['r1'], 'r4': payloads['r4'], 'g1': payloads['g1']})
+    both = match_rates.main(['--build', str(tmp_path / 'b'), '--among', str(tmp_path / 'partial'), '--json', str(tmp_path / 's.json')])
+    saved = json.loads((tmp_path / 's.json').read_text(encoding='utf-8'))
+    assert both == 0 and (saved['ransomware']['n'], saved['goodware']['n'], saved['ransomware']['n_below_50']) == (2, 1, 1)
 
 
 def test_measure_rss_reports_peak_and_returncode(tmp_path):

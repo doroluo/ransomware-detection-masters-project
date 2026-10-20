@@ -227,7 +227,9 @@ python -m experiments.team_pipelines.compare_builds compare --a RUNS/team/b_sig5
 python -m experiments.team_pipelines.measure_rss --out m.json -- <python> -m experiments.team_pipelines.build_b ... --ids <id>
 
 # share of binaries with < 50% and < 90% of the selected instructions matched, by label
+# (--among DIR: only the ids DIR also holds, to read a finished build against a partial one)
 python -m experiments.team_pipelines.match_rates --build RUNS/team/b_sig500_v2
+python -m experiments.team_pipelines.match_rates --build RUNS/team/b_sig500 --among RUNS/team/b_sig500_v2
 ```
 
 `compare_builds compare` checks, per sample, `block_keys`, `instruction_matched`, `instruction_ids` columns 0, 1, 2 and 4, column 3

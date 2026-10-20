@@ -1,11 +1,12 @@
 """Per-label match rate of a pipeline-B build: how many of each binary's selected instructions were paired with a listing line.
 
-python -m experiments.team_pipelines.match_rates --build RUNS/team/b_sig500 [--json out.json]
+python -m experiments.team_pipelines.match_rates --build RUNS/team/b_sig500 [--among RUNS/team/b_sig500_v2] [--json out.json]
        (run from the block_level_counting root; a leading RUNS/ is graph_transformer_runs)
 
 For every `<id>.pt` of the build (the ids of its checkpoint.json; with no checkpoint, every .pt) the match rate is the mean of
 `instruction_matched` over the selected instructions of the saved subgraph. The table gives, per label, the number of binaries,
-the mean rate, the share with a rate below 50% and below 90%, and the share with rate 0. Nothing is parsed apart from the
+the mean rate, the share with a rate below 50% and below 90%, and the share with rate 0. --among DIR keeps only the ids that DIR's checkpoint
+also holds (to read a finished build against a partial one on the same binaries). Nothing is parsed apart from the
 tensors the build saved, and nothing is written next to them.
 """
 import argparse
@@ -62,12 +63,16 @@ def format_table(summary, build):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--build', type=Path, required=True)
+    ap.add_argument('--among', type=Path, help='only the ids that this build also holds')
     ap.add_argument('--json', type=Path)
     args = ap.parse_args(argv)
     build = resolve_dir(args.build)
-    rates = sample_rates(build)
+    ids = build_ids(build)
+    if args.among:
+        ids = sorted(set(ids) & set(build_ids(resolve_dir(args.among))))
+    rates = sample_rates(build, ids)
     summary = summarize(rates)
-    print(format_table(summary, build))
+    print(format_table(summary, str(build) + (f' ({len(ids)} ids also in {resolve_dir(args.among)})' if args.among else '')))
     if args.json:
         args.json.write_text(json.dumps(summary, indent=1), encoding='utf-8')
     return 0
