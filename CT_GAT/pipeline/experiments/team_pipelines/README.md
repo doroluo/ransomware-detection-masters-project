@@ -120,7 +120,7 @@ python -m experiments.team_pipelines.build_b --source repo --sample signal --num
 ```
 
 With no `--ids` it builds all 1,810 x86 ids in sorted order, with one vocabulary pass and seed 0: the published pipeline-B build
-(`b_sig500_v3`), about 7 h on the CPU (310 samples took 4,423 s). It resumes from its checkpoint. The faster way is the preprocessed zip
+(`b_sig500_v3`), about 4 h on the CPU (7.6 s per sample, measured on the development machine). It resumes from its checkpoint. The faster way is the preprocessed zip
 `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip`, unzipped at `CT_GAT/`; the build does not write `CT_GAT/processed/api_vocab.json` that
 the zip carries, which only Janice's untrained demo in `model.py` reads. Without the cache `build_b` stops and names the
 `build_cache` command. A folder that holds sample `.pt` files but neither `checkpoint.json` nor `settings.json` (the unzipped zip) is

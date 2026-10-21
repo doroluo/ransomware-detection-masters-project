@@ -20,7 +20,7 @@ from it, which are on the team Google Drive. Two downloads are required; everyth
 
 The sizes are those of the zips on the Drive. Each zip has a `.sha256` file beside it and a README inside it. The fold
 assignments of every published result are in the repository, in `CT_GAT/pipeline/s02_preprocess/folds/`, so
-`family_holdout_folds.zip` on the Drive is not needed; it holds the same files. With the two Mendeley zips unzipped into
+`family_holdout_folds.zip` on the Drive is not needed; it holds the same fold assignments. With the two Mendeley zips unzipped into
 `CT_GAT/data/` nothing else is downloaded or configured for the commands under "Running".
 
 ## Pipeline

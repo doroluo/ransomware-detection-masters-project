@@ -6,7 +6,7 @@ samples by sha256 and writes the fold into `index.csv`). They are inputs, not ge
 `.gitattributes` pins the bytes (`*.csv -text`), so a checkout with `core.autocrlf=true` still has the files below.
 
 The files are copies of the LLM_Classification history (local clone `rdmp-llm`, branch `origin/LLM_Classification`), the
-same ones `family_holdout_folds.zip` on Drive holds.
+same rows `family_holdout_folds.zip` on Drive holds (the zip's files end their lines with CRLF, these with LF).
 
 | file | what it is | sha256 |
 |---|---|---|

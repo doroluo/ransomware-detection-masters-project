@@ -11,8 +11,8 @@ python -m experiments.train --protocol kfold --fold 0 --model gnn --mask-blocks 
 python -m experiments.train --help
 ```
 
-The run directory is `<runs>/<RunConfig.name>/` (`GT_RUNS`, see `common/paths.py`); the cache is the one `datasets.json` names for
-the protocol, `--cache <name>` picks another dataset, `GT_CACHE` overrides both. The flags are those of the training script of the
+The run directory is `<runs>/<RunConfig.name>/` (`GT_RUNS`, see `common/paths.py`); the cache is the one of the dataset whose
+protocols list `--protocol` (`CT_GAT/cache/mendeley_x86` for `kfold`, `CT_GAT/cache/combined_v3` for `kfold_v3`; see the pipeline README), `--cache <name>` picks another dataset, `GT_CACHE` overrides both. The flags are those of the training script of the
 `3-block-level-counting` branch, with the same names, types and defaults, and `RunConfig.name` is unchanged for every option.
 
 ## Layout

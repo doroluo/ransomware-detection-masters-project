@@ -42,7 +42,7 @@ The build folder, with no configuration, is `CT_GAT/processed/cfg_subgraphs`, an
   --seed 0 --device cpu --smoke 8` runs with no other flag. The zip's `api_vocab.json` is not read (it is not inside the build
   folder): the API embedding takes its size from the largest API id the fold's binaries use, which for the 1,810 binaries is the
   size of that vocabulary (12,406 names), so a full run has the 933,122 parameters of the published `kfold0_x86_fivechannel_s0`.
-* The exact way, from scratch, about 7 h on the CPU for the 1,810 binaries (resumable): `python -m experiments.team_pipelines.build_b
+* The exact way, from scratch, about 4 h on the CPU for the 1,810 binaries (7.6 s per binary, measured on the development machine; resumable): `python -m experiments.team_pipelines.build_b
   --source repo --sample signal --num-blocks 500 --seed 0` over the unzipped Mendeley collections and the CFG cache (build it first with
   `python -m s02_preprocess.cache.build_cache --cache mendeley_x86`). It runs the `s02_preprocess` scripts of this repository and
   writes the same `.pt` files as the published build (checked on 60 binaries: every tensor equal, see

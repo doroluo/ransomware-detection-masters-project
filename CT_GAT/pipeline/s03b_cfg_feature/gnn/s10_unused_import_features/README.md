@@ -17,6 +17,7 @@ The two log counts are log1p(#unreferenced imports) and log1p(#header imports); 
 
 ```bash
 # from CT_GAT/pipeline
+python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg      # from the CFG exports, into the default cache; no reader output needed
 python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --cache <cache dir> [more caches] --reader-root <reader output>
 python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0 --imports   # imports_header_lr
 python -m experiments.train --protocol kfold --fold 0 --arch x86 --seed 0 --mask-blocks 0.15 --imports header   # R7 + imports
