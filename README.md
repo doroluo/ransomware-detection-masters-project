@@ -121,13 +121,12 @@ python -m experiments.train --protocol kfold --fold 0 --seed 0 --model gnn --mas
 python -m s03c_cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
 python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
 python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0
-python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
-python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0
 ```
 
 The export records `export_sha` `e09971a0...` in the tokenseq run, the value of the published runs. `--smoke 8 --device cpu`
-trains 8 binaries for 2 epochs in a temporary folder, as a check of the setup. The last two lines are Janice's five-channel
-model (CPU or GPU). It reads `CT_GAT/processed/cfg_subgraphs`, which the next section fills from a zip or by a build. Model 3 (frozen CodeBERT block vectors) and the
+trains 8 binaries for 2 epochs in a temporary folder, as a check of the setup. Janice's five-channel model (`--model
+fivechannel`) reads the pipeline-B samples in `CT_GAT/processed/cfg_subgraphs`; its commands are in the next section, after
+the zip or the build that fills that folder. Model 3 (frozen CodeBERT block vectors) and the
 teammates' GAT pipelines are in [`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md).
 
 When the runs you want exist, the tables:
@@ -190,14 +189,21 @@ This is the published 500-block build: a rebuild of 60 binaries was identical to
 about 4 h on the CPU for the 1,810 binaries (7.6 s per binary, measured on the development machine), resumes from its
 checkpoint, and does not write `CT_GAT/processed/api_vocab.json`, which only the untrained demo reads.
 
-With either build in place, the two `--model fivechannel` commands of the zero-config path train and evaluate the model, and
+With either build in place, the first command checks the setup (8 binaries, 2 epochs, a temporary folder) and the second trains
+and evaluates the model on fold 0 (CPU or GPU, `--device`):
+
+```bash
+python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
+python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0
+```
+
+The untrained Model 1 over every sample of the folder, with its predictions printed:
 
 ```bash
 python -m s03a_transformer.five_channel.model --batch-size 4
 ```
 
-runs the untrained Model 1 over every sample of the folder and prints its predictions (`--data-dir` reads
-another folder; the API vocabulary is always read from `CT_GAT/processed/api_vocab.json`).
+(`--data-dir` reads another folder; the API vocabulary is always read from `CT_GAT/processed/api_vocab.json`).
 
 `s02_preprocess/preprocess_full.py` is Yanping's own script and a different path from `build_b`: it processes the train rows
 first, freezes the test split and includes 21 UPX-stub x86 rows, so its output is not the published `.pt` set. It reads the
@@ -262,6 +268,10 @@ python -m pytest -m "not real_data and not gpu"
   Model 2 (block features and CFG) 0.970. At 500 blocks per binary both are lower (0.966 and 0.954).
 * Model 1: the token-sequence transformer 0.970; Janice's five-channel model 0.919 to 0.926, since it reads only the first
   128 or 512 instructions of each binary.
+
+These are means over 3 seeds. Runs on a GPU are not repeatable to the last digit (CUDA scatter is nondeterministic), so a rerun
+on the same data does not return the same AUC: two runs of the token-sequence transformer with the same data and the same
+`export_sha` gave 0.9716 and 0.9899. Compare runs through several seeds and the intervals in the tables linked below, not through one AUC.
 
 The tables, their confidence intervals and the decision rule are in
 [`CT_GAT/pipeline/docs/history/`](CT_GAT/pipeline/docs/history/README.md).
