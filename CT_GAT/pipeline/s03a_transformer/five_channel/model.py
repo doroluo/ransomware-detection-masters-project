@@ -187,7 +187,7 @@ def model1_collate_fn(batch: list[dict[str, torch.Tensor]], max_instructions: in
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Model 1 (Token Sequence) Inference")
-    parser.add_argument("--data-dir", type=str, default="processed", help="Path to processed .pt files")
+    parser.add_argument("--data-dir", type=str, default=str(tok.PROJECT_ROOT / "processed"), help="Path to processed .pt files")
     parser.add_argument("--batch-size", type=int, default=4, help="Batch size for inference")
     parser.add_argument("--device", type=str, default="cpu", help="Device to run on ('cpu' or 'cuda')")
     parser.add_argument("--max-instructions", type=int, default=128, help="Max sequence length")
@@ -212,6 +212,8 @@ if __name__ == "__main__":
         dataset_path = dataset_path / "cfg_subgraphs"
 
     dataset = Model1Dataset(dataset_path)
+    if len(dataset) == 0:
+        parser.error(f"no preprocessed .pt files in {dataset_path}; pass --data-dir")
     print(f"Loaded {len(dataset)} preprocessed files from: {dataset_path}")
 
     dataloader = DataLoader(
