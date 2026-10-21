@@ -77,7 +77,7 @@ def say(*args):
 
 
 FILL_BUILD = ('fill CT_GAT/processed/cfg_subgraphs: unzip Mendeley_x86_cfg_subgraphs_500blocks_v3.zip at CT_GAT/, or build it '
-              '(about 7 h on CPU) with python -m experiments.team_pipelines.build_b --source repo')
+              '(about 4 h on CPU) with python -m experiments.team_pipelines.build_b --source repo')
 
 
 def resolve_build(build=None) -> Path:
