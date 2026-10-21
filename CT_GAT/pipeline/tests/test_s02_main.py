@@ -359,3 +359,54 @@ def test_a_rerun_skips_the_samples_of_the_checkpoint_and_rebuilds_the_rest(tmp_p
     run(tmp_path, [root])
     stamps = {sample_id: (out_dir / f'{sample_id}.pt').stat().st_mtime for sample_id in (sha(1), sha(2), sha(3))}
     assert stamps[sha(1)] == 1 and stamps[sha(3)] == 1 and stamps[sha(2)] > 1
+
+
+# ---- 7. --num-blocks 0 and --whole keep every block ----------------------------------------------------------------
+
+def run_uncapped(tmp_path, root, out, *flags, vocab='vocab.json'):
+    argv = ['--root', str(root), '--seed', '0', '--output', str(tmp_path / out), '--vocab', str(tmp_path / vocab), *flags]
+    return pf.main(argv), tmp_path / out
+
+
+def test_no_budget_at_all_is_refused_and_whole_conflicts_with_a_block_budget(tmp_path):
+    root = three_samples(tmp_path, 'nobudget')
+    with pytest.raises(SystemExit) as stop:
+        run_uncapped(tmp_path, root, 'none')
+    assert stop.value.code == 2
+    with pytest.raises(SystemExit) as stop:
+        run_uncapped(tmp_path, root, 'both', '--whole', '--num-blocks', '8')
+    assert stop.value.code == 2
+
+
+@pytest.mark.parametrize('sample_mode', ['walk', 'signal'])
+def test_whole_and_num_blocks_zero_equal_a_budget_larger_than_the_binary(tmp_path, sample_mode):
+    root = three_samples(tmp_path, 'whole')
+    outs = {}
+    for name, flags in (('zero', ['--num-blocks', '0']), ('whole', ['--whole']), ('whole0', ['--whole', '--num-blocks', '0']),
+                        ('huge', ['--num-blocks', str(10**9)])):
+        status, outs[name] = run_uncapped(tmp_path, root, name, *flags, '--sample', sample_mode, vocab=f'{name}.json')
+        assert status == 0
+    reference = block_embeddings(outs['huge'])
+    for name in ('zero', 'whole', 'whole0'):
+        current = block_embeddings(outs[name])
+        for sample_id in reference:
+            assert reference[sample_id].numel() and torch.equal(reference[sample_id], current[sample_id])
+    settings = {name: json.loads((out / 'settings.json').read_text(encoding='utf-8')) for name, out in outs.items()}
+    assert settings['zero'] == settings['whole'] == settings['whole0']
+    assert settings['whole']['num_blocks'] == 0 and settings['huge']['num_blocks'] == 10**9
+
+
+def test_the_settings_guard_treats_uncapped_as_another_setting(tmp_path):
+    root = three_samples(tmp_path, 'guardwhole')
+    out_dir, _ = run(tmp_path, [root])                                  # --num-blocks 8
+    for flags in (['--whole'], ['--num-blocks', '0']):
+        with pytest.raises(SystemExit) as stop:
+            run_uncapped(tmp_path, root, 'out', *flags)
+        assert stop.value.code == 2
+    status, out_dir = run_uncapped(tmp_path, root, 'out', '--whole', '--overwrite')
+    assert status == 0 and json.loads((out_dir / 'settings.json').read_text(encoding='utf-8'))['num_blocks'] == 0
+    status, _ = run_uncapped(tmp_path, root, 'out', '--num-blocks', '0')   # the same mode again goes on
+    assert status == 0
+    with pytest.raises(SystemExit) as stop:
+        run_uncapped(tmp_path, root, 'out', '--num-blocks', '8')
+    assert stop.value.code == 2

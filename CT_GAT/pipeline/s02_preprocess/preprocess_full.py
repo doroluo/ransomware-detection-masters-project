@@ -1003,7 +1003,8 @@ def sample_connected_subgraph(
     Neighbors come from an undirected view of the CFG so a directed edge can
     be followed either way during the walk. Saved edges keep their original
     direction. A basic block is added whole or not at all. The start block is
-    kept even when it alone is larger than ``max_instructions``.
+    kept even when it alone is larger than ``max_instructions``. ``num_blocks=0``
+    sets no block budget: the walk takes its whole connected region.
 
     Blocks of library functions are skipped: the start block and every
     neighbor come from non-library functions, and a short walk is not topped
@@ -1015,12 +1016,13 @@ def sample_connected_subgraph(
     """
     if num_blocks is None and max_instructions is None:
         raise ValueError("set num_blocks or max_instructions")
-    if num_blocks is not None and num_blocks < 1:
-        raise ValueError("num_blocks must be >= 1")
+    if num_blocks is not None and num_blocks < 0:
+        raise ValueError("num_blocks must be >= 0")
     if max_instructions is not None and max_instructions < 1:
         raise ValueError("max_instructions must be >= 1")
     if not cfg.blocks:
         raise ValueError("CFG has no blocks")
+    block_cap = num_blocks or None  # 0 sets no block budget
 
     keys = sorted(_sampling_keys(cfg, include_library), key=lambda key: (cfg.blocks[key].start_rva, key[0], key[1]))
     allowed = set(keys)
@@ -1032,7 +1034,7 @@ def sample_connected_subgraph(
     neighbors = _undirected_neighbors(cfg)
     queue = [start]
     while queue:
-        if num_blocks is not None and len(selected) >= num_blocks:
+        if block_cap is not None and len(selected) >= block_cap:
             break
         node = queue.pop(0)
         ordered = list(neighbors[node])
@@ -1040,7 +1042,7 @@ def sample_connected_subgraph(
         for neighbor in ordered:
             if neighbor in chosen or neighbor not in allowed:
                 continue
-            if num_blocks is not None and len(selected) >= num_blocks:
+            if block_cap is not None and len(selected) >= block_cap:
                 break
             extra = cfg.blocks[neighbor].instruction_count
             if max_instructions is not None and total + extra > max_instructions:
@@ -1049,7 +1051,7 @@ def sample_connected_subgraph(
             chosen.add(neighbor)
             total += extra
             queue.append(neighbor)
-            if num_blocks is not None and len(selected) >= num_blocks:
+            if block_cap is not None and len(selected) >= block_cap:
                 break
     return SampledSubgraph(
         seed=seed,
@@ -1084,6 +1086,8 @@ def sample_signal_subgraph(
     order so the block budget is spent on the code the classifier can actually
     use. Edges stay the original directed CFG inside the kept blocks.
 
+    ``num_blocks=0`` sets no block budget: every non-library block is kept.
+
     Library functions are skipped. A binary with fewer than ``num_blocks``
     non-library blocks gets just those blocks; it is not topped up with
     library blocks, whose code the listing collapses and which can never be
@@ -1097,6 +1101,7 @@ def sample_signal_subgraph(
         raise ValueError("set num_blocks or max_instructions")
     if not cfg.blocks:
         raise ValueError("CFG has no blocks")
+    block_cap = num_blocks or None  # 0 sets no block budget
 
     by_function: dict[int, list[tuple[int, int]]] = defaultdict(list)
     for key in cfg.blocks:
@@ -1128,14 +1133,14 @@ def sample_signal_subgraph(
     def take(functions: list[tuple[int, int, int, list[tuple[int, int]]]]) -> None:
         nonlocal total
         for _score, _start, _function_id, keys in functions:
-            if num_blocks is not None and len(selected) >= num_blocks:
+            if block_cap is not None and len(selected) >= block_cap:
                 break
             block_order = sorted(
                 keys,
                 key=lambda key: (-_block_signal(cfg.blocks[key]), cfg.blocks[key].start_rva, key[1]),
             )
             for key in block_order:
-                if num_blocks is not None and len(selected) >= num_blocks:
+                if block_cap is not None and len(selected) >= block_cap:
                     break
                 extra = cfg.blocks[key].instruction_count
                 if (
@@ -2055,7 +2060,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--sample-id")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--num-blocks", type=int)
+    parser.add_argument(
+        "--num-blocks",
+        type=int,
+        help="Block budget. 0 sets none: every non-library block of the binary is kept (see --whole).",
+    )
+    parser.add_argument("--whole", action="store_true", help="Same as --num-blocks 0.")
     parser.add_argument("--max-instructions", type=int)
     parser.add_argument(
         "--sample",
@@ -2117,8 +2127,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--vocab", type=Path, default=tok.API_VOCAB_PATH)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    if args.whole:
+        if args.num_blocks not in (None, 0):
+            parser.error("--whole means --num-blocks 0; drop --num-blocks or set it to 0")
+        args.num_blocks = 0
     if args.num_blocks is None and args.max_instructions is None:
-        parser.error("set --num-blocks or --max-instructions")
+        parser.error("set --num-blocks (0 keeps every block), --whole or --max-instructions")
+    if args.num_blocks == 0 and args.sample == "walk":
+        logging.warning("no block budget with --sample walk keeps one connected region; --sample signal keeps every block")
 
     roots = [path.resolve() for path in (args.roots or tok.DEFAULT_ROOTS)]
     selected = tok._selected_rows(roots, args.split, args.architecture, args.sample_id)
