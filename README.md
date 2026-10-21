@@ -270,8 +270,8 @@ python -m pytest -m "not real_data and not gpu"
   128 or 512 instructions of each binary.
 
 These are means over 3 seeds. Runs on a GPU are not repeatable to the last digit (CUDA scatter is nondeterministic), so a rerun
-on the same data does not return the same AUC: two runs of the token-sequence transformer with the same data and the same
-`export_sha` gave 0.9716 and 0.9899. Compare runs through several seeds and the intervals in the tables linked below, not through one AUC.
+on the same data does not return the same AUC: two runs of the token-sequence transformer on fold 0, seed 0, with the same data and the same
+`export_sha` gave test AUC 0.9716 and 0.9899. Compare runs through several seeds and the intervals in the tables linked below, not through one AUC.
 
 The tables, their confidence intervals and the decision rule are in
 [`CT_GAT/pipeline/docs/history/`](CT_GAT/pipeline/docs/history/README.md).
