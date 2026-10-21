@@ -19,6 +19,7 @@ VOCABS = ('ours', 'yanping', 'hybrid', 'noapi')
 IMPORTS = ('', 'header')
 IMPORT_SUFFIX = {'header': 'imph'}
 MODELS = ('gnn', 'tokenseq', 'fivechannel')
+THRESHOLD_FROM = ('val', 'oof')      # where the decision threshold of the sequence models is chosen (s04_evaluation/val_threshold.py)
 # options that were removed on 2026-10-20 (step 25); the run directories that used them stay on disk but are not read
 REMOVED = {'model': ('transformer',), 'subgraph': ('lcc',), 'imports': ('unreferenced',)}
 SEQ_LEN, MAX_WINDOWS = 512, 64      # Model 1 window length and training windows per binary (defaults: no name suffix)
@@ -86,6 +87,7 @@ class RunConfig:
     seq_len: int = 512
     max_windows: int = 64
     max_instructions: int = 128
+    threshold_from: str = 'val'
     tag: str = ''
     cache: str = ''
 
@@ -110,6 +112,10 @@ class RunConfig:
             raise ValueError(f'max_instructions is at least 1: {self.max_instructions}')
         if self.model != 'fivechannel' and self.max_instructions != MAX_INSTRUCTIONS:
             raise ValueError("max_instructions needs model='fivechannel'")
+        if self.threshold_from not in THRESHOLD_FROM:
+            raise ValueError(f'threshold_from {self.threshold_from}: one of {THRESHOLD_FROM}')
+        if self.threshold_from != 'val' and self.model not in ('tokenseq', 'fivechannel'):
+            raise ValueError(f"threshold_from={self.threshold_from!r} needs model='tokenseq' or 'fivechannel'")
         if self.block_input not in BLOCK_INPUTS:
             raise ValueError(f'block_input {self.block_input}')
         if (self.block_input == 'vec') != bool(self.block_vec):
@@ -209,12 +215,14 @@ class RunConfig:
         ab = ['ab'] if self.arch_balance else []
         sel = ['selcell'] if self.select_on == 'cell' else []
         vs = [f'vs{self.val_seed}'] if self.val_seed is not None and self.val_seed != self.seed else []
+        thoof = ['thoof'] if self.threshold_from == 'oof' else []
         if self.model == 'tokenseq':
             return '-'.join(['tokenseq'] + [f'{s}{n}' for s, n, default in (('L', self.seq_len, SEQ_LEN),
                                                                              ('w', self.max_windows, MAX_WINDOWS))
-                                            if n != default])
+                                            if n != default] + thoof)
         if self.model == 'fivechannel':
-            return '-'.join(['fivechannel'] + ([f'L{self.max_instructions}'] if self.max_instructions != MAX_INSTRUCTIONS else []))
+            return '-'.join(['fivechannel'] + ([f'L{self.max_instructions}'] if self.max_instructions != MAX_INSTRUCTIONS else [])
+                            + thoof)
         parts = ['gnn']
         if self.control:
             parts.append(CONTROLS[self.control])

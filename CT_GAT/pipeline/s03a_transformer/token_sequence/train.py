@@ -18,7 +18,9 @@ with more windows than the budget is alone in its batch; at most max_windows win
 the peak memory is set by the budget, not by the binaries. Evaluation uses every window of every binary, in order, under
 no_grad. Each epoch records the validation AUC and the macro-F1 at 0.5; the F1 checkpoint is the epoch of the best macro-F1,
 the AUC checkpoint that of the best AUC, and training stops when the AUC has not improved for `patience` epochs. The AUC
-checkpoint's threshold is the GRID maximiser of the validation macro-F1 (val_threshold_of). The test split is read once
+checkpoint's threshold is the GRID maximiser of the validation macro-F1 (val_threshold_of), or with --threshold-from oof the
+maximiser of the macro-F1 of out-of-fold predictions on the training binaries (`refit_predict`,
+`experiments.train.choose_thresholds`, metrics.json `threshold_rule`; the run name gains -thoof). The test split is read once
 after training, for the two checkpoints.
 
 --smoke N trains on N train binaries (half of each class) for 2 epochs and evaluates on N validation and N test binaries,
@@ -43,11 +45,11 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 import torch.nn.functional as F  # noqa: E402
 
-from common.config import EXPORT, RUNS, RunConfig
+from common.config import EXPORT, RUNS, THRESHOLD_FROM, RunConfig
 from common.manifests import Manifest
 from common.reader import BlockStore
 from common.run_io import evaluate, write_run
-from experiments.train import val_threshold_of
+from experiments.train import choose_thresholds
 
 from .data import FoldSequences, collate
 from .model import BinaryTokenSequence, Model1TokenSequence
@@ -213,6 +215,57 @@ def split_size(ds: FoldSequences):
             'binaries': len(ds)}
 
 
+def train_epoch(net, opt, train: FoldSequences, train_sizes, class_weight, cfg: RunConfig, epoch, window_budget, device, seed):
+    """One pass over the binaries of `train`, in the random order of (seed, epoch), batches of at most `window_budget` windows;
+    returns (the batch losses, windows seen, seconds spent building batches)."""
+    net.train()
+    net.window_chunk = None
+    train.set_epoch(epoch)
+    order = np.random.default_rng((seed, epoch, 7919)).permutation(len(train))
+    losses, windows, build_secs = [], 0, 0.0
+    for batch in prefetch(train, pack(train_sizes, order, window_budget), cfg.num_workers):
+        windows += len(batch['ids'])
+        build_secs += batch['build_secs']
+        batch = to_device(batch, device)
+        with autocast(device):
+            logits = forward(net, batch)
+        loss = (F.cross_entropy(logits.float(), batch['labels'], reduction='none') * class_weight[batch['labels']]).mean()
+        opt.zero_grad(set_to_none=True)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(net.parameters(), cfg.grad_clip)
+        opt.step()
+        losses.append(loss.item())
+    return losses, windows, build_secs
+
+
+def refit_predict(store: BlockStore, cfg: RunConfig, n_ids, device, window_budget):
+    """The `fit_predict` of `val_threshold.oof_rule` for Model 1: a new model on the `train_rows` of the fold's training split
+    (the fold vocabulary stays the fold's), trained like the run for max(epochs) epochs with no early stopping, and the
+    probabilities of `held_rows` (binaries of the same split, predicted with every window) after each epoch in `epochs`."""
+    index = lambda rows: [store.index_of[r['sample_id']] for r in rows]
+
+    def fit_predict(train_rows, held_rows, epochs, seed):
+        fit = FoldSequences(store, cfg.fold, 'train', L=cfg.seq_len, max_windows=cfg.max_windows, seed=seed, subset=index(train_rows))
+        held = FoldSequences(store, cfg.fold, 'train', L=cfg.seq_len, max_windows=cfg.max_windows, seed=seed,
+                             subset=index(held_rows), all_windows=True)
+        torch.manual_seed(seed)
+        net = BinaryTokenSequence(Model1TokenSequence(n_ids=n_ids, max_seq_len=cfg.seq_len)).to(device)
+        opt = torch.optim.AdamW(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+        labels = np.array(fit.labels())
+        weight = torch.tensor([len(labels) / (2 * max(1, (labels == c).sum())) for c in (0, 1)], device=device)
+        sizes = [fit.n_windows(i) for i in range(len(fit))]
+        out = {}
+        for epoch in range(1, max(epochs) + 1):
+            train_epoch(net, opt, fit, sizes, weight, cfg, epoch, window_budget, device, seed)
+            if epoch in epochs:
+                ids, probs, _ = predict(net, held, device, window_budget, cfg.num_workers)
+                if ids != held.sample_ids():
+                    raise AssertionError('the held-out predictions are not in the order of the held-out rows')
+                out[epoch] = probs
+        return out
+    return fit_predict
+
+
 def say(*args):
     print(*args, flush=True)
 
@@ -268,23 +321,9 @@ def run(cfg: RunConfig, export=EXPORT_NAME, device=None, smoke=None, window_budg
     if device.type == 'cuda':
         torch.cuda.reset_peak_memory_stats(device)
     for epoch in range(1, cfg.epochs + 1):
-        net.train()
-        net.window_chunk = None
-        train.set_epoch(epoch)
-        order = np.random.default_rng((cfg.seed, epoch, 7919)).permutation(len(train))
-        start, losses, windows, build_secs = time.perf_counter(), [], 0, 0.0
-        for batch in prefetch(train, pack(train_sizes, order, window_budget), cfg.num_workers):
-            windows += len(batch['ids'])
-            build_secs += batch['build_secs']
-            batch = to_device(batch, device)
-            with autocast(device):
-                logits = forward(net, batch)
-            loss = (F.cross_entropy(logits.float(), batch['labels'], reduction='none') * class_weight[batch['labels']]).mean()
-            opt.zero_grad(set_to_none=True)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(net.parameters(), cfg.grad_clip)
-            opt.step()
-            losses.append(loss.item())
+        start = time.perf_counter()
+        losses, windows, build_secs = train_epoch(net, opt, train, train_sizes, class_weight, cfg, epoch, window_budget, device,
+                                                  cfg.seed)
         train_secs = time.perf_counter() - start
         ids, probs, _ = predict(net, val, device, window_budget, cfg.num_workers)
         scores = evaluate(manifest.val, ids, probs, cfg.threshold)
@@ -309,12 +348,14 @@ def run(cfg: RunConfig, export=EXPORT_NAME, device=None, smoke=None, window_budg
         w.writeheader()
         w.writerows(history)
 
-    by_rule, thresholds = {}, {}
+    by_rule = {}
     for rule, ckpt in (('f1', 'best.pt'), ('auc', 'best_auc.pt')):
         net.load_state_dict(torch.load(out / ckpt, map_location=device))
         by_rule[rule] = {'val': predict(net, val, device, window_budget, cfg.num_workers),
                          'test': predict(net, test, device, window_budget, cfg.num_workers)}
-        thresholds[rule] = val_threshold_of(manifest.val, *by_rule[rule]['val'][:2])
+    thresholds, threshold_rule = choose_thresholds(
+        cfg, manifest, {rule: by_rule[rule]['val'] for rule in by_rule}, {'f1': best_f1_epoch, 'auc': best_auc_epoch},
+        refit_predict(store, cfg, train.n_ids, device, window_budget) if cfg.threshold_from == 'oof' else None)
     extra = {
         'best_epoch': best_f1_epoch, 'epochs_run': len(history), 'val_macro_f1': best_f1, 'auc_best_epoch': best_auc_epoch,
         'val_auc': best_auc, 'mean_train_epoch_secs': float(np.mean([h['train_secs'] for h in history])),
@@ -324,6 +365,8 @@ def run(cfg: RunConfig, export=EXPORT_NAME, device=None, smoke=None, window_budg
         'window_budget': window_budget, 'device': device.type, 'smoke': smoke,
         'model': {'d_model': model.d_model, 'max_seq_len': model.max_seq_len,
                   'num_layers': len(model.transformer_encoder.layers)}}
+    if threshold_rule is not None:
+        extra['threshold_rule'] = threshold_rule
     metrics = write_run(out, cfg, by_rule['f1'], by_rule['auc'], thresholds['f1'], thresholds['auc'], extra,
                         manifest=manifest)
     log(f"{cfg.name}: {metrics['epoch_secs_mean']:.1f} s/epoch over {len(history)} epochs (train "
@@ -353,10 +396,13 @@ def parse_config(argv=None):
     ap.add_argument('--device', choices=['cuda', 'cpu'], default=None, help='default: cuda when available')
     ap.add_argument('--smoke', type=int, default=None, help='N train binaries, 2 epochs, temporary directory, no RUNS')
     ap.add_argument('--window-budget', type=int, default=WINDOW_BUDGET, help='windows per batch (peak memory)')
+    ap.add_argument('--threshold-from', choices=THRESHOLD_FROM, default='val',
+                    help='validation families (val) or out-of-fold refits of the training binaries (oof, name suffix -thoof)')
     args = ap.parse_args(argv)
     try:
         cfg = RunConfig(protocol=args.protocol, fold=args.fold, arch=args.arch, seed=args.seed, model='tokenseq',
-                        seq_len=args.seq_len, max_windows=args.max_windows, epochs=args.epochs, patience=args.patience)
+                        seq_len=args.seq_len, max_windows=args.max_windows, epochs=args.epochs, patience=args.patience,
+                        threshold_from=args.threshold_from)
     except ValueError as e:
         ap.error(str(e))
     if args.smoke is not None and args.smoke < 2:

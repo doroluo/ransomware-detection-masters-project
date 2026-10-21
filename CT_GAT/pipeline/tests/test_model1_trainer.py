@@ -24,6 +24,7 @@ from common.manifests import load_index, make_manifest
 from common.reader import BlockStore
 from common.registry import MODELS, spec_for
 from experiments.train import val_threshold_of
+from s04_evaluation.val_threshold import GRID
 from s03a_transformer.token_sequence import BinaryTokenSequence, FoldSequences, Model1TokenSequence
 from s03a_transformer.token_sequence import train as ts
 from s03a_transformer.token_sequence import spec as spec_module
@@ -36,6 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FOLDS = range(5)
 GNN_KEYS = ('run', 'select_on', 'best_epoch', 'epochs_run', 'val_macro_f1', 'truncated_test', 'test', 'floors', 'family_recall',
             'mean_train_epoch_secs', 'epoch_secs_mean', 'peak_gpu_mb', 'selection')
+GRID_VALUES = [float(g) for g in GRID]
 RUN_FILES = ('config.json', 'manifest.json', 'history.csv', 'best.pt', 'best_auc.pt', 'predictions.csv', 'predictions_auc.csv',
              'metrics.json')
 
@@ -117,6 +119,46 @@ def test_a_two_epoch_run_writes_the_run_directory_the_harness_reads(export, tmp_
     text = (tmp_path / 'RESULTS.md').read_text(encoding='utf-8')
     line = next(l for l in text.splitlines() if l.startswith('| Model 1 token-sequence L32 w8 '))
     assert '| kfold | x86 | 1 |' in line and 'val_seed' not in line and "'epochs': 2" in line
+
+
+def test_the_out_of_fold_threshold_changes_the_threshold_and_nothing_else(export, tmp_path):
+    runs = tmp_path / 'runs'
+    default = train(export, tok(1, epochs=3), runs)
+    oof = train(export, tok(1, epochs=3, threshold_from='oof'), runs)
+    assert tok(1, threshold_from='oof').name == 'kfold1_x86_tokenseq-L32-w8-thoof_s0'
+    d, o = runs / tok(1, epochs=3).name, runs / tok(1, epochs=3, threshold_from='oof').name
+    # the default run says nothing about the rule, the out-of-fold run records it
+    assert 'threshold_rule' not in default and default['selection']['auc']['rule'] == run_io.AUC_RULES['overall']
+    rule = oof['threshold_rule']
+    assert rule['rule'] == 'oof' and rule['k'] == 3 and rule['refit_epochs'] == {'f1': oof['best_epoch'], 'auc': oof['auc_best_epoch']}
+    assert rule['n_oof'] == len(export.manifests[1].train) and sum(rule['fold_sizes']) == rule['n_oof']
+    assert set(rule['threshold_val']) == {'f1', 'auc'} and rule['threshold_val']['auc'] == default['selection']['auc']['threshold_val']
+    assert oof['selection']['auc']['threshold_val'] == rule['threshold']['auc'] and oof['selection']['f1']['threshold_val'] == rule['threshold']['f1']
+    assert 'out-of-fold' in oof['selection']['auc']['rule'] and set(oof['selection']) == {'f1', 'auc'}
+    assert all(t in GRID_VALUES for t in rule['threshold'].values())
+    # the training is the same run: same history, same predictions at 0.5 and the same probabilities under the AUC checkpoint
+    curve = lambda path: [(r['epoch'], r['loss'], r['val_auc'], r['val_macro_f1']) for r in csv.DictReader(path.open(encoding='utf-8'))]
+    assert curve(d / 'history.csv') == curve(o / 'history.csv')
+    key = lambda path: [(r['sample_id'], r['split'], r['prob']) for r in csv.DictReader(path.open(encoding='utf-8'))]
+    assert key(d / 'predictions.csv') == key(o / 'predictions.csv') and key(d / 'predictions_auc.csv') == key(o / 'predictions_auc.csv')
+    thr = rule['threshold']['auc']
+    with (o / 'predictions_auc.csv').open(encoding='utf-8') as f:
+        assert all(int(r['pred']) == int(float(r['prob']) >= thr) for r in csv.DictReader(f))
+    assert RunConfig.load(o / 'config.json').threshold_from == 'oof'
+
+
+def test_the_refit_of_the_threshold_predicts_binaries_it_did_not_train_on(export):
+    store = export.store
+    cfg = tok(0, threshold_from='oof')
+    manifest = export.manifests[0]
+    rows = [dict(store.binaries[store.index_of[r['sample_id']]]) for r in manifest.train]
+    fit_predict = ts.refit_predict(store, cfg, FoldSequences(store, 0, 'train', L=32).n_ids, torch.device('cpu'), 6)
+    held = rows[:7]
+    out = fit_predict(rows[7:], held, (1, 2), seed=11)
+    assert sorted(out) == [1, 2] and all(len(p) == len(held) and ((p >= 0) & (p <= 1)).all() for p in out.values())
+    assert not np.array_equal(out[1], out[2])                                    # the model trained between the two epochs
+    again = fit_predict(rows[7:], held, (1, 2), seed=11)
+    assert all(np.array_equal(out[e], again[e]) for e in out)                    # seeded: the same refit twice gives the same numbers
 
 
 def test_both_checkpoints_are_written_loadable_and_chosen_by_their_own_epoch(export, tmp_path):

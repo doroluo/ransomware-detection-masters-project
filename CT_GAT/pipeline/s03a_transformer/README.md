@@ -35,6 +35,26 @@ clipping, patience on the validation AUC and the two checkpoints of `tokenseq`, 
 
 Tests: `python -m pytest tests/test_five_channel.py`. The model is Janice Park's (commit 1da23f6 of `origin/TokenSeqModel`).
 
+## The decision threshold: `--threshold-from`
+
+Both models pick the threshold of the AUC checkpoint (the one `predictions_auc.csv` and the gates use) on the validation families. They
+saturate: the validation AUC is near 1.0 within a few epochs, every threshold of a wide band has the same validation macro-F1, the
+first of the band is taken, and the test macro-F1 swings between folds (0.77 to 0.93). `--threshold-from oof` (run name suffix
+`-thoof`; the default `val` changes no name and no result) chooses it on predictions the model did not train on:
+
+1. the training binaries are split in 3 folds that keep a ransomware family or a goodware identity group whole
+   (`common.manifests.grouped_folds`);
+2. a new model is fitted on 2 folds for the epoch count of each checkpoint (`best_epoch` for the F1 checkpoint, `auc_best_epoch` for
+   the AUC checkpoint; one refit serves both, with no early stopping) and predicts the held-out fold with every window or instruction
+   it reads; for `fivechannel` the API vocabulary of a refit is that of its own training binaries;
+3. the GRID threshold (`s04_evaluation/val_threshold.py`) with the highest macro-F1 on the pooled held-out predictions is the threshold.
+
+The cost is three more fits of two thirds of the training binaries per run. `metrics.json` keeps the rule (`threshold_rule`: k, the
+epochs, the thresholds, their out-of-fold macro-F1 and the validation thresholds the default would have used, and the text of
+`selection.auc.rule`). The `tokenseq` refits keep the fold's token vocabulary, which was fitted on all the training binaries. The rule is
+`experiments.train.choose_thresholds`; a model that gives it a `fit_predict` can use it.
+
+
 ## tokenseq
 
 Model 1 (`tokenseq`) needs a block export (`s03c_cfg_transformer/README.md`, step 1), then:

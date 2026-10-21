@@ -4,8 +4,8 @@ Three parts:
   * the plan files of `experiments/plans` against `fixtures/plans_dry/<plan>.txt`, the `run` and `cpu baselines` lines that the
     shell queues of the 3-block-level-counting branch printed with `--dry` (e48efb7: queue_gnn.sh --stage <stage> --dry,
     scripts/noapi_runs.sh, model1_runs.sh, team_gpu_runs.sh; l2_nocall_seeds and r2_noapi have no --dry and were taken from
-    the two scripts of the run host with `run` replaced by `echo`). The queue's `--dry` has to print the same run names with the
-    same arguments, in the same order;
+    the two scripts of the run host with `run` replaced by `echo`; model1_variants has no source script: its recording is the `--dry`
+    output when the plan was written). The queue's `--dry` has to print the same run names with the same arguments, in the same order;
   * the plan grammar;
   * the queue loop, through the real subprocess launch with `queue_stub.py` in the place of the interpreter: skip, STOP, budget,
     retry, logs, exit codes.
@@ -29,7 +29,7 @@ PLAN_FILES = sorted(q.PLANS.glob('*.txt'))
 FIXTURES = HERE / 'fixtures' / 'plans_dry'
 STUB = HERE / 'queue_stub.py'
 PLANS = ['day1', 'day1b', 'v3', 'subgraph', 'paths', 'paths_codebert', 'vocab', 'imports', 'imports_header', 'noapi', 'team',
-         'model1', 'l2_nocall_seeds', 'r2_noapi']
+         'model1', 'model1_variants', 'l2_nocall_seeds', 'r2_noapi']
 
 
 def dry_lines(plan, **kw):
@@ -60,7 +60,7 @@ def test_dry_run_prints_the_runs_of_the_source_queue(plan):
 def test_the_recordings_have_the_run_counts_of_the_experiments():
     counts = {p: sum(l.startswith('run ') for l in recorded(p)) for p in PLANS}
     assert counts == {'day1': 25, 'day1b': 65, 'v3': 45, 'subgraph': 25, 'paths': 7, 'paths_codebert': 30, 'vocab': 10,
-                      'imports': 0, 'imports_header': 5, 'noapi': 15, 'team': 30, 'model1': 15, 'l2_nocall_seeds': 20,
+                      'imports': 0, 'imports_header': 5, 'noapi': 15, 'team': 30, 'model1': 15, 'model1_variants': 45, 'l2_nocall_seeds': 20,
                       'r2_noapi': 15}
 
 
@@ -78,9 +78,11 @@ def test_a_plan_ends_in_the_summaries_of_its_source_queue():
     for plan in ('day1', 'day1b', 'v3', 'subgraph', 'paths', 'paths_codebert', 'vocab', 'imports', 'imports_header'):
         assert verbs[plan][-3:] == ['report', 'gates', 'val_threshold']
     assert verbs['noapi'][-1] == 'gates' and verbs['model1'][-2:] == ['report', 'gates']
+    assert verbs['model1_variants'][-2:] == ['report', 'gates']
     gates = {p: [s.stdout for s in q.load_plan(p) if s.verb == 'gates'] for p in PLANS}
     assert gates['imports_header'] == ['gates_imports_header.md'] and gates['imports'] == ['gates_imports.md']
     assert gates['team'] == ['gates_team.md'] and gates['noapi'] == ['gates_noapi.md']
+    assert gates['model1_variants'] == ['gates_model1_variants.md']
 
 
 def test_plans_name_no_machine_path():

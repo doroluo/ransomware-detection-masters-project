@@ -97,7 +97,7 @@ python -m pytest -m "not real_data and not gpu"                                 
 `experiments/queue.py` runs a plan file of `train`, `baselines`, `report`, `val_threshold` and `gates` lines; a finished run is
 skipped, `python -m experiments.queue --stop` stops it between lines, a failed line is retried once, and `--dry` prints what
 would run. `experiments/plans/` holds the experiments we ran, one file each (`day1`, `day1b`, `v3`, `subgraph`, `paths`,
-`paths_codebert`, `vocab`, `imports`, `imports_header`, `noapi`, `team`, `model1`, `l2_nocall_seeds`, `r2_noapi`); the first lines
+`paths_codebert`, `vocab`, `imports`, `imports_header`, `noapi`, `team`, `model1`, `l2_nocall_seeds`, `r2_noapi`; `model1_variants` is written and not yet run); the first lines
 of a plan name the CPU steps to run once before it. [`docs/ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md) shows how
 to add a model, an encoder, a dataset, a control, a plan and a gates stage, and how to read the tables.
 

@@ -36,7 +36,8 @@ LABELLED = ('protocol', 'fold', 'arch', 'seed', 'num_workers', 'model', 'encoder
             'untyped', 'no_call_mp', 'stack_tfidf', 'mask_tokens', 'drop_functions', 'drop_library', 'mask_blocks',
             'aux_recon', 'aux_edge', 'direction', 'drop_edges', 'flip_edges', 'gnn_fn_layers', 'gnn_bin_layers',
             'train_fraction', 'arch_balance', 'select_on', 'subgraph', 'budget', 'vocab', 'imports', 'seq_len', 'max_windows',
-            'max_instructions', 'cache')
+            'max_instructions', 'threshold_from', 'cache')
+THRESHOLD_LABEL = {'val': [], 'oof': ['thr-oof']}
 CONTROL_LABELS = {'no_edges': 'no-edges', 'shuffle': 'shuffle', 'chain': 'chain', 'permute_types': 'permuted types'}
 
 
@@ -47,9 +48,10 @@ def model_label(cfg):
     if cfg.model == 'tokenseq':
         return ' '.join(['Model 1 token-sequence'] + [f'{s}{n}' for s, n, default in (('L', cfg.seq_len, SEQ_LEN),
                                                                                      ('w', cfg.max_windows, MAX_WINDOWS))
-                                                      if n != default])
+                                                      if n != default] + THRESHOLD_LABEL[cfg.threshold_from])
     if cfg.model == 'fivechannel':
-        return ' '.join(['Model 1 five-channel'] + ([f'L{cfg.max_instructions}'] if cfg.max_instructions != MAX_INSTRUCTIONS else []))
+        return ' '.join(['Model 1 five-channel'] + ([f'L{cfg.max_instructions}'] if cfg.max_instructions != MAX_INSTRUCTIONS else [])
+                        + THRESHOLD_LABEL[cfg.threshold_from])
     ablate = [CONTROL_LABELS[cfg.control]] if cfg.control else []
     ablate += [s for s, on in (('untyped', cfg.untyped), ('no call-MP', cfg.no_call_mp)) if on]
     parts = ['GNN'] if ablate else ['edge-typed GNN']

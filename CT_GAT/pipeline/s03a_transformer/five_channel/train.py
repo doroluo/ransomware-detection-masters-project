@@ -26,7 +26,9 @@ all-PAD tuple (an all-masked row would give NaN). Loss: cross entropy with the c
 labels. AdamW (RunConfig lr, weight_decay), gradient clip RunConfig.grad_clip, batches of BATCH_SIZE binaries, bf16 autocast on CUDA.
 Each epoch records the validation AUC and the macro-F1 at 0.5; the F1 checkpoint is the epoch of the best macro-F1, the AUC
 checkpoint that of the best AUC, and training stops when the AUC has not improved for `patience` epochs. The AUC checkpoint's
-threshold is the GRID maximiser of the validation macro-F1 (`val_threshold_of`). The test split is read once after training.
+threshold is the GRID maximiser of the validation macro-F1 (`val_threshold_of`), or with --threshold-from oof the maximiser of the
+macro-F1 of out-of-fold predictions on the training binaries (`refit_predict`, `experiments.train.choose_thresholds`, metrics.json
+`threshold_rule`; the run name gains -thoof). The test split is read once after training.
 
 --smoke N trains on N binaries (half of each class) for 2 epochs, evaluates on N validation and N test binaries, and writes into a
 temporary directory (never under the run directory).
@@ -45,13 +47,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common.config import RUNS, RunConfig
+from common.config import RUNS, THRESHOLD_FROM, RunConfig
 from common.manifests import Manifest, load_index, make_manifest
 from common.paths import MissingSource, source_for
 from common.run_io import evaluate, write_run
 from experiments.team_pipelines.build_b import resolve_dir
 from experiments.team_pipelines.train_b import read_excluded, remap_api
-from experiments.train import val_threshold_of
+from experiments.train import choose_thresholds
 
 from .model import Model1Dataset, Model1TokenSequence, model1_collate_fn, tok
 
@@ -202,6 +204,27 @@ def new_net(cfg, n_api, device):
     return Model1TokenSequence(api_vocab_size=n_api, d_model=D_MODEL, max_seq_len=cfg.max_instructions, num_classes=2).to(device)
 
 
+def refit_predict(binaries, cfg, n_api, device):
+    """The `fit_predict` of `val_threshold.oof_rule` for this model: a new model on the `train_rows` (binaries of the fold's
+    training split), trained like the run for max(epochs) epochs with no early stopping, and the probabilities of `held_rows`
+    after each epoch in `epochs`. As in a run, the API ids that no binary of `train_rows` uses are UNK_API for the held-out
+    binaries too."""
+    def fit_predict(train_rows, held_rows, epochs, seed):
+        train_ids, held_ids = [r['sample_id'] for r in train_rows], [r['sample_id'] for r in held_rows]
+        items = make_items(binaries, train_ids + held_ids, seen_api_ids(binaries, train_ids))
+        torch.manual_seed(seed)
+        net = new_net(cfg, n_api, device)
+        opt = torch.optim.AdamW(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+        weight = class_weights([binaries[i].label for i in train_ids], device)
+        out = {}
+        for epoch in range(1, max(epochs) + 1):
+            train_epoch(net, opt, items, train_ids, weight, cfg, epoch, device, seed)
+            if epoch in epochs:
+                out[epoch] = predict(net, items, held_ids, binaries, cfg, device)[1]
+        return out
+    return fit_predict
+
+
 def half_of_each_class(rows, n):
     """The first n rows, half of each class (the other class fills in when one runs out)."""
     by_label = {c: [r for r in rows if r['label'] == c] for c in (0, 1)}
@@ -250,7 +273,8 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
     random.seed(cfg.seed)
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
-    net = new_net(cfg, api_vocab_size(build, binaries), device)
+    n_api = api_vocab_size(build, binaries)
+    net = new_net(cfg, n_api, device)
     n_params = sum(p.numel() for p in net.parameters())
     weight = class_weights([labels[i] for i in ids['train']], device)
     opt = torch.optim.AdamW(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
@@ -286,11 +310,13 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
         w.writeheader()
         w.writerows(history)
 
-    by_rule, thresholds = {}, {}
+    by_rule = {}
     for rule, ckpt in (('f1', 'best.pt'), ('auc', 'best_auc.pt')):
         net.load_state_dict(torch.load(out / ckpt, map_location=device))
         by_rule[rule] = {s: predict(net, items, ids[s], binaries, cfg, device) for s in ('val', 'test')}
-        thresholds[rule] = val_threshold_of(run_manifest.val, *by_rule[rule]['val'][:2])
+    thresholds, threshold_rule = choose_thresholds(
+        cfg, run_manifest, {rule: by_rule[rule]['val'] for rule in by_rule}, {'f1': best_f1_epoch, 'auc': best_auc_epoch},
+        refit_predict(binaries, cfg, n_api, device) if cfg.threshold_from == 'oof' else None)
     extra = {
         'best_epoch': best_f1_epoch, 'epochs_run': len(history), 'val_macro_f1': best_f1, 'auc_best_epoch': best_auc_epoch,
         'val_auc': best_auc, 'mean_train_epoch_secs': float(np.mean([h['train_secs'] for h in history])),
@@ -300,6 +326,8 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
         'n_api_ids_unseen_mapped': len(every - set(seen.tolist())), 'device': device.type, 'smoke': smoke,
         'truncated_instructions': {s: sum(binaries[i].n_instructions > cfg.max_instructions for i in ids[s]) for s in splits},
         'model': {'d_model': D_MODEL, 'max_seq_len': cfg.max_instructions, 'num_layers': 2, 'batch_size': BATCH_SIZE}}
+    if threshold_rule is not None:
+        extra['threshold_rule'] = threshold_rule
     reasons = '; '.join(sorted(set(excluded.values())))
     # a full run is written against the fold's own manifest with the excluded ids named (as the teammates' arms are); a smoke run
     # against its subset, which holds none of them
@@ -320,13 +348,16 @@ def parse_config(argv=None):
     ap.add_argument('--max-instructions', type=int, default=128)
     ap.add_argument('--epochs', type=int, default=40)
     ap.add_argument('--patience', type=int, default=8)
+    ap.add_argument('--threshold-from', choices=THRESHOLD_FROM, default='val',
+                    help='validation families (val) or out-of-fold refits of the training binaries (oof, name suffix -thoof)')
     ap.add_argument('--build', default=None, help='build folder of <sample_id>.pt files (default: datasets.json team_b_build)')
     ap.add_argument('--device', choices=['cuda', 'cpu'], default=None, help='default: cuda when available')
     ap.add_argument('--smoke', type=int, default=None, help='N train binaries, 2 epochs, temporary directory, no RUNS')
     args = ap.parse_args(argv)
     try:
         cfg = RunConfig(protocol='kfold', fold=args.fold, arch='x86', seed=args.seed, model='fivechannel',
-                        max_instructions=args.max_instructions, epochs=args.epochs, patience=args.patience)
+                        max_instructions=args.max_instructions, epochs=args.epochs, patience=args.patience,
+                        threshold_from=args.threshold_from)
     except ValueError as e:
         ap.error(str(e))
     if args.smoke is not None and args.smoke < 2:

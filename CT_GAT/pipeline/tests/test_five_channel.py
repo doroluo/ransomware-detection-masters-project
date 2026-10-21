@@ -237,6 +237,23 @@ def test_a_two_epoch_run_writes_the_run_directory_the_harness_reads(tiny, build,
     assert '| kfold | x86 | 1 |' in line and "'max_instructions'" not in line and metrics['run'] == d.name
 
 
+def test_the_out_of_fold_threshold_changes_the_threshold_and_nothing_else(tiny, build, tmp_path):  # noqa: F811
+    runs = tmp_path / 'runs'
+    default = fc.run(fivechannel(1, max_instructions=24, epochs=3), build, 'cpu', None, runs, log=lambda *_: None)
+    oof = fc.run(fivechannel(1, max_instructions=24, epochs=3, threshold_from='oof'), build, 'cpu', None, runs, log=lambda *_: None)
+    d, o = runs / 'kfold1_x86_fivechannel-L24_s0', runs / 'kfold1_x86_fivechannel-L24-thoof_s0'
+    assert 'threshold_rule' not in default
+    rule = oof['threshold_rule']
+    assert rule['rule'] == 'oof' and rule['k'] == 3 and rule['refit_epochs'] == {'f1': oof['best_epoch'], 'auc': oof['auc_best_epoch']}
+    assert rule['threshold_val']['auc'] == default['selection']['auc']['threshold_val']
+    assert oof['selection']['auc']['threshold_val'] == rule['threshold']['auc'] and 'out-of-fold' in oof['selection']['auc']['rule']
+    key = lambda path: [(r['sample_id'], r['split'], r['prob']) for r in csv.DictReader(path.open(encoding='utf-8'))]
+    assert key(d / 'predictions.csv') == key(o / 'predictions.csv') and key(d / 'predictions_auc.csv') == key(o / 'predictions_auc.csv')
+    thr = rule['threshold']['auc']
+    with (o / 'predictions_auc.csv').open(encoding='utf-8') as f:
+        assert all(int(r['pred']) == int(float(r['prob']) >= thr) for r in csv.DictReader(f))
+
+
 def test_the_registry_hands_the_run_over_and_names_it(tiny, build, tmp_path, monkeypatch):  # noqa: F811
     from s03a_transformer.five_channel import spec as spec_module
     monkeypatch.setattr(fc, 'RUNS', tmp_path)
