@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from common.config import COMBINED_CACHE, DEFAULT_CACHE, RunConfig
+from common.manifests import make_manifest
 from experiments.train import parse_config
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -179,6 +180,13 @@ def probe(argv, cache=None):
     return subprocess.run([sys.executable, '-c', PROBE, *argv], cwd=ROOT, capture_output=True, text=True, env=env)
 
 
+def test_kfold_v3_on_an_index_without_the_fold_v3_column_names_the_fix():
+    index = [{'sample_id': f's{i}', 'label': i % 2, 'arch': 'x86', 'split': 'train', 'family': f'f{i}', 'fold': i % 2,
+              'fold_v3': None, 'corpus': 'mendeley'} for i in range(8)]
+    with pytest.raises(ValueError, match='no fold_v3 column; set GT_CACHE to the combined cache'):
+        make_manifest(RunConfig(protocol='kfold_v3', fold=0), index)
+
+
 @real_data
 @needs_combined
 def test_kfold_v3_without_env_reads_the_combined_cache():
@@ -197,8 +205,9 @@ def test_kfold_v3_without_env_reads_the_combined_cache():
 def test_gt_cache_wins_and_other_protocols_keep_v2():
     r = probe(['--protocol', 'kfold_v3', '--fold', '0'], cache=str(COMBINED_CACHE))
     assert r.returncode == 0 and Path(r.stdout.split()[0]) == Path(COMBINED_CACHE), r.stderr
-    r = probe(['--protocol', 'kfold_v3', '--fold', '0'], cache=str(DEFAULT_CACHE))
-    assert Path(r.stdout.split()[0] if r.stdout else '.') != Path(COMBINED_CACHE) and r.returncode != 0
-    assert 'no fold_v3 column' in r.stderr
+    r = probe(['--protocol', 'kfold_v3', '--fold', '0'], cache=str(DEFAULT_CACHE))   # GT_CACHE wins over the routing to combined_v3
+    assert r.returncode == 0, r.stderr
+    assert Path(r.stdout.split()[0]) == Path(DEFAULT_CACHE) and Path(r.stdout.split()[0]) != Path(COMBINED_CACHE)
+    assert int(r.stdout.split()[-1]) == 1                  # the v2 cache holds Mendeley rows only, so the test fold has one corpus
     r = probe(['--protocol', 'kfold', '--fold', '0'])
     assert r.returncode == 0 and Path(r.stdout.split()[0]) == Path(DEFAULT_CACHE), r.stderr
