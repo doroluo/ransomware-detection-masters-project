@@ -1,4 +1,4 @@
-"""Sample one connected CFG subgraph and align it with the IDA listing.
+"""Sample one CFG subgraph and align it with the IDA listing.
 
 The Mendeley export is schema ``ida-cfg-research/2.1``. Each ``.jsonl.gz``
 holds a header, one record per function, string records, and a footer.
@@ -15,9 +15,12 @@ function RVA is known. It does not store a virtual address on every
 instruction. Alignment therefore buckets instructions by those label RVAs
 and pairs CFG instructions with assembly lines inside each bucket.
 
-Sampling uses block instruction counts and CFG edges only. The same selected
-blocks feed the sequence model, the handcrafted-feature graph, and the
-tokenizer-embedding graph.
+Sampling uses block instruction counts and CFG edges only. ``--sample walk``
+returns one connected subgraph grown from a random block. ``--sample signal``
+returns the blocks of the top-ranked whole functions, which need not be
+connected (CFG edges never leave a function, so it is usually several
+components). The same selected blocks feed the sequence model, the
+handcrafted-feature graph, and the tokenizer-embedding graph.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from __future__ import annotations
 import argparse
 import gc
 import gzip
+import hashlib
 import json
 import logging
 import random
@@ -74,12 +78,6 @@ UNKNOWN_EDGE_TYPE_ID = EDGE_TYPE_TO_ID["unknown"]
 # Keep a few examples for the manifest. Full gap lists are large enough to
 # exhaust a small machine while json is being written.
 MISMATCH_EXAMPLE_LIMIT = 32
-# Uncompressed IDA listings and full CFGs above these sizes do not fit in a
-# ~4 GB RAM host. The block and instruction caps sit just above the largest
-# sample that has completed on this machine.
-DEFAULT_MAX_ASM_BYTES = 200_000_000
-DEFAULT_MAX_CFG_BLOCKS = 80_000
-DEFAULT_MAX_CFG_INSTRUCTIONS = 450_000
 FCB_INDJUMP = 1
 FCB_EXTERN = 6
 
@@ -206,6 +204,7 @@ class FullCFG:
     header: dict[str, Any]
     schema_notes: list[str] = field(default_factory=list)
     address_format_problems: list[dict[str, Any]] = field(default_factory=list)
+    library_functions: set[int] = field(default_factory=set)
 
     @property
     def instruction_count(self) -> int:
@@ -489,6 +488,7 @@ def load_cfg(path: Path, file_id: str | None = None) -> FullCFG:
     edges: list[CfgEdge] = []
     function_rvas: dict[str, int] = {}
     seen_function_ids: set[int] = set()
+    library_functions: set[int] = set()
     address_problems: list[dict[str, Any]] = []
     odd_rvas: list[int] = []
 
@@ -506,6 +506,8 @@ def load_cfg(path: Path, file_id: str | None = None) -> FullCFG:
         if function_id in seen_function_ids:
             raise CfgSchemaError(f"function id {function_id} appears more than once")
         seen_function_ids.add(function_id)
+        if function.get("library"):
+            library_functions.add(function_id)
         function_rvas[function_name] = function_rva
         block_ids: list[int] = []
         for block in function["blocks"]:
@@ -613,6 +615,7 @@ def load_cfg(path: Path, file_id: str | None = None) -> FullCFG:
         header=header,
         schema_notes=notes,
         address_format_problems=address_problems,
+        library_functions=library_functions,
     )
 
 
@@ -975,12 +978,25 @@ def induced_edges(edges: Sequence[CfgEdge], selected: set[tuple[int, int]]) -> l
     return sorted(kept, key=lambda edge: (edge.src, edge.dst, edge.edge_type or ""))
 
 
+def _sampling_keys(cfg: FullCFG, include_library: bool) -> list[tuple[int, int]]:
+    """Blocks a sampler may pick: those of non-library functions, or every block with ``include_library``.
+
+    The IDA listing holds no code for a library function (one COLLAPSED FUNCTION line), so its blocks can never be
+    paired with assembly. When every function is a library function there is nothing else to pick and all blocks are used.
+    """
+    if include_library:
+        return list(cfg.blocks)
+    kept = [key for key in cfg.blocks if key[0] not in cfg.library_functions]
+    return kept or list(cfg.blocks)
+
+
 def sample_connected_subgraph(
     cfg: FullCFG,
     *,
     seed: int,
     num_blocks: int | None = None,
     max_instructions: int | None = None,
+    include_library: bool = False,
 ) -> SampledSubgraph:
     """Grow one connected subgraph from a seeded start block.
 
@@ -988,6 +1004,14 @@ def sample_connected_subgraph(
     be followed either way during the walk. Saved edges keep their original
     direction. A basic block is added whole or not at all. The start block is
     kept even when it alone is larger than ``max_instructions``.
+
+    Blocks of library functions are skipped: the start block and every
+    neighbor come from non-library functions, and a short walk is not topped
+    up with library blocks (the listing collapses their code, and they would
+    not be connected to it). Only a binary whose functions are all library
+    functions is walked over its library blocks, as in
+    ``sample_signal_subgraph``. ``include_library=True`` walks over every
+    block.
     """
     if num_blocks is None and max_instructions is None:
         raise ValueError("set num_blocks or max_instructions")
@@ -998,7 +1022,8 @@ def sample_connected_subgraph(
     if not cfg.blocks:
         raise ValueError("CFG has no blocks")
 
-    keys = sorted(cfg.blocks, key=lambda key: (cfg.blocks[key].start_rva, key[0], key[1]))
+    keys = sorted(_sampling_keys(cfg, include_library), key=lambda key: (cfg.blocks[key].start_rva, key[0], key[1]))
+    allowed = set(keys)
     rng = random.Random(seed)
     start = keys[rng.randrange(len(keys))]
     selected = [start]
@@ -1013,7 +1038,7 @@ def sample_connected_subgraph(
         ordered = list(neighbors[node])
         rng.shuffle(ordered)
         for neighbor in ordered:
-            if neighbor in chosen:
+            if neighbor in chosen or neighbor not in allowed:
                 continue
             if num_blocks is not None and len(selected) >= num_blocks:
                 break
@@ -1047,13 +1072,26 @@ def sample_signal_subgraph(
     seed: int,
     num_blocks: int | None = None,
     max_instructions: int | None = None,
+    include_library: bool = False,
 ) -> SampledSubgraph:
-    """Keep whole functions that reference imports, highest signal first.
+    """Keep the blocks of whole functions that reference imports, highest signal first.
 
-    A random walk often stays in library code and never reaches the payload.
-    Functions are taken in import-call order so the block budget is spent on
-    the code the classifier can actually use. Edges stay the original directed
-    CFG inside the kept blocks.
+    The result is the union of the top-ranked functions' blocks, cut at the
+    block budget, not one connected subgraph: CFG edges stay inside a
+    function, so the kept blocks form one component per function (and
+    ``connected_keys`` is never called). A random walk often stays in library
+    code and never reaches the payload. Functions are taken in import-call
+    order so the block budget is spent on the code the classifier can actually
+    use. Edges stay the original directed CFG inside the kept blocks.
+
+    Library functions are skipped. A binary with fewer than ``num_blocks``
+    non-library blocks gets just those blocks; it is not topped up with
+    library blocks, whose code the listing collapses and which can never be
+    matched. Only a binary made of library functions alone is sampled from
+    them, in the same order (import-call score, then a seeded shuffle of the
+    functions without imports), so it still gets a sample.
+    ``include_library=True`` ranks library and other functions together, as
+    before.
     """
     if num_blocks is None and max_instructions is None:
         raise ValueError("set num_blocks or max_instructions")
@@ -1064,46 +1102,62 @@ def sample_signal_subgraph(
     for key in cfg.blocks:
         by_function[key[0]].append(key)
 
+    library_ids = set() if include_library else cfg.library_functions
     ranked = []
     filler = []
+    library_ranked = []
+    library_filler = []
     for function_id, keys in by_function.items():
         ordered = sorted(keys, key=lambda key: (cfg.blocks[key].start_rva, key[1]))
         score = sum(_block_signal(cfg.blocks[key]) for key in ordered)
         start = cfg.blocks[ordered[0]].start_rva
-        bucket = ranked if score else filler
+        if function_id in library_ids:
+            bucket = library_ranked if score else library_filler
+        else:
+            bucket = ranked if score else filler
         bucket.append((score, start, function_id, ordered))
-    ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
-    random.Random(seed).shuffle(filler)
+    rng = random.Random(seed)
+    for group, rest in ((ranked, filler), (library_ranked, library_filler)):
+        group.sort(key=lambda item: (-item[0], item[1], item[2]))
+        rng.shuffle(rest)
 
     selected: list[tuple[int, int]] = []
     chosen: set[tuple[int, int]] = set()
     total = 0
-    for _score, _start, _function_id, keys in ranked + filler:
-        if num_blocks is not None and len(selected) >= num_blocks:
-            break
-        block_order = sorted(
-            keys,
-            key=lambda key: (-_block_signal(cfg.blocks[key]), cfg.blocks[key].start_rva, key[1]),
-        )
-        for key in block_order:
+
+    def take(functions: list[tuple[int, int, int, list[tuple[int, int]]]]) -> None:
+        nonlocal total
+        for _score, _start, _function_id, keys in functions:
             if num_blocks is not None and len(selected) >= num_blocks:
                 break
-            extra = cfg.blocks[key].instruction_count
-            if (
-                max_instructions is not None
-                and selected
-                and total + extra > max_instructions
-            ):
-                continue
-            selected.append(key)
-            chosen.add(key)
-            total += extra
+            block_order = sorted(
+                keys,
+                key=lambda key: (-_block_signal(cfg.blocks[key]), cfg.blocks[key].start_rva, key[1]),
+            )
+            for key in block_order:
+                if num_blocks is not None and len(selected) >= num_blocks:
+                    break
+                extra = cfg.blocks[key].instruction_count
+                if (
+                    max_instructions is not None
+                    and selected
+                    and total + extra > max_instructions
+                ):
+                    continue
+                selected.append(key)
+                chosen.add(key)
+                total += extra
+
+    take(ranked + filler)
+    if not selected:
+        take(library_ranked + library_filler)
     if not selected:
         return sample_connected_subgraph(
             cfg,
             seed=seed,
             num_blocks=num_blocks,
             max_instructions=max_instructions,
+            include_library=include_library,
         )
     return SampledSubgraph(
         seed=seed,
@@ -1224,9 +1278,15 @@ def tokenize_selected_blocks(
     api_vocab: tok.ApiVocab,
     *,
     freeze_vocab: bool = False,
+    ida_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Tokenize only the selected instructions, using one shared API vocabulary."""
-    ida_rows = tok.collect_ida_imports(asm_lines)
+    """Tokenize only the selected instructions, using one shared API vocabulary.
+
+    ``ida_rows`` are the listing's import rows when the caller collected them already (``process_sample`` does,
+    in the pass that aligns the blocks); without them ``asm_lines`` is read for them.
+    """
+    if ida_rows is None:
+        ida_rows = tok.collect_ida_imports(asm_lines)
     imports = _merge_sample_imports(cfg, ida_rows)
     if not freeze_vocab:
         for info in imports.values():
@@ -1394,11 +1454,16 @@ class FiveChannelEmbedder(nn.Module):
     behavior lookups. Index 0 stays the zero vector, which covers padding,
     ``NO_API``, and behavior ``NONE``. The tables are trainable. A saved
     block vector is the pool of these lookups, not a mean of the integer ids.
+
+    With ``seed`` set, every row added by ``expand_api`` is drawn from a
+    generator seeded by that seed and the row index, so the same API id gets
+    the same vector whatever the order and size of the growth steps.
     """
 
-    def __init__(self, api_vocab_size: int, d_model: int = BLOCK_EMBED_DIM) -> None:
+    def __init__(self, api_vocab_size: int, d_model: int = BLOCK_EMBED_DIM, seed: int | None = None) -> None:
         super().__init__()
         self.d_model = d_model
+        self.seed = seed
         if api_vocab_size < tok.FIRST_API_ID:
             api_vocab_size = tok.FIRST_API_ID
         self.opcode_embedding = nn.Embedding(OPCODE_VOCAB_SIZE, d_model, padding_idx=0)
@@ -1412,8 +1477,13 @@ class FiveChannelEmbedder(nn.Module):
             return
         fresh = nn.Embedding(api_vocab_size, self.d_model, padding_idx=0)
         with torch.no_grad():
-            fresh.weight[: self.api_embedding.num_embeddings] = self.api_embedding.weight
+            known = self.api_embedding.num_embeddings
+            fresh.weight[:known] = self.api_embedding.weight
             fresh.weight[0].zero_()
+            if self.seed is not None:
+                for row in range(known, api_vocab_size):
+                    generator = torch.Generator().manual_seed(self.seed * 1_000_003 + row)
+                    fresh.weight[row] = torch.randn(self.d_model, generator=generator)
         self.api_embedding = fresh
 
     def embed_tokens(self, token_ids: torch.Tensor) -> torch.Tensor:
@@ -1788,6 +1858,7 @@ def process_sample(
     num_blocks: int | None = None,
     max_instructions: int | None = None,
     sample_mode: str = "walk",
+    include_library: bool = False,
     split: str | None = None,
     freeze_vocab: bool = False,
     file_id: str | None = None,
@@ -1804,12 +1875,20 @@ def process_sample(
         seed=seed,
         num_blocks=num_blocks,
         max_instructions=max_instructions,
+        include_library=include_library,
     )
     problems: list[dict[str, Any]] = []
+    imports = tok.IdaImportCollector()
+
+    def listing_once() -> Iterable[str]:
+        for line in iter_text_lines(asm_path):
+            imports.feed(line)
+            yield line
+
     report = align_sampled_blocks(
         cfg,
         sample.selected_keys,
-        iter_text_lines(asm_path),
+        listing_once(),
         problems,
     )
     report.add_format_problems(cfg.address_format_problems)
@@ -1817,9 +1896,10 @@ def process_sample(
     inventory = tokenize_selected_blocks(
         cfg,
         sample.selected_keys,
-        iter_text_lines(asm_path),
+        (),
         api_vocab,
         freeze_vocab=freeze_vocab,
+        ida_rows=imports.rows,
     )
     embedder = channel_embedder or FiveChannelEmbedder(api_table_size(api_vocab))
     embedder.expand_api(api_table_size(api_vocab))
@@ -1912,7 +1992,62 @@ def _cfg_path_for_asm(asm_path: Path) -> Path:
     raise CfgSchemaError(f"cannot derive a CFG path from {asm_path}")
 
 
-def main() -> None:
+def _run_settings(args: argparse.Namespace) -> dict[str, Any]:
+    """What decides the content of a sample file. A folder keeps one such set, in ``settings.json``."""
+    return {
+        "sample": args.sample,
+        "seed": args.seed,
+        "num_blocks": args.num_blocks,
+        "max_instructions": args.max_instructions,
+        "include_library": args.include_library,
+        "freeze_vocab": args.freeze_vocab,
+        "split_order": "train rows grow the vocabulary first, every other split is frozen",
+        "source_sha256": {
+            path.name: hashlib.sha256(path.read_bytes().replace(bytes([13, 10]), bytes([10]))).hexdigest()
+            for path in (Path(__file__).resolve(), Path(tok.__file__).resolve())
+        },
+    }
+
+
+def _check_settings(parser: argparse.ArgumentParser, output: Path, settings: dict[str, Any], overwrite: bool) -> None:
+    """Refuse to add samples to a folder that was built with other settings, then record these settings."""
+    path = output / "settings.json"
+    if path.is_file():
+        previous = json.loads(path.read_text(encoding="utf-8"))
+        changed = sorted(key for key in settings.keys() | previous.keys() if settings.get(key) != previous.get(key))
+        if changed and not overwrite:
+            parser.error(
+                f"{output} was built with other settings ({', '.join(changed)}); "
+                "use a new --output or --overwrite to rebuild it"
+            )
+    elif not overwrite and (output.is_dir() and any(output.glob("*.pt"))):
+        parser.error(f"{output} has samples but no settings.json; use a new --output or --overwrite to rebuild it")
+    output.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+
+
+def _cfg_path_for_row(row: dict[str, str], cfg_root: Path | None) -> Path:
+    """Where the CFG of a splits-CSV row is.
+
+    The row's ``cfg_path`` column (relative to the collection root) wins; without it the CFG is named like the
+    listing. ``cfg_root`` moves both to a separate tree: the column is read relative to it, and a derived name keeps
+    the listing's path relative to its collection root.
+    """
+    root = Path(row["root"])
+    base = root if cfg_root is None else cfg_root
+    if row.get("cfg_path"):
+        path = (base / row["cfg_path"]).resolve()
+        if base.resolve() not in path.parents:
+            raise CfgSchemaError(f"unsafe CFG path: {row['cfg_path']}")
+        return path
+    asm_path = Path(row["asm_path"])
+    if cfg_root is not None:
+        asm_path = cfg_root / asm_path.relative_to(root)
+    return _cfg_path_for_asm(asm_path)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the preprocess. The exit status is 1 when any sample failed (see ``failures.json`` in the output folder)."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", action="append", type=Path, dest="roots")
     parser.add_argument("--split", choices=["train", "test", "all"], default="all")
@@ -1928,24 +2063,35 @@ def main() -> None:
         default="walk",
         help="walk grows from a random block. signal keeps import-calling functions first.",
     )
+    parser.add_argument(
+        "--include-library",
+        action="store_true",
+        help="Sample blocks of library functions too. By default they are skipped: the listing has no code for them.",
+    )
+    parser.add_argument(
+        "--cfg-root",
+        type=Path,
+        help="Folder that holds the CFGs when they are not beside the listings. A cfg_path column of the splits CSV is "
+        "read relative to it, otherwise the CFG keeps the listing's path relative to its collection root.",
+    )
     parser.add_argument("--output", type=Path, default=tok.PROJECT_ROOT / "processed" / "cfg_subgraphs")
     parser.add_argument(
         "--max-asm-bytes",
         type=int,
-        default=DEFAULT_MAX_ASM_BYTES,
-        help="Skip an uncompressed listing larger than this many bytes. 0 keeps every sample.",
+        default=0,
+        help="Skip an uncompressed listing larger than this many bytes (asm_bytes of the splits CSV). 0, the default, sets no cap.",
     )
     parser.add_argument(
         "--max-cfg-blocks",
         type=int,
-        default=DEFAULT_MAX_CFG_BLOCKS,
-        help="Skip a CFG with more blocks than this. 0 disables the limit.",
+        default=0,
+        help="Skip a CFG with more blocks than this (num_blocks of the splits CSV). 0, the default, sets no cap.",
     )
     parser.add_argument(
         "--max-cfg-instructions",
         type=int,
-        default=DEFAULT_MAX_CFG_INSTRUCTIONS,
-        help="Skip a CFG with more instructions than this. 0 disables the limit.",
+        default=0,
+        help="Skip a CFG with more instructions than this (num_instructions of the splits CSV). 0, the default, sets no cap.",
     )
     parser.add_argument(
         "--overwrite",
@@ -1953,41 +2099,75 @@ def main() -> None:
         help="Rebuild samples that already have a .pt file.",
     )
     parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=50,
+        help="Save the embedder and the shared vocabulary after this many new samples, and at the end of the run.",
+    )
+    parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Stop at the first sample that fails. By default the run goes on and lists every failure in failures.json.",
+    )
+    parser.add_argument(
         "--freeze-vocab",
         action="store_true",
-        help="Keep the shared API vocabulary unchanged. Unseen names use UNK_API.",
+        help="Keep the shared API vocabulary unchanged for every split. Unseen names use UNK_API.",
     )
     parser.add_argument("--vocab", type=Path, default=tok.API_VOCAB_PATH)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     if args.num_blocks is None and args.max_instructions is None:
         parser.error("set --num-blocks or --max-instructions")
 
     roots = [path.resolve() for path in (args.roots or tok.DEFAULT_ROOTS)]
     selected = tok._selected_rows(roots, args.split, args.architecture, args.sample_id)
+    # The vocabulary grows on training rows only: they go first, in every root, and every other split is frozen.
+    selected.sort(key=lambda row: row["split"] != "train")
     if args.limit is not None:
         selected = selected[: args.limit]
     full_run = args.limit is None and args.sample_id is None and not args.freeze_vocab
+    _check_settings(parser, args.output, _run_settings(args), args.overwrite)
     vocab = tok.load_api_vocab(args.vocab)
-    embedder = FiveChannelEmbedder(api_table_size(vocab))
+    torch.manual_seed(args.seed)
+    embedder = FiveChannelEmbedder(api_table_size(vocab), seed=args.seed)
     embedder_path = args.output / "channel_embedder.pt"
     can_resume = embedder_path.is_file() and not args.overwrite
+    # checkpoint.json lists the samples whose embedder rows and vocabulary ids are on disk. It is kept when the
+    # vocabulary on disk is the one the samples used: a full run writes it, a frozen run leaves it unchanged.
+    # --limit and --sample-id runs never write the shared vocabulary, so they do not resume.
+    checkpoint_path = args.output / "checkpoint.json"
+    resumable = full_run or args.freeze_vocab
+    done: set[str] = set()
     if can_resume:
         state = torch.load(embedder_path, map_location="cpu")
         embedder.expand_api(int(state["api_embedding.weight"].shape[0]))
         embedder.load_state_dict(state)
         logger.info("resumed embedder %s", embedder_path)
+        if checkpoint_path.is_file():
+            done = set(json.loads(checkpoint_path.read_text(encoding="utf-8"))["done"])
+
+    def save_state() -> None:
+        args.output.mkdir(parents=True, exist_ok=True)
+        torch.save(embedder.state_dict(), embedder_path)
+        if full_run:
+            tok.save_api_vocab(vocab, args.vocab)
+        if resumable:
+            checkpoint_path.write_text(json.dumps({"done": sorted(done)}), encoding="utf-8")
+
+    since_save = 0
     saved = 0
     skipped = 0
     oversized = 0
-    failed = 0
+    failures: list[dict[str, str]] = []
+    skipped_over_cap: list[dict[str, str]] = []
     for row in selected:
         sample_id = row["sample_id"]
         tensor_path = args.output / f"{sample_id}.pt"
         asm_bytes = int(row.get("asm_bytes") or 0)
         cfg_blocks = int(row.get("num_blocks") or 0)
         cfg_instructions = int(row.get("num_instructions") or 0)
-        if can_resume and tensor_path.is_file():
+        if can_resume and sample_id in done and tensor_path.is_file():
             logger.info("skip existing %s", sample_id)
             skipped += 1
             continue
@@ -2000,11 +2180,12 @@ def main() -> None:
             reasons.append(f"instructions={cfg_instructions}")
         if reasons:
             logger.warning("skip %s: %s", sample_id, ", ".join(reasons))
+            skipped_over_cap.append({"sample_id": sample_id, "reason": ", ".join(reasons)})
             oversized += 1
             continue
         asm_path = Path(row["asm_path"])
-        cfg_path = _cfg_path_for_asm(asm_path)
         try:
+            cfg_path = _cfg_path_for_row(row, args.cfg_root)
             if not cfg_path.is_file():
                 raise CfgSchemaError(f"missing CFG: {cfg_path}")
             result = process_sample(
@@ -2016,27 +2197,42 @@ def main() -> None:
                 num_blocks=args.num_blocks,
                 max_instructions=args.max_instructions,
                 sample_mode=args.sample,
+                include_library=args.include_library,
                 split=row["split"],
-                freeze_vocab=args.freeze_vocab,
+                freeze_vocab=args.freeze_vocab or row["split"] != "train",
                 file_id=sample_id,
                 channel_embedder=embedder,
                 dataset_metadata=row,
             )
             save_sample(result, args.output)
-            args.output.mkdir(parents=True, exist_ok=True)
-            torch.save(embedder.state_dict(), embedder_path)
-            tok.save_api_vocab(vocab, args.vocab)
             del result
             gc.collect()
             saved += 1
+            done.add(sample_id)
+            since_save += 1
+            if since_save >= args.checkpoint_every:
+                save_state()
+                since_save = 0
         except Exception as error:
             logger.error("failed %s: %s", sample_id, error)
-            failed += 1
+            failures.append({"sample_id": sample_id, "error": f"{type(error).__name__}: {error}"})
             gc.collect()
+            if args.fail_fast:
+                break
+    failed = len(failures)
+    failures_path = args.output / "failures.json"
+    for path, items in ((failures_path, failures), (args.output / "skipped.json", skipped_over_cap)):
+        if items:
+            args.output.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(items, indent=2), encoding="utf-8")
+        elif path.is_file():
+            path.unlink()
+    if since_save:
+        save_state()
     if saved:
         logger.info("wrote %s", embedder_path)
-    if full_run and (saved or skipped) and not failed:
-        logger.info("wrote %s", args.vocab)
+        if full_run:
+            logger.info("wrote %s", args.vocab)
     logger.info(
         "saved %s skipped %s oversized %s failed %s",
         saved,
@@ -2044,7 +2240,11 @@ def main() -> None:
         oversized,
         failed,
     )
+    if failed:
+        logger.error("%s sample(s) failed, listed in %s", failed, failures_path)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
