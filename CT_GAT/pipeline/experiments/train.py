@@ -44,6 +44,11 @@ AUC bests, the AUC rule also moves the stopping epoch. metrics.json records the 
 
 --out names the run directory instead of the config's name (smoke runs).
 
+--model fivechannel trains Janice Park's five-channel Model 1 (s03a_transformer/five_channel) on the .pt files of a pipeline-B
+build (experiments/team_pipelines/build_b.py) under our folds (`--protocol kfold --fold <k>`, x86). It takes --build <dir>
+(default: the `team_b_build` source of datasets.json, or GT_TEAM_B_BUILD), --device and --smoke N, and --max-instructions N
+(default 128, as she wrote it; 512 gives the run name suffix -L512). See that package's README.
+
 --model tokenseq trains Model 1, the token-sequence transformer of s03a_transformer/token_sequence, on a fold of a block export
 (`--protocol kfold --fold <k>`); its loop is its own and the registry hands the run over to it. It takes four more flags,
 refused for other models: --export <name or directory> (default ours_cap0, under the export directory), --device cuda|cpu,
@@ -71,11 +76,13 @@ from s04_evaluation.metrics import cell_balanced, cell_weights
 from s04_evaluation.val_threshold import GRID, macro_f1
 
 
-MODEL_OPTIONS = ('export', 'device', 'smoke', 'window_budget')      # the flags of `--model tokenseq` that are not RunConfig fields
+# the flags of the models that own their loop and are not RunConfig fields, per model
+MODEL_OPTIONS = {'tokenseq': ('export', 'device', 'smoke', 'window_budget'), 'fivechannel': ('build', 'device', 'smoke')}
+ALL_OPTIONS = tuple(dict.fromkeys(o for options in MODEL_OPTIONS.values() for o in options))
 
 
 def parse_args(argv=None):
-    """(RunConfig, --out, options): `options` holds the flags of MODEL_OPTIONS that were given, for the model that owns them."""
+    """(RunConfig, --out, options): `options` holds the flags of MODEL_OPTIONS[model] that were given, for the model that owns them."""
     ap = argparse.ArgumentParser()
     ap.add_argument('--protocol', choices=['bundle', 'kfold', 'kfold_v3'], default='bundle')
     ap.add_argument('--fold', type=int)
@@ -92,9 +99,11 @@ def parse_args(argv=None):
     ap.add_argument('--imports', choices=IMPORTS, default='')
     ap.add_argument('--out', help='run directory name override (default: derived from the config)')
     ap.add_argument('--export', help="--model tokenseq: the block export, a directory or a name under the export directory")
-    ap.add_argument('--device', choices=['cuda', 'cpu'], help='--model tokenseq: default cuda when available')
-    ap.add_argument('--smoke', type=int, help='--model tokenseq: N train binaries, 2 epochs, temporary directory')
+    ap.add_argument('--device', choices=['cuda', 'cpu'], help='--model tokenseq|fivechannel: default cuda when available')
+    ap.add_argument('--smoke', type=int, help='--model tokenseq|fivechannel: N train binaries, 2 epochs, temporary directory')
     ap.add_argument('--window-budget', type=int, help='--model tokenseq: windows per batch')
+    ap.add_argument('--build', help='--model fivechannel: the pipeline-B build folder of <sample_id>.pt files (default: the '
+                                    'team_b_build source of datasets.json, GT_TEAM_B_BUILD)')
     done = {a.dest for a in ap._actions}
     for f in fields(RunConfig):
         if f.name in done:
@@ -106,13 +115,15 @@ def parse_args(argv=None):
             ap.add_argument(flag, type=type(f.default), default=f.default)
     args = vars(ap.parse_args(argv))
     out = args.pop('out')
-    options = {k: v for k, v in ((k, args.pop(k)) for k in MODEL_OPTIONS) if v is not None}
+    options = {k: v for k, v in ((k, args.pop(k)) for k in ALL_OPTIONS) if v is not None}
     try:
         cfg = RunConfig(**args)
     except ValueError as e:
         ap.error(str(e))
-    if options and cfg.model != 'tokenseq':
-        ap.error(f"--{', --'.join(k.replace('_', '-') for k in options)} belong to --model tokenseq")
+    foreign = [k for k in options if k not in MODEL_OPTIONS.get(cfg.model, ())]
+    if foreign:
+        owners = ' or '.join(sorted({m for k in foreign for m, o in MODEL_OPTIONS.items() if k in o}))
+        ap.error(f"--{', --'.join(k.replace('_', '-') for k in foreign)} belong to --model {owners}")
     return cfg, out, options
 
 
@@ -202,7 +213,8 @@ def write_run_as(out_name, cfg, *args, **kw):
 
 
 def run(cfg: RunConfig, out_name=None, **options):
-    """One run. `options` are the flags of MODEL_OPTIONS, for a model that owns its loop (`spec.run`, `tokenseq`)."""
+    """One run. `options` are the flags of MODEL_OPTIONS[model], for a model that owns its loop (`spec.run`: `tokenseq`,
+    `fivechannel`)."""
     spec = spec_for(cfg)
     spec.check(cfg)
     if hasattr(spec, 'run'):

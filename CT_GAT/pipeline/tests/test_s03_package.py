@@ -62,14 +62,14 @@ def test_the_placeholder_is_gone_and_the_stages_are_packages():
                                                           'precompute_blockvec.py']
     assert sorted(p.name for p in (S03C / 'encoders').glob('*.py')) == ['__init__.py', 'codebert.py', 'reference.py']
     assert not (S03A / 'transformer_model.py').exists()                 # removed by PR #8: it was only a placeholder
-    assert (S03A / 'token_sequence.py').is_file()                       # Janice's script, beside the package of the same name
+    assert (S03A / 'five_channel' / 'model.py').is_file()                # Janice's model, moved off the name of the package
 
 
 def test_the_stage_imports_only_the_package_and_the_libraries():
     """No import of the branch's flat layout (pipeline.*, training.*, evaluation.*, transformer_paths.*, token_sequence.*)."""
     old = {'pipeline', 'training', 'evaluation', 'transformer_paths', 'token_sequence'}
     offenders = []
-    for path in list(S03C.rglob('*.py')) + list((S03A / 'token_sequence').rglob('*.py')):
+    for path in list(S03C.rglob('*.py')) + list((S03A / 'token_sequence').rglob('*.py')) + list((S03A / 'five_channel').rglob('*.py')):
         for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
             names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module] if isinstance(
                 node, ast.ImportFrom) and node.module else []
@@ -88,7 +88,7 @@ def test_no_module_spells_the_runs_or_export_path_itself():
     """Only common/paths.py names a run directory; no module builds `RUNS / 'export'`."""
     code_files = [p for p in ROOT.rglob('*.py') if not {'tests', '.git', '__pycache__'} & set(p.relative_to(ROOT).parts)]
     assert [p.relative_to(ROOT).as_posix() for p in code_files if "RUNS / 'export'" in p.read_text(encoding='utf-8')] == []
-    for path in list(S03C.rglob('*.py')) + list((S03A / 'token_sequence').rglob('*.py')):
+    for path in list(S03C.rglob('*.py')) + list((S03A / 'token_sequence').rglob('*.py')) + list((S03A / 'five_channel').rglob('*.py')):
         text = path.read_text(encoding='utf-8')
         assert not re.search(r"graph_transformer|Path\('[A-Za-z]:", text), path.name
 
@@ -171,12 +171,13 @@ def test_the_teammates_files_of_stage_2_still_import():
     assert r.returncode == 0 and r.stdout.strip() == 'ok', r.stderr
 
 
-@pytest.mark.xfail(strict=True, reason="s03a_transformer/token_sequence.py (Janice, PR #8) and the token_sequence/ package share one "
-                   "name; the package wins the import, so her file cannot be imported. Known issue, to be fixed separately.")
-def test_importing_token_sequence_gives_janices_file_not_the_package():
+def test_token_sequence_is_the_package_and_janices_file_is_five_channel_model():
     import importlib
-    module = importlib.import_module('s03a_transformer.token_sequence')
-    assert Path(module.__file__).resolve() == (S03A / 'token_sequence.py').resolve()
+    package = importlib.import_module('s03a_transformer.token_sequence')
+    assert Path(package.__file__).resolve() == (S03A / 'token_sequence' / '__init__.py').resolve() and hasattr(package, '__path__')
+    janice = importlib.import_module('s03a_transformer.five_channel.model')
+    assert Path(janice.__file__).resolve() == (S03A / 'five_channel' / 'model.py').resolve()
+    assert hasattr(janice, 'Model1TokenSequence') and not (S03A / 'token_sequence.py').exists()
 
 
 def test_the_earlier_stages_read_nothing_of_these_at_import_time(tmp_path):

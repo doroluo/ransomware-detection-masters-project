@@ -1,12 +1,25 @@
+"""Model 1 over the five-channel instruction tuples of stage 2, as written by Janice Park (branch origin/TokenSeqModel, commit
+1da23f6, merged in PR #8; first at s03a_transformer/token_sequence.py).
+
+The classes are hers and unchanged: FiveChannelEmbedder, Model1TokenSequence, Model1Dataset, model1_collate_fn and the
+__main__ demo. Only the imports follow the layout of this package (commands run from CT_GAT/pipeline, no `pipeline.` prefix,
+the stage-2 scripts through the sys.path shim they use themselves). The file moved here with `git mv` when the package
+`token_sequence/` took its old name; `spec.py` and `train.py` next to it train these classes on our folds
+(`--model fivechannel`, README.md of the stage).
+"""
 import glob
 import argparse
+import sys
 from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-from pipeline.s02_preprocess import tokenize_asm_gz as tok
-from pipeline.s02_preprocess.preprocess_full import (
+_S02 = str(Path(__file__).resolve().parents[2] / 's02_preprocess')       # flat scripts, run and imported from their folder
+if _S02 not in sys.path:
+    sys.path.insert(0, _S02)
+import tokenize_asm_gz as tok  # noqa: E402
+from preprocess_full import (  # noqa: E402
     OPCODE_VOCAB_SIZE,
     OPERAND_VOCAB_SIZE,
 )

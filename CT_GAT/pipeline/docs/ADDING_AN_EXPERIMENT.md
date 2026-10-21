@@ -36,12 +36,13 @@ class ShallowSpec(GnnSpec):
         return ('shallow',) + tuple(cfg.variant.split('-')[1:])
 ```
 
-The registry line (the first two are the real ones; the module path is where the class can be imported from):
+The registry lines (the first three are the real ones; the module path is where the class can be imported from):
 
 ```python example=registry
 MODELS = {
     'gnn': 's03b_cfg_feature.gnn.spec:GnnSpec',
     'tokenseq': 's03a_transformer.token_sequence.spec:TokenSeqSpec',
+    'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec',
     'shallow': 'my_stage.spec:ShallowSpec',
 }
 ```

@@ -18,11 +18,12 @@ MIN_BUDGET = 100  # blocks; 0 means the binary cap
 VOCABS = ('ours', 'yanping', 'hybrid', 'noapi')
 IMPORTS = ('', 'header')
 IMPORT_SUFFIX = {'header': 'imph'}
-MODELS = ('gnn', 'tokenseq')
+MODELS = ('gnn', 'tokenseq', 'fivechannel')
 # options that were removed on 2026-10-20 (step 25); the run directories that used them stay on disk but are not read
 REMOVED = {'model': ('transformer',), 'subgraph': ('lcc',), 'imports': ('unreferenced',)}
 SEQ_LEN, MAX_WINDOWS = 512, 64      # Model 1 window length and training windows per binary (defaults: no name suffix)
 TOKENSEQ_VAL_SEED = 0                # the block export carves its validation split with seed 0
+MAX_INSTRUCTIONS = 128               # Model 1 over five-channel tuples (fivechannel): instructions per binary, as Janice wrote it
 
 
 class RemovedOption(ValueError):
@@ -52,7 +53,7 @@ class RunConfig:
     grad_clip: float = 1.0
     num_workers: int = 2
 
-    model: Literal['gnn', 'tokenseq'] = 'gnn'
+    model: Literal['gnn', 'tokenseq', 'fivechannel'] = 'gnn'
     encoder: Optional[str] = None
     readout: str = 'fixed'
     control: str = ''
@@ -84,6 +85,7 @@ class RunConfig:
     imports: str = ''
     seq_len: int = 512
     max_windows: int = 64
+    max_instructions: int = 128
     tag: str = ''
     cache: str = ''
 
@@ -104,6 +106,10 @@ class RunConfig:
             raise ValueError(f'seq_len and max_windows are at least 1: {self.seq_len}, {self.max_windows}')
         if self.model != 'tokenseq' and (self.seq_len, self.max_windows) != (SEQ_LEN, MAX_WINDOWS):
             raise ValueError("seq_len and max_windows need model='tokenseq'")
+        if self.max_instructions < 1:
+            raise ValueError(f'max_instructions is at least 1: {self.max_instructions}')
+        if self.model != 'fivechannel' and self.max_instructions != MAX_INSTRUCTIONS:
+            raise ValueError("max_instructions needs model='fivechannel'")
         if self.block_input not in BLOCK_INPUTS:
             raise ValueError(f'block_input {self.block_input}')
         if (self.block_input == 'vec') != bool(self.block_vec):
@@ -140,6 +146,8 @@ class RunConfig:
             raise ValueError(f'train_fraction must be in (0, 1]: {self.train_fraction}')
         if self.model == 'tokenseq':
             self.check_tokenseq()
+        elif self.model == 'fivechannel':
+            self.check_fivechannel()
         else:
             if self.untyped and self.control in ('permute_types', 'no_edges'):
                 raise ValueError(f'untyped has no meaning with control {self.control}')
@@ -160,6 +168,24 @@ class RunConfig:
             raise ValueError(f"model 'tokenseq' uses the export's validation carve (val_seed {TOKENSEQ_VAL_SEED}), "
                              f'not val_seed {self.val_seed}')
         object.__setattr__(self, 'val_seed', TOKENSEQ_VAL_SEED)
+        used = self._graph_options_used()
+        if used:
+            raise ValueError(f"{', '.join(used)} do not apply to model='tokenseq'")
+
+    def check_fivechannel(self):
+        """Model 1 over the five-channel tuples of a pipeline-B build (Janice Park's model): one fold of our x86 kfold protocol,
+        the validation carve follows the run seed (as for the GNN arms and the teammates' arms), and none of the GNN, graph or
+        weighting options exists for it."""
+        if self.protocol != 'kfold' or self.arch != 'x86':
+            raise ValueError("model 'fivechannel' reads the pipeline-B build of the 1,810 x86 binaries: protocol 'kfold', arch 'x86'")
+        if self.val_seed is not None:
+            raise ValueError("model 'fivechannel' carves its validation split with the run seed (val_seed stays unset)")
+        used = self._graph_options_used()
+        if used:
+            raise ValueError(f"{', '.join(used)} do not apply to model='fivechannel'")
+
+    def _graph_options_used(self):
+        """The GNN-only options set on this config, for the error message of a sequence model."""
         rates = (self.mask_tokens, self.drop_functions, self.drop_library, self.mask_blocks, self.aux_recon, self.aux_edge,
                  self.drop_edges, self.flip_edges)
         unsupported = {'encoder': self.encoder is not None, 'readout': self.readout != 'fixed',
@@ -171,9 +197,7 @@ class RunConfig:
                        'gnn_fn_layers/gnn_bin_layers': (self.gnn_fn_layers, self.gnn_bin_layers) != (3, 2),
                        'train_fraction': self.train_fraction != 1.0, 'arch_balance': self.arch_balance,
                        'select_on': self.select_on != 'overall', 'fixed_epochs': self.fixed_epochs > 0}
-        used = [k for k, v in unsupported.items() if v]
-        if used:
-            raise ValueError(f"{', '.join(used)} do not apply to model='tokenseq'")
+        return [k for k, v in unsupported.items() if v]
 
     @property
     def block_encoder(self):
@@ -189,6 +213,8 @@ class RunConfig:
             return '-'.join(['tokenseq'] + [f'{s}{n}' for s, n, default in (('L', self.seq_len, SEQ_LEN),
                                                                              ('w', self.max_windows, MAX_WINDOWS))
                                             if n != default])
+        if self.model == 'fivechannel':
+            return '-'.join(['fivechannel'] + ([f'L{self.max_instructions}'] if self.max_instructions != MAX_INSTRUCTIONS else []))
         parts = ['gnn']
         if self.control:
             parts.append(CONTROLS[self.control])

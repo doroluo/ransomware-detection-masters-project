@@ -34,6 +34,7 @@ SOURCES = {
     'folds_v3': ('GT_FOLDS_V3', 'the folder with folds_all.csv and arch_matched.csv'),
     'reader_root': ('GT_READER_ROOT', "the team's operand-role reader output"),
     'runs': ('GT_RUNS', 'the run directories'),
+    'team_b_build': ('GT_TEAM_B_BUILD', 'a pipeline-B build folder of <sample_id>.pt files (experiments/team_pipelines/build_b.py), the input of --model fivechannel'),
 }
 
 
