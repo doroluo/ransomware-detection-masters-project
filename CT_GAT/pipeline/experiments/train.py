@@ -44,6 +44,19 @@ AUC bests, the AUC rule also moves the stopping epoch. metrics.json records the 
 
 --out names the run directory instead of the config's name (smoke runs).
 
+--threshold-from oof (--model tokenseq|fivechannel; any model that gives `choose_thresholds` a refit can use it) chooses the
+decision threshold of a run on out-of-fold predictions instead of the validation families (which saturate: validation AUC
+near 1.0 within a few epochs, so the first threshold of a wide band wins and macro-F1 swings between folds). The training
+binaries are split in 3 folds that keep a ransomware family or a goodware identity group whole, the model is refit on 2 of
+them for the epoch count of each checkpoint, and the pooled held-out predictions give the GRID threshold with the highest
+macro-F1. metrics.json records the rule (`threshold_rule`, `selection.auc.rule`); the run name gains `-thoof`. The default,
+`--threshold-from val`, is the rule above and changes no name or result.
+
+--model fivechannel trains Janice Park's five-channel Model 1 (s03a_transformer/five_channel) on the .pt files of a pipeline-B
+build (experiments/team_pipelines/build_b.py) under our folds (`--protocol kfold --fold <k>`, x86). It takes --build <dir>
+(default: the `team_b_build` source of datasets.json, or GT_TEAM_B_BUILD), --device and --smoke N, and --max-instructions N
+(default 128, as she wrote it; 512 gives the run name suffix -L512). See that package's README.
+
 --model tokenseq trains Model 1, the token-sequence transformer of s03a_transformer/token_sequence, on a fold of a block export
 (`--protocol kfold --fold <k>`); its loop is its own and the registry hands the run over to it. It takes four more flags,
 refused for other models: --export <name or directory> (default ours_cap0, under the export directory), --device cuda|cpu,
@@ -62,20 +75,22 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common.config import BLOCK_INPUTS, CACHE, DIRECTIONS, ENCODERS, IMPORTS, RUNS, VOCABS, RunConfig
+from common.config import BLOCK_INPUTS, CACHE, DIRECTIONS, ENCODERS, IMPORTS, RUNS, THRESHOLD_FROM, VOCABS, RunConfig
 from common.manifests import load_index, make_manifest
 from common.paths import load_registry
 from common.registry import MODELS, RunInfo, spec_for
 from common.run_io import AUC_RULES, evaluate, truncated_count, write_predictions, write_run  # noqa: F401  (re-exported)
 from s04_evaluation.metrics import cell_balanced, cell_weights
-from s04_evaluation.val_threshold import GRID, macro_f1
+from s04_evaluation.val_threshold import GRID, macro_f1, oof_rule
 
 
-MODEL_OPTIONS = ('export', 'device', 'smoke', 'window_budget')      # the flags of `--model tokenseq` that are not RunConfig fields
+# the flags of the models that own their loop and are not RunConfig fields, per model
+MODEL_OPTIONS = {'tokenseq': ('export', 'device', 'smoke', 'window_budget'), 'fivechannel': ('build', 'device', 'smoke')}
+ALL_OPTIONS = tuple(dict.fromkeys(o for options in MODEL_OPTIONS.values() for o in options))
 
 
 def parse_args(argv=None):
-    """(RunConfig, --out, options): `options` holds the flags of MODEL_OPTIONS that were given, for the model that owns them."""
+    """(RunConfig, --out, options): `options` holds the flags of MODEL_OPTIONS[model] that were given, for the model that owns them."""
     ap = argparse.ArgumentParser()
     ap.add_argument('--protocol', choices=['bundle', 'kfold', 'kfold_v3'], default='bundle')
     ap.add_argument('--fold', type=int)
@@ -92,9 +107,14 @@ def parse_args(argv=None):
     ap.add_argument('--imports', choices=IMPORTS, default='')
     ap.add_argument('--out', help='run directory name override (default: derived from the config)')
     ap.add_argument('--export', help="--model tokenseq: the block export, a directory or a name under the export directory")
-    ap.add_argument('--device', choices=['cuda', 'cpu'], help='--model tokenseq: default cuda when available')
-    ap.add_argument('--smoke', type=int, help='--model tokenseq: N train binaries, 2 epochs, temporary directory')
+    ap.add_argument('--device', choices=['cuda', 'cpu'], help='--model tokenseq|fivechannel: default cuda when available')
+    ap.add_argument('--smoke', type=int, help='--model tokenseq|fivechannel: N train binaries, 2 epochs, temporary directory')
     ap.add_argument('--window-budget', type=int, help='--model tokenseq: windows per batch')
+    ap.add_argument('--build', help='--model fivechannel: the pipeline-B build folder of <sample_id>.pt files (default: the '
+                                    'team_b_build source of datasets.json, GT_TEAM_B_BUILD)')
+    ap.add_argument('--threshold-from', choices=THRESHOLD_FROM, default='val',
+                    help="--model tokenseq|fivechannel: choose the decision threshold on the validation families ('val') or on "
+                         "out-of-fold predictions of grouped refits of the training binaries ('oof', run name suffix -thoof)")
     done = {a.dest for a in ap._actions}
     for f in fields(RunConfig):
         if f.name in done:
@@ -106,13 +126,15 @@ def parse_args(argv=None):
             ap.add_argument(flag, type=type(f.default), default=f.default)
     args = vars(ap.parse_args(argv))
     out = args.pop('out')
-    options = {k: v for k, v in ((k, args.pop(k)) for k in MODEL_OPTIONS) if v is not None}
+    options = {k: v for k, v in ((k, args.pop(k)) for k in ALL_OPTIONS) if v is not None}
     try:
         cfg = RunConfig(**args)
     except ValueError as e:
         ap.error(str(e))
-    if options and cfg.model != 'tokenseq':
-        ap.error(f"--{', --'.join(k.replace('_', '-') for k in options)} belong to --model tokenseq")
+    foreign = [k for k in options if k not in MODEL_OPTIONS.get(cfg.model, ())]
+    if foreign:
+        owners = ' or '.join(sorted({m for k in foreign for m, o in MODEL_OPTIONS.items() if k in o}))
+        ap.error(f"--{', --'.join(k.replace('_', '-') for k in foreign)} belong to --model {owners}")
     return cfg, out, options
 
 
@@ -177,6 +199,24 @@ def val_threshold_of(rows, ids, probs, select_on='overall'):
     return float(max(GRID, key=lambda g: macro_f1(y, probs, g)))
 
 
+def choose_thresholds(cfg: RunConfig, manifest, val_by_rule, epochs, fit_predict=None):
+    """({rule: threshold}, record) for the checkpoints of a run, rule being 'f1' and 'auc'.
+
+    `val_by_rule[rule]` is the (sample ids, probabilities, sizes) of the validation binaries under that rule's checkpoint.
+    cfg.threshold_from == 'val' (the default): the GRID threshold with the highest validation macro-F1 (`val_threshold_of`), and
+    the record is None. 'oof': the out-of-fold rule of `s04_evaluation.val_threshold.oof_rule` over the training binaries,
+    with `fit_predict(train_rows, held_rows, epochs, seed)` the model's refit (see there) and `epochs` = {rule: epoch count of
+    that checkpoint}; the record (what metrics.json keeps) also holds the validation thresholds, for comparison."""
+    val = {rule: val_threshold_of(manifest.val, *v[:2]) for rule, v in val_by_rule.items()}
+    if cfg.threshold_from == 'val':
+        return val, None
+    if fit_predict is None:
+        raise ValueError(f'model {cfg.model} gave no refit for threshold_from={cfg.threshold_from!r}')
+    chosen, record = oof_rule(manifest.train, fit_predict, epochs, seed=cfg.seed)
+    record['threshold_val'] = val
+    return chosen, record
+
+
 def check_requires(spec, cache):
     missing = [p for p in spec.requires if not (Path(cache) / p).exists()]
     if missing:
@@ -202,7 +242,8 @@ def write_run_as(out_name, cfg, *args, **kw):
 
 
 def run(cfg: RunConfig, out_name=None, **options):
-    """One run. `options` are the flags of MODEL_OPTIONS, for a model that owns its loop (`spec.run`, `tokenseq`)."""
+    """One run. `options` are the flags of MODEL_OPTIONS[model], for a model that owns its loop (`spec.run`: `tokenseq`,
+    `fivechannel`)."""
     spec = spec_for(cfg)
     spec.check(cfg)
     if hasattr(spec, 'run'):

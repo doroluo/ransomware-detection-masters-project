@@ -32,6 +32,8 @@ FILES = ('config.json', 'metrics.json', 'predictions.csv', 'predictions_auc.csv'
 FOLDS = range(5)
 needs_baselines = pytest.mark.skipif(not (RUNS / 'baselines' / 'kfold0_x86_s0' / 'predictions.csv').exists(),
                                      reason='needs the tfidf kfold baselines')
+NEW_STAGES = ('model1_variants',)          # written after the source branch: it never printed them, there is nothing to compare with
+RECORDED_STAGES = tuple(s for s in gates.stage_names() if s not in NEW_STAGES)
 PAIRS = {'stats_r7_r2': ('kfold_x86_gnn-noedges', 'kfold_x86_gnn'),
          'stats_tfidf_r7': ('tfidf', 'kfold_x86_gnn-mblk15'),
          'stats_r7_noapi': ('kfold_x86_gnn-mblk15', 'kfold_x86_gnn-mblk15-voc-noapi')}
@@ -76,13 +78,13 @@ def fresh_caches():
 # ---- equivalence with the source branch ---------------------------------------------------------------------------------
 
 def test_the_recording_covers_every_stage_the_report_and_three_pairs():
-    assert set(RECORDED['outputs']) == set(gates.stage_names()) | {'report'} | set(PAIRS)
+    assert set(RECORDED['outputs']) == set(RECORDED_STAGES) | {'report'} | set(PAIRS)
     for name, digest in RECORDED['outputs'].items():
         assert hashlib.sha256(recorded(name).encode('utf-8')).hexdigest() == digest, name        # the files are the ones recorded
 
 
 @needs_recorded_runs
-@pytest.mark.parametrize('name', gates.stage_names())
+@pytest.mark.parametrize('name', RECORDED_STAGES)
 def test_gates_stage_prints_what_the_source_branch_printed(name):
     got = '\n'.join(gates.run_stage(name)) + '\n'
     assert got == recorded(name)

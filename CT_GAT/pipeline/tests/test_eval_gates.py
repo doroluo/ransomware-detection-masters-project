@@ -20,7 +20,7 @@ from s04_evaluation.metrics import cell_balanced
 from s04_evaluation.stage import LABEL, Stage, beats, non_inferior
 
 ROOT = Path(__file__).resolve().parents[1]
-PAIRED = ('paths', 'paths_codebert', 'vocab', 'imports', 'noapi', 'team', 'model1')
+PAIRED = ('paths', 'paths_codebert', 'vocab', 'imports', 'noapi', 'team', 'model1', 'model1_variants')
 BESPOKE = ('day1', 'day1b', 'v3', 'subgraph')
 
 
@@ -32,7 +32,7 @@ def stage(name):
 
 def test_the_listed_stages_are_the_files_of_experiments_stages_and_each_names_itself():
     files = {p.stem for p in Path(stages_package.__file__).parent.glob('*.py')} - {'__init__', 'common'}
-    assert files == set(stages_package.STAGES) == set(gates.stage_names()) and len(files) == 11
+    assert files == set(stages_package.STAGES) == set(gates.stage_names()) and len(files) == 12
     assert set(stages_package.STAGES) == set(BESPOKE) | set(PAIRED)
     for name in stages_package.STAGES:
         s = stage(name)
@@ -231,6 +231,22 @@ def test_model1_gate_groups_and_pairs_follow_the_run_configs():
     assert arms['Model 1 tokenseq'].replace('-L32-w8', '') == 'kfold_x86_tokenseq'
     assert s.pairs == (('TF-IDF', 'Model 1 tokenseq'), ('header-imports LR', 'Model 1 tokenseq'),
                        ('R7 typed', 'Model 1 tokenseq'), ('R2 no-edges', 'Model 1 tokenseq')) and s.seeds == (0, 1, 2)
+
+
+def test_model1_variants_gate_groups_and_pairs_follow_the_run_configs():
+    s = stage('model1_variants')
+    arms = dict(s.arms)
+    assert list(arms) == ['TF-IDF', 'header-imports LR', 'R7 typed', 'R2 no-edges', 'Model 1 tokenseq',
+                          'Model 1 tokenseq, out-of-fold threshold', 'Model 1 five-channel L128', 'Model 1 five-channel L512',
+                          'team sig500v3']
+    kfold = dict(protocol='kfold', fold=0, arch='x86')
+    assert arms['Model 1 tokenseq'] == RunConfig(**kfold, model='tokenseq').group == 'kfold_x86_tokenseq'
+    assert arms['Model 1 tokenseq, out-of-fold threshold'] == 'kfold_x86_tokenseq-thoof'
+    assert arms['Model 1 five-channel L128'] == 'kfold_x86_fivechannel' and arms['Model 1 five-channel L512'] == 'kfold_x86_fivechannel-L512'
+    assert arms['team sig500v3'] == RunConfig(**kfold, model='gnn', tag='team-sig500v3').group == 'kfold_x86_gnn_team-sig500v3'
+    assert arms['R7 typed'] == 'kfold_x86_gnn-mblk15' and arms['R2 no-edges'] == 'kfold_x86_gnn-noedges-mblk15'
+    variants = ['Model 1 tokenseq, out-of-fold threshold', 'Model 1 five-channel L128', 'Model 1 five-channel L512']
+    assert s.pairs == tuple((ref, v) for v in variants for ref in ('Model 1 tokenseq', 'TF-IDF')) and s.seeds == (0, 1, 2)
 
 
 def test_model1_gates_say_what_the_rule_is(tmp_path, monkeypatch):

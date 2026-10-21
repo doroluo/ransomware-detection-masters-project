@@ -21,6 +21,15 @@ AUC_RULES = {'overall': 'checkpoint: validation AUC; threshold: validation macro
              'cell': 'checkpoint: validation cell-balanced AUC; threshold: validation cell-balanced macro-F1'}
 
 
+def auc_rule(cfg: RunConfig):
+    """The text of `selection.auc.rule` in metrics.json: AUC_RULES, with the threshold clause of `threshold_from='oof'`."""
+    rule = AUC_RULES[cfg.select_on]
+    if cfg.threshold_from == 'oof':
+        rule = rule.split('; threshold:')[0] + ('; threshold: out-of-fold macro-F1 (refits on grouped folds of the training '
+                                                 'binaries, s04_evaluation/val_threshold.py oof_rule)')
+    return rule
+
+
 def evaluate(rows, ids, probs, threshold):
     by_id = {r['sample_id']: r for r in rows}
     y = np.array([by_id[i]['label'] for i in ids])
@@ -125,7 +134,7 @@ def write_run(run_dir, cfg: RunConfig, rows_f1, rows_auc, thr_f1, thr_auc, extra
         'selection': {
             'f1': {'best_epoch': extra['best_epoch'], 'threshold_val': thr_f1,
                    'test_at_val_threshold': test_scores(rows_f1, thr_f1)},
-            'auc': {'rule': AUC_RULES[cfg.select_on], 'best_epoch': extra.get('auc_best_epoch'),
+            'auc': {'rule': auc_rule(cfg), 'best_epoch': extra.get('auc_best_epoch'),
                     'val_auc': extra.get('val_auc'), 'threshold_val': thr_auc,
                     'test': test_scores(rows_auc, thr_auc), 'test_at_half': test_scores(rows_auc, 0.5),
                     'family_recall': test_family_recall(rows_auc, thr_auc)},

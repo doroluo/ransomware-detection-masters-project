@@ -57,6 +57,30 @@ def carve_validation(rows, fraction, seed):
     return [r for r in rows if r['sample_id'] not in held], [r for r in rows if r['sample_id'] in held], sorted(val_families)
 
 
+def grouped_folds(rows, k, seed):
+    """`rows` split into `k` held-out sets of whole groups (ransomware family, goodware identity group: the keys of
+    `carve_validation`) that partition them. Per class the groups go largest first into the fold with the fewest binaries of
+    that class, groups of equal size in a permutation from default_rng([seed, 4093]); the rows of a fold keep their order in
+    `rows`. A class with fewer than `k` groups cannot be split in `k`."""
+    rng = np.random.default_rng([seed, 4093])
+    fold_of = {}
+    for label, key in ((1, 'family'), (0, 'identity_group')):
+        members = {}
+        for r in rows:
+            if r['label'] == label:
+                members.setdefault(r[key], []).append(r['sample_id'])
+        groups = sorted(members)
+        if len(groups) < k:
+            raise ValueError(f"{len(groups)} {key} group(s) among the {'ransomware' if label else 'goodware'} binaries: "
+                             f'too few for {k} folds that keep a group whole')
+        load = [0] * k
+        for i in sorted(rng.permutation(len(groups)), key=lambda i: -len(members[groups[i]])):
+            f = int(np.argmin(load))
+            load[f] += len(members[groups[i]])
+            fold_of.update(dict.fromkeys(members[groups[i]], f))
+    return [[r for r in rows if fold_of[r['sample_id']] == f] for f in range(k)]
+
+
 def subsample_train(train, fraction, seed):
     """Whole groups (ransomware family, goodware identity group) per class: in a permutation from
     default_rng([seed, 1729]), the shortest prefix whose binaries reach `fraction` of the class. Nested in `fraction`."""

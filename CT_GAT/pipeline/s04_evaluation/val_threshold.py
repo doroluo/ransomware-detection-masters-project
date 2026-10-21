@@ -1,5 +1,12 @@
 """Re-score saved predictions with the threshold that maximises validation macro-F1 (the graph2vec `oofthr`
-convention), and report kfold runs per fold as well as pooled. Reads predictions.csv only; nothing is retrained."""
+convention), and report kfold runs per fold as well as pooled. Reads predictions.csv only; nothing is retrained.
+
+The module also holds the other threshold rule a trainer can ask for, `--threshold-from oof` (`oof_rule`): the validation
+families of a fold can saturate (validation AUC near 1.0 within a few epochs), and then every threshold in a wide band has the
+same validation macro-F1 and the first of them is taken. The out-of-fold rule chooses the threshold on predictions that the
+model did not train on and that are not saturated: the training binaries are split in `OOF_K` folds that keep a ransomware
+family or a goodware identity group whole (`common.manifests.grouped_folds`), the model is refit on `OOF_K - 1` of them for
+the epoch count of the run, and the held-out predictions of the folds are pooled."""
 import csv
 import statistics
 from collections import defaultdict
@@ -8,9 +15,11 @@ import numpy as np
 from sklearn.metrics import f1_score, roc_auc_score
 
 from common.config import RUNS, RunConfig
+from common.manifests import grouped_folds
 
 GRID = np.linspace(0.02, 0.98, 49)
 KFOLD = ('kfold', 'kfold_v3')
+OOF_K = 3
 
 
 def load(run_dir):
@@ -24,6 +33,46 @@ def load(run_dir):
 
 def macro_f1(y, p, t):
     return f1_score(y, (p >= t).astype(int), average='macro', zero_division=0)
+
+
+def grid_threshold(y, p):
+    """The GRID threshold with the highest macro-F1 on (y, p); the first one on ties."""
+    return float(max(GRID, key=lambda g: macro_f1(y, p, g)))
+
+
+def oof_rule(rows, fit_predict, epochs, k=OOF_K, seed=0):
+    """The out-of-fold threshold of a model.
+
+    rows         the training rows (`label`, `family`, `identity_group`, `sample_id`)
+    fit_predict  fit_predict(train_rows, held_rows, epochs, seed) -> {epoch: P(ransomware) of held_rows, in their order}: fit a
+                 new model on train_rows for max(epochs) epochs and predict held_rows after each epoch in `epochs` (the model
+                 owns the cost; `seed` is the seed of the refit)
+    epochs       {rule: epoch}, e.g. {'f1': best_epoch, 'auc': auc_best_epoch}: the epoch count of the checkpoint each rule
+                 thresholds
+    Returns ({rule: threshold}, record). The record is what metrics.json keeps: the rule, k, the epochs, the number of
+    out-of-fold predictions, the thresholds and their out-of-fold macro-F1."""
+    held = grouped_folds(rows, k, seed)
+    wanted = tuple(sorted(set(epochs.values())))
+    pooled = {e: ([], []) for e in wanted}
+    for j, held_rows in enumerate(held):
+        held_ids = {r['sample_id'] for r in held_rows}
+        train_rows = [r for r in rows if r['sample_id'] not in held_ids]
+        out = fit_predict(train_rows, held_rows, wanted, seed * 1000 + j + 1)
+        for e in wanted:
+            probs = np.asarray(out[e], dtype=np.float64)
+            if probs.shape != (len(held_rows),):
+                raise ValueError(f'fit_predict gave {probs.shape} predictions for {len(held_rows)} held-out binaries')
+            pooled[e][0].extend(r['label'] for r in held_rows)
+            pooled[e][1].extend(probs)
+    thresholds, f1s = {}, {}
+    for rule, e in epochs.items():
+        y, p = np.array(pooled[e][0]), np.array(pooled[e][1])
+        thresholds[rule] = grid_threshold(y, p)
+        f1s[rule] = float(macro_f1(y, p, thresholds[rule]))
+    record = {'rule': 'oof', 'k': k, 'grouping': 'ransomware family, goodware identity group (common.manifests.grouped_folds)',
+              'refit_epochs': dict(epochs), 'n_oof': len(rows), 'fold_sizes': [len(h) for h in held],
+              'threshold': thresholds, 'oof_macro_f1': f1s}
+    return thresholds, record
 
 
 def scores(y, p, t):

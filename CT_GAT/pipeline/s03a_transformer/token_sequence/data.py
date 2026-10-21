@@ -119,13 +119,16 @@ class FoldSequences:
 
     Windows are random (at most `max_windows`, offset and choice seeded by (seed, epoch, i)) for the 'train' split and
     all of them in order for 'val' and 'test'; `set_epoch` changes the draw. `subset` (store binary indices, all of them
-    in the split) keeps only those binaries, in the order given (smoke runs)."""
+    in the split) keeps only those binaries, in the order given (smoke runs and the refits of the out-of-fold threshold).
+    `all_windows` gives a 'train' object the evaluation windows of 'val' and 'test' (every window, in order): the held-out
+    binaries of the out-of-fold threshold are training binaries that are predicted, not trained on."""
 
     def __init__(self, export_root, fold: int, split: str, L: int = 512, max_windows: int = 64, seed: int = 0,
-                 subset=None) -> None:
+                 subset=None, all_windows: bool = False) -> None:
         if split not in SPLITS:
             raise ValueError(f'split {split}: one of {SPLITS}')
         self.fold, self.split, self.L, self.max_windows, self.seed, self.epoch = fold, split, L, max_windows, seed, 0
+        self.random_windows = split == 'train' and not all_windows
         store = export_root if isinstance(export_root, BlockStore) else BlockStore(export_root)
         self.view = FoldView(store, fold, split)
         self._binaries = self.view.binaries()
@@ -170,7 +173,7 @@ class FoldSequences:
         """Windows item i has: ceil(N / L) in 'val' and 'test'; in 'train' at most min(ceil(N / L), max_windows) (the random
         offset can drop the last one), so it is an upper bound there."""
         n = -(-int(self.positions()[i]) // self.L)
-        return min(n, self.max_windows) if self.split == 'train' else n
+        return min(n, self.max_windows) if self.random_windows else n
 
     def stream(self, i: int) -> Stream:
         return instruction_stream(self.view, self.binary(i))
@@ -179,7 +182,7 @@ class FoldSequences:
         if not -len(self) <= i < len(self):
             raise IndexError(i)
         i %= len(self)
-        train = self.split == 'train'
+        train = self.random_windows
         rng = np.random.default_rng((self.seed, self.epoch, i)) if train else None
         ids, kind, pad = windows(self.stream(i), self.L, train, self.max_windows, rng)
         info = self.view.store.binaries[self.binary(i)]

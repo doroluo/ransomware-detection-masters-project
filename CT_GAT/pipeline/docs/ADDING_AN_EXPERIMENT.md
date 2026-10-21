@@ -36,12 +36,13 @@ class ShallowSpec(GnnSpec):
         return ('shallow',) + tuple(cfg.variant.split('-')[1:])
 ```
 
-The registry line (the first two are the real ones; the module path is where the class can be imported from):
+The registry lines (the first three are the real ones; the module path is where the class can be imported from):
 
 ```python example=registry
 MODELS = {
     'gnn': 's03b_cfg_feature.gnn.spec:GnnSpec',
     'tokenseq': 's03a_transformer.token_sequence.spec:TokenSeqSpec',
+    'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec',
     'shallow': 'my_stage.spec:ShallowSpec',
 }
 ```
@@ -162,7 +163,9 @@ assert RunConfig(model='gnn', protocol='kfold', fold=0, mask_blocks=0.15, tag='m
 `--tag <word>` labels a run without changing what it does, which is how the 500-block arms and the teammates' arms are told
 apart. The controls of the edge structure are `no_edges`, `chain`, `shuffle` (degree-preserving shuffled edges) and `permute_types`
 (`--control`); the others are `--untyped`, `--no-call-mp`, `--direction`, `--drop-edges`, `--flip-edges`, `--mask-tokens`,
-`--mask-blocks`, `--drop-functions`, `--train-fraction`, `--vocab`, `--imports` and `--encoder`.
+`--mask-blocks`, `--drop-functions`, `--train-fraction`, `--vocab`, `--imports` and `--encoder`. The sequence models (`tokenseq`,
+`fivechannel`) take one more, `--threshold-from oof`, which chooses the decision threshold on out-of-fold predictions of the training
+binaries instead of the validation families (run name suffix `-thoof`; `experiments.train.choose_thresholds` is where a new model asks for it).
 
 A new option is a `RunConfig` field with its default (so that no existing name changes), its token in `RunConfig.variant`, the code
 that reads it, and a case in `tests/test_run_names.py`, which fails if any recorded name changes. A new structural control is also a branch of `control_edges` in

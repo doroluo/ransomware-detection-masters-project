@@ -32,7 +32,7 @@ and the evaluation boxes.
 |---|---|---|
 | `s01_ida_export/` | the IDAPython extractor that writes the `*.jsonl.gz` CFG export and the `*.asm.gz` listing of a binary (runs inside IDA, on the VM) | [`s01_ida_export/README.md`](s01_ida_export/README.md) |
 | `s02_preprocess/` | the team's two preprocessing scripts for the transformer (flat scripts), and the jsonl-only path: `cache/` (CFG cache builder and checker, fold CSVs), `tokenizer/`, `subgraph.py` | [`s02_preprocess/README.md`](s02_preprocess/README.md) |
-| `s03a_transformer/` | the team's transformer (`transformer_model.py`) and Model 1, the token-sequence transformer (`token_sequence/`) | [`s03a_transformer/README.md`](s03a_transformer/README.md) |
+| `s03a_transformer/` | Model 1, the token-sequence transformer (`token_sequence/`), and Janice Park's five-channel Model 1 (`five_channel/`) | [`s03a_transformer/README.md`](s03a_transformer/README.md) |
 | `s03b_cfg_feature/` | Model 2, the hierarchical edge-typed GNN over the block CFG and the call graph (`gnn/`) | [`s03b_cfg_feature/README.md`](s03b_cfg_feature/README.md) |
 | `s03c_cfg_transformer/` | Model 3: block export, encoder contract, CodeBERT and reference encoders, precomputed block vectors | [`s03c_cfg_transformer/README.md`](s03c_cfg_transformer/README.md) |
 | `s04_evaluation/` | metrics, validation thresholds, the baselines, the paired bootstrap, `report.py` and the gate summaries | [`s04_evaluation/README.md`](s04_evaluation/README.md) |
@@ -56,6 +56,7 @@ Where the data lives is set per machine, never in the code:
 * **`GT_CACHE`** (a folder) beats the registry; **`GT_RUNS`** the run directories (default `runs/` here, gitignored);
   **`GT_EXPORT`** the block exports (default `<runs>/export`).
 * **`GT_BUNDLE`, `GT_COLLECTIONS`, `GT_FOLDS`, `GT_FOLDS_V3`, `GT_READER_ROOT`**: the raw inputs of `sources`, each overriding the file.
+* **`GT_TEAM_B_BUILD`** (`sources` key `team_b_build`): the pipeline-B build folder of `<sample_id>.pt` files that `--model fivechannel` reads (`--build` beats it).
 * **`HF_HOME`** the Hugging Face home that holds `microsoft/codebert-base` (the CodeBERT encoder loads it offline).
 * **`GT_PY`** the interpreter of `experiments.queue`; **`GT_TEAM_GNN_ROOT`, `GT_TEAM_MAIN_ROOT`, `GT_TEAM_ASM_DIR`** the pinned
   teammate worktrees and the listing folder of `experiments/team_pipelines`.
@@ -96,7 +97,7 @@ python -m pytest -m "not real_data and not gpu"                                 
 `experiments/queue.py` runs a plan file of `train`, `baselines`, `report`, `val_threshold` and `gates` lines; a finished run is
 skipped, `python -m experiments.queue --stop` stops it between lines, a failed line is retried once, and `--dry` prints what
 would run. `experiments/plans/` holds the experiments we ran, one file each (`day1`, `day1b`, `v3`, `subgraph`, `paths`,
-`paths_codebert`, `vocab`, `imports`, `imports_header`, `noapi`, `team`, `model1`, `l2_nocall_seeds`, `r2_noapi`); the first lines
+`paths_codebert`, `vocab`, `imports`, `imports_header`, `noapi`, `team`, `model1`, `l2_nocall_seeds`, `r2_noapi`; `model1_variants` is written and not yet run); the first lines
 of a plan name the CPU steps to run once before it. [`docs/ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md) shows how
 to add a model, an encoder, a dataset, a control, a plan and a gates stage, and how to read the tables.
 

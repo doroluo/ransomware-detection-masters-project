@@ -14,7 +14,7 @@ the run directory (`common/run_io.py`) are the loop's.
     forward(model, batch)     the logits [batch size] of a batch that is already on the device
     variant_tokens(cfg)       the dash-separated tokens of the run-name variant (`RunConfig.variant`) that the model's options
                     produce; the name itself stays `RunConfig.name`
-    run(cfg, out_name, **options)   optional: a model whose loop is not the registry's (Model 1, `tokenseq`) trains and writes its
+    run(cfg, out_name, **options)   optional: a model whose loop is not the registry's (Model 1: `tokenseq`, `fivechannel`) trains and writes its
                     run directory itself; `experiments.train.run` calls it after `check` and does not call `build`, `loader`
                     or `forward`
 
@@ -31,6 +31,7 @@ from common.manifests import Manifest
 MODELS = {
     'gnn': 's03b_cfg_feature.gnn.spec:GnnSpec',
     'tokenseq': 's03a_transformer.token_sequence.spec:TokenSeqSpec',
+    'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec',
 }
 
 

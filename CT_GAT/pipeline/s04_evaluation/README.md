@@ -20,7 +20,7 @@ python -m s04_evaluation.gates --stage v3                                       
 | module | what it does |
 |---|---|
 | `metrics.py` | accuracy, precision, recall, F1, macro-F1, AUC, PR-AUC, the class x architecture "cell" weights, the majority and x86-rule floors |
-| `val_threshold.py` | the threshold grid and the validation macro-F1 maximiser every AUC-checkpoint result is scored at |
+| `val_threshold.py` | the threshold grid and the validation macro-F1 maximiser every AUC-checkpoint result is scored at; `oof_rule`, the out-of-fold threshold of `--threshold-from oof` |
 | `baselines.py` | TF-IDF over the block tokens (and the same over another vocabulary, `--vocab`), the structural features, the header-imports logistic regression (`--imports`), the out-of-fold TF-IDF logits that `--stack-tfidf` reads (`--stack-logits`); writes `<runs>/baselines/<dir>/` |
 | `report.py` | `RESULTS.md`: one row per configuration, mean +- sd over seeds of the pooled out-of-fold test metrics |
 | `stats.py` | the paired cluster bootstrap between two arms (clusters are ransomware families and single goodware binaries) |

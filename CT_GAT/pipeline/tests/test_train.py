@@ -39,7 +39,8 @@ def gnn(**kw):
 
 def test_the_registry_serves_the_gnn_and_returns_a_fresh_spec_per_run():
     assert MODELS == {'gnn': 's03b_cfg_feature.gnn.spec:GnnSpec',
-                      'tokenseq': 's03a_transformer.token_sequence.spec:TokenSeqSpec'}
+                      'tokenseq': 's03a_transformer.token_sequence.spec:TokenSeqSpec',
+                      'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec'}
     a, b = spec_for(RunConfig()), spec_for(RunConfig())
     assert type(a) is GnnSpec and a is not b
     assert isinstance(a, ModelSpec) and a.name == 'gnn' and a.requires == ('index.csv', 'vocab.json', 'samples')
