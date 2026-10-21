@@ -108,10 +108,20 @@ python s02_preprocess/preprocess_full.py --limit 2 --num-blocks 32 --seed 0     
 The options (sampling, library functions, caps, resuming) are in
 [`CT_GAT/pipeline/s02_preprocess/README.md`](CT_GAT/pipeline/s02_preprocess/README.md).
 
-**The whole pipeline** (training and evaluating every model on the folds). It reads the CFG bundle and the fold files:
-unzip `Mendeley_GNN_v1.zip` and `family_holdout_folds.zip` anywhere, copy `datasets.json.example` to `datasets.json` and
-set `cache` (where the cache will be written) and the paths of `bundle`, `folds` and `runs`. Then build the cache once,
-and train and evaluate:
+**The whole pipeline** (training and evaluating every model on the folds). It reads the CFG bundle and the fold files,
+not the `CT_GAT/data/Mendeley_*` folders (those are the input of `preprocess_full.py` only). Unzip `Mendeley_GNN_v1.zip`
+and `family_holdout_folds.zip` anywhere and write `CT_GAT/pipeline/datasets.json` (gitignored) with your paths:
+
+```json
+{"x86": {"cache": "D:/gt/cache_x86", "protocols": ["bundle", "kfold"],
+         "sources": {"bundle": "D:/gt/Mendeley_GNN_v1",
+                     "folds": "D:/gt/folds/family_holdout/folds_mendeley.csv",
+                     "folds_v3": "D:/gt/folds/family_holdout_v3",
+                     "runs": "D:/gt/runs"}}}
+```
+
+`bundle` is the folder that holds `samples.csv`; the cache build reads both fold sources, also for x86 alone. Then build
+the cache once, and train and evaluate:
 
 ```bash
 python -m s02_preprocess.cache.build_cache                       # the CFG cache (CPU, once)
@@ -121,6 +131,8 @@ python -m experiments.queue --plan experiments/plans/day1.txt    # a whole exper
 python -m s04_evaluation.report                                  # RESULTS.md over all runs
 ```
 
+The plans `v3` and the other `kfold_v3` experiments need the all-architecture cache as well (the `collections` source
+and a second build; see the pipeline README); the x86 plans (`day1`, `model1`, `noapi`, ...) need only this one.
 [`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md) has every step: the data settings, Models 1 to 3, the
 teammates' pipelines, the experiment plans, the comparison statistics and where each output goes.
 
