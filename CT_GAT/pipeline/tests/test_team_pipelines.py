@@ -1,5 +1,5 @@
 """python -m pytest tests/test_team_pipelines.py: the team-pipeline adapter (experiments/team_pipelines/common.py): fold
-partition, bundle lookup, run directories the harness reads, the sha256 pin on the teammates' code, and the Pipeline A / B
+partition, bundle and collection lookup, run directories the harness reads, the sha256 pin on the teammates' code, and the Pipeline A / B
 trainers.
 
 What runs everywhere (CPU, no teammate code, no torch_geometric): the import guard of every module of the package, the
@@ -22,9 +22,9 @@ import numpy as np
 import pytest
 import torch
 
-from common import manifests
+from common import manifests, paths
 from common.config import DEFAULT_CACHE, RUNS, RunConfig
-from experiments.team_pipelines import build_a, common as tp, fit, train_a, train_b
+from experiments.team_pipelines import build_a, build_b, common as tp, fit, train_a, train_b
 from experiments.train import val_threshold_of
 from s04_evaluation import gate_tables, gates, report, stats
 from tiny_cache import tiny  # noqa: F401  (a fixture)
@@ -159,10 +159,15 @@ def make_bundle(root, ids):
 def test_paths_for_reads_the_bundle_and_the_listing_directory_named_by_the_environment(tmp_path, monkeypatch):
     bundle, asm = make_bundle(tmp_path, ['a' * 64, 'b' * 64])
     monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'no-datasets.json'))
+    monkeypatch.setenv('GT_COLLECTIONS', str(tmp_path / 'no-collections'))
     monkeypatch.delenv('GT_BUNDLE', raising=False)
     monkeypatch.delenv('GT_TEAM_ASM_DIR', raising=False)
-    with pytest.raises(tp.TeamSourceNotConfigured, match='GT_BUNDLE'):
+    with pytest.raises(tp.TeamSourceNotConfigured, match='GT_BUNDLE'):       # nothing configured, no collections either
         tp.paths_for('a' * 64)
+    monkeypatch.setenv('GT_TEAM_ASM_DIR', str(asm))
+    with pytest.raises(tp.TeamSourceNotConfigured, match='GT_BUNDLE'):       # the listings without the bundle: half configured
+        tp.paths_for('a' * 64)
+    monkeypatch.delenv('GT_TEAM_ASM_DIR')
     monkeypatch.setenv('GT_BUNDLE', str(bundle))
     with pytest.raises(tp.TeamSourceNotConfigured, match='GT_TEAM_ASM_DIR'):
         tp.paths_for('a' * 64)
@@ -176,6 +181,124 @@ def test_paths_for_reads_the_bundle_and_the_listing_directory_named_by_the_envir
     (asm / f'{"a" * 64}.asm.gz').unlink()
     with pytest.raises(FileNotFoundError, match='missing'):
         tp.paths_for('a' * 64)
+
+
+def make_collections(root, ids):
+    """The two Mendeley collections under `root` (the `collections` source), a samples.csv row per id with its cfg_path and asm_path
+    relative to its own collection, the files beside them. Ids alternate between the collections (ransomware, goodware)."""
+    for k, name in enumerate(('Mendeley_Ransomware', 'Mendeley_Goodware')):
+        lines = ['sample_id,label,family,cfg_path,asm_path']
+        for sid in ids[k::2]:
+            for kind in ('jsonl', 'asm'):
+                path = root / name / 'samples' / 'train' / f'{sid}.{kind}.gz'
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'')
+            lines.append(f'{sid},{1 - k},fam{k},samples/train/{sid}.jsonl.gz,samples/train/{sid}.asm.gz')
+        (root / name / 'samples.csv').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    return root
+
+
+def zero_config(monkeypatch, tmp_path, collections):
+    """No datasets.json, no bundle, no listing directory; the collections source is `collections`."""
+    monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'no-datasets.json'))
+    monkeypatch.setenv('GT_COLLECTIONS', str(collections))
+    monkeypatch.delenv('GT_BUNDLE', raising=False)
+    monkeypatch.delenv('GT_TEAM_ASM_DIR', raising=False)
+
+
+def test_paths_for_without_a_bundle_and_a_listing_directory_reads_the_collections(tmp_path, monkeypatch):
+    ids = [c * 64 for c in 'abcd']
+    collections = make_collections(tmp_path / 'data', ids)
+    zero_config(monkeypatch, tmp_path, collections)
+    for sid, name in zip(ids, ('Mendeley_Ransomware', 'Mendeley_Goodware') * 2):
+        base = collections / name / 'samples' / 'train'
+        assert tp.paths_for(sid) == (base / f'{sid}.jsonl.gz', base / f'{sid}.asm.gz')
+    row = tp.team_row(ids[1])
+    assert row['label'] == 0 and row['family'] == 'fam1' and 'root' not in row
+    assert row['cfg_file'] == collections / 'Mendeley_Goodware' / 'samples' / 'train' / f'{ids[1]}.jsonl.gz'
+    with pytest.raises(KeyError, match='no row'):
+        tp.paths_for('0' * 64)
+    (collections / 'Mendeley_Goodware' / 'samples' / 'train' / f'{ids[1]}.asm.gz').unlink()
+    with pytest.raises(FileNotFoundError, match='missing'):
+        tp.paths_for(ids[1])
+
+
+def test_paths_for_names_the_collections_when_they_are_missing(tmp_path, monkeypatch):
+    zero_config(monkeypatch, tmp_path, tmp_path / 'data')
+    with pytest.raises(tp.TeamSourceNotConfigured, match='Mendeley_Ransomware'):
+        tp.paths_for('a' * 64)
+
+
+def test_a_configured_bundle_or_listing_directory_keeps_the_machines_behaviour_beside_collections(tmp_path, monkeypatch):
+    ids = ['a' * 64, 'b' * 64]
+    collections = make_collections(tmp_path / 'data', ids)
+    bundle, asm = make_bundle(tmp_path, ids)
+    zero_config(monkeypatch, tmp_path, collections)
+    monkeypatch.setenv('GT_BUNDLE', str(bundle))
+    with pytest.raises(tp.TeamSourceNotConfigured, match='GT_TEAM_ASM_DIR'):            # not the collections' listing
+        tp.paths_for(ids[0])
+    monkeypatch.setenv('GT_TEAM_ASM_DIR', str(asm))
+    assert tp.paths_for(ids[0]) == (bundle / 'cfg' / f'{ids[0]}.jsonl.gz', asm / f'{ids[0]}.asm.gz')
+    monkeypatch.delenv('GT_BUNDLE')
+    with pytest.raises(tp.TeamSourceNotConfigured, match='GT_BUNDLE'):                  # the listings alone: still half configured
+        tp.paths_for(ids[0])
+
+
+class Stopped(Exception):
+    """Raised by the stand-in for `build_b.load_state`, carrying what `main` had chosen by then."""
+
+
+@pytest.fixture
+def build_b_up_to_the_state(monkeypatch):
+    """A function running `build_b.main(argv)` up to its first read of the build folder, returning (out, settings)."""
+    monkeypatch.setattr(build_b, 'import_team', lambda *args, **kwargs: object())
+
+    def stop(out, pp, settings):
+        raise Stopped(out, settings)
+    monkeypatch.setattr(build_b, 'load_state', stop)
+
+    def run(argv):
+        with pytest.raises(Stopped) as e:
+            build_b.main(argv)
+        return e.value.args
+    return run
+
+
+def test_build_b_writes_to_the_team_b_build_source_when_no_out_is_given(tiny, tmp_path, monkeypatch, build_b_up_to_the_state):  # noqa: F811
+    monkeypatch.delenv('GT_TEAM_B_BUILD', raising=False)
+    monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'none.json'))
+    monkeypatch.setattr(paths, 'PROCESSED', tmp_path / 'processed')                    # the catalog default: CT_GAT/processed/cfg_subgraphs
+    out, settings = build_b_up_to_the_state(['--limit', '1'])
+    assert out == tmp_path / 'processed' / 'cfg_subgraphs' and out.is_dir() and 'pins' not in settings
+    monkeypatch.setenv('GT_TEAM_B_BUILD', str(tmp_path / 'elsewhere'))
+    assert build_b_up_to_the_state(['--limit', '1'])[0] == tmp_path / 'elsewhere'
+    out, settings = build_b_up_to_the_state(['--limit', '1', '--out', str(tmp_path / 'given')])
+    assert out == tmp_path / 'given'
+    assert build_b_up_to_the_state(['--source', 'repo', '--limit', '1'])[1]['pins'] == dict(tp.source_pins('repo'))
+
+
+def test_build_b_stops_with_the_build_cache_command_when_the_cache_has_no_index(tmp_path, monkeypatch):
+    monkeypatch.setattr(manifests, 'CACHE', tmp_path / 'no-cache')
+    with pytest.raises(SystemExit, match=r'index.csv is missing.*build_cache --cache mendeley_x86'):
+        build_b.main(['--out', str(tmp_path / 'b')])
+    assert not (tmp_path / 'b').exists()
+
+
+def test_build_b_does_not_touch_a_folder_of_sample_files_that_is_no_build(tiny, tmp_path, build_b_up_to_the_state):  # noqa: F811
+    unzipped = tmp_path / 'cfg_subgraphs'
+    unzipped.mkdir()
+    sample = unzipped / ('a' * 64 + '.pt')
+    torch.save({}, sample)
+    torch.save({}, unzipped / 'channel_embedder.pt')
+    with pytest.raises(SystemExit, match='not a build of this command'):
+        build_b.main(['--out', str(unzipped), '--limit', '1'])
+    assert sample.is_file()
+    (unzipped / 'settings.json').write_text('{}', encoding='utf-8')                    # a build of this command: it goes on
+    assert build_b_up_to_the_state(['--out', str(unzipped), '--limit', '1'])[0] == unzipped
+    only_embedder = tmp_path / 'fresh'
+    only_embedder.mkdir()
+    torch.save({}, only_embedder / 'channel_embedder.pt')
+    assert build_b_up_to_the_state(['--out', str(only_embedder), '--limit', '1'])[0] == only_embedder
 
 
 def test_the_bundle_may_come_from_datasets_json(tmp_path, monkeypatch):
@@ -391,6 +514,70 @@ def test_pins_cover_every_file_of_every_closure():
     assert set(tp.source_pins('main-c7899f0')) == {tp.STAGE + 'preprocess_full.py', tp.STAGE + 'tokenize_asm_gz.py'}
     assert (tp.TEAM_COMMIT, tp.MAIN_COMMIT) == ('331ce0b', 'c7899f0')
     assert tp.SOURCES['gnn-331ce0b']['commit'] == '331ce0b' and tp.SOURCES['main-c7899f0']['commit'] == 'c7899f0'
+
+
+def repo_copy(tmp_path, monkeypatch):
+    """The two files of the `repo` source copied under a temp root that the source is then pointed at."""
+    root = tmp_path / 'repo_copy'
+    for rel in tp.MAIN_CLOSURE['preprocess_full']:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(tp.REPO_ROOT / rel, root / rel)
+    monkeypatch.setitem(tp.SOURCES, 'repo', {**tp.SOURCES['repo'], 'root': root, 'pins': tp.FilePins(root, tp.MAIN_PINNED_SHA256)})
+    return root
+
+
+def test_the_repo_source_pins_the_files_of_the_repository_as_they_are(tmp_path, monkeypatch):
+    rels = {tp.STAGE + 'preprocess_full.py', tp.STAGE + 'tokenize_asm_gz.py'}
+    assert tp.SOURCES['repo']['env'] is None and tp.root_of('repo') == tp.REPO_ROOT == ROOT.parents[1]
+    here = tp.source_pins('repo')
+    assert set(here) == rels and all(here[rel] == hashlib.sha256((tp.REPO_ROOT / rel).read_bytes()).hexdigest() for rel in rels)
+    assert tp.source_pins('repo', 'tokenize_asm_gz') == {tp.STAGE + 'tokenize_asm_gz.py': here[tp.STAGE + 'tokenize_asm_gz.py']}
+    tp.check_pins('preprocess_full', source='repo')
+    copy = repo_copy(tmp_path, monkeypatch)
+    assert tp.root_of('repo') == copy and tp.source_pins('repo') == here                 # a copy of the files has the same pins
+    victim = copy / tp.STAGE / 'tokenize_asm_gz.py'
+    victim.write_bytes(victim.read_bytes() + b'\n# edited\n')
+    changed = tp.source_pins('repo')                                                      # read when asked, not at import
+    assert changed[tp.STAGE + 'tokenize_asm_gz.py'] != here[tp.STAGE + 'tokenize_asm_gz.py']
+    assert changed[tp.STAGE + 'preprocess_full.py'] == here[tp.STAGE + 'preprocess_full.py']
+    tp.check_pins('preprocess_full', source='repo')                                       # the pins follow the files of the root
+    other = tmp_path / 'other'
+    shutil.copytree(copy, other)
+    (other / tp.STAGE / 'preprocess_full.py').write_bytes(b'x = 1\n')
+    with pytest.raises(RuntimeError, match='preprocess_full.py.*the files of this repository'):
+        tp.check_pins('preprocess_full', other, 'repo')                                   # files that are not the repo's
+    with pytest.raises(KeyError):
+        tp.check_pins('graph_full_loader', source='repo')
+
+
+def test_a_resume_refuses_a_repo_file_that_changed_since_the_checkpoint(tmp_path, monkeypatch):
+    copy = repo_copy(tmp_path, monkeypatch)
+    out = tmp_path / 'build'
+    out.mkdir()
+    settings = {'sample': 'signal', 'num_blocks': 500, 'seed': 0, 'source': 'repo', 'pins': dict(tp.source_pins('repo'))}
+    (out / 'checkpoint.json').write_text(json.dumps({'settings': settings, 'done': ['x'], 'api_names': 2}), encoding='utf-8')
+    monkeypatch.setattr(build_b, 'load_vocab_embedder', lambda directory, pp: (type('V', (), {'names': [0, 1]})(), 'embedder'))
+    _, embedder, done = build_b.load_state(out, None, dict(settings))
+    assert (embedder, done) == ('embedder', {'x'})                                        # the same files: resumes
+    victim = copy / tp.STAGE / 'preprocess_full.py'
+    victim.write_bytes(victim.read_bytes() + b'\n# edited\n')
+    with pytest.raises(SystemExit, match=r'preprocess_full.py.*changed since the checkpoint'):
+        build_b.load_state(out, None, {**settings, 'pins': dict(tp.source_pins('repo'))})
+    with pytest.raises(SystemExit, match='was built with'):                               # another source on a repo build
+        build_b.load_state(out, None, {k: v for k, v in settings.items() if k != 'pins'} | {'source': 'gnn-331ce0b'})
+
+
+def test_import_team_of_the_repo_source_imports_its_files_and_keeps_our_own_modules(monkeypatch):
+    stage = (tp.REPO_ROOT / tp.STAGE).resolve()
+    ours = type(sys)('token_mapping')
+    ours.__file__ = str(stage / 'token_mapping.py')                                       # a module of ours inside the same tree
+    monkeypatch.setitem(sys.modules, 'token_mapping', ours)
+    monkeypatch.setattr(sys, 'path', list(sys.path))
+    mod = tp.import_team('preprocess_full', source='repo')
+    assert Path(mod.__file__).resolve() == stage / 'preprocess_full.py'
+    assert sys.modules['token_mapping'] is ours
+    assert Path(sys.modules['tokenize_asm_gz'].__file__).resolve() == stage / 'tokenize_asm_gz.py'
+    assert tp.import_team('preprocess_full', source='repo') is mod                         # the same pinned file twice: kept
 
 
 @pytest.fixture
