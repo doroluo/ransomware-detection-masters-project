@@ -1,11 +1,12 @@
 """python -m pytest tests/test_gnn_config.py: RunConfig fields, naming, validation and the CLI."""
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from common.config import COMBINED_CACHE, RUNS, RunConfig
+from common.config import COMBINED_CACHE, RUNS, RunConfig, foreign_identity
 from training.train import parse_config
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,9 +123,13 @@ def test_existing_run_names_unchanged():
     cfgs = {d: RunConfig.try_load(d / 'config.json') for d in dirs}
     kept = {d: c for d, c in cfgs.items() if c is not None}
     assert len(kept) > len(dirs) // 2
-    removed = sorted(d.name for d, c in cfgs.items() if c is None)
+    foreign = {d: foreign_identity(d / 'config.json') for d, c in cfgs.items() if c is None}      # main's fivechannel runs
+    assert all(i is None or i[0] == d.name for d, i in foreign.items()), foreign
+    removed = sorted(d.name for d, i in foreign.items() if i is None)
     assert all(('_graph_' in n or '_nograph_' in n or '-sg-lcc' in n) for n in removed), removed
-    bad = [d.name for d, c in kept.items() if c.name != d.name]
+    # main's `--threshold-from oof` runs carry a `-thoof` suffix that this RunConfig has no field for; stats and report skip them by name
+    oof = {d for d in kept if json.loads((d / 'config.json').read_text(encoding='utf-8')).get('threshold_from') == 'oof'}
+    bad = [d.name for d, c in kept.items() if c.name != d.name and d not in oof]
     assert not bad, bad
 
 

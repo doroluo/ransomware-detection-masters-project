@@ -29,6 +29,30 @@ class RemovedOption(ValueError):
     pass
 
 
+# models of the main pipeline that this package does not train: their run directories sit in the same runs directory and
+# are read by evaluation/stats.py only (`foreign_identity`), never as a RunConfig
+FOREIGN_MODELS = ('fivechannel',)
+
+
+class ForeignRun(RemovedOption):
+    pass
+
+
+def foreign_identity(path):
+    """(name, group, protocol, fold, seed) of a run of a FOREIGN_MODELS model, named as the main pipeline's RunConfig names it
+    (`kfold<f>_x86_fivechannel[-L<n>][-thoof]_s<seed>[_<tag>]`, group without fold and seed), from its config.json; None for any
+    other config."""
+    raw = json.loads(Path(path).read_text(encoding='utf-8'))
+    if raw.get('model') != 'fivechannel' or raw.get('protocol') not in ('kfold', 'kfold_v3'):
+        return None
+    variant = '-'.join(['fivechannel'] + ([f"L{raw['max_instructions']}"] if raw.get('max_instructions', 128) != 128 else [])
+                       + (['thoof'] if raw.get('threshold_from') == 'oof' else []))
+    tag = f"_{raw['tag']}" if raw.get('tag') else ''
+    split = {'kfold': f"kfold{raw['fold']}", 'kfold_v3': f"v3kfold{raw['fold']}"}[raw['protocol']]
+    return (f"{split}_{raw['arch']}_{variant}_s{raw['seed']}{tag}", f"{raw['protocol']}_{raw['arch']}_{variant}{tag}",
+            raw['protocol'], int(raw['fold']), int(raw['seed']))
+
+
 @dataclass(frozen=True)
 class RunConfig:
     protocol: Literal['bundle', 'kfold', 'kfold_v3'] = 'bundle'
@@ -238,6 +262,8 @@ class RunConfig:
         """The config saved in `path`; raises RemovedOption for a run that used an option removed in step 25."""
         raw = json.loads(Path(path).read_text(encoding='utf-8'))
         raw.setdefault('model', 'transformer')                                  # files before the model field were transformer runs
+        if raw['model'] in FOREIGN_MODELS:
+            raise ForeignRun(f"{path}: model {raw['model']} is trained by the main pipeline")
         gone = [f'{k}={raw[k]}' for k, values in REMOVED.items() if raw.get(k) in values]
         if raw.get('no_graph'):
             gone.append('no_graph')

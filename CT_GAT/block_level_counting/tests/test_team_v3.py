@@ -19,7 +19,7 @@ V3_ARMS = (('sig500v3', 'all'), ('sig500v3-feat', 'feat'), ('sig500v3-emb', 'emb
 
 
 def test_v3_arms_names_sources_and_feature_modes():
-    assert train_b.ARMS == ('sig500', 'sig500v2', 'sig500v3', 'sig500v3-feat', 'sig500v3-emb')
+    assert train_b.ARMS[:5] == ('sig500', 'sig500v2', 'sig500v3', 'sig500v3-feat', 'sig500v3-emb')      # step 36 appends the sigwhole arms
     for arm, features in V3_ARMS:
         assert train_b.ARM_DIR[arm].name == 'b_sig500_v3' and train_b.ARM_SOURCE[arm] == 'main-fix'
         assert train_b.ARM_FEATURES[arm] == features
@@ -225,7 +225,7 @@ def test_team_gates_from_synthetic_v3_runs(tmp_path, monkeypatch):
     pair = {(l.split('|')[1].strip(), l.split('|')[2].strip()): l.split('|')[-2].strip()
             for l in text.splitlines() if l.startswith('| ') and l.count('|') == 6}
     v3, feat, emb = gates.TEAM_V3
-    for a, b in ((x, y) for x, y in gates.TEAM_PAIRS if y in gates.TEAM_V3 or x in gates.TEAM_V3):
+    for a, b in ((x, y) for x, y in gates.TEAM_PAIRS if (y in gates.TEAM_V3 or x in gates.TEAM_V3) and y not in gates.TEAM_WHOLE):
         if a in ('TF-IDF',):
             continue
         assert pair[(a, b)] != 'missing', (a, b)

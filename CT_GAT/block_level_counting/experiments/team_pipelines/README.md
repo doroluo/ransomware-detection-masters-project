@@ -39,13 +39,26 @@ nohup bash scripts/team_gpu_runs.sh > RUNS/logs/team_gpu_runs.log 2>&1 & # GPU, 
   seed, the three arms of a seed one after the other), and finally `gates.py --stage team > RUNS/gates_team.md`. Stop file `RUNS/STOP`,
   one retry, skip on `metrics.json`, logs in `RUNS/logs/<name>.log`, as the other GPU scripts. Launch it before the build ends:
   `nohup bash scripts/team_v3_runs.sh > RUNS/logs/team_v3_runs.log 2>&1 &`.
+- `scripts/team_whole_runs.sh` (GPU, step 36; `--dry`, `--check-build`): waits until `RUNS/team/b_sigwhole_v3/build_summary.json` reports
+  1810 of 1810 binaries processed and none excluded (the uncapped rebuild: `build_b --source main-fix --sample signal --num-blocks
+  1000000`, every non-library block), then runs 60 runs: `train_b --device cuda --source main-fix` for the arms `sigwhole`
+  (`--features all`), `sigwhole-feat` (`feat`) and `sigwhole-emb` (`emb`), seeds 0 1 2 x folds 0-4 (45 runs, seed by seed, the three arms
+  of a seed one after the other), then Janice's five-channel Model 1 from main's code, from `rdmp-main-split/CT_GAT/pipeline` with
+  `PYTHONDONTWRITEBYTECODE=1` (`python -m experiments.train --model fivechannel --max-instructions 512 --build <b_sigwhole_v3> --tag
+  whole --protocol kfold --arch x86 --fold f --seed s --device cuda`; main's `RunConfig` takes `--tag` for every model, the run names are
+  `kfold<f>_x86_fivechannel-L512_s<s>_whole`, distinct from the earlier `kfold<f>_x86_fivechannel-L512_s<s>`; 15 runs), and finally
+  `gates.py --stage team > RUNS/gates_team.md`. Stop file, retry, skip and logs as `team_v3_runs.sh`; `GT_MAIN` overrides main's
+  directory. Launch it before the build ends: `nohup bash scripts/team_whole_runs.sh > RUNS/logs/team_whole_runs.log 2>&1 &`.
 - `python gates.py --stage team` reads whatever is on disk: TF-IDF, the header-imports LR, R7, R2, our b500 arms, the three team arms
   and path 2 on CodeBERT vectors; AUC, PR-AUC, macro-F1, accuracy, precision, recall and the confusion matrix per arm (seed 0
   pooled), the paired differences of each team arm against TF-IDF, R7 and our b500 typed arm (and cb500 against path 2, the b500
   typed arm against R7), with the pre-registered rule text. The three sig500v3 rows (`team sig500v3`, `team sig500v3 feat (Model 2)`,
   `team sig500v3 emb (Model 3)`) are paired against sig500v2 and sig500 (sig500v3 only), against R7 and against our b500 no-edges
   arm, and feat against emb; a line after the operating points gives the per-label match rates of `b_sig500_v3`
-  (`match_rates.py`). A missing arm prints as missing.
+  (`match_rates.py`). The rows `team sigwhole`, `team sigwhole feat (Model 2)`, `team sigwhole emb (Model 3)` and `fivechannel-L512 whole`
+  (main's runs, group `kfold_x86_fivechannel-L512_whole`, read through `common.config.foreign_identity` because `RunConfig` is ours and
+  has no such model) are paired each against R7, the three sigwhole arms against their v3 counterparts, and sigwhole emb against feat;
+  a second match-rate line covers `b_sigwhole_v3`. A missing arm prints as missing.
 
 `RunConfig` accepts `--budget` from 100 blocks (0 is the binary cap). Below 1000 the variant suffix spells the budget out
 (`sg-cap500`, `sg-cap128`), so two budgets cannot share a directory name; the matched arms still pass `--tag b500`. Every
@@ -170,10 +183,11 @@ python -m experiments.team_pipelines.train_a --fold k --seed s --arm gnn500|cb50
 
 The matched `--subgraph cap --budget 500` arm starts with `train.py --tag b500` (`RunConfig` accepts budgets from 100 blocks).
 
-## train_b.py (arms sig500, sig500v2, sig500v3, sig500v3-feat, sig500v3-emb)
+## train_b.py (arms sig500, sig500v2, sig500v3, sig500v3-feat, sig500v3-emb, sigwhole, sigwhole-feat, sigwhole-emb)
 
 ```
 python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig500v2|sig500v3|sig500v3-feat|sig500v3-emb
+    |sigwhole|sigwhole-feat|sigwhole-emb
     [--features all|feat|emb] [--source SOURCE] [--build DIR] [--smoke N] [--device cuda|cpu]
 ```
 
@@ -190,6 +204,25 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig5
   is refused; `--source` (default: the arm's) must equal the source in the build's `settings.json`, else the run is refused. The
   per-fold API remap, the api-kind recount and the one-sample re-pool check run in every mode (`feat` skips only the re-pool of the
   embeddings, which it never reads). `metrics.json` records `features`.
+- Step 36 arms. `sigwhole`, `sigwhole-feat` and `sigwhole-emb` read `RUNS/team/b_sigwhole_v3` (source `main-fix`, `num_blocks`
+  1,000,000: no per-binary cap) with the inputs `all`, `feat` and `emb`; the same refusals apply, plus the cap: a `sigwhole*` arm stops on
+  a build whose `settings.json` `num_blocks` is below 1,000,000 or absent, and every other arm stops on an uncapped one. Two changes
+  serve the size of the build (17.6 M blocks, about 14 GB of tensors; binaries of up to 190k blocks):
+  - The node budget. Training takes about 28 KB of GPU memory per node and evaluation about 15 KB (measured: the largest graph, 189,895
+    nodes, 5.3 GB for a training step alone), so a batch of 16 can hold over a million nodes. `HP_WHOLE` adds `node_budget` 300,000 (the
+    other arms have none): `fit.py` still takes the teammates' batches (same shuffle, 16 graphs, same rng use) and cuts only a batch whose
+    node total is above the budget, in order, into parts of at most 300,000 nodes (a graph above it alone). The parts' gradients are
+    summed, each part's class-weighted cross-entropy divided by the class-weight total of the whole batch, so the optimiser step is the
+    whole batch's up to dropout draws; validation and test prediction are cut the same way. A batch within the budget takes the
+    unchanged code path, so an arm whose batches never exceed it equals the same arm without a budget (`tests/test_team_whole.py`).
+    `history.csv` gets a `split_batches` column (batches cut per epoch) and `metrics.json` records `node_budget` in `recipe`. Measured
+    peak on the 16 largest graphs of the partial build as one batch (1,728,189 nodes, 9 parts): 6.4 GB training, 3.4 GB evaluation.
+  - Time (smoke of 600 training binaries on the partial build, RTX 5080, scaled to a fold by node count and the v3 runs' epoch counts):
+    graphs built in about 40 s for 1,810 binaries, about 5 s per epoch, 17-19 epochs: 2.5 min a run warm (up to about 4 min with the
+    14 GB read cold, twice), so 15 runs of an arm take about 40-60 min and the 45 sigwhole runs 2-3 h. The five-channel runs read the
+    whole build once for the first 512 instructions of each binary and train in seconds: about 1-2 min a run.
+  - Two passes over the payloads. `run` no longer holds every payload next to the graphs: pass 1 loads each payload for its API ids (and
+    the one-sample re-pool check), pass 2 loads it again for its graph and drops it. The graphs and the result are the same as before.
 - Inputs. The build directory, read only: the `.pt` of the ids in `checkpoint.json` (the embedder state saved
   there), `api_vocab.json`, `channel_embedder.pt`, `build_log.csv`. A full run needs every id of the fold that the build did not exclude, and stops otherwise.
 - What is fitted where. The build's vocabulary covers all 1,810 binaries; per fold it is cut back to the training binaries:
@@ -299,6 +332,13 @@ is not complete, criteria 2-4 are computed on the ids it holds and marked partia
 (synthetic builds and a fake pinned module; one real small binary built and replayed with both sources).
 
 ## Tests
+
+`tests/test_team_whole.py` (step 36): arm table and refusals (features, source, cap), `fit.pack` / `eval_chunks` (identity within the
+budget, order, a graph above it alone), a cut batch takes the step of the whole batch (SGD on a small net), `fit.fit` with a budget never
+hit equals no budget, budgeted prediction equals the unbudgeted one, `team_whole_runs.sh` (`--dry` lists the 60 names, with the
+`experiments.train` runs named like main's `RunConfig`; `--check-build`; stop file; main's runs execute in `GT_MAIN`, a finished run is
+skipped, a failing one retried once), the whole rows and pairs, `foreign_identity` and the existing fivechannel run directories, and
+`gates.team` on synthetic whole and fivechannel runs.
 
 `tests/test_team_v3.py` (step 35): arm table, feature widths 141 / 77 / 64 with identical edges on a 10-binary `main-fix` mini build,
 `--features` / `--source` / build-source refusals, smoke runs of the three arms on the mini build, `team_v3_runs.sh` (`--dry` lists

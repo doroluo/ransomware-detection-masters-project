@@ -1,6 +1,7 @@
 """Pipeline B trainer: the teammates' FullBlockGAT (train_full_gat recipe) on the build_b.py subgraphs, our fold manifests.
 
 python -m experiments.team_pipelines.train_b --fold 0 --seed 0 --arm sig500|sig500v2|sig500v3|sig500v3-feat|sig500v3-emb
+       |sigwhole|sigwhole-feat|sigwhole-emb
        [--features all|feat|emb] [--source SOURCE] [--build DIR] [--smoke N] [--device cuda|cpu]
        (run from the block_level_counting root; reads the build directory and never writes there)
 
@@ -20,6 +21,16 @@ refused, so no run is written under a name that does not describe its input. The
 check run in every mode: the three api-kind count columns of the features come from the remapped ids, and the check validates the
 build; `feat` alone skips the re-pool of the embeddings, which it never reads. --source (default: the arm's) must equal the source
 in the build's settings.json, else the run is refused.
+
+Arms on the uncapped build (step 36). `sigwhole`, `sigwhole-feat` and `sigwhole-emb` read `RUNS/team/b_sigwhole_v3` (build_b --source
+main-fix --sample signal --num-blocks 1000000: every non-library block of every binary, no 500-block cap) and mean the same inputs as
+the three v3 arms (`all`, `feat`, `emb`); the same refusals apply (the arm, --features, --source and the build's source must agree),
+and so does the cap: a `sigwhole*` arm refuses a build whose settings.json `num_blocks` is below `UNCAPPED_BLOCKS` or absent, and every
+other arm refuses an uncapped one.
+They train with a node budget (`HP_WHOLE['node_budget']`, fit.py): a binary has up to 190k blocks and a batch of 16 can hold over a
+million nodes, which does not fit the GPU, so a batch above the budget is cut in order into parts whose gradients are summed (the
+step of the whole batch); the other arms have no budget. Because the build is 14 GB of tensors, `run` reads each payload twice instead of
+holding them all: once for the API ids it uses (and the one-sample re-pool check), once to build its graph, which is all it keeps.
 
 The build fixed one API vocabulary over all 1,810 binaries and pooled the block embeddings with the embedder it saved
 (`channel_embedder.pt`). Per fold this script makes the vocabulary a training-set one again: every API id (>= FIRST_API_ID)
@@ -51,17 +62,24 @@ from experiments.team_pipelines.build_b import load_vocab_embedder, resolve_dir
 from experiments.team_pipelines.common import DEFAULT_SOURCE, SOURCES, fold_manifest, import_team, sample_rows, source_pins
 from experiments.team_pipelines.fit import run_arm, smoke_ids
 
-ARMS = ('sig500', 'sig500v2', 'sig500v3', 'sig500v3-feat', 'sig500v3-emb')
+ARMS = ('sig500', 'sig500v2', 'sig500v3', 'sig500v3-feat', 'sig500v3-emb', 'sigwhole', 'sigwhole-feat', 'sigwhole-emb')
 B_DIR = RUNS / 'team' / 'b_sig500'
 B_V2_DIR = RUNS / 'team' / 'b_sig500_v2'
 B_V3_DIR = RUNS / 'team' / 'b_sig500_v3'
-ARM_DIR = {'sig500': B_DIR, 'sig500v2': B_V2_DIR, 'sig500v3': B_V3_DIR, 'sig500v3-feat': B_V3_DIR, 'sig500v3-emb': B_V3_DIR}
+B_WHOLE_DIR = RUNS / 'team' / 'b_sigwhole_v3'
+ARM_DIR = {'sig500': B_DIR, 'sig500v2': B_V2_DIR, 'sig500v3': B_V3_DIR, 'sig500v3-feat': B_V3_DIR, 'sig500v3-emb': B_V3_DIR,
+           'sigwhole': B_WHOLE_DIR, 'sigwhole-feat': B_WHOLE_DIR, 'sigwhole-emb': B_WHOLE_DIR}
 ARM_SOURCE = {'sig500': 'gnn-331ce0b', 'sig500v2': 'main-c7899f0', 'sig500v3': 'main-fix', 'sig500v3-feat': 'main-fix',
-              'sig500v3-emb': 'main-fix'}
+              'sig500v3-emb': 'main-fix', 'sigwhole': 'main-fix', 'sigwhole-feat': 'main-fix', 'sigwhole-emb': 'main-fix'}
+UNCAPPED_BLOCKS = 1_000_000     # build_b --num-blocks of the uncapped build (every non-library block)
 FEATURES = ('all', 'feat', 'emb')
-ARM_FEATURES = {'sig500': 'all', 'sig500v2': 'all', 'sig500v3': 'all', 'sig500v3-feat': 'feat', 'sig500v3-emb': 'emb'}
+ARM_FEATURES = {'sig500': 'all', 'sig500v2': 'all', 'sig500v3': 'all', 'sig500v3-feat': 'feat', 'sig500v3-emb': 'emb',
+                'sigwhole': 'all', 'sigwhole-feat': 'feat', 'sigwhole-emb': 'emb'}
 FEATURE_MODE = {'all': 'both', 'feat': 'features', 'emb': 'embeddings'}      # graph_full_loader._node_features modes
 HP = {'lr': 1e-3, 'weight_decay': 1e-4, 'batch_size': 16, 'epochs': 40, 'patience': 8}
+NODE_BUDGET = 300_000     # nodes per part of a batch: training ~28 KB per node (8.4 GB), evaluation ~15 KB (4.5 GB), under the 12 GB limit
+HP_WHOLE = {**HP, 'node_budget': NODE_BUDGET}
+ARM_HP = {arm: HP_WHOLE if arm.startswith('sigwhole') else HP for arm in ARMS}
 KIND_COLUMNS = ('api_none_count', 'api_unresolved_count', 'api_known_count')
 
 
@@ -159,12 +177,17 @@ def load_slim(b_dir, sample_id):
     return slim(payload)
 
 
+def payload_api_ids(tok, payload):
+    """Sorted tensor of the API ids (>= FIRST_API_ID) that occur in one payload."""
+    api = payload['instruction_ids'][:, 3]
+    return torch.unique(api[api >= tok.FIRST_API_ID])
+
+
 def train_api_ids(tok, payloads, train_ids):
     """Sorted tensor of the API ids (>= FIRST_API_ID) that occur in the training binaries."""
     seen = set()
     for i in train_ids:
-        api = payloads[i]['instruction_ids'][:, 3]
-        seen.update(torch.unique(api[api >= tok.FIRST_API_ID]).tolist())
+        seen.update(payload_api_ids(tok, payloads[i]).tolist())
     return torch.tensor(sorted(seen), dtype=torch.long)
 
 
@@ -216,6 +239,10 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
     source = read_source(b_dir)
     if source != ARM_SOURCE[arm]:
         raise SystemExit(f'arm {arm} reads builds of {ARM_SOURCE[arm]}; {b_dir} was built with {source}')
+    uncapped = (read_settings(b_dir).get('num_blocks') or 0) >= UNCAPPED_BLOCKS
+    if uncapped != arm.startswith('sigwhole'):
+        raise SystemExit(f"arm {arm} reads {'an uncapped' if arm.startswith('sigwhole') else 'a capped'} build; {b_dir} has "
+                         f"num_blocks {read_settings(b_dir).get('num_blocks')} (uncapped: at least {UNCAPPED_BLOCKS})")
     device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
     pp, embedder, done = build_state(b_dir)
     gl = import_team('graph_full_loader')
@@ -235,19 +262,22 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
             raise SystemExit(f'the build covers {len(done)} binaries; {len(missing)} of this fold\'s {len(want)} are '
                              f'missing from checkpoint.json, e.g. {missing[:3]}')
         train_ids = [r['sample_id'] for r in manifest.train if r['sample_id'] not in excluded]
-    payloads = {i: load_slim(b_dir, i) for i in want}
     first = train_ids[0]
-    err = check_repool(pp, embedder, payloads[first])
-    log(f're-pool check on {first[:12]}: max |difference| {err:.2e} (<= 1e-5), api-kind columns reproduced')
-    seen = train_api_ids(pp.tok, payloads, train_ids)
-    every = set()
+    api_ids, err = {}, None                                      # first pass: the API ids of every payload, one payload in memory
     for i in want:
-        api = payloads[i]['instruction_ids'][:, 3]
-        every.update(torch.unique(api[api >= pp.tok.FIRST_API_ID]).tolist())
+        payload = load_slim(b_dir, i)
+        api_ids[i] = payload_api_ids(pp.tok, payload).tolist()
+        if i == first:
+            err = check_repool(pp, embedder, payload)
+        del payload
+    log(f're-pool check on {first[:12]}: max |difference| {err:.2e} (<= 1e-5), api-kind columns reproduced')
+    seen = torch.tensor(sorted({a for i in train_ids for a in api_ids[i]}), dtype=torch.long)
+    every = {a for i in want for a in api_ids[i]}
     log(f'api ids in the fold\'s training binaries: {len(seen)}; unseen in val/test binaries mapped to UNK_API: '
         f'{len(every - set(seen.tolist()))} of {len(every)} ids used')
-    graphs = {i: make_graph(pp, gl, embedder, payloads[i], seen, features) for i in want}
-    del payloads
+    graphs = {}                                                  # second pass: each graph from its payload, which is then dropped
+    for i in want:
+        graphs[i] = make_graph(pp, gl, embedder, load_slim(b_dir, i), seen, features)
     log_rows = read_build_log(b_dir)
     sizes = {i: (None, int(graphs[i].x.size(0)), log_rows[i][0]) for i in want}
     in_dim, edge_dim = int(graphs[want[0]].x.size(1)), int(graphs[want[0]].edge_attr.size(1))
@@ -258,7 +288,7 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
              'build_binaries': len(done), 'build_source': source, 'build_pins': source_pins(source)}
     reasons = sorted(set(excluded.values()))
     return run_arm(arm=arm, fold=fold, seed=seed, graphs=graphs, sizes=sizes,
-                   build_model=lambda: gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim), hp=HP, device=device,
+                   build_model=lambda: gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim), hp=ARM_HP[arm], device=device,
                    smoke=smoke, smoke_split=split, extra=extra, log=log, excluded=sorted(excluded),
                    excluded_reason='; '.join(reasons))
 
@@ -271,7 +301,7 @@ def main(argv=None):
     ap.add_argument('--features', choices=FEATURES, help="node input: all (141-d), feat (77 block features), emb (64-d "
                     "embedding); default and only value allowed: the arm's")
     ap.add_argument('--source', choices=sorted(SOURCES), help="teammate source the build must have been made with (default: the arm's)")
-    ap.add_argument('--build', type=Path, help='build directory (default: b_sig500, b_sig500_v2 or b_sig500_v3 by arm)')
+    ap.add_argument('--build', type=Path, help='build directory (default: b_sig500, b_sig500_v2, b_sig500_v3 or b_sigwhole_v3 by arm)')
     ap.add_argument('--smoke', type=int, help='train on N available training ids for 2 epochs into a temp directory')
     ap.add_argument('--device', choices=['cuda', 'cpu'])
     args = ap.parse_args(argv)

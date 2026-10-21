@@ -28,7 +28,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from common.config import RUNS, RunConfig
+from common.config import RUNS, RunConfig, foreign_identity
 from evaluation.metrics import cell_weights
 
 METRICS = (('auc', 'AUC'), ('pr_auc', 'PR-AUC'), ('macro_f1', 'macro-F1'))
@@ -128,6 +128,10 @@ def folds_by_seed(group, scope=('kfold', 'x86')):
         cfg = RunConfig.try_load(d / 'config.json')
         if cfg and cfg.protocol in KFOLD_PROTOCOLS and cfg.group == group and d.name == cfg.name:
             out.setdefault(cfg.seed, {})[cfg.fold] = d
+        elif cfg is None and '_fivechannel' in group:
+            ident = foreign_identity(d / 'config.json')          # main's Model 1 runs: read here, never trained by this package
+            if ident and ident[1] == group and d.name == ident[0] and ident[2] in KFOLD_PROTOCOLS:
+                out.setdefault(ident[4], {})[ident[3]] = d
     return out
 
 

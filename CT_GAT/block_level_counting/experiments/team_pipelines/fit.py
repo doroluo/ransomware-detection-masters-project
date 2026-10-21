@@ -7,6 +7,15 @@ shuffling, `random.Random(seed)`), `predict_proba` and `metrics_at` from train_c
 not improved for `patience` epochs) and the F1 state itself (ransomware-class F1 at 0.5, first epoch wins ties).
 What is ours: the train / val / test ids (`common.fold_manifest`), the second state (best validation AUC, strictly
 greater, tracked while the F1 rule keeps training) with its validation threshold (`val_threshold_of`), and the output.
+
+Node budget (hp['node_budget'], step 36; absent or None: off, every earlier arm). A batch of 16 uncapped graphs can hold a million
+nodes (training takes about 28 KB of GPU memory per node, evaluation about 15 KB). With a budget the batches are still the teammates'
+(`_batches`: the same shuffle, 16 graphs each, the rng consumed the same way); only a batch whose node total exceeds the budget is cut
+in order into consecutive parts of at most `node_budget` nodes (a graph larger than the budget is a part by itself). The parts of a
+training batch are run one after the other with their gradients summed, each part's class-weighted cross-entropy divided by the
+class-weight total of the whole batch, so the optimiser step is the one the whole batch would have given (dropout draws apart). A
+batch within the budget takes the unchanged path, so a run whose batches never exceed the budget is the run without a budget.
+Evaluation is cut the same way and the predictions come back in the order asked.
 """
 import csv
 import json
@@ -38,10 +47,71 @@ def _state(model):
     return {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
 
-def predict_rows(tc, model, ids, graphs, sizes, device, batch_size):
+def pack(graphs, budget):
+    """`graphs` cut in order into consecutive lists whose node totals are at most `budget` (a graph above it is a list of its
+    own); no budget: one list."""
+    if budget is None:
+        return [list(graphs)] if len(graphs) else []
+    parts, current, nodes = [], [], 0
+    for g in graphs:
+        n = int(g.num_nodes)
+        if current and nodes + n > budget:
+            parts.append(current)
+            current, nodes = [], 0
+        current.append(g)
+        nodes += n
+    if current:
+        parts.append(current)
+    return parts
+
+
+def eval_chunks(graphs, batch_size, budget=None):
+    """The lists of graphs that evaluation runs as one batch each: slices of `batch_size` (as train_cfg.predict_proba), each cut
+    by `pack` when `budget` is set."""
+    out = []
+    for start in range(0, len(graphs), batch_size):
+        out += pack(graphs[start:start + batch_size], budget)
+    return out
+
+
+def predict(tc, model, graphs, device, batch_size, budget=None):
+    """train_cfg.predict_proba of `graphs` in the given order; with a node budget the batches are cut by `eval_chunks`."""
+    if budget is None:
+        return tc.predict_proba(model, graphs, device, batch_size)
+    parts = [tc.predict_proba(model, chunk, device, len(chunk)) for chunk in eval_chunks(graphs, batch_size, budget)]
+    if not parts:
+        return tc.predict_proba(model, [], device, batch_size)
+    return torch.cat([p for p, _ in parts]), torch.cat([y for _, y in parts])
+
+
+def train_batch(model, batch, criterion, criterion_sum, optimizer, device, budget=None):
+    """One optimiser step on a collated batch; returns (loss, number of parts the batch was cut into). Within the budget (or
+    without one) it is the teammates' step; above it the parts' gradients add up to the whole batch's."""
+    optimizer.zero_grad()
+    if budget is None or int(batch.num_nodes) <= budget:
+        batch = batch.to(device)
+        loss = criterion(model(batch), batch.y.view(-1))
+        loss.backward()
+        optimizer.step()
+        return float(loss.detach()), 1
+    from torch_geometric.data import Batch
+    total_weight = criterion.weight[batch.y.view(-1).to(criterion.weight.device)].sum()
+    parts = pack(batch.to_data_list(), budget)
+    total = 0.0
+    for part in parts:
+        sub = Batch.from_data_list(part).to(device)
+        loss = criterion_sum(model(sub), sub.y.view(-1)) / total_weight
+        loss.backward()
+        total += float(loss.detach())
+        del sub, loss
+    optimizer.step()
+    return total, len(parts)
+
+
+def predict_rows(tc, model, ids, graphs, sizes, device, batch_size, budget=None):
     """(ids, probs [n] float64, sizes) of `ids` in the given order; sizes[i] is the (n_segments_total, n_blocks_kept,
     n_blocks_total) triple that write_predictions prints."""
-    probs, labels = tc.predict_proba(model, [graphs[i] for i in ids], device, batch_size)
+    probs, labels = predict(tc, model, [graphs[i] for i in ids], device, batch_size, budget)
     return list(ids), probs.numpy().astype(np.float64), [sizes[i] for i in ids], labels.numpy()
 
 
@@ -53,7 +123,10 @@ def fit(model, train_ids, val_ids, graphs, *, hp, seed, device, log=print):
     train = [graphs[i] for i in train_ids]
     labels = torch.tensor([int(g.y.item()) for g in train])
     counts = torch.bincount(labels, minlength=2).float().clamp(min=1)
-    criterion = nn.CrossEntropyLoss(weight=(counts.sum() / counts).to(device))
+    class_weights = (counts.sum() / counts).to(device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    criterion_sum = nn.CrossEntropyLoss(weight=class_weights, reduction='sum')
+    budget = hp.get('node_budget')
     optimizer = torch.optim.AdamW(model.parameters(), lr=hp['lr'], weight_decay=hp['weight_decay'])
     rng = random.Random(seed)
     if device.type == 'cuda':
@@ -64,23 +137,23 @@ def fit(model, train_ids, val_ids, graphs, *, hp, seed, device, log=print):
     history, stale = [], 0
     for epoch in range(1, hp['epochs'] + 1):
         model.train()
-        start, total_loss, seen = time.time(), 0.0, 0
+        start, total_loss, seen, split = time.time(), 0.0, 0, 0
         for batch in tc._batches(train, hp['batch_size'], rng):
-            batch = batch.to(device)
-            optimizer.zero_grad()
-            loss = criterion(model(batch), batch.y.view(-1))
-            loss.backward()
-            optimizer.step()
-            total_loss += float(loss.detach()) * batch.num_graphs
-            seen += batch.num_graphs
+            n_graphs = batch.num_graphs
+            loss, parts = train_batch(model, batch, criterion, criterion_sum, optimizer, device, budget)
+            split += parts > 1
+            total_loss += loss * n_graphs
+            seen += n_graphs
         train_secs = time.time() - start
-        probs, y = tc.predict_proba(model, [graphs[i] for i in val_ids], device, hp['batch_size'])
+        probs, y = predict(tc, model, [graphs[i] for i in val_ids], device, hp['batch_size'], budget)
         val_f1 = tc.metrics_at(probs, y, 0.5)['f1']
         val = evaluate(val_rows, list(val_ids), probs.numpy().astype(np.float64), 0.5)
         row = {'epoch': epoch, 'loss': round(total_loss / max(seen, 1), 5), 'train_secs': round(train_secs, 1),
                'val_secs': round(time.time() - start - train_secs, 1), 'val_f1': round(val_f1, 5),
                'val_macro_f1': round(val['macro_f1'], 5), 'val_auc': round(val['auc'], 5), 'val_acc': round(val['accuracy'], 5),
                'peak_gpu_mb': round(torch.cuda.max_memory_allocated(device) / 2**20) if device.type == 'cuda' else 0}
+        if budget is not None:
+            row['split_batches'] = split
         history.append(row)
         log(json.dumps(row))
         if val_f1 > best_f1:
@@ -172,7 +245,7 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
         model.load_state_dict(result[f'{rule}_state'])
         by_split[rule] = {}
         for split, ids in (('val', val_ids), ('test', test_ids)):
-            ids_out, probs, size, _ = predict_rows(tc, model, ids, graphs, sizes, device, hp['batch_size'])
+            ids_out, probs, size, _ = predict_rows(tc, model, ids, graphs, sizes, device, hp['batch_size'], hp.get('node_budget'))
             by_split[rule][split] = (ids_out, probs, size)
         states[rule] = result[f'{rule}_state']
     thr_f1 = val_threshold_of(manifest.val, *by_split['f1']['val'][:2])
