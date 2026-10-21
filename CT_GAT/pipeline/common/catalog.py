@@ -67,7 +67,8 @@ def status(data_root=DATA_ROOT, cache_root=CACHE_ROOT, folds_root=FOLDS_ROOT, bu
     """Per dataset, what is on this machine: {name: {'collections': {folder: {'present', 'snapshot'}}, 'bundle': (kind, path),
     'cache': path, 'built': bool, 'folds': {key: (path, found)}}}. A collection is present when its samples.csv exists under
     `data_root`; `bundle` is the configured bundle folder or None (kind 'configured', else 'discovered' under `data_root`,
-    else 'absent'); `caches` and `folds` map a dataset name / source key to a path that replaces the default one."""
+    else 'absent'); `caches` maps a dataset name to a path that replaces its default cache and `folds` maps a dataset name to
+    {source key: path} for the fold files that replace its own."""
     caches, folds = caches or {}, folds or {}
     found = find_bundle(data_root / CORPORA['mendeley'].bundle)
     kind, path = ('configured', Path(bundle)) if bundle else ('discovered', found) if found else ('absent', None)
@@ -77,7 +78,7 @@ def status(data_root=DATA_ROOT, cache_root=CACHE_ROOT, folds_root=FOLDS_ROOT, bu
         cache = Path(caches.get(name, cache_root / name))
         fold_files = {}
         for key, rel in ds.folds.items():
-            path_ = Path(folds.get(key, folds_root / rel))
+            path_ = Path(folds.get(name, {}).get(key, folds_root / rel))
             fold_files[key] = (path_, all((path_ / f).is_file() for f in V3_FILES) if key == 'folds_v3' else path_.is_file())
         report[name] = {'collections': {f: {'present': (data_root / f / 'samples.csv').is_file(),
                                            'snapshot': read_summary(data_root / f).get('snapshot_utc')} for f in folders},
@@ -119,7 +120,7 @@ def main():
     except paths.MissingSource:
         bundle = None
     registry = paths.registry()
-    folds = {key: paths.source_for(key) for key in ('folds', 'folds_v3')}
+    folds = {name: {key: paths.source_for(key, dataset=name) for key in ds.folds} for name, ds in DATASETS.items()}
     print(render(status(data, bundle=bundle, caches={name: registry[name]['cache'] for name in DATASETS}, folds=folds), data))
 
 

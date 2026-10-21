@@ -106,18 +106,24 @@ def cache_for(protocol, env=None, registry=None, name=None):
     return UNSET
 
 
-def source_for(key, env=None, registry=None):
+def source_for(key, env=None, registry=None, dataset=None):
     """A raw input or output location by source name (`SOURCES`): its environment variable, else the first dataset of the
-    registry that defines it (datasets.json, then the catalog). `runs` falls back to `runs/` inside the pipeline root. Raises
-    MissingSource naming both ways to set it."""
+    registry that defines it (datasets.json, then the catalog). With `dataset`, that dataset's entry comes first among the
+    datasets.json ones when the file names it, and first among the catalog's otherwise: the order is the environment
+    variable, the file's entry of `dataset`, the file's other entries, the catalog row of `dataset`, the other catalog rows.
+    `runs` falls back to `runs/` inside the pipeline root. Raises MissingSource naming both ways to set it."""
     env = os.environ if env is None else env
     var, what = SOURCES[key]
     if env.get(var):
         return Path(env[var])
     registry = _effective(env) if registry is None else registry
-    for entry in registry.values():
-        if key in entry['sources']:
-            return Path(entry['sources'][key])
+    names = list(registry)
+    if dataset in registry:
+        in_file = set(load_registry(env))
+        names = sorted(names, key=lambda n: (n not in in_file, n != dataset))         # stable: file order, catalog order kept
+    for name in names:
+        if key in registry[name]['sources']:
+            return Path(registry[name]['sources'][key])
     if key == 'runs':
         return PIPELINE_ROOT / 'runs'
     raise MissingSource(f'{what} is not configured: set {var} or add "{key}" under "sources" of a dataset in '

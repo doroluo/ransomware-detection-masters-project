@@ -119,8 +119,11 @@ per-machine file, or an entry of `datasets.json`, which belongs to one machine.
    checks every invariant. A folder that is not unzipped stops the build with its name and the zip that holds it.
 3. **Folds.** `index.csv` carries the fold of each binary, which `build_cache` takes from the fold files by sha256:
    `s02_preprocess/folds/folds_mendeley.csv` for the Mendeley corpus and `s02_preprocess/folds/v3/folds_all.csv` for every corpus
-   (columns in [`s02_preprocess/folds/README.md`](../s02_preprocess/folds/README.md)). The rows of a new corpus go into a fold
-   file committed there. `python -m s02_preprocess.cache.folds` writes the 5-fold family-holdout CSV to
+   (columns in [`s02_preprocess/folds/README.md`](../s02_preprocess/folds/README.md)). Those are the files of the two datasets
+   above; a dataset reads the fold files named by its own `folds` entry in `DATASETS` (paths under `s02_preprocess/folds/`, keys
+   `folds` and `folds_v3`), so the rows of a new corpus go into the files that entry names, committed there, and `build_cache
+   --cache <name>` joins them. `GT_FOLDS` and `GT_FOLDS_V3`, or `folds` and `folds_v3` under `sources` of an entry of
+   `datasets.json`, replace them on one machine. `python -m s02_preprocess.cache.folds` writes the 5-fold family-holdout CSV to
    `CT_GAT/cache/<dataset>/` unless `--out` says otherwise: ransomware families and goodware identity groups go to a fold whole,
    largest first into the lightest fold. The same function on a table of your own:
 

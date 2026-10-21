@@ -248,6 +248,84 @@ def test_exclusion_is_unchanged_for_every_combination_of_the_fields_it_reads():
     assert n == 3 * 3 * 2 * 4 * 3 * 2 * 3
 
 
+# ---- fold files by dataset ----------------------------------------------------------------------------------------------
+
+def write_csv(path, header, *rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('\n'.join([header, *rows]) + '\n', encoding='utf-8')
+
+
+def fold_files(csv_path, v3_dir, fold, fold_v3, sample='aa'):
+    write_csv(csv_path, 'sha256,fold', f'{sample},{fold}')
+    write_csv(v3_dir / 'folds_all.csv', 'sha256,label,arch,fold,family,group', f'{sample},1,x86,{fold_v3},f,g')
+    write_csv(v3_dir / 'arch_matched.csv', 'sha256,keep', f'{sample},1')
+
+
+def folded_world(env, monkeypatch):
+    """One Mendeley sample `aa` (ransomware, x86) and a catalog dataset `synth` whose own fold files give it fold 3 and fold_v3 4;
+    the default fold files of the catalog do not know the sample."""
+    data = env / 'data'
+    row = dict(sample_id='aa', label='1', family='f', representation='normal', recommended_split='train', architecture='x86',
+               eligible_for_gnn='1', cfg_path='aa.json')
+    for name in ('Mendeley_Ransomware', 'Mendeley_Goodware'):
+        collection(data, name, [row] if name == 'Mendeley_Ransomware' else [])
+        (data / name / 'provenance').mkdir()
+        (data / name / 'provenance' / 'identity_aliases.json').write_text('[]', encoding='utf-8')
+    monkeypatch.setattr(paths, 'FOLDS_ROOT', env / 'folds')
+    monkeypatch.setitem(catalog.DATASETS, 'synth',
+                        catalog.Dataset(('kfold',), ('mendeley',), {'folds': 'synth.csv', 'folds_v3': 'synth_v3'}))
+    fold_files(env / 'folds' / 'synth.csv', env / 'folds' / 'synth_v3', 3, 4)
+    fold_files(env / 'folds' / 'folds_mendeley.csv', env / 'folds' / 'v3', 1, 1, sample='zz')       # the catalog's default files
+
+
+def folds_of(dataset):
+    (row,), _ = bc.eligible_rows(['mendeley'], dataset)
+    return row['fold'], row['fold_v3']
+
+
+def test_a_catalog_dataset_is_built_with_its_own_fold_files(env, monkeypatch):
+    folded_world(env, monkeypatch)
+    assert folds_of('synth') == ('3', '4')
+    with pytest.raises(SystemExit, match='aa joins neither folds_mendeley.csv'):
+        folds_of('mendeley_x86')                                                  # its entry is the default file, which lacks `aa`
+    with pytest.raises(SystemExit, match='aa joins neither folds_mendeley.csv'):
+        folds_of(None)                                                            # no dataset: the first catalog default
+    plan = {'dataset': 'synth', 'cache': env / 'c', 'corpora': ['mendeley'], 'base_cache': None}
+    lines = dict(line.split(': ', 1) for line in bc.resolution_lines(plan))
+    assert lines['folds'] == (env / 'folds' / 'synth.csv').as_posix() and lines['folds_v3'] == (env / 'folds' / 'synth_v3').as_posix()
+
+
+def test_the_environment_beats_the_own_folds_of_a_dataset(env, monkeypatch):
+    folded_world(env, monkeypatch)
+    fold_files(env / 'envfolds.csv', env / 'envv3', 5, 6)
+    monkeypatch.setenv('GT_FOLDS', str(env / 'envfolds.csv'))
+    assert folds_of('synth') == ('5', '4')                                        # GT_FOLDS replaces the CSV only
+    monkeypatch.setenv('GT_FOLDS_V3', str(env / 'envv3'))
+    assert folds_of('synth') == ('5', '6')
+
+
+def test_datasets_json_beats_the_own_folds_of_a_dataset_and_the_environment_beats_the_file(env, monkeypatch):
+    folded_world(env, monkeypatch)
+    fold_files(env / 'filefolds.csv', env / 'filev3', 7, 8)
+    file = env / 'datasets.json'
+    file.write_text(json.dumps({'v2': {'cache': 'c', 'sources': {'folds': 'filefolds.csv', 'folds_v3': 'filev3'}}}), encoding='utf-8')
+    monkeypatch.setenv('GT_DATASETS', str(file))
+    assert folds_of('synth') == ('7', '8')
+    fold_files(env / 'envfolds.csv', env / 'envv3', 5, 6)
+    monkeypatch.setenv('GT_FOLDS', str(env / 'envfolds.csv'))
+    assert folds_of('synth') == ('5', '8')
+
+
+def test_a_file_entry_of_the_dataset_itself_comes_before_the_other_entries_of_the_file(env, monkeypatch):
+    doc = {'first': {'cache': 'a', 'sources': {'folds': 'first.csv'}}, 'synth': {'cache': 'b', 'sources': {'folds': 'own.csv'}}}
+    (env / 'datasets.json').write_text(json.dumps(doc), encoding='utf-8')
+    monkeypatch.setenv('GT_DATASETS', str(env / 'datasets.json'))
+    monkeypatch.setitem(catalog.DATASETS, 'synth', catalog.Dataset(('kfold',), ('mendeley',), {'folds': 'synth.csv'}))
+    assert paths.source_for('folds', dataset='synth') == env / 'own.csv'
+    assert paths.source_for('folds', dataset='mendeley_x86') == env / 'first.csv'      # the catalog row comes after the file's entries
+    assert paths.source_for('folds') == env / 'first.csv'
+
+
 # ---- the corpus functions: bundle discovery order ------------------------------------------------------------------------
 
 def test_the_mendeley_roots_are_the_configured_bundle_then_the_bundle_folder_then_the_collections(env, monkeypatch):
@@ -333,7 +411,7 @@ def test_main_builds_the_corpora_of_the_dataset_on_top_of_its_base_cache(env, mo
     rows = [{'sample_id': 'a', 'label': '1', 'num_instructions': '5', 'corpus': 'mendeley', 'fold_v3': '1'}]
     monkeypatch.setattr(bc, 'CACHE', out)
     monkeypatch.setattr(bc, 'Pool', InlinePool)
-    monkeypatch.setattr(bc, 'eligible_rows', lambda c: seen.update(corpora=list(c)) or (rows, {}))
+    monkeypatch.setattr(bc, 'eligible_rows', lambda c, d: seen.update(corpora=list(c)) or (rows, {}))
     monkeypatch.setattr(bc, 'seed_from_base', lambda b, r: seen.update(base=Path(b)) or 0)
     monkeypatch.setattr(bc, 'build_one', lambda r: (r['sample_id'], 'ok', '', 0.0))
     monkeypatch.setattr(bc, 'finalize', lambda r: ({'mn': 0}, 'sha', 0))

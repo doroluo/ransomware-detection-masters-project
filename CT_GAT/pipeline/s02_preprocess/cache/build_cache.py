@@ -16,7 +16,7 @@ first. --base-cache (default: the cache of the dataset's base) copies that cache
 holds, so those files stay byte-identical. A collection folder that is not unzipped stops the build before the cache is touched.
 
 Inputs (common/paths.py `source_for`; GT_BUNDLE, GT_COLLECTIONS, GT_FOLDS, GT_FOLDS_V3 or "sources" in datasets.json, else
-the defaults of common/catalog.py): Mendeley comes from the Mendeley_GNN_v1 bundle when one is configured or sits under
+the defaults of common/catalog.py, the fold files being those of the dataset being built, its `folds` entry): Mendeley comes from the Mendeley_GNN_v1 bundle when one is configured or sits under
 `collections`, else from the two Mendeley collections there (rows sorted by sample_id as the bundle's are, cfg_path relative
 to the collection of the row; the cache comes out the same). The other collections, the Mendeley fold CSV and the v3 fold
 files are the remaining inputs.
@@ -159,10 +159,11 @@ def exclusion(r, alias):
     return ''
 
 
-def join_v3(rows, aliases):
+def join_v3(rows, aliases, dataset=None):
     """fold_v3, fold_v3_sha256 and arch_matched from folds_all.csv, by sha256 or the identity alias's cohort_sha256.
-    Joined non-mendeley rows take family and identity group from the fold file, which spans all corpora."""
-    folds_v3 = source_for('folds_v3')
+    Joined non-mendeley rows take family and identity group from the fold file, which spans all corpora. The fold files are
+    those of `dataset` (`source_for(..., dataset=)`)."""
+    folds_v3 = source_for('folds_v3', dataset=dataset)
     folds = {r['sha256']: r for r in read_csv(folds_v3 / 'folds_all.csv')}
     matched = {r['sha256']: r['keep'] for r in read_csv(folds_v3 / 'arch_matched.csv')}
     for r in rows:
@@ -179,9 +180,10 @@ def join_v3(rows, aliases):
             r['family'], r['identity_group'] = f['family'], f['group']
 
 
-def eligible_rows(corpora=('mendeley',)):
+def eligible_rows(corpora=('mendeley',), dataset=None):
     """Cache rows of the corpora in order, and {(corpus, reason): sample_ids} for the rows left out. A sample_id
-    already taken by an earlier corpus is left out as a duplicate."""
+    already taken by an earlier corpus is left out as a duplicate. The fold files are those of `dataset` (a name of the
+    registry, or None), see `source_for`."""
     rows, dropped, seen, aliases = [], {}, set(), {}
     for corpus in corpora:
         aliases[corpus] = corpus_aliases(corpus)
@@ -197,7 +199,7 @@ def eligible_rows(corpora=('mendeley',)):
             else:
                 seen.add(r['sample_id'])
                 rows.append(r)
-    folds = {r['sha256']: r for r in read_csv(source_for('folds'))}
+    folds = {r['sha256']: r for r in read_csv(source_for('folds', dataset=dataset))}
     for r in rows:
         r['fold'] = r['fold_sha256'] = ''
         if r['corpus'] != 'mendeley':
@@ -206,7 +208,7 @@ def eligible_rows(corpora=('mendeley',)):
         if key not in folds:
             raise SystemExit(f"{r['sample_id']} joins neither folds_mendeley.csv nor identity_aliases.csv")
         r['fold'], r['fold_sha256'] = folds[key]['fold'], key
-    join_v3(rows, aliases)
+    join_v3(rows, aliases, dataset)
     return rows, dropped
 
 
@@ -662,7 +664,8 @@ def resolution_lines(plan):
     lines = [('dataset', plan['dataset'] or '-'), ('cache', plan['cache'].as_posix()), ('corpora', ' '.join(plan['corpora'])),
              ('base cache', plan['base_cache'].as_posix() if plan['base_cache'] else '-'),
              ('bundle', bundle.as_posix() if bundle else '-')]
-    lines += [(key, source_for(key).as_posix()) for key in ('collections', 'folds', 'folds_v3')]
+    lines += [('collections', source_for('collections').as_posix())]
+    lines += [(key, source_for(key, dataset=plan['dataset']).as_posix()) for key in ('folds', 'folds_v3')]
     return [f'{key}: {value}' for key, value in lines]
 
 
@@ -700,7 +703,7 @@ def main():
         base_name = next((n for n, entry in reg.items() if Path(entry['cache']).resolve() == base_cache.resolve()), None)
         raise SystemExit(f'the base cache {base_cache.as_posix()} has no index.csv: build it first with '
                          f'python -m s02_preprocess.cache.build_cache{f" --cache {base_name}" if base_name else ""}')
-    rows, dropped = eligible_rows(corpora)
+    rows, dropped = eligible_rows(corpora, plan['dataset'])
     (CACHE / 'samples').mkdir(parents=True, exist_ok=True)
     if args.limit:
         by_class = {c: sorted((r for r in rows if r['label'] == c), key=lambda r: r['sample_id']) for c in ('0', '1')}

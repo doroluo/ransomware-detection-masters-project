@@ -140,6 +140,11 @@ def test_status_on_a_data_root_with_one_of_two_folders(tmp_path):
     assert [c['present'] for c in combined['collections'].values()] == [True, False, False, False]
     assert combined['built'] is False
     assert all(ok for _, ok in catalog.status()['mendeley_x86']['folds'].values())      # the committed ones are found
+    own = tmp_path / 'own.csv'
+    own.write_text('sha256,fold\n', encoding='utf-8')
+    report = catalog.status(data, caches, folds={'combined_v3': {'folds': own}})        # the folds of one dataset only
+    assert report['combined_v3']['folds']['folds'] == (own, True)
+    assert report['mendeley_x86']['folds']['folds'][0] == catalog.FOLDS_ROOT / 'folds_mendeley.csv'
     text = catalog.render(report, data)
     assert 'Mendeley_Ransomware: present (snapshot 20261008T184757Z)' in text and 'Ransomware_Balanced: missing' in text
     assert 'mendeley_x86: protocols bundle, kfold' in text and 'cache CT_GAT/cache/mendeley_x86' not in text   # the test cache is under tmp
