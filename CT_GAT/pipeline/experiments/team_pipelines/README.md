@@ -20,13 +20,16 @@ What the commands need:
 |---|---|---|
 | the teammates' gnn worktree at commit 331ce0b | `build_a`, `build_b` (default source), `train_a`, `train_b`, `fit`, match tools | `GT_TEAM_GNN_ROOT` |
 | the teammates' main worktree at commit c7899f0 | `build_b --source main-c7899f0`, `train_b --arm sig500v2` builds | `GT_TEAM_MAIN_ROOT` |
-| the Mendeley bundle (`samples.csv`, `cfg/`) | `paths_for`, `team_row`, both builds | `GT_BUNDLE` (or the `bundle` source of `datasets.json`) |
-| the IDA listings `<sample_id>.asm.gz` | `build_b`, the match tools' replay | `GT_TEAM_ASM_DIR` |
+| the Mendeley bundle (`samples.csv`, `cfg/`) | `paths_for`, `team_row`, both builds, when the listings are configured too | `GT_BUNDLE` (or the `bundle` source of `datasets.json`) |
+| the IDA listings `<sample_id>.asm.gz` | `build_b`, the match tools' replay, when the bundle is configured too | `GT_TEAM_ASM_DIR` |
+| the two Mendeley collections, unzipped (`CT_GAT/data/Mendeley_{Ransomware,Goodware}`) | `paths_for`, `team_row`, `build_b` when neither the bundle nor `GT_TEAM_ASM_DIR` is set (their CFGs and listings, from `samples.csv`) | `GT_COLLECTIONS` (default `CT_GAT/data`) |
 | `torch_geometric` | `build_a`, `train_a`, `train_b` (graphs and the GAT) | `pip install torch_geometric` |
 | `psutil` | `measure_rss` | `pip install psutil` |
 
 The variables are read when a function needs them, never at import; an unset one raises `TeamSourceNotConfigured` (a
-`FileNotFoundError`) whose message names the variable. The worktrees are checked against the sha256 pins below before any of
+`FileNotFoundError`) whose message names the variable. With neither `GT_BUNDLE` nor `GT_TEAM_ASM_DIR` set, `paths_for` reads the
+Mendeley collections instead (the mendeley row of `build_cache.corpus_samples('mendeley')`, its `cfg_path` and `asm_path` relative to
+its collection); with only one of the two set it asks for the other, as before. The worktrees are checked against the sha256 pins below before any of
 their code runs, and nothing is ever written into them.
 
 ## Team pipelines: how to run
@@ -80,13 +83,14 @@ plus under a minute of loading and prediction. The 15 runs of an arm therefore t
 
 - `common.py`
   - `import_team(module, source='gnn-331ce0b')`: imports a teammate module from the review worktree of `source`
-    (`root_of(source)`: `GT_TEAM_GNN_ROOT` or `GT_TEAM_MAIN_ROOT`, see "Two teammate sources") after checking the sha256 of every teammate file the import
+    (`root_of(source)`: `GT_TEAM_GNN_ROOT` or `GT_TEAM_MAIN_ROOT`, see "Teammate sources") after checking the sha256 of every teammate file the import
     runs against that source's pins. A mismatch raises with the file name. Nothing is written into the worktree (bytecode
     caching is off during the import).
   - `fold_manifest(fold, seed)`: our `make_manifest` for protocol `kfold`, arch `x86`, `val_seed=None`, as the
     `kfold_x86_gnn-mblk15_s{seed}` runs use. `all_ids()`: the 1,810 test ids of the five folds, sorted.
   - `paths_for(sample_id)`: the CFG (`<GT_BUNDLE>/samples.csv` `cfg_path`) and the IDA listing
-    (`<GT_TEAM_ASM_DIR>/<sha>.asm.gz`). A missing row or file raises.
+    (`<GT_TEAM_ASM_DIR>/<sha>.asm.gz`); with neither configured, both from the Mendeley collections (`samples.csv` `cfg_path` and
+    `asm_path`). A missing row or file raises.
   - `team_config(fold, seed, arm)` and `write_run(...)`: a run directory `kfold{f}_x86_gnn_s{seed}_team-<arm>` with
     `config.json`, `manifest.json`, `predictions.csv` (F1 state, `pred = prob >= 0.5`, as `experiments/train.py`),
     `predictions_auc.csv` (AUC state, `pred = prob >= threshold_val`) and `metrics.json`. The columns and the metrics are
@@ -101,14 +105,34 @@ plus under a minute of loading and prediction. The 15 runs of an arm therefore t
 ## build_b.py
 
 ```
-python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --seed 0 --out RUNS/team/b_sig500
-       [--source gnn-331ce0b|main-c7899f0] [--limit N] [--ids <sample_id> ...] [--frozen-from <build dir>]
+python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --seed 0 [--out RUNS/team/b_sig500]
+       [--source gnn-331ce0b|main-c7899f0|repo] [--limit N] [--ids <sample_id> ...] [--frozen-from <build dir>]
 ```
 
-`--source` picks which pinned teammate code runs (see "Two teammate sources" below); the default `gnn-331ce0b` is what built
+Zero config, the exact build for Janice's model. `--out` defaults to the `team_b_build` source, `CT_GAT/processed/cfg_subgraphs`
+(`GT_TEAM_B_BUILD`, `datasets.json` or the catalog default), which is where `python -m experiments.train --model fivechannel` reads.
+`--source repo` runs `preprocess_full.py` and `tokenize_asm_gz.py` of this repository (`CT_GAT/pipeline/s02_preprocess`, unchanged)
+over the CFGs and listings of the unzipped Mendeley collections:
+
+```
+python -m s02_preprocess.cache.build_cache --cache mendeley_x86        # once: the fold ids come from this cache's index.csv
+python -m experiments.team_pipelines.build_b --source repo --sample signal --num-blocks 500 --seed 0
+```
+
+With no `--ids` it builds all 1,810 x86 ids in sorted order, with one vocabulary pass and seed 0: the published pipeline-B build
+(`b_sig500_v3`), about 4 h on the CPU (7.6 s per sample, measured on the development machine). It resumes from its checkpoint. The faster way is the preprocessed zip
+`Mendeley_x86_cfg_subgraphs_500blocks_v3.zip`, unzipped at `CT_GAT/`; the build does not write `CT_GAT/processed/api_vocab.json` that
+the zip carries, which only Janice's untrained demo in `model.py` reads. Without the cache `build_b` stops and names the
+`build_cache` command. A folder that holds sample `.pt` files but neither `checkpoint.json` nor `settings.json` (the unzipped zip) is
+refused, not overwritten: give `--out` an empty folder.
+
+`--source` picks which pinned teammate code runs (see "Teammate sources" below); the default `gnn-331ce0b` is what built
 `RUNS/team/b_sig500`, so the first build stays reproducible. `settings.json` records `source` and the sha256 `pins` of the files that
 `preprocess_full` runs; the checkpoint's settings carry `source` too, so resuming a directory with another source stops (a checkpoint
-without `source`, as the first build wrote, reads as `gnn-331ce0b`). `--frozen-from DIR` starts from DIR's `api_vocab.json` and
+without `source`, as the first build wrote, reads as `gnn-331ce0b`). The checkpoint of a `repo` build carries the `pins` as well: they
+are the sha256 of the two files as they were when the build started (there is no fixed pin, the repository is the reference; a
+Windows checkout with CRLF line endings hashes differently from an LF one), so a resume after either file changed stops and
+names the file. `--frozen-from DIR` starts from DIR's `api_vocab.json` and
 `channel_embedder.pt` and calls `process_sample(freeze_vocab=True)`: ids and embeddings of two sources are then comparable sample by
 sample (the equivalence check).
 
@@ -218,15 +242,16 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig5
   patience 8 on the validation ransomware F1 at 0.5. Both selection rules, outputs and `--smoke` as in train_a.
   `n_segments_total` is empty (the build does not record the function count); `n_blocks_total` comes from `build_log.csv`.
 
-## Two teammate sources
+## Teammate sources
 
-`common.SOURCES` holds two sha256-pinned sources; `import_team(module, source=...)` imports from one of them and `check_pins` checks
-the files first. A mismatch raises with the file name.
+`common.SOURCES` holds two sha256-pinned sources and the repository's own copy of Yanping's files; `import_team(module, source=...)`
+imports from one of them and `check_pins` checks the files first. A mismatch raises with the file name.
 
 | source | worktree (environment variable) | commit | files (under the worktree) |
 |---|---|---|---|
 | `gnn-331ce0b` (default) | `GT_TEAM_GNN_ROOT` | 331ce0b | `construct_blocks.py`, `train_cfg.py`, `CT_GAT/preprocessing/{preprocess_full, tokenize_asm_gz, graph_full_loader, gat_full_model, train_full_gat, transformer_model, token_mapping}.py` |
 | `main-c7899f0` | `GT_TEAM_MAIN_ROOT` | c7899f0 | `CT_GAT/pipeline/s02_preprocess/{preprocess_full, tokenize_asm_gz}.py` |
+| `repo` | none (this repository, `common.REPO_ROOT`) | the checkout | the same two files; sha256 computed from them when asked (`common.FilePins`), no fixed pin |
 
 `preprocess_full` and `tokenize_asm_gz` exist in both, under the same module names. Importing one from a source first evicts the
 other source's modules of that import (`preprocess_full`, `tokenize_asm_gz`, and the gnn source's `transformer_model` and
@@ -313,7 +338,10 @@ is not complete, criteria 2-4 are computed on the ids it holds and marked partia
 `tests/test_team_pipelines.py`, `test_team_exclusion.py`, `test_team_v2.py`, `test_match_diagnosis.py` (CPU). They run everywhere
 on the tiny cache of `tests/tiny_cache.py` and on synthetic builds: every module imports without `torch_geometric`, `psutil`
 and the worktrees (a subprocess with fake packages that raise `ImportError`); the environment variables name the missing input;
-the pin check and `import_team` on a toy source; the five test sets partition the ids and no family or identity group is shared by
+the pin check and `import_team` on a toy source; `paths_for` and `team_row` on a synthetic collection root (neither the bundle nor
+`GT_TEAM_ASM_DIR` set) and on every half-configured pair; the pins of the `repo` source from a temp copy of its two files, a resume
+that refuses a changed file, `import_team` of the `repo` files; `build_b`'s default `--out`, its stop without a cache index and its
+refusal to overwrite a folder of sample files that is no build; the five test sets partition the ids and no family or identity group is shared by
 train, val and test; a synthetic five-fold `write_run` arm is read by `s04_evaluation/stats.py` against `tfidf`, by `report.py`
 and by the `team` stage of the gates, and its directory name equals `RunConfig.name`; explicit exclusions of pipeline B;
 `compare_builds`, `match_rates` and `match_diagnosis` / `match_acceptance` on synthetic builds (a fake pinned module).

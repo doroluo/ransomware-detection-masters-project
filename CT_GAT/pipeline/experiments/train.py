@@ -76,8 +76,8 @@ import torch
 import torch.nn.functional as F
 
 from common.config import BLOCK_INPUTS, CACHE, DIRECTIONS, ENCODERS, IMPORTS, RUNS, THRESHOLD_FROM, VOCABS, RunConfig
-from common.manifests import load_index, make_manifest
-from common.paths import load_registry
+from common.manifests import MissingCache, load_index, make_manifest, missing_cache_message, run_command
+from common.paths import registry
 from common.registry import MODELS, RunInfo, spec_for
 from common.run_io import AUC_RULES, evaluate, truncated_count, write_predictions, write_run  # noqa: F401  (re-exported)
 from s04_evaluation.metrics import cell_balanced, cell_weights
@@ -217,8 +217,10 @@ def choose_thresholds(cfg: RunConfig, manifest, val_by_rule, epochs, fit_predict
     return chosen, record
 
 
-def check_requires(spec, cache):
+def check_requires(spec, cache, protocol=None):
     missing = [p for p in spec.requires if not (Path(cache) / p).exists()]
+    if 'index.csv' in missing:
+        raise MissingCache(missing_cache_message(cache, protocol))
     if missing:
         raise FileNotFoundError(f'model {spec.name} reads {", ".join(missing)} under {cache}, which is not there: point '
                                 'GT_CACHE or datasets.json (--cache <name>) at the CFG cache')
@@ -250,9 +252,9 @@ def run(cfg: RunConfig, out_name=None, **options):
         return spec.run(cfg, out_name, **options)
     if options:
         raise ValueError(f'model {spec.name} takes none of {", ".join(options)}')
-    if cfg.cache and cfg.cache not in load_registry() and Path(cfg.cache) != CACHE:
+    if cfg.cache and cfg.cache not in registry() and Path(cfg.cache) != CACHE:
         raise ValueError(f'config says cache {cfg.cache} but this process reads {CACHE}')
-    check_requires(spec, CACHE)
+    check_requires(spec, CACHE, cfg.protocol)
     cfg = replace(cfg, cache=str(CACHE))
     out = RUNS / (out_name or cfg.name)
     out.mkdir(parents=True, exist_ok=True)
@@ -262,7 +264,7 @@ def run(cfg: RunConfig, out_name=None, **options):
     torch.manual_seed(cfg.seed)
     device = torch.device('cuda')
 
-    manifest = make_manifest(cfg, load_index())
+    manifest = make_manifest(cfg, load_index(protocol=cfg.protocol))
     manifest.save(out / 'manifest.json')
     info = RunInfo(manifest, out)
     model = spec.build(cfg, info).to(device)
@@ -344,4 +346,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

@@ -234,7 +234,9 @@ src/idapro/
 
 # Generated data
 CT_GAT/data/
+CT_GAT/cache/
 CT_GAT/processed/
+CT_GAT/README_Mendeley_x86_cfg_subgraphs_*.md
 **/processed_graphs/
 graph_transformer_runs/
 *.pt

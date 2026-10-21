@@ -23,7 +23,7 @@ import torch
 import torch.nn as nn
 
 from common.config import RUNS, RunConfig
-from common.manifests import load_sample
+from common.manifests import load_sample, run_command
 from experiments.team_pipelines.common import fold_manifest, import_team, sample_rows
 from experiments.team_pipelines.fit import run_arm, smoke_ids
 from s02_preprocess.subgraph import select_subgraph
@@ -136,5 +136,5 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)
     sys.exit(0)

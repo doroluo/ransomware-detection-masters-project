@@ -101,18 +101,27 @@ def build_summary(out_dir, results):
     return summary
 
 
-def main(description, convert, out_name, argv=None):
+def main(description, convert, out_name, argv=None, from_cfg=None):
     """Command line of a converter. `convert(cache, sample_id, reader_dir, replace_stale)` returns a result dict with
-    `status` ok / skipped (up to date); an AlignmentError or any other error fails that sample only."""
+    `status` ok / skipped (up to date); an AlignmentError or any other error fails that sample only. A converter that
+    can also build from the CFG export passes `from_cfg(cache, sample_id, replace_stale)`, which `--from-cfg` selects in
+    place of `convert`; the reader output root is then not needed."""
     ap = argparse.ArgumentParser(description=description)
     ap.add_argument('--cache', type=Path, nargs='+', default=[CACHE], help='cache directories (default: GT_CACHE, else the dataset selected as for the pipeline)')
     ap.add_argument('--reader-root', type=Path, help='reader output root (default: GT_READER_ROOT or datasets.json)')
+    if from_cfg:
+        ap.add_argument('--from-cfg', action='store_true', help='build from the CFG export (the .jsonl.gz header of each sample, '
+                        'located as build_cache does) instead of the reader output')
     ap.add_argument('--limit', type=int)
     ap.add_argument('--sample-id', nargs='+')
     ap.add_argument('--replace-stale', action='store_true', help='replace a stale side file (and drop one whose sample now fails)')
     ap.add_argument('--require-all', action='store_true', help='exit 1 when any sample is missing, too')
     args = ap.parse_args(argv)
-    args.reader_root = args.reader_root or source_for('reader_root')
+    use_cfg = bool(from_cfg) and args.from_cfg
+    if use_cfg and args.reader_root:
+        ap.error('--from-cfg does not read the reader output; drop --reader-root')
+    if not use_cfg:
+        args.reader_root = args.reader_root or source_for('reader_root')
     wanted = set(args.sample_id) if args.sample_id else None
     ids = {cache: [i for i in index_ids(cache) if wanted is None or i in wanted][:args.limit or None]
            for cache in args.cache}
@@ -122,7 +131,8 @@ def main(description, convert, out_name, argv=None):
     for sid in dict.fromkeys(i for cache in args.cache for i in ids[cache]):
         for cache in args.cache:
             if sid in members[cache]:
-                result = convert(cache, sid, args.reader_root, args.replace_stale)
+                result = (from_cfg(cache, sid, args.replace_stale) if use_cfg
+                          else convert(cache, sid, args.reader_root, args.replace_stale))
                 results[cache].append(result)
                 if result['status'] == 'failed':
                     print(json.dumps(result), flush=True)

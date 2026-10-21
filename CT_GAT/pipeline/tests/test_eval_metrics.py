@@ -107,7 +107,7 @@ def test_val_threshold_pools_kfold_v3_like_kfold(tmp_path, monkeypatch, capsys):
             w = csv.writer(f)
             for sid, y, p, fam, a in v3_rows(fold, 3, 1.5):
                 w.writerow([sid + 'v', 'val', y, f'{p:.6f}', int(p >= 0.5), a, fam, fold, 5])
-    val_threshold.main()
+    val_threshold.main([])
     out = capsys.readouterr().out
     assert out.count('| kfold_v3_all_gnn_s0 | folds | 5 |') == 1 and '| kfold_v3_all_gnn_s0 | pooled | 600 |' in out
     assert '| kfold_v3_all_gnn | 1 |' in out

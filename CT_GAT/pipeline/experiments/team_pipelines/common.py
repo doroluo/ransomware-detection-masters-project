@@ -1,6 +1,6 @@
 """Shared adapter for running the teammates' GAT pipelines under our 5-fold x86 family holdout.
 
-Four pieces: a sha256-pinned import of the teammates' code (`import_team`, two pinned sources), the fold manifests of the
+Four pieces: a sha256-pinned import of the teammates' code (`import_team`, two pinned sources and this repository's own `s02_preprocess` files, `repo`), the fold manifests of the
 `kfold_x86_gnn-mblk15_s{seed}` runs (`fold_manifest`, `all_ids`), the sample_id -> cfg / asm file lookup
 (`paths_for`) and `write_run` (`common/run_io.py`, re-exported here), which writes a run directory that
 `s04_evaluation/stats.py`, `report.py` and `gates.py` read like one of ours.
@@ -17,13 +17,16 @@ Four locations are resolved when first used, never at import:
   GT_TEAM_ASM_DIR    the directory of the IDA listings `<sample_id>.asm.gz`              (`asm_dir()`)
 
 When one is unset the function that needs it raises `TeamSourceNotConfigured`, a FileNotFoundError whose message names the
-environment variable (for the bundle also the datasets.json route of common/paths.py).
+environment variable (for the bundle also the datasets.json route of common/paths.py). The exception is the pair the bundle and
+GT_TEAM_ASM_DIR make: with neither of them configured, `paths_for` takes the CFG and the listing of each binary from the
+Mendeley collections (`common.paths.source_for('collections')`, `CT_GAT/data` by default); with one of them it asks for the other.
 """
 import csv
 import hashlib
 import importlib
 import os
 import sys
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 
@@ -31,6 +34,7 @@ if __name__ == 'common':
     raise ImportError('run experiments/team_pipelines scripts with python -m experiments.team_pipelines.<script> '
                       'from CT_GAT/pipeline, not as files')
 
+from common.catalog import CT_GAT
 from common.config import RUNS, RunConfig
 from common.manifests import load_index, make_manifest
 from common.paths import MissingSource, source_for
@@ -114,13 +118,43 @@ MAIN_CLOSURE = {
     'preprocess_full': (STAGE + 'preprocess_full.py', STAGE + 'tokenize_asm_gz.py'),
 }
 
+# The third source: the same two files in this repository (the checkout, `REPO_ROOT`). There is no fixed pin: the files are the
+# reference, `FilePins` hashes them when a pin is looked up, and a build records the hashes it ran with (a resume refuses a
+# changed file, build_b.load_state). It needs no environment variable.
+REPO_ROOT = CT_GAT.parent
+
+
+class FilePins(Mapping):
+    """{relative path: sha256 of that file under `root`}, read on each lookup; the pin table of the `repo` source."""
+
+    def __init__(self, root, rels):
+        self.root, self.rels = Path(root), tuple(rels)
+
+    def __getitem__(self, rel):
+        if rel not in self.rels:
+            raise KeyError(rel)
+        return hashlib.sha256((self.root / rel).read_bytes()).hexdigest()
+
+    def __iter__(self):
+        return iter(self.rels)
+
+    def __len__(self):
+        return len(self.rels)
+
+
 DEFAULT_SOURCE = 'gnn-331ce0b'
 SOURCES = {
     'gnn-331ce0b': {'env': 'GT_TEAM_GNN_ROOT', 'commit': TEAM_COMMIT, 'pins': PINNED_SHA256, 'closure': CLOSURE,
                     'dirs': ('CT_GAT/preprocessing', '.')},
     'main-c7899f0': {'env': 'GT_TEAM_MAIN_ROOT', 'commit': MAIN_COMMIT, 'pins': MAIN_PINNED_SHA256, 'closure': MAIN_CLOSURE,
                      'dirs': ('CT_GAT/pipeline/s02_preprocess', '.')},
+    'repo': {'env': None, 'root': REPO_ROOT, 'commit': None, 'pins': FilePins(REPO_ROOT, MAIN_PINNED_SHA256), 'closure': MAIN_CLOSURE,
+             'dirs': ('CT_GAT/pipeline/s02_preprocess',)},
 }
+
+
+def _origin(src):
+    return f"teammate commit {src['commit']}" if src['commit'] else 'the files of this repository'
 
 
 def _source(source):
@@ -131,14 +165,17 @@ def _source(source):
 
 def root_of(source=DEFAULT_SOURCE):
     """The worktree of a pinned teammate source, from its environment variable (SOURCES[source]['env']), resolved at call
-    time. Raises TeamSourceNotConfigured naming the variable when it is unset or not a directory."""
+    time; the root of the `repo` source is this repository. Raises TeamSourceNotConfigured naming the variable when it is
+    unset or not a directory."""
     src = _source(source)
+    if src['env'] is None:
+        return Path(src['root'])
     return _env_dir(src['env'], f"the teammates' {source} worktree (commit {src['commit']})")
 
 
 def _configured_roots():
     """Roots of the sources whose variable is set (the others cannot have modules loaded from them)."""
-    return [Path(r) for r in (os.environ.get(src['env']) for src in SOURCES.values()) if r]
+    return [Path(r) for r in (os.environ.get(src['env']) for src in SOURCES.values() if src['env']) if r]
 
 
 def source_pins(source=DEFAULT_SOURCE, module='preprocess_full'):
@@ -165,7 +202,7 @@ def check_pins(module, root=None, source=DEFAULT_SOURCE):
         got = _sha256(path)
         if got != src['pins'][rel]:
             raise RuntimeError(f'{rel}: sha256 {got} does not match the pin {src["pins"][rel]} '
-                               f'(teammate commit {src["commit"]}) under {root}')
+                               f'({_origin(src)}) under {root}')
 
 
 def _all_stems(module):
@@ -179,18 +216,21 @@ def import_team(module, root=None, source=DEFAULT_SOURCE):
     so its own `tokenize_asm_gz` (and, for the gnn source, `transformer_model` and `token_mapping`) win over same-named
     modules of ours or of the other source. Before the import, the modules that `module` runs in any source are evicted
     from sys.modules unless they are already the pinned file of this source, so importing one source never leaves the
-    other's modules loaded. Nothing is written under `root`: bytecode caching is switched off for the import."""
+    other's modules loaded (the files of the `repo` source, which sits inside our own tree, are told apart by path, not by
+    root). Nothing is written under `root`: bytecode caching is switched off for the import."""
     src = _source(source)
     root = Path(root_of(source) if root is None else root)
     check_pins(module, root, source)
     wanted = {Path(rel).stem: (root / rel).resolve() for rel in src['closure'][module]}
-    roots = [r.resolve() for r in _configured_roots()] + [root.resolve()]
+    roots = [r.resolve() for r in _configured_roots()] + ([root.resolve()] if src['env'] else [])
+    repo_files = {(Path(o['root']) / rel).resolve() for o in SOURCES.values() if o['env'] is None
+                  for files in o['closure'].values() for rel in files}
     for stem in _all_stems(module):
         loaded = sys.modules.get(stem)
         if loaded is None:
             continue
         where = Path(getattr(loaded, '__file__', None) or '.').resolve()
-        if where != wanted.get(stem) and any(r in where.parents for r in roots):
+        if where != wanted.get(stem) and (where in repo_files or any(r in where.parents for r in roots)):
             del sys.modules[stem]           # another source's (or another root's) module: it must not stay loaded
     own = [os.path.normcase(os.path.abspath(root / d)) for d in src['dirs']]
     foreign = {os.path.normcase(os.path.abspath(r / d)) for r in _configured_roots() for o in SOURCES.values()
@@ -217,7 +257,7 @@ def fold_config(fold, seed):
 
 @lru_cache(maxsize=1)
 def _index():
-    return load_index()
+    return load_index(protocol='kfold')
 
 
 @lru_cache(maxsize=1)
@@ -246,19 +286,53 @@ def _rows_of(bundle):
         return {r['sample_id']: r for r in csv.DictReader(f)}
 
 
-def _bundle_rows():
-    return _rows_of(bundle_dir())
+def _zero_config():
+    """True when neither the bundle nor GT_TEAM_ASM_DIR is configured: the CFGs and listings are then the ones of the
+    Mendeley collections (`build_cache.corpus_samples('mendeley')`)."""
+    try:
+        source_for('bundle')
+    except MissingSource:
+        return not os.environ.get(ASM_DIR_ENV)
+    return False
 
 
-def paths_for(sample_id):
-    """(cfg_path, asm_path) of a binary: the CFG in the Mendeley bundle (samples.csv cfg_path, `bundle_dir()`), the IDA
-    listing in `asm_dir()`. A missing row or file is an error; an unset GT_BUNDLE / GT_TEAM_ASM_DIR is a
-    TeamSourceNotConfigured."""
+@lru_cache(maxsize=2)
+def _collection_rows(collections):
+    """{sample_id: samples.csv row, with its `root`} of the mendeley corpus under the `collections` folder (the argument
+    only keys the cache; `corpus_samples` resolves the folder itself)."""
+    from s02_preprocess.cache import build_cache
+    try:
+        return {r['sample_id']: r for r in build_cache.corpus_samples('mendeley')}
+    except MissingSource as e:
+        raise TeamSourceNotConfigured(f'{e}; or set GT_BUNDLE and GT_TEAM_ASM_DIR') from e
+
+
+def _sample_row(sample_id):
+    """(samples.csv row, cfg_path, asm_path) of a binary, before any existence check: the bundle's row with the listing in
+    `asm_dir()`, or without a bundle and GT_TEAM_ASM_DIR the collection row with its CFG and listing, each relative to the
+    folder of the row (`root`)."""
+    if _zero_config():
+        collections = source_for('collections')
+        row = _collection_rows(str(collections)).get(sample_id)
+        if row is None:
+            raise KeyError(f'{sample_id}: no row of the mendeley corpus under {collections}')
+        if not row['asm_path']:
+            raise FileNotFoundError(f'{sample_id}: the samples.csv of {row["root"]} has no listing for it (asm_path is empty)')
+        root = Path(row['root'])
+        return row, root / row['cfg_path'], root / row['asm_path']
     bundle = bundle_dir()
     row = _rows_of(bundle).get(sample_id)
     if row is None:
         raise KeyError(f'{sample_id}: no row in {bundle / "samples.csv"}')
-    cfg_path, asm_path = bundle / row['cfg_path'], asm_dir() / f'{sample_id}.asm.gz'
+    return row, bundle / row['cfg_path'], asm_dir() / f'{sample_id}.asm.gz'
+
+
+def paths_for(sample_id):
+    """(cfg_path, asm_path) of a binary: the CFG in the Mendeley bundle (samples.csv cfg_path, `bundle_dir()`), the IDA
+    listing in `asm_dir()`. Without a bundle and without GT_TEAM_ASM_DIR both come from the Mendeley collections
+    (`common.paths.source_for('collections')`, `CT_GAT/data` by default). A missing row or file is an error; a half-configured
+    machine (the bundle without GT_TEAM_ASM_DIR or the reverse) is a TeamSourceNotConfigured naming the missing one."""
+    _, cfg_path, asm_path = _sample_row(sample_id)
     for p in (cfg_path, asm_path):
         if not p.is_file():
             raise FileNotFoundError(f'{sample_id}: missing {p}')
@@ -266,10 +340,11 @@ def paths_for(sample_id):
 
 
 def team_row(sample_id):
-    """The row `construct_blocks.gnn_graph_from_export` / `graph_from_export` expect, from the bundle's samples.csv (the
-    fields `load_split_rows` fills: the csv columns, an int `label`, `cfg_file`). A missing row or file is an error."""
+    """The row `construct_blocks.gnn_graph_from_export` / `graph_from_export` expect, from the bundle's samples.csv or the
+    collections' (the fields `load_split_rows` fills: the csv columns, an int `label`, `cfg_file`). A missing row or file is
+    an error."""
     cfg_path, _ = paths_for(sample_id)
-    row = dict(_bundle_rows()[sample_id])
+    row = {k: v for k, v in _sample_row(sample_id)[0].items() if k != 'root'}
     row['label'] = int(row['label'])
     row['cfg_file'] = cfg_path
     return row

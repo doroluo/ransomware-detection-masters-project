@@ -20,6 +20,6 @@ def pytest_collection_modifyitems(config, items):
         no_cuda = not torch.cuda.is_available()
     for item in items:
         if no_data and 'real_data' in item.keywords:
-            item.add_marker(pytest.mark.skip(reason='needs the CFG cache (datasets.json or GT_CACHE)'))
+            item.add_marker(pytest.mark.skip(reason='needs the built CFG cache (python -m s02_preprocess.cache.build_cache)'))
         if no_cuda and 'gpu' in item.keywords:
             item.add_marker(pytest.mark.skip(reason='needs CUDA'))

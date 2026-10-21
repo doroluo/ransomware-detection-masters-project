@@ -129,7 +129,7 @@ def test_the_datasets_example_is_read_by_the_registry(tmp_path):
     assert registry_['mine']['cache'] == tmp_path / 'caches' / 'mine' and registry_['mine']['protocols'] == ('kfold',)
     env = {'GT_DATASETS': str(path)}
     assert paths.cache_for('kfold', env=env) == tmp_path / 'caches' / 'mine'
-    assert paths.cache_for('kfold_v3', env=env) == paths.UNSET                   # no dataset lists it
+    assert paths.cache_for('kfold_v3', env=env) == paths.CACHE_ROOT / 'combined_v3'   # no file dataset lists it: the catalog's does
     assert paths.cache_for('kfold_v3', env=env, name='mine') == tmp_path / 'caches' / 'mine'
     assert paths.runs_for(env=env) == tmp_path / 'runs_mine'
     assert paths.cache_for('kfold', env={**env, 'GT_CACHE': 'elsewhere'}) == Path('elsewhere')

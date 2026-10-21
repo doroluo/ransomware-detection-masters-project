@@ -11,7 +11,8 @@ macro-F1 at 0.5), best_auc.pt (best validation AUC), predictions.csv, prediction
 other model, so s04_evaluation/report.py, stats.py and gates.py read it.
 
 Data: the folder of `<sample_id>.pt` files that `experiments/team_pipelines/build_b.py` writes (Yanping's stage-2 output; `--build`,
-else the `team_b_build` source of datasets.json, GT_TEAM_B_BUILD), read through `Model1Dataset`. The folds are ours
+else the `team_b_build` source: GT_TEAM_B_BUILD, datasets.json, else `CT_GAT/processed/cfg_subgraphs`, where unzipping the
+preprocessed zip at `CT_GAT/` or `build_b --source repo` puts it), read through `Model1Dataset`. The folds are ours
 (`common.manifests.make_manifest` on the CFG cache index: the 5-fold x86 family holdout, the validation carve of the run seed,
 the same train / val / test ids as the GNN and the teammates' arms of that seed); a binary the build left out on purpose
 (`settings.json` `excluded`) is out of all three splits and recorded in metrics.json, as for the teammates' arms.
@@ -48,7 +49,7 @@ import torch
 import torch.nn.functional as F
 
 from common.config import RUNS, THRESHOLD_FROM, RunConfig
-from common.manifests import Manifest, load_index, make_manifest
+from common.manifests import Manifest, load_index, make_manifest, run_command
 from common.paths import MissingSource, source_for
 from common.run_io import evaluate, write_run
 from experiments.team_pipelines.build_b import resolve_dir
@@ -75,17 +76,26 @@ def say(*args):
     print(*args, flush=True)
 
 
+FILL_BUILD = ('fill CT_GAT/processed/cfg_subgraphs: unzip Mendeley_x86_cfg_subgraphs_500blocks_v3.zip at CT_GAT/, or build it '
+              '(about 7 h on CPU) with python -m experiments.team_pipelines.build_b --source repo')
+
+
 def resolve_build(build=None) -> Path:
-    """`build` (a leading RUNS/ is the run directory), else the `team_b_build` source of datasets.json / GT_TEAM_B_BUILD."""
+    """`build` (a leading RUNS/ is the run directory), else the `team_b_build` source: GT_TEAM_B_BUILD, datasets.json, else
+    `CT_GAT/processed/cfg_subgraphs`. A folder that is missing or holds no `<sample_id>.pt` is an error; for the default folder
+    it says how to fill it."""
     if build is None:
         try:
             path = source_for('team_b_build')
         except MissingSource as e:
-            raise FileNotFoundError(f'--build was not given and {e}') from e
+            raise FileNotFoundError(f'--build was not given and {e}; or {FILL_BUILD}') from e
     else:
         path = resolve_dir(Path(build))
+    hint = f': {FILL_BUILD}' if build is None else ''
     if not path.is_dir():
-        raise FileNotFoundError(f'the pipeline-B build {path} is not a directory')
+        raise FileNotFoundError(f'the pipeline-B build {path} is not a directory{hint}')
+    if not any(p.name != 'channel_embedder.pt' for p in path.glob('*.pt')):
+        raise FileNotFoundError(f'the pipeline-B build {path} holds no <sample_id>.pt file{hint}')
     return path
 
 
@@ -251,7 +261,7 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
     out = out_root / cfg.name
     out.mkdir(parents=True, exist_ok=True)
 
-    manifest = make_manifest(cfg, load_index())
+    manifest = make_manifest(cfg, load_index(protocol=cfg.protocol))
     excluded = read_excluded(build)
     keep = lambda rows: [r for r in rows if r['sample_id'] not in excluded]
     run_manifest = Manifest(keep(manifest.train), keep(manifest.val), keep(manifest.test), manifest.val_families)
@@ -350,7 +360,7 @@ def parse_config(argv=None):
     ap.add_argument('--patience', type=int, default=8)
     ap.add_argument('--threshold-from', choices=THRESHOLD_FROM, default='val',
                     help='validation families (val) or out-of-fold refits of the training binaries (oof, name suffix -thoof)')
-    ap.add_argument('--build', default=None, help='build folder of <sample_id>.pt files (default: datasets.json team_b_build)')
+    ap.add_argument('--build', default=None, help='build folder of <sample_id>.pt files (default: the team_b_build source, CT_GAT/processed/cfg_subgraphs)')
     ap.add_argument('--device', choices=['cuda', 'cpu'], default=None, help='default: cuda when available')
     ap.add_argument('--smoke', type=int, default=None, help='N train binaries, 2 epochs, temporary directory, no RUNS')
     args = ap.parse_args(argv)
@@ -371,4 +381,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

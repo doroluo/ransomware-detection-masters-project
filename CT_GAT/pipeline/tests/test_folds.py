@@ -1,7 +1,7 @@
 """The family-holdout fold builder (s02_preprocess/cache/folds.py).
 
 What passes: the builder reproduces the committed fold assignment. Fed the `family` and `group` columns of
-tests/fixtures/folds_mendeley.csv (a copy of results/family_holdout/folds_mendeley.csv of the LLM_Classification history) it
+s02_preprocess/folds/folds_mendeley.csv (results/family_holdout/folds_mendeley.csv of the LLM_Classification history) it
 returns that file's `fold` column on all 2,509 rows.
 
 What is not possible: regenerating that CSV from the Mendeley bundle. The original goodware groups were hashes of each file's
@@ -15,9 +15,11 @@ from pathlib import Path
 
 import pytest
 
+from common import catalog
+from common.catalog import FOLDS_ROOT
 from s02_preprocess.cache import folds
 
-FIXTURE = Path(__file__).resolve().parent / 'fixtures' / 'folds_mendeley.csv'
+FIXTURE = FOLDS_ROOT / 'folds_mendeley.csv'
 
 
 def read_fixture():
@@ -136,13 +138,16 @@ def test_pool_rows_and_cli_on_a_synthetic_bundle(tmp_path, monkeypatch, capsys):
     assert report.startswith('6 files') and 'fold 4:' in report and 'ransomware' in report and 'x64' in report
 
 
-def test_cli_without_out_or_a_configured_folds_file_says_what_to_give(tmp_path, monkeypatch):
+def test_cli_without_out_writes_to_the_cache_folder_of_the_dataset_never_into_the_committed_folds(tmp_path, monkeypatch):
     write_bundle(tmp_path / 'bundle')
     monkeypatch.setenv('GT_BUNDLE', str(tmp_path / 'bundle'))
     monkeypatch.delenv('GT_FOLDS', raising=False)
     monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'absent.json'))
-    with pytest.raises(SystemExit, match='--out'):
-        folds.main([])
+    monkeypatch.setattr(catalog, 'CACHE_ROOT', tmp_path / 'cache')
+    before = (FOLDS_ROOT / 'folds_mendeley.csv').read_bytes()
+    folds.main([])
+    assert (tmp_path / 'cache' / 'mendeley_x86' / 'folds_mendeley.csv').is_file()
+    assert (FOLDS_ROOT / 'folds_mendeley.csv').read_bytes() == before
 
 
 def test_report_counts_labels_and_architectures_per_fold():

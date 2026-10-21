@@ -1,6 +1,9 @@
 """Check cache invariants for every built sample, and compare a few samples against the bundle's own reader.
 
-python -m s02_preprocess.cache.check_cache [--reference N] [--compare-v1 N] [--compare-base DIR]
+python -m s02_preprocess.cache.check_cache [--cache NAME] [--reference N] [--compare-v1 N] [--compare-base DIR]
+
+--cache NAME checks the cache of that dataset (common/paths.py reads it from the command line, as for build_cache); without it
+the cache is GT_CACHE or the first dataset of the registry.
 
 Every built sample is checked against its corpus's samples.csv and the vocab generation its ids belong to.
 --compare-v1 also requires N random Mendeley samples' v1 arrays to be byte-identical to the v1 cache, whose
@@ -14,8 +17,10 @@ from pathlib import Path
 
 import numpy as np
 
+from common.manifests import index_file, run_command
+from common.paths import registry
 from s02_preprocess.cache.build_cache import (CACHE, CACHE_VERSION, COUNT_FIELDS, EDGE_KINDS, FCB_EXTERN, TOKEN_KINDS,
-                         corpus_root, corpus_samples, npz_path, read_csv, read_vocab)
+                         corpus_samples, npz_path, read_csv, read_vocab)
 
 V1_CACHE = CACHE.with_name('graph_transformer_cache')
 V1_ARRAYS = ('mn', 'sig', 'beh', 'api', 'blk_insn_ptr', 'blk_api_ptr', 'blk_feat', 'fn_blk_ptr', 'fn_flags',
@@ -125,16 +130,17 @@ def compare_v1(sample_id):
 
 
 def reference_compare(row, vocab):
-    """Rebuild one sample with the bundle's dataset.py reader and compare tokens, APIs and features."""
-    bundle = corpus_root('mendeley')
-    spec = importlib.util.spec_from_file_location('bundle_dataset', bundle / 'dataset.py')
+    """Rebuild one sample with the reader shipped beside its samples.csv (the bundle's dataset.py or a collection's
+    gnn_dataset.py, the same file) and compare tokens, APIs and features."""
+    root = Path(row['root'])
+    spec = importlib.util.spec_from_file_location('bundle_dataset', next(f for f in (root / 'dataset.py', root / 'gnn_dataset.py') if f.exists()))
     ds = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ds)
     z = np.load(npz_path(row['sample_id']))
     mn = [vocab['mn'][i] for i in z['mn']]
     api = [vocab['api'][i] for i in z['api']]
     blk = 0
-    for f, graph in enumerate(ds.iter_file_functions(bundle / row['cfg_path'], row['sample_id'])):
+    for f, graph in enumerate(ds.iter_file_functions(root / row['cfg_path'], row['sample_id'])):
         order = sorted(range(graph['num_nodes']), key=lambda i: graph['node_start_rva'][i])
         assert z['fn_blk_ptr'][f] == blk, 'function block offset'
         for i in order:
@@ -150,6 +156,8 @@ def reference_compare(row, vocab):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument('--cache', choices=sorted(registry()), metavar='NAME',
+                    help='dataset whose cache to check (default: GT_CACHE, else the registry default)')
     ap.add_argument('--reference', type=int, default=3, help='samples to compare against the bundle reader')
     ap.add_argument('--compare-v1', type=int, default=0,
                     help='random Mendeley samples to compare byte-for-byte with the v1 cache')
@@ -157,7 +165,7 @@ def main():
     args = ap.parse_args()
     vocab, generations = read_vocab()
     generations = {g['vocab_sha']: g['sizes'] for g in generations}
-    full_index = read_csv(CACHE / 'index.csv')
+    full_index = read_csv(index_file(CACHE))
     index = [r for r in full_index if r['status'] == 'ok']
     corpora = dict.fromkeys(r.get('corpus', 'mendeley') for r in index)
     samples = {r['sample_id']: r for c in corpora for r in corpus_samples(c)}
@@ -194,4 +202,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

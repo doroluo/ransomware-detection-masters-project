@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from common.config import CACHE, EXPORT, RUNS, RunConfig
-from common.manifests import Manifest, load_index, load_sample, make_manifest
+from common.manifests import Manifest, load_index, load_sample, make_manifest, run_command
 from s03b_cfg_feature.gnn.batching import keep_functions
 from s02_preprocess.tokenizer.block_tokens import token_table
 from s02_preprocess.tokenizer.vocab import TOKEN_KINDS, TokenVocab
@@ -314,7 +314,7 @@ def build_export(cfg: RunConfig, out, rows, manifests, log=print):
 def export(cfg: RunConfig, out, folds=range(5), log=print):
     """Store of every binary with a fold under cfg's protocol and arch, and a fold directory per fold, from the
     manifests of seed 0 and val_seed 0."""
-    index = load_index()
+    index = load_index(protocol=cfg.protocol)
     base_cfg = replace(cfg, model='gnn', fold=0, seed=0, val_seed=0)
     first = make_manifest(base_cfg, index)
     rows = sorted(first.train + first.val + first.test, key=lambda r: r['sample_id'])
@@ -334,4 +334,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

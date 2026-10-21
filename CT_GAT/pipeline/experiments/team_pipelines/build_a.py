@@ -26,6 +26,7 @@ from pathlib import Path
 import torch
 
 from common.config import RUNS
+from common.manifests import run_command
 from experiments.team_pipelines.common import all_ids, import_team, sample_rows, team_row
 
 LOG_FIELDS = ('sample_id', 'status', 'n_blocks_total', 'n_blocks_kept', 'seconds')
@@ -132,4 +133,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    sys.exit(0 if main() else 1)
+    sys.exit(0 if run_command(main) else 1)

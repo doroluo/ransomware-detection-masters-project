@@ -23,7 +23,7 @@ import numpy as np
 from sklearn.metrics import average_precision_score
 
 from common.config import MAX_INSTRUCTIONS, MAX_WINDOWS, RUNS, SEQ_LEN, RunConfig, cache_for
-from common.manifests import load_index, make_manifest
+from common.manifests import load_index, make_manifest, run_command
 from s04_evaluation.metrics import family_recall, floors, scores
 
 COLUMNS = (('accuracy', 'Acc'), ('precision', 'P'), ('recall', 'R'), ('f1', 'F1'), ('macro_f1', 'macro-F1'),
@@ -123,7 +123,7 @@ def pooled_floors(rows, train_ids_by_fold, labels):
 def v3_floors(arch, seed=0):
     """(pooled floors, per-fold floors) of the kfold_v3 test manifests of `arch` (all | matched) in the combined
     cache. Each fold's majority class comes from its training manifest, as in a run."""
-    index = load_index(cache_for('kfold_v3'))
+    index = load_index(cache_for('kfold_v3'), 'kfold_v3')
     labels = {r['sample_id']: r['label'] for r in index}
     rows, train_ids, per_fold = [], {}, []
     for fold in range(5):
@@ -348,4 +348,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

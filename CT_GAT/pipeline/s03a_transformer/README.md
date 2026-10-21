@@ -24,7 +24,8 @@ python -m experiments.train --model fivechannel --protocol kfold --fold 0 --smok
 python -m experiments.queue --plan experiments/plans/model1_variants.txt                                                # the variants
 ```
 
-`--build <dir>` is the build folder; without it the `team_b_build` source of `datasets.json` (`GT_TEAM_B_BUILD`) is used. The folds
+`--build <dir>` is the build folder; without it the `team_b_build` source is used: `GT_TEAM_B_BUILD`, else `datasets.json`, else
+`CT_GAT/processed/cfg_subgraphs`. A missing or empty folder stops the run with the two ways to fill it. The folds
 are ours: the 5-fold x86 family holdout of `common.manifests` and the validation carve of the run seed, so a run sees the same
 train, validation and test binaries as the GNN and the teammates' arms of that seed. Per fold the API vocabulary of the build, which
 covers all 1,810 binaries, is made a training-set one again with the logic of `experiments/team_pipelines/train_b.py` (`remap_api`):
@@ -32,6 +33,25 @@ an API id that no training binary of the fold uses becomes `UNK_API`. The loop i
 clipping, patience on the validation AUC and the two checkpoints of `tokenseq`, with her model and collate unchanged;
 `--max-instructions` (default 128, as she wrote it) is the number of instructions per binary the model reads, and the run name
 `kfold<f>_x86_fivechannel_s<seed>` gains `-L<n>` when it is not 128. The run directory is read by `s04_evaluation` like any other.
+
+The build folder, with no configuration, is `CT_GAT/processed/cfg_subgraphs`, and it is filled in one of two ways:
+
+* The fast way: unzip `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` (the Drive preprocessed set, 500 blocks) at `CT_GAT/`. It
+  fills `CT_GAT/processed/` (`cfg_subgraphs/<sample_id>.pt`, `channel_embedder.pt`, `build_info/`, and `api_vocab.json` one level up);
+  the folder is gitignored. With it and the CFG cache of the zero-config setup, `--model fivechannel --protocol kfold --fold 0
+  --seed 0 --device cpu --smoke 8` runs with no other flag. The zip's `api_vocab.json` is not read (it is not inside the build
+  folder): the API embedding takes its size from the largest API id the fold's binaries use, which for the 1,810 binaries is the
+  size of that vocabulary (12,406 names), so a full run has the 933,122 parameters of the published `kfold0_x86_fivechannel_s0`.
+* The exact way, from scratch, about 4 h on the CPU for the 1,810 binaries (7.6 s per binary, measured on the development machine; resumable): `python -m experiments.team_pipelines.build_b
+  --source repo --sample signal --num-blocks 500 --seed 0` over the unzipped Mendeley collections and the CFG cache (build it first with
+  `python -m s02_preprocess.cache.build_cache --cache mendeley_x86`). It runs the `s02_preprocess` scripts of this repository and
+  writes the same `.pt` files as the published build (checked on 60 binaries: every tensor equal, see
+  `experiments/team_pipelines/README.md`). It writes into an empty `CT_GAT/processed/cfg_subgraphs`, not into an unzipped one: the
+  folder holds one build only. It does not write `CT_GAT/processed/api_vocab.json`, which only the untrained demo at the end of
+  `five_channel/model.py` reads; `train.py` takes the vocabulary of the build folder (`api_vocab.json` inside it, which `build_b` writes).
+
+Yanping's own `s02_preprocess/preprocess_full.py` is a different path (train rows first, the test split frozen, the 21 UPX-stub
+x86 rows included) and writes `CT_GAT/processed/` itself; its output is not the published `.pt` set.
 
 Tests: `python -m pytest tests/test_five_channel.py`. The model is Janice Park's (commit 1da23f6 of `origin/TokenSeqModel`).
 

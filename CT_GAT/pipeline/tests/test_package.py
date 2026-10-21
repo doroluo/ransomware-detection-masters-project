@@ -63,13 +63,23 @@ def test_every_module_of_the_package_imports_without_a_datasets_file(tmp_path):
     assert r.returncode == 0 and r.stdout.strip() == 'ok', r.stderr
 
 
-def test_build_cache_without_a_configured_cache_stops_before_touching_the_disk(tmp_path):
+def test_build_cache_without_data_stops_before_touching_the_disk(tmp_path):
     env = {k: v for k, v in os.environ.items() if not k.startswith('GT_')}
-    env.update(GT_DATASETS=str(tmp_path / 'none.json'), PYTHONDONTWRITEBYTECODE='1')
+    env.update(GT_DATASETS=str(tmp_path / 'none.json'), GT_COLLECTIONS=str(tmp_path / 'empty'), GT_CACHE=str(tmp_path / 'cache'),
+               PYTHONDONTWRITEBYTECODE='1')
     r = subprocess.run([sys.executable, '-m', 's02_preprocess.cache.build_cache', '--limit', '2'], cwd=tmp_path,
                        capture_output=True, text=True, env={**env, 'PYTHONPATH': str(ROOT)})
-    assert r.returncode != 0 and 'no cache configured' in r.stderr
-    assert list(tmp_path.iterdir()) == []                                  # no GT_CACHE-not-set directory was created
+    assert r.returncode != 0 and 'no mendeley data' in r.stderr and 'Mendeley_Goodware' in r.stderr
+    assert not (tmp_path / 'cache').exists()                               # the cache directory was not created
+
+
+def test_build_cache_stops_on_an_unset_cache(monkeypatch):
+    from common.paths import UNSET
+    from s02_preprocess.cache import build_cache
+    monkeypatch.setattr(build_cache, 'CACHE', UNSET)
+    monkeypatch.setattr(sys, 'argv', ['build_cache', '--limit', '2'])
+    with pytest.raises(SystemExit, match='no cache configured'):
+        build_cache.main()
 
 
 def test_check_cache_and_build_cache_are_runnable_modules():
