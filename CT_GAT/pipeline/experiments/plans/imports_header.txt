@@ -1,4 +1,4 @@
-# R7 typed with header imports (--imports header), kfold x86, seed 0, 15% block masking. Needs <cache>/side/imports/.
+# R7 typed with header imports (--imports header), kfold x86, seed 0, 15% block masking. Needs <cache>/side/imports/ (plan `imports`).
 # The summary is the gates stage `imports` (R7 and R7 + header imports against the baselines of the plan
 # `imports`), written to gates_imports_header.md.
 # Source queue: queue_gnn.sh --stage imports_header (GPU budget 600 minutes).

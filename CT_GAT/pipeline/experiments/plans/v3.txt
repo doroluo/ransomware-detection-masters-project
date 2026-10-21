@@ -1,6 +1,9 @@
 # Combined cache, kfold_v3, seed 0: CPU baselines (all, matched, all arch-balanced), then the block-masked arms with
 # cell-balanced checkpoint selection for arch all and matched, the arch-balanced (-ab) arms first.
-# The runs read the combined cache because that dataset of datasets.json lists the protocol kfold_v3 (GT_CACHE overrides).
+# The runs read the combined cache because the catalog dataset combined_v3 lists the protocol kfold_v3. Build it once (CPU, after
+# unzipping Ransomware_Balanced.zip and Balanced_Goodware.zip into CT_GAT/data and building mendeley_x86):
+#     python -m s02_preprocess.cache.build_cache --cache combined_v3
+# GT_CACHE overrides the cache.
 # Source queue: queue_gnn.sh --stage v3 (GPU budget 600 minutes).
 #     python -m experiments.queue --plan experiments/plans/v3.txt --budget-min 600
 
