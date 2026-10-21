@@ -410,3 +410,55 @@ def test_the_settings_guard_treats_uncapped_as_another_setting(tmp_path):
     with pytest.raises(SystemExit) as stop:
         run_uncapped(tmp_path, root, 'out', '--num-blocks', '8')
     assert stop.value.code == 2
+
+
+# ---- 7. a collection whose rows are all unassigned -----------------------------------------------------------------
+
+def unassigned_collection(tmp_path, name):
+    """A collection like Ransomware_Balanced: splits/train.csv and test.csv hold the header only, every row is in unassigned.csv."""
+    root = three_samples(tmp_path, name)
+    rows = []
+    for split in ('train', 'test'):
+        path = root / 'splits' / f'{split}.csv'
+        with path.open(newline='', encoding='utf-8') as handle:
+            reader = csv.DictReader(handle)
+            fields = reader.fieldnames
+            rows += list(reader)
+        path.write_text(','.join(fields) + '\n', encoding='utf-8')
+    with (root / 'splits' / 'unassigned.csv').open('w', newline='', encoding='utf-8') as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+    return root
+
+
+def test_preprocess_full_on_a_collection_with_no_split_rows_exits_1_and_leaves_no_settings(tmp_path):
+    root = unassigned_collection(tmp_path, 'Unassigned')
+    out_dir = tmp_path / 'out'
+    with pytest.raises(SystemExit) as stop:
+        pf.main(['--root', str(root), '--num-blocks', '8', '--output', str(out_dir), '--vocab', str(tmp_path / 'vocab.json')])
+    message = str(stop.value)
+    assert stop.value.code == message                                     # a string code: printed on stderr, exit status 1
+    assert str(root.resolve()) in message and 'splits/train.csv and splits/test.csv' in message
+    assert 'The rows of Unassigned are in splits/unassigned.csv' in message and 'Mendeley collections fill' in message
+    assert not (out_dir / 'settings.json').exists()
+    assert not (tmp_path / 'vocab.json').exists()
+
+
+def test_tokenize_asm_gz_on_a_collection_with_no_split_rows_exits_1_and_writes_nothing(tmp_path, monkeypatch):
+    root = unassigned_collection(tmp_path, 'Unassigned')
+    out_dir = tmp_path / 'tok'
+    monkeypatch.setattr(sys, 'argv', ['tokenize_asm_gz.py', '--root', str(root), '--output', str(out_dir)])
+    with pytest.raises(SystemExit) as stop:
+        tok.main()
+    assert 'splits/unassigned.csv' in str(stop.value) and not out_dir.exists()
+
+
+def test_an_empty_selection_by_a_filter_does_not_blame_the_split_files(tmp_path):
+    root = three_samples(tmp_path, 'Filtered')
+    with pytest.raises(SystemExit) as stop:
+        pf.main(['--root', str(root), '--num-blocks', '8', '--sample-id', sha(99), '--output', str(tmp_path / 'out'),
+                 '--vocab', str(tmp_path / 'vocab.json')])
+    message = str(stop.value)
+    assert f'--sample-id {sha(99)}' in message and 'unassigned' not in message
+    assert not (tmp_path / 'out' / 'settings.json').exists()

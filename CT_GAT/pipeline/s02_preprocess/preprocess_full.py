@@ -2138,6 +2138,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     roots = [path.resolve() for path in (args.roots or tok.DEFAULT_ROOTS)]
     selected = tok._selected_rows(roots, args.split, args.architecture, args.sample_id)
+    tok.require_rows(selected, roots, args.split, args.architecture, args.sample_id)
     # The vocabulary grows on training rows only: they go first, in every root, and every other split is frozen.
     selected.sort(key=lambda row: row["split"] != "train")
     if args.limit is not None:
