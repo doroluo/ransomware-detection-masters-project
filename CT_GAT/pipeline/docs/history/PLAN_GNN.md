@@ -540,7 +540,7 @@ other memory in the 2.1 exports, which is consistent with the near-tie.
 
 ## Final results (2026-10-20)
 
-All runs are finished. Every number below is read from `RUNS/gates_{noapi,team,v3,paths_codebert,model1,imports_header}.md` or
+All runs are finished. Every number below is read from `RUNS/gates_{noapi,team,v3,paths_codebert,model1,model1_variants,imports_header}.md` or
 reproduced with `python -m evaluation.stats` (the gates files and the command give the same values). Setup, unless a table says
 otherwise: kfold x86 on the v2 cache (5 family-holdout folds, 1,810 test binaries in 712 clusters); kfold_v3 `arch all` on the
 combined cache (5,652 test binaries in 2,586 clusters). Every GNN arm carries 15% block masking (`mblk15`): R7 is the typed
