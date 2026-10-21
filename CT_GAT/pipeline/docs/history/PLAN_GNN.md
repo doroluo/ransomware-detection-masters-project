@@ -747,6 +747,34 @@ per binary, no graph. kfold x86; Model 1 has 3 seeds.
 **Verdict.** Model 1 does not beat any reference. It is behind the two baselines on seed 0 (AUC intervals below zero) and within the
 noise of the GNN arms over 3 seeds, with lower macro-F1 on every pair.
 
+### 8. Team pipelines after the fixes (2026-10-21)
+
+Pipeline B rebuilt with main PR #10 (the `endp` fix; library functions no longer sampled), at 500 blocks and with no block cap;
+`feat` is Model 2 (77 block features + CFG), `emb` Model 3 (64-d pooled five-channel embedding + CFG). Janice's five-channel Model 1
+(main PR #12) reads the first 128 or 512 instructions of a pipeline-B build. kfold x86, 3-seed mean of the five-fold pooled metric
+(`RUNS/gates_team.md`, `RUNS/gates_model1_variants.md`; details in `TEAM_PIPELINES_REVIEW.md`, section 13). The AUC of `1 - match
+rate` as a ransomware score is 0.502 on the 500-block build and 0.447 uncapped (0.747 on the build before the fix).
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| R7 typed, whole graph | 0.979 | 0.987 | 0.935 |
+| team sig500v3 (500 blocks, all inputs) | 0.948 | 0.973 | 0.893 |
+| team sig500v3 feat (Model 2, 500 blocks) | 0.954 | 0.976 | 0.879 |
+| team sig500v3 emb (Model 3, 500 blocks) | 0.966 | 0.982 | 0.909 |
+| team sigwhole (uncapped, all inputs) | 0.970 | 0.982 | 0.899 |
+| team sigwhole feat (Model 2, uncapped) | 0.970 | 0.983 | 0.929 |
+| team sigwhole emb (Model 3, uncapped) | 0.981 | 0.989 | 0.901 |
+| five-channel Model 1, L128, 500-block build | 0.919 | 0.954 | 0.863 |
+| five-channel Model 1, L512, 500-block build | 0.926 | 0.958 | 0.878 |
+| five-channel Model 1, L512, uncapped build | 0.919 | 0.955 | 0.863 |
+| Model 1 tokenseq, validation threshold | 0.970 | 0.982 | 0.902 |
+| Model 1 tokenseq, out-of-fold threshold | 0.968 | 0.981 | 0.918 |
+
+Two pairs pass the pre-registered rule: Model 2 to Model 3 at 500 blocks, dAUC +0.012 [+0.000, +0.025] (above zero before rounding),
+dmacro-F1 +0.031 [+0.002, +0.069]; Model 2 at 500 blocks to Model 2 uncapped, +0.015 [+0.003, +0.029], +0.050 [+0.006, +0.108].
+Against R7 no arm passes; uncapped Model 3 is level on AUC, +0.002 [-0.005, +0.009], with macro-F1 -0.035 [-0.091, +0.019]. The
+out-of-fold threshold moves Model 1's macro-F1 by +0.016 [-0.014, +0.054] at unchanged AUC (-0.002 [-0.007, +0.002]).
+
 ### Removed in step 25: last readings
 
 Three options were removed from the code after the runs above (README, "Removed in step 25"); the run directories stay on disk. Their
