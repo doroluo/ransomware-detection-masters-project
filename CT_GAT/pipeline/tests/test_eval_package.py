@@ -46,6 +46,19 @@ def test_the_commands_run_as_modules_from_the_package_root(module, tmp_path):
     assert r.returncode == 0 and 'usage' in r.stdout.lower(), r.stderr
 
 
+def test_val_threshold_needs_the_run_folder_only_to_run(tmp_path):
+    missing = tmp_path / 'no_runs'
+    env = clean_env(tmp_path, GT_RUNS=str(missing))
+    r = subprocess.run([sys.executable, '-m', 's04_evaluation.val_threshold', '--help'], cwd=ROOT, capture_output=True, text=True, env=env)
+    assert r.returncode == 0 and 'usage' in r.stdout.lower(), r.stderr
+    r = subprocess.run([sys.executable, '-m', 's04_evaluation.val_threshold'], cwd=ROOT, capture_output=True, text=True, env=env)
+    assert r.returncode != 0 and 'Traceback' not in r.stderr, r.stderr
+    assert str(missing) in r.stderr and 'training or baseline command' in r.stderr
+    missing.mkdir()
+    r = subprocess.run([sys.executable, '-m', 's04_evaluation.val_threshold'], cwd=ROOT, capture_output=True, text=True, env=env)
+    assert r.returncode == 0 and r.stdout.startswith('| config |'), r.stderr
+
+
 def test_the_stage_modules_do_not_import_the_engine():
     """Stage files are data: they may import stage.py and common.py only, so that the engine can run as __main__."""
     for name in stages_package.STAGES:

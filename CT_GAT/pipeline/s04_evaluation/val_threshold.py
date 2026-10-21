@@ -7,6 +7,7 @@ same validation macro-F1 and the first of them is taken. The out-of-fold rule ch
 model did not train on and that are not saturated: the training binaries are split in `OOF_K` folds that keep a ransomware
 family or a goodware identity group whole (`common.manifests.grouped_folds`), the model is refit on `OOF_K - 1` of them for
 the epoch count of the run, and the held-out predictions of the folds are pooled."""
+import argparse
 import csv
 import statistics
 from collections import defaultdict
@@ -85,7 +86,10 @@ def fmt(values):
     return f'{statistics.mean(values):.3f} ± {statistics.stdev(values):.3f}' if len(values) > 1 else f'{values[0]:.3f}'
 
 
-def main():
+def main(argv=None):
+    argparse.ArgumentParser(description='Re-score the saved predictions of every run at the validation threshold; prints a markdown table.').parse_args(argv)
+    if not RUNS.is_dir():
+        raise SystemExit(f'no run folder at {RUNS}: run a training or baseline command first (it writes there), or set GT_RUNS')
     groups = defaultdict(list)
     for run_dir in sorted(RUNS.iterdir()):
         if not (run_dir / 'config.json').exists() or not (run_dir / 'predictions.csv').exists():

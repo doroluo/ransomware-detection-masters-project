@@ -209,8 +209,7 @@ the cache of step 1 as well. Without `--build` it reads `CT_GAT/processed/cfg_su
 **6. The teammates' GAT pipelines** under the same folds: [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md)
 (needs `torch_geometric` and, except for `build_b --source repo`, the pinned teammate worktrees).
 
-**7. Evaluation.** Each run writes `RUNS/<name>/metrics.json` and its predictions; these read them (`val_threshold` needs `RUNS` to
-exist, so it runs after the first baselines):
+**7. Evaluation.** Each run writes `RUNS/<name>/metrics.json` and its predictions; these read them:
 
 ```bash
 python -m s04_evaluation.report                                                       # RESULTS.md: every run

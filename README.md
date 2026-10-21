@@ -139,9 +139,8 @@ python -m s04_evaluation.gates --stage model1_variants
 python -m s04_evaluation.gates --stage day1
 ```
 
-`report` writes `RUNS/RESULTS.md` over every run found. `val_threshold` re-scores saved predictions, so `RUNS` must exist
-(run it after the baselines). `gates` prints the arms of a stage that it finds and names the missing folds and seeds.
-`--stage v3` needs the all-architecture runs below.
+`report` writes `RUNS/RESULTS.md` over every run found. `val_threshold` re-scores the saved predictions of the runs found, and with no run folder stops and says so. `gates`
+prints the arms of a stage that it finds and names the missing folds and seeds. `--stage v3` needs the all-architecture runs below.
 
 Time and hardware per command, measured on the development machine:
 
