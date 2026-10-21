@@ -68,7 +68,7 @@ reads the cache of the first dataset whose protocols list its `--protocol`, so `
 `--protocol kfold_v3` reads `combined_v3`. `python -m common.catalog` prints, per dataset, which collection folders are present,
 whether the bundle is configured, whether the cache is built and whether the fold files are found. A new dataset is a row of
 `DATASETS` in `common/catalog.py` plus its fold CSV in `s02_preprocess/folds/` ([`docs/ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md)).
-When something is set in more than one place, the order is environment variable, then `datasets.json`, then the default; see Overrides.
+When something is set in more than one place, the order is environment variable, then the per-machine file, then the default; see Overrides.
 
 ### Input data
 
@@ -116,7 +116,7 @@ option (`tests/test_run_names.py` holds 971 recorded names).
 ## Running
 
 Every command runs from this folder. `RUNS` in a path means the run directory (`runs/` here, or `GT_RUNS`); the queue does not
-repeat a run that already has its `metrics.json`. A run with `--epochs 2` (or `--smoke 8 --device cpu` for Models 1) checks a
+repeat a run that already has its `metrics.json`. A run with `--epochs 2` (or `--smoke 8 --device cpu` for Model 1) checks a
 setup in a few minutes before a full run. Times are measured on the development machine; where none is given, none was measured.
 
 **0. Data.** Unzip `Mendeley_Ransomware.zip` and `Mendeley_Goodware.zip` into `CT_GAT/data/`, then:
@@ -207,7 +207,7 @@ the cache of step 1 as well. Without `--build` it reads `CT_GAT/processed/cfg_su
   the 1,810 binaries (7.6 s per binary, measured), and resumes from its checkpoint.
 
 **6. The teammates' GAT pipelines** under the same folds: [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md)
-(needs `torch_geometric`; the builds of the 500-block comparison need the pinned teammate worktrees).
+(needs `torch_geometric` and, except for `build_b --source repo`, the pinned teammate worktrees).
 
 **7. Evaluation.** Each run writes `RUNS/<name>/metrics.json` and its predictions; these read them (`val_threshold` needs `RUNS` to
 exist, so it runs after the first baselines):

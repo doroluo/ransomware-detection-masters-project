@@ -113,7 +113,7 @@ per-machine file, or an entry of `datasets.json`, which belongs to one machine.
    holds: the `--protocol` values that read it by default (the first dataset that lists a protocol wins), its corpora, the fold
    files it reads under `s02_preprocess/folds/`, and the `base` dataset whose cache seeds it. The cache of a dataset is
    `CT_GAT/cache/<name>/`. `python -m common.catalog` lists the dataset with its collections, cache and fold files, and
-   `tests/test_catalog.py` checks that every folder, corpus, base and fold file of the table exists.
+   `tests/test_catalog.py` checks that every collection name is known, and that every corpus, base dataset and fold file of the table exists.
 2. **Cache.** `python -m s02_preprocess.cache.build_cache --cache <name>` streams the IDA exports (`s01_ida_export`) of the
    corpora into `<cache>/samples/*.npz`, `index.csv` and `vocab.json`; `python -m s02_preprocess.cache.check_cache --cache <name>`
    checks every invariant. A folder that is not unzipped stops the build with its name and the zip that holds it.

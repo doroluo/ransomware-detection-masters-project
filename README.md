@@ -121,13 +121,16 @@ python -m experiments.train --protocol kfold --fold 0 --seed 0 --model gnn --mas
 python -m s03c_cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
 python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
 python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0
+python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
+python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0
 ```
 
 The export records `export_sha` `e09971a0...` in the tokenseq run, the value of the published runs. `--smoke 8 --device cpu`
-trains 8 binaries for 2 epochs in a temporary folder, as a check of the setup. Model 3 (frozen CodeBERT block vectors) and the
+trains 8 binaries for 2 epochs in a temporary folder, as a check of the setup. The last two lines are Janice's five-channel
+model (CPU or GPU). It reads `CT_GAT/processed/cfg_subgraphs`, which the next section fills from a zip or by a build. Model 3 (frozen CodeBERT block vectors) and the
 teammates' GAT pipelines are in [`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md).
 
-Janice's model is in the next section. When the runs you want exist, the tables:
+When the runs you want exist, the tables:
 
 ```bash
 python -m s04_evaluation.report
@@ -145,7 +148,8 @@ Time and hardware per command, measured on the development machine:
 | Command | Hardware | Time |
 |---|---|---|
 | `build_cache` | CPU, 4 workers | 200 s of building for 2,411 samples (244 s in all, from `build_summary.json`) |
-| `check_cache`, `baselines` | CPU | minutes |
+| `baselines` | CPU | minutes |
+| `check_cache` | CPU | not measured here |
 | `import_side --from-cfg` | CPU | 33 s for 2,411 samples |
 | `experiments.train --model gnn` | GPU only: it moves the model to CUDA | not measured here |
 | `block_export` | CPU | minutes |
@@ -186,15 +190,13 @@ This is the published 500-block build: a rebuild of 60 binaries was identical to
 about 4 h on the CPU for the 1,810 binaries (7.6 s per binary, measured on the development machine), resumes from its
 checkpoint, and does not write `CT_GAT/processed/api_vocab.json`, which only the untrained demo reads.
 
-With either build in place:
+With either build in place, the two `--model fivechannel` commands of the zero-config path train and evaluate the model, and
 
 ```bash
-python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
-python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0
 python -m s03a_transformer.five_channel.model --batch-size 4
 ```
 
-The last command runs the untrained Model 1 over every sample of the folder and prints its predictions (`--data-dir` reads
+runs the untrained Model 1 over every sample of the folder and prints its predictions (`--data-dir` reads
 another folder; the API vocabulary is always read from `CT_GAT/processed/api_vocab.json`).
 
 `s02_preprocess/preprocess_full.py` is Yanping's own script and a different path from `build_b`: it processes the train rows
