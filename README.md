@@ -173,6 +173,7 @@ uncapped one) at `CT_GAT/`. If you take the files from the Drive one by one inst
 | `channel_embedder.pt` | `CT_GAT/processed/cfg_subgraphs/` |
 | `<sha256>.manifest.json` (500-block zip only) | `CT_GAT/processed/cfg_subgraphs/` (alignment report per binary; no model reads it) |
 | `build_info/` | `CT_GAT/processed/cfg_subgraphs/build_info/` (per-binary index and build settings; no model reads it) |
+| `README_Mendeley_x86_cfg_subgraphs_<budget>_v3.md` | stays at `CT_GAT/`, where the zip unpacks it (git ignores it; no command reads it) |
 
 Each zip's `.pt` files carry API ids of its own `api_vocab.json` (12,406 names in the 500-block build, 12,788 uncapped), so the
 files of the two zips must not be mixed.
