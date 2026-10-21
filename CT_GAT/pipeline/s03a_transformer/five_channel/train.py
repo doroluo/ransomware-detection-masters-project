@@ -49,7 +49,7 @@ import torch
 import torch.nn.functional as F
 
 from common.config import RUNS, THRESHOLD_FROM, RunConfig
-from common.manifests import Manifest, load_index, make_manifest
+from common.manifests import Manifest, load_index, make_manifest, run_command
 from common.paths import MissingSource, source_for
 from common.run_io import evaluate, write_run
 from experiments.team_pipelines.build_b import resolve_dir
@@ -261,7 +261,7 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
     out = out_root / cfg.name
     out.mkdir(parents=True, exist_ok=True)
 
-    manifest = make_manifest(cfg, load_index())
+    manifest = make_manifest(cfg, load_index(protocol=cfg.protocol))
     excluded = read_excluded(build)
     keep = lambda rows: [r for r in rows if r['sample_id'] not in excluded]
     run_manifest = Manifest(keep(manifest.train), keep(manifest.val), keep(manifest.test), manifest.val_families)
@@ -381,4 +381,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

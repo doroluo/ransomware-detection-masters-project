@@ -13,6 +13,7 @@ The runs are read from `common.paths.RUNS` (`GT_RUNS`), the combined cache of th
 import argparse
 import importlib
 
+from common.manifests import run_command
 from s04_evaluation.gate_layouts import LAYOUTS
 from s04_evaluation.gate_tables import EXTRAS, paired_stage
 
@@ -53,4 +54,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

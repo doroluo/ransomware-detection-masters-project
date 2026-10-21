@@ -10,14 +10,14 @@ building only when the reduction is at least 5%.
 import json
 
 from common.config import CACHE, RUNS
-from common.manifests import load_index
+from common.manifests import load_index, run_command
 from s02_preprocess.subgraph import chain_reduction
 
 WORTH_BUILDING = 0.05
 
 
 def main():
-    rows = [r for r in load_index() if r['arch'] == 'x86' and r['fold'] is not None]
+    rows = [r for r in load_index(protocol='kfold') if r['arch'] == 'x86' and r['fold'] is not None]
     out = {'cache': str(CACHE), 'pool': 'kfold x86', **chain_reduction(rows, CACHE)}
     out['worth_building'] = out['reduction'] >= WORTH_BUILDING
     (RUNS / 'subgraph_chain.json').write_text(json.dumps(out, indent=2), encoding='utf-8')
@@ -25,4 +25,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

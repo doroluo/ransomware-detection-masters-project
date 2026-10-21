@@ -257,7 +257,7 @@ def fold_config(fold, seed):
 
 @lru_cache(maxsize=1)
 def _index():
-    return load_index()
+    return load_index(protocol='kfold')
 
 
 @lru_cache(maxsize=1)

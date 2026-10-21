@@ -29,6 +29,7 @@ from pathlib import Path
 
 import torch
 
+from common.manifests import run_command
 from experiments.team_pipelines.build_b import resolve_dir
 from experiments.team_pipelines.match_diagnosis import auc_of_loss, build_ids, build_source, label_table, load_samples
 
@@ -197,4 +198,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(run_command(main))

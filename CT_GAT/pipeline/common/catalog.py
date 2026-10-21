@@ -86,7 +86,7 @@ def status(data_root=DATA_ROOT, cache_root=CACHE_ROOT, folds_root=FOLDS_ROOT, bu
     return report
 
 
-def _show(path):
+def show(path):
     path = Path(path)
     try:
         return path.relative_to(CT_GAT.parent).as_posix()
@@ -100,15 +100,15 @@ def render(report, data_root=DATA_ROOT):
         ds = DATASETS[name]
         lines.append(f"{name}: protocols {', '.join(ds.protocols)}; corpora {', '.join(ds.corpora)}"
                      + (f'; base {ds.base}' if ds.base else ''))
-        lines.append(f'  collections under {_show(data_root)}:')
+        lines.append(f'  collections under {show(data_root)}:')
         for folder, c in info['collections'].items():
             when = f" (snapshot {c['snapshot']})" if c['present'] and c['snapshot'] else ''
             lines.append(f"    {folder}: {'present' if c['present'] else 'missing'}{when}")
         kind, path = info['bundle']
-        lines.append(f"  bundle: {kind}{f' {_show(path)}' if path else ''}")
-        lines.append(f"  cache {_show(info['cache'])}: {'built' if info['built'] else 'not built'}")
+        lines.append(f"  bundle: {kind}{f' {show(path)}' if path else ''}")
+        lines.append(f"  cache {show(info['cache'])}: {'built' if info['built'] else 'not built'}")
         for key, (path, ok) in info['folds'].items():
-            lines.append(f"  {key} {_show(path)}: {'found' if ok else 'missing'}")
+            lines.append(f"  {key} {show(path)}: {'found' if ok else 'missing'}")
     return '\n'.join(lines)
 
 

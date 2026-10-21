@@ -53,7 +53,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from common.config import CACHE, RUNS, VOCABS, RunConfig
-from common.manifests import load_index, make_manifest
+from common.manifests import index_file, load_index, make_manifest, run_command
 from s04_evaluation.metrics import cell_weights, family_recall, floors, scores
 from s04_evaluation.val_threshold import GRID, macro_f1
 from s02_preprocess.tokenizer.vocab import VOCAB_KINDS, Y_KINDS, Y_SIZES, uses_reader
@@ -181,7 +181,7 @@ def write_stack_logits(cfg: RunConfig, sizes, out_root=None):
     """stack_logits.csv and stack_logits.json for cfg's split (see the module docstring)."""
     if cfg.arch_balance:
         raise ValueError('--stack-logits is not combined with --arch-balance')
-    manifest = make_manifest(cfg, load_index())
+    manifest = make_manifest(cfg, load_index(protocol=cfg.protocol))
     x_train, _ = load_features(manifest.train, sizes)
     x_val, _ = load_features(manifest.val, sizes)
     x_test, _ = load_features(manifest.test, sizes)
@@ -266,7 +266,7 @@ def features_and_models(cfg: RunConfig, sizes, train, val, test, vocab, imports,
 
 
 def run(cfg: RunConfig, sizes, out_root=None, vocab='ours', imports=False):
-    manifest = make_manifest(cfg, load_index())
+    manifest = make_manifest(cfg, load_index(protocol=cfg.protocol))
     train, val, test = manifest.train, manifest.val, manifest.test
     y_train = np.array([r['label'] for r in train])
     y_val = np.array([r['label'] for r in val])
@@ -342,6 +342,7 @@ def configs(args):
 
 def main(argv=None):
     args = parse_args(argv)
+    index_file(protocol=args.protocol)
     sizes = {k: len(v) for k, v in json.loads((CACHE / 'vocab.json').read_text(encoding='utf-8')).items()}
     for cfg in configs(args):
         if args.stack_logits:
@@ -351,4 +352,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

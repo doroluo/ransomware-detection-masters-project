@@ -35,6 +35,7 @@ from pathlib import Path
 import torch
 
 from common.config import RUNS
+from common.manifests import run_command
 from experiments.team_pipelines.build_b import load_vocab_embedder, resolve_dir
 from experiments.team_pipelines.common import DEFAULT_SOURCE, SOURCES, fold_manifest, import_team, sample_rows, source_pins
 from experiments.team_pipelines.fit import run_arm, smoke_ids
@@ -252,5 +253,5 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)
     sys.exit(0)

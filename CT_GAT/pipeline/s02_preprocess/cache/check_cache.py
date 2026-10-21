@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
+from common.manifests import index_file, run_command
 from common.paths import registry
 from s02_preprocess.cache.build_cache import (CACHE, CACHE_VERSION, COUNT_FIELDS, EDGE_KINDS, FCB_EXTERN, TOKEN_KINDS,
                          corpus_samples, npz_path, read_csv, read_vocab)
@@ -164,7 +165,7 @@ def main():
     args = ap.parse_args()
     vocab, generations = read_vocab()
     generations = {g['vocab_sha']: g['sizes'] for g in generations}
-    full_index = read_csv(CACHE / 'index.csv')
+    full_index = read_csv(index_file(CACHE))
     index = [r for r in full_index if r['status'] == 'ok']
     corpora = dict.fromkeys(r.get('corpus', 'mendeley') for r in index)
     samples = {r['sample_id']: r for c in corpora for r in corpus_samples(c)}
@@ -201,4 +202,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

@@ -1,18 +1,70 @@
 """Manifests: built rows of the cache, the validation carve, the training subsample and the per-binary arrays."""
 import csv
 import json
+import os
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
+from common import catalog
 from common.config import CACHE, RunConfig
+from common.paths import cache_in, protocol_in, registry
 
 
-def load_index(cache=None):
+class MissingCache(FileNotFoundError):
+    """The index of a cache is not there: the cache is not built. `str(e)` is the whole message, with the build command."""
+
+
+def missing_cache_message(cache, protocol=None):
+    """One paragraph: the cache that is not built and the command that builds it. The dataset is the registry entry with this
+    cache, else the one `--cache` names on the command line, else the first one that lists `protocol` (GT_CACHE can point
+    anywhere)."""
+    reg = registry()
+    cache = Path(cache)
+    name = next((n for n, e in reg.items() if Path(e['cache']).resolve() == cache.resolve()), None)
+    name = name or cache_in(sys.argv[1:], reg)
+    name = name or next((n for n, e in reg.items() if (protocol or protocol_in(sys.argv[1:])) in e['protocols']), None)
+    shown = catalog.show(cache)
+    text = f'no cache index at {shown}/index.csv: the cache is not built.'
+    if name not in catalog.DATASETS:
+        return (f"{text} Build a dataset's cache with python -m s02_preprocess.cache.build_cache --cache <name> from "
+                f'CT_GAT/pipeline (GT_CACHE or datasets.json says where the cache goes).')
+    ds = catalog.DATASETS[name]
+    own = [c for c in ds.corpora if not ds.base or c not in catalog.DATASETS[ds.base].corpora]
+    folders = [f for c in own for f in catalog.CORPORA[c].collections]
+    needs = f"needs the {' and '.join(folders)} collections under CT_GAT/data"
+    if ds.base:
+        needs += f', and the {ds.base} cache built first'
+    text += f' Build it with python -m s02_preprocess.cache.build_cache --cache {name} from CT_GAT/pipeline ({needs}).'
+    if os.environ.get('GT_CACHE'):
+        text += f' GT_CACHE is set, so the build writes there.'
+    return text
+
+
+def index_file(cache=None, protocol=None):
+    """The index.csv of `cache` (default: the run's cache); MissingCache when the cache is not built."""
+    path = Path(cache or CACHE) / 'index.csv'
+    if not path.is_file():
+        raise MissingCache(missing_cache_message(path.parent, protocol))
+    return path
+
+
+def run_command(main, *args):
+    """`main(*args)` as a command: a missing cache ends it with its message on stderr and exit code 1, no traceback."""
+    try:
+        return main(*args)
+    except MissingCache as e:
+        raise SystemExit(str(e)) from None
+
+
+def load_index(cache=None, protocol=None):
     """Built rows of `cache` (default: the run's cache). `fold` (Mendeley family holdout) and `fold_v3`
     (family_holdout_v3 folds_all, every corpus) are ints, or None where the row has none; a cache without the corpus
-    columns reads as all-Mendeley."""
-    with ((cache or CACHE) / 'index.csv').open(encoding='utf-8', newline='') as f:
+    columns reads as all-Mendeley. Raises MissingCache (a FileNotFoundError) when the cache is not built; `protocol` only
+    helps name the dataset in its message."""
+    with index_file(cache, protocol).open(encoding='utf-8', newline='') as f:
         rows = [r for r in csv.DictReader(f) if r['status'] == 'ok']
     for r in rows:
         r['label'] = int(r['label'])
