@@ -284,3 +284,66 @@ def test_missing_asm_count_is_the_unmatched_selected_instructions_except_duplica
     assert report.duplicate_count == 1 and shared == 2
     assert report.missing_asm_count == 0
     assert unmatched == report.missing_asm_count + shared
+
+
+# ---- num_blocks=0 sets no block budget -----------------------------------------------------------------------------
+
+def all_library_cfg():
+    cfg = mixed_cfg()
+    cfg.library_functions = {0, 1, 2, 3}
+    return cfg
+
+
+def sample_fields(sample):
+    return (sample.selected_keys, sample.edges, sample.original_blocks, sample.original_edges, sample.original_instructions)
+
+
+UNCAPPED_CASES = [
+    pytest.param(mixed_cfg, {}, id='mixed'),
+    pytest.param(lambda: chain_cfg(120), {}, id='chain'),
+    pytest.param(all_library_cfg, {}, id='all-library'),
+    pytest.param(mixed_cfg, {'include_library': True}, id='include-library'),
+    pytest.param(lambda: chain_cfg(120), {'max_instructions': 100}, id='instruction-cap'),
+]
+
+
+@pytest.mark.parametrize('sampler', [pf.sample_signal_subgraph, pf.sample_connected_subgraph])
+@pytest.mark.parametrize('build, extra', UNCAPPED_CASES)
+def test_num_blocks_zero_equals_a_budget_larger_than_the_binary(sampler, build, extra):
+    cfg = build()
+    for seed in range(6):
+        uncapped = sampler(cfg, seed=seed, num_blocks=0, **extra)
+        huge = sampler(cfg, seed=seed, num_blocks=10**9, **extra)
+        assert uncapped.selected_keys and sample_fields(uncapped) == sample_fields(huge)
+
+
+def test_uncapped_signal_keeps_every_non_library_block_and_only_those():
+    cfg = mixed_cfg()
+    for seed in range(4):
+        sample = pf.sample_signal_subgraph(cfg, seed=seed, num_blocks=0)
+        assert sorted(sample.selected_keys) == [(1, 0), (1, 1), (1, 2), (2, 0), (2, 1)]
+    cfg = all_library_cfg()
+    sample = pf.sample_signal_subgraph(cfg, seed=0, num_blocks=0)
+    assert sorted(sample.selected_keys) == sorted(cfg.blocks)           # nothing else to pick: the library blocks
+
+
+def test_uncapped_walk_takes_its_whole_connected_region():
+    cfg = chain_cfg(120)
+    sample = pf.sample_connected_subgraph(cfg, seed=0, num_blocks=0)
+    assert sorted(sample.selected_keys) == [(0, i) for i in range(120)]
+
+
+def test_uncapped_still_honours_max_instructions():
+    cfg = chain_cfg(120)                                                 # 2 instructions per block
+    for sampler in (pf.sample_signal_subgraph, pf.sample_connected_subgraph):
+        sample = sampler(cfg, seed=0, num_blocks=0, max_instructions=20)
+        assert len(sample.selected_keys) == 10
+
+
+def test_a_sampler_still_needs_a_budget_and_refuses_a_negative_one():
+    cfg = mixed_cfg()
+    for sampler in (pf.sample_signal_subgraph, pf.sample_connected_subgraph):
+        with pytest.raises(ValueError, match='set num_blocks or max_instructions'):
+            sampler(cfg, seed=0)
+    with pytest.raises(ValueError, match='num_blocks must be'):
+        pf.sample_connected_subgraph(cfg, seed=0, num_blocks=-1)
