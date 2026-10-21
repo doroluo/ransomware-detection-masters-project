@@ -10,6 +10,7 @@ The binary label stays benign / ransomware. Behavior tags describe **what a stre
 ### Pipeline overview
 ```
 ```
+<img width="741" height="750" alt="1d3479392de2f12f7001ccb5cbdf58aa" src="https://github.com/user-attachments/assets/dbb96697-ee9c-457b-a7c7-5f1022c492e9" />
 
 ---
 
