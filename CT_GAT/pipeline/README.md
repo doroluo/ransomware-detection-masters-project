@@ -80,14 +80,17 @@ The team Google Drive holds the inputs (the root [`README.md`](../../README.md) 
 | `mendeley_x86` | `Mendeley_Ransomware/` and `Mendeley_Goodware/` (`Mendeley_Ransomware.zip`, `Mendeley_Goodware.zip`), or the bundle `Mendeley_GNN_v1/` (`Mendeley_GNN_v1.zip`) in their place | `s02_preprocess.cache.build_cache`, hence every `kfold` command |
 | `combined_v3` | the two above, and `Ransomware_Balanced/` and `Balanced_Goodware/` (`Ransomware_Balanced.zip`, `Balanced_Goodware.zip`) | `build_cache --cache combined_v3`, hence every `kfold_v3` command |
 
+`VirusShare Ransomware.zip` unzips to `VirusShare_Malware/`, which is in no dataset: no fold file lists it and all its rows are in
+`splits/unassigned.csv`, so the pipeline does not read it.
+
 `build_cache` stops before it touches the cache when a folder is missing, and names the folder and the zip. The fold CSVs are in
 the repository ([`s02_preprocess/folds/README.md`](s02_preprocess/folds/README.md)); `family_holdout_folds.zip` on the Drive holds the same
 files and is not needed. `s02_preprocess.cache.folds` writes folds with the same rule, but not the ones of the published tables
 (its docstring says why), so use the committed files to reproduce them.
 
 `--model fivechannel` also reads a folder of pipeline-B `.pt` files, `CT_GAT/processed/cfg_subgraphs`. Fill it with a
-`Mendeley_x86_cfg_subgraphs_*` zip unzipped at `CT_GAT/` (`api_vocab.json` goes to `CT_GAT/processed/api_vocab.json`, and the
-`<sha256>.pt` files, `channel_embedder.pt`, the manifests and `build_info/` go to `CT_GAT/processed/cfg_subgraphs/`), or with
+`Mendeley_x86_cfg_subgraphs_*` zip unzipped at `CT_GAT/` (`api_vocab.json` goes to `CT_GAT/processed/api_vocab.json`, where the
+five-channel demo reads it, and the `<sha256>.pt` files, `channel_embedder.pt`, the manifests and `build_info/` go to `CT_GAT/processed/cfg_subgraphs/`), or with
 `build_b --source repo` (step 5 of Running). Keep one build there at a time; the two zips have different vocabularies.
 
 ## On-disk layout
@@ -157,10 +160,17 @@ python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 
 python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg             # the import arrays, from the CFG exports
 python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --imports               # header-imports LR
 python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0  # needs the combined cache
+python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg --cache ../cache/combined_v3
+python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --imports # header-imports LR, all architectures
 ```
 
+`baselines` takes `--arch x86` unless told otherwise, so the all-architecture baselines pass `--arch all`. `--arch matched` keeps the
+architecture-matched subset (the rows with `arch_matched` 1 in `index.csv`), and `--arch-balance` weighs each class and
+architecture cell equally in place of the class weights.
+
 `import_side --from-cfg` reads the header record of each CFG export, so the team's reader output (`GT_READER_ROOT`) is not needed;
-it takes 33 s for 2,411 samples and writes `CT_GAT/cache/mendeley_x86/side/imports/`. On those arrays the header-imports baseline
+it takes 33 s for 2,411 samples and writes `CT_GAT/cache/mendeley_x86/side/imports/` (`--cache ../cache/combined_v3` writes the
+arrays of the combined cache, which the `kfold_v3` `--imports` baseline reads). On those arrays the header-imports baseline
 reproduces the published predictions on all five folds (fold 0 AUC 0.9962). What differs for the GNN `--imports header` is in
 [`s04_evaluation/README.md`](s04_evaluation/README.md).
 
@@ -185,7 +195,8 @@ The export records `export_sha` `e09971a020a8...`, the value of the published ru
 
 **5. Model 1**, the transformers over the instruction sequence. `tokenseq` reads the block export of step 4 (GPU for a full run;
 `--device cpu --smoke 8` trains 8 binaries for 2 epochs on the CPU, as a check). `fivechannel` is Janice's model (CPU or GPU,
-`--device`):
+`--device`). `--smoke 8` of `fivechannel` also scores 8 validation and 8 test binaries, so the folder it reads must hold the `.pt`
+files of those 24 binaries (8 train, 8 validation, 8 test); a folder with fewer stops with the ids that have no file:
 
 ```bash
 python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
@@ -204,7 +215,14 @@ the cache of step 1 as well. Without `--build` it reads `CT_GAT/processed/cfg_su
 * `python -m experiments.team_pipelines.build_b --source repo --sample signal --num-blocks 500 --seed 0`, which runs the
   `s02_preprocess` scripts of this repository over the Mendeley collections into an empty `CT_GAT/processed/cfg_subgraphs`. It is
   the published 500-block build (a 60-binary rebuild was identical to it in every stored field), takes about 4 h on the CPU for
-  the 1,810 binaries (7.6 s per binary, measured), and resumes from its checkpoint.
+  the 1,810 binaries (7.6 s per binary, measured), and resumes from its checkpoint. A quick check, about 20 s, builds two
+  binaries into a scratch folder: `... build_b --source repo --sample signal --num-blocks 500 --seed 0 --ids <sample_id> <sample_id>
+  --out RUNS/team/b_check`, with two `sample_id`s of x86 rows that have a `fold` in `index.csv`.
+
+`python -m s03a_transformer.five_channel.model` reads the API vocabulary from `CT_GAT/processed/api_vocab.json`, which the
+preprocessed zip provides and `build_b` does not: `build_b` writes `api_vocab.json` inside its `--out` folder. After a `build_b` run,
+copy it, as in `cp ../processed/cfg_subgraphs/api_vocab.json ../processed/api_vocab.json`. Without the file the demo still runs, but
+the vocabulary is empty and every API id is clamped to one embedding row.
 
 **6. The teammates' GAT pipelines** under the same folds: [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md)
 (needs `torch_geometric` and, except for `build_b --source repo`, the pinned teammate worktrees).
@@ -261,8 +279,9 @@ does not set falls back to the catalog.
 
 ## Tests
 
-Any machine, no data: `python -m pytest -m "not real_data and not gpu"`. CI runs the same command on every push. With the cache
-built, `python -m pytest` also runs the tests marked `real_data`.
+Any machine, no data: `python -m pytest -m "not real_data and not gpu"`. CI runs the same command on every push. With the caches
+built, `python -m pytest` also runs the tests marked `real_data`, and `-m real_data` runs only those. They expect the full-size
+caches (2,411 samples in `mendeley_x86`, 5,838 in `combined_v3`); a cache built with `--limit` fails some of them.
 
 ## Results
 

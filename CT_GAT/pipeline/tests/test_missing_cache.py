@@ -10,6 +10,7 @@ import pytest
 
 from common import manifests
 from common.manifests import MissingCache, load_index, missing_cache_message
+from common.paths import MissingSource
 from s04_evaluation import report
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,3 +73,23 @@ def test_a_registry_entry_pointing_at_an_empty_folder_gets_the_same_message(name
     r = run(args, tmp_path, GT_DATASETS=str(tmp_path / 'datasets.json'))
     assert_message(r, cache, dataset)
     assert 'GT_CACHE is set' not in r.stderr
+
+
+def test_build_cache_without_a_balanced_collection_prints_the_message_and_exits_1(tmp_path):
+    collections = tmp_path / 'collections'
+    for folder in ('Mendeley_Ransomware', 'Mendeley_Goodware'):
+        (collections / folder).mkdir(parents=True)
+        (collections / folder / 'samples.csv').write_text('sample_id\n', encoding='utf-8')
+    r = run(['s02_preprocess.cache.build_cache', '--cache', 'combined_v3'], tmp_path,
+            GT_COLLECTIONS=str(collections), GT_CACHE=str(tmp_path / 'cache'))
+    assert r.returncode == 1 and 'Traceback' not in r.stderr and not r.stdout.strip()
+    assert 'unzip Collections/Ransomware_Balanced.zip' in r.stderr and 'unzip Collections/Balanced_Goodware.zip' in r.stderr
+    assert 'Mendeley_Ransomware' not in r.stderr
+
+
+def test_run_command_turns_a_missing_source_into_the_message_and_exit_1():
+    def main():
+        raise MissingSource('GT_COLLECTIONS is not configured')
+    with pytest.raises(SystemExit) as stop:
+        manifests.run_command(main)
+    assert str(stop.value) == 'GT_COLLECTIONS is not configured'

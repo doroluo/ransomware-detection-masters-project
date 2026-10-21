@@ -34,7 +34,7 @@ def test_the_requirements_are_pinned_and_use_the_cpu_torch_index():
     active = [l for l in lines if l and not l.startswith('#')]
     assert active[0] == '--extra-index-url https://download.pytorch.org/whl/cpu'
     pins = dict(l.split('==') for l in active[1:])
-    assert set(pins) == {'torch', 'numpy', 'scipy', 'scikit-learn', 'pytest'} and all(re.fullmatch(r'\d+(\.\d+)+', v) for v in pins.values())
+    assert set(pins) == {'torch', 'numpy', 'scipy', 'scikit-learn', 'pytest', 'PyYAML'} and all(re.fullmatch(r'\d+(\.\d+)+', v) for v in pins.values())
     assert not any('geometric' in l for l in active)                         # optional, so that the guards are exercised
 
 

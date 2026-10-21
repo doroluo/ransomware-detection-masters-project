@@ -1270,6 +1270,37 @@ def _selected_rows(roots: list[Path], split: str, architecture: str | None, samp
     return list(seen.values())
 
 
+def _data_rows(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    with path.open(encoding="utf-8", newline="") as handle:
+        return sum(1 for _ in csv.DictReader(handle))
+
+
+def require_rows(selected: list, roots: list[Path], split: str, architecture: str | None, sample_id: str | None) -> None:
+    """Exit 1 with one message when no row is selected, instead of a run that saves nothing and reports success."""
+    if selected:
+        return
+    names = ["train", "test"] if split == "all" else [split]
+    read = " and ".join(f"splits/{name}.csv" for name in names)
+    text = f"no rows selected from {', '.join(str(root) for root in roots)} (read {read}"
+    filters = [f"{flag} {value}" for flag, value in (("--architecture", architecture), ("--sample-id", sample_id)) if value]
+    text += f", with {' '.join(filters)}" if filters else ""
+    text += ")."
+    held = [
+        root.name
+        for root in roots
+        if not any(_data_rows(root / "splits" / f"{name}.csv") for name in names)
+        and _data_rows(root / "splits" / "unassigned.csv")
+    ]
+    if held:
+        text += (
+            f" The rows of {', '.join(held)} are in splits/unassigned.csv, which this script does not read: "
+            "it takes the recommended train/test split, which the Mendeley collections fill."
+        )
+    raise SystemExit(text)
+
+
 def _write_split_csv(split_name: str, rows: list[dict[str, str]]) -> None:
     SPLIT_DIR.mkdir(parents=True, exist_ok=True)
     path = SPLIT_DIR / f"{split_name}.csv"
@@ -1319,8 +1350,9 @@ def main() -> None:
         parser.error(f"missing PE folder: {args.pe_root}")
 
     output_dir = args.output.resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
     selected = _selected_rows(roots, args.split, args.architecture, args.sample_id)
+    require_rows(selected, roots, args.split, args.architecture, args.sample_id)
+    output_dir.mkdir(parents=True, exist_ok=True)
     if args.limit is not None:
         selected = selected[: args.limit]
 

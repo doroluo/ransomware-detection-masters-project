@@ -16,6 +16,7 @@ from it, which are on the team Google Drive. Two downloads are required; everyth
 | `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` | the preprocessed samples of Janice's model: one `.pt` file per binary for the 1,810 x86 binaries of the folds, 500 blocks per binary. Unzip at `CT_GAT/`. It saves the 4 h build of `build_b --source repo` | Janice's five-channel model, Models 2 and 3 of the team diagram |
 | `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` | the same with every non-library block of each binary | as above |
 | `Collections/Ransomware_Balanced.zip` (8.9 GB), `Collections/Balanced_Goodware.zip` (15.7 GB) | two more collections in the same layout. Unzip into `CT_GAT/data/` | the all-architecture evaluation (`build_cache --cache combined_v3`) |
+| `Collections/VirusShare Ransomware.zip` | unzips to `VirusShare_Malware/`. It is in no dataset: no fold file lists it and all its rows are in `splits/unassigned.csv`, so no command of the pipeline reads it | nothing |
 | `Mendeley_GNN_v1.zip` | the Mendeley CFG exports as one bundle (`samples.csv`, `splits/`, `cfg/`), an alternative to the two Mendeley collections | the CFG cache, when the bundle is configured or unzipped into `CT_GAT/data/` |
 
 The sizes are those of the zips on the Drive. Each zip has a `.sha256` file beside it and a README inside it. The fold
@@ -178,19 +179,29 @@ Each zip's `.pt` files carry API ids of its own `api_vocab.json` (12,406 names i
 files of the two zips must not be mixed.
 
 **From the collections.** `build_b --source repo` runs `preprocess_full.py` and `tokenize_asm_gz.py` of this repository over
-the CFGs and listings of the unzipped Mendeley collections. It needs the cache for the fold ids, and writes into an empty
-`CT_GAT/processed/cfg_subgraphs/`:
+the CFGs and listings of the unzipped Mendeley collections. It needs the cache for the fold ids. A quick check builds two
+binaries, about 20 s, into a scratch folder; take two `sample_id`s of x86 rows that have a `fold` from
+`CT_GAT/cache/mendeley_x86/index.csv`:
+
+```bash
+python -m experiments.team_pipelines.build_b --source repo --sample signal --num-blocks 500 --seed 0 --ids <sample_id> <sample_id> --out RUNS/team/b_check
+```
+
+The full form takes about 4 h and writes into an empty `CT_GAT/processed/cfg_subgraphs/`:
 
 ```bash
 python -m experiments.team_pipelines.build_b --source repo --sample signal --num-blocks 500 --seed 0
 ```
 
 This is the published 500-block build: a rebuild of 60 binaries was identical to it in every stored field. The full build takes
-about 4 h on the CPU for the 1,810 binaries (7.6 s per binary, measured on the development machine), resumes from its
-checkpoint, and does not write `CT_GAT/processed/api_vocab.json`, which only the untrained demo reads.
+about 4 h on the CPU for the 1,810 binaries (7.6 s per binary, measured on the development machine) and resumes from its
+checkpoint. It writes its `api_vocab.json` inside its `--out` folder (`CT_GAT/processed/cfg_subgraphs/api_vocab.json`), not to
+`CT_GAT/processed/api_vocab.json`, which the untrained demo reads.
 
-With either build in place, the first command checks the setup (8 binaries, 2 epochs, a temporary folder) and the second trains
-and evaluates the model on fold 0 (CPU or GPU, `--device`):
+With either build in place, the first command checks the setup (8 training binaries, 2 epochs, a temporary folder) and the
+second trains and evaluates the model on fold 0 (CPU or GPU, `--device`). `--smoke 8` also scores 8 validation and 8 test
+binaries, so the folder must hold the `.pt` files of those 24 binaries; a folder with fewer, such as the quick check above,
+stops with the ids that have no file:
 
 ```bash
 python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
@@ -203,7 +214,10 @@ The untrained Model 1 over every sample of the folder, with its predictions prin
 python -m s03a_transformer.five_channel.model --batch-size 4
 ```
 
-(`--data-dir` reads another folder; the API vocabulary is always read from `CT_GAT/processed/api_vocab.json`).
+(`--data-dir` reads another folder of `.pt` files). The demo always reads the API vocabulary from
+`CT_GAT/processed/api_vocab.json`, which the preprocessed zip provides and `build_b` does not: after a `build_b` run, copy
+the build folder's file there, as in `cp ../processed/cfg_subgraphs/api_vocab.json ../processed/api_vocab.json`. Without the file
+the demo still runs, but the vocabulary is empty and every API id is clamped to one embedding row.
 
 `s02_preprocess/preprocess_full.py` is Yanping's own script and a different path from `build_b`: it processes the train rows
 first, freezes the test split and includes 21 UPX-stub x86 rows, so its output is not the published `.pt` set. It reads the
@@ -228,12 +242,17 @@ from the vocabulary and the samples of the `mendeley_x86` cache, which must be b
 python -m s02_preprocess.cache.build_cache --cache combined_v3
 python -m s02_preprocess.cache.check_cache --cache combined_v3
 python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0
+python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg --cache ../cache/combined_v3
+python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --imports
 python -m experiments.queue --plan experiments/plans/v3.txt --budget-min 600
 python -m s04_evaluation.gates --stage v3
 ```
 
 The combined cache holds 5,838 samples; one CIL binary fails to build, as in the published cache. A `kfold_v3` run reads
-`CT_GAT/cache/combined_v3/` by default. The queue runs the baselines and the GNN arms of the v3 plan (GPU).
+`CT_GAT/cache/combined_v3/` by default. `import_side --from-cfg` writes the import arrays the `--imports` baseline reads, and
+`baselines` takes `--arch x86` unless told otherwise, so the v3 baselines pass `--arch all`. `--arch matched` keeps the
+architecture-matched subset (the rows with `arch_matched` 1 in `index.csv`), and `--arch-balance` weighs each class and
+architecture cell equally in place of the class weights. The queue runs the baselines and the GNN arms of the v3 plan (GPU).
 
 ### Overrides
 
@@ -250,12 +269,15 @@ to that folder; the cache that `build_cache` writes is the same.
 
 ### Tests
 
-The tests run on any machine without the data:
+The tests that need no data run on any machine:
 
 ```bash
 cd CT_GAT/pipeline
 python -m pytest -m "not real_data and not gpu"
 ```
+
+`-m real_data` runs the tests that read the built caches and expects the full-size ones (2,411 samples in `mendeley_x86`, 5,838
+in `combined_v3`); a cache built with `--limit` fails some of them.
 
 ## Results
 
