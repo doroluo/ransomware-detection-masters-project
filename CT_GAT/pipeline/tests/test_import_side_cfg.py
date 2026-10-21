@@ -62,7 +62,7 @@ def write_samples(folder, sample_id=SID, cfg_path='cfg/x.jsonl.gz'):
 @pytest.fixture()
 def bundle(tmp_path, monkeypatch):
     """A cache and a Mendeley_GNN_v1-shaped bundle (GT_BUNDLE) holding the sample's export."""
-    for var in ('GT_BUNDLE', 'GT_MENDELEY_COLLECTIONS', 'GT_READER_ROOT'):
+    for var in ('GT_BUNDLE', 'GT_COLLECTIONS', 'GT_READER_ROOT'):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'no-datasets.json'))
     side_io.cache_vocab.cache_clear()
@@ -122,7 +122,7 @@ def test_the_collections_route_locates_the_export_like_build_cache(bundle, monke
     write_samples(coll / 'Mendeley_Ransomware', SID, 'samples/train/conti/x.jsonl.gz')
     write_samples(coll / 'Mendeley_Goodware', 'd' * 64, 'samples/test/y.jsonl.gz')
     monkeypatch.delenv('GT_BUNDLE')
-    monkeypatch.setenv('GT_MENDELEY_COLLECTIONS', str(coll))
+    monkeypatch.setenv('GT_COLLECTIONS', str(coll))
     imp.cfg_rows.cache_clear()
     assert imp.convert_cfg(bundle / 'cache', SID)['status'] == 'ok'
     assert imp.load_imports(bundle / 'cache', SID)['header_imports'] == HEADER

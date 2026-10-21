@@ -27,11 +27,11 @@ python -m s04_evaluation.gates --stage v3                                       
 | `stage.py`, `gates.py`, `gate_tables.py`, `gate_layouts.py` | a gate stage is data (`experiments/stages/<name>.py`: arms, pairs, seeds, rule, intro); the engine lays out the pooled table and the paired differences |
 
 The import methods (`baselines --imports`, `experiments.train --imports header`) read `<cache>/side/imports/`. Without the
-team's reader output (`GT_READER_ROOT`) the arrays come from the CFG export itself, with the Mendeley data configured as for
-`build_cache` (`GT_BUNDLE`, or `GT_MENDELEY_COLLECTIONS` for the two collections):
+team's reader output (`GT_READER_ROOT`) the arrays come from the CFG export itself, found the way `build_cache` finds it
+(the collections under `CT_GAT/data`, or a configured bundle):
 
 ```bash
-python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --cache <cache dir> --from-cfg
+python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg      # writes into the default cache, CT_GAT/cache/mendeley_x86
 ```
 
 This reads only the header record of each sample's `.jsonl.gz` (`pe.imports`). Its `header_imports` and `n_entries` equal the
