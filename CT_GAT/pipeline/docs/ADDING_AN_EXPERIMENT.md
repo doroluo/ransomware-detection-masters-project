@@ -103,14 +103,26 @@ The vectors land in `<cache>/side/blockvec/ours_cap0_bag/fold<k>/`; `--control n
 
 ## A dataset
 
-A dataset is a CFG cache plus the fold assignment of the protocols that read it.
+A dataset is a CFG cache plus the fold assignment of the protocols that read it. It is declared in one of two places: a row of
+`common/catalog.py`, which is how the repository's own datasets (`mendeley_x86`, `combined_v3`) are declared and needs no
+per-machine file, or an entry of `datasets.json`, which belongs to one machine.
 
-1. **Cache.** `python -m s02_preprocess.cache.build_cache --corpora <names>` streams the IDA exports (`s01_ida_export`) of the
-   sources into `<cache>/samples/*.npz`, `index.csv` and `vocab.json`; `python -m s02_preprocess.cache.check_cache` checks every
-   invariant. The inputs are the `sources` of the dataset (below).
-2. **Folds.** `index.csv` carries the fold of each binary. `python -m s02_preprocess.cache.folds --out <dir>` writes the 5-fold
-   family-holdout CSV that `build_cache` reads: ransomware families and goodware identity groups go to a fold whole, largest first
-   into the lightest fold. The same function on a table of your own:
+1. **A catalog row.** `CORPORA` says what a corpus is: the collection folders under `CT_GAT/data` that hold its `samples.csv`,
+   and the `rule` of `build_cache.exclusion` that leaves rows out (`split` for the Mendeley collections, `eligible` for the
+   balanced ones). A new collection folder is also named in `COLLECTIONS`, as the Drive zip unpacks. `DATASETS` says what a cache
+   holds: the `--protocol` values that read it by default (the first dataset that lists a protocol wins), its corpora, the fold
+   files it reads under `s02_preprocess/folds/`, and the `base` dataset whose cache seeds it. The cache of a dataset is
+   `CT_GAT/cache/<name>/`. `python -m common.catalog` lists the dataset with its collections, cache and fold files, and
+   `tests/test_catalog.py` checks that every folder, corpus, base and fold file of the table exists.
+2. **Cache.** `python -m s02_preprocess.cache.build_cache --cache <name>` streams the IDA exports (`s01_ida_export`) of the
+   corpora into `<cache>/samples/*.npz`, `index.csv` and `vocab.json`; `python -m s02_preprocess.cache.check_cache --cache <name>`
+   checks every invariant. A folder that is not unzipped stops the build with its name and the zip that holds it.
+3. **Folds.** `index.csv` carries the fold of each binary, which `build_cache` takes from the fold files by sha256:
+   `s02_preprocess/folds/folds_mendeley.csv` for the Mendeley corpus and `s02_preprocess/folds/v3/folds_all.csv` for every corpus
+   (columns in [`s02_preprocess/folds/README.md`](../s02_preprocess/folds/README.md)). The rows of a new corpus go into a fold
+   file committed there. `python -m s02_preprocess.cache.folds` writes the 5-fold family-holdout CSV to
+   `CT_GAT/cache/<dataset>/` unless `--out` says otherwise: ransomware families and goodware identity groups go to a fold whole,
+   largest first into the lightest fold. The same function on a table of your own:
 
 ```python example=folds
 from s02_preprocess.cache.folds import assign_folds
@@ -128,9 +140,9 @@ assert all(len(f) == 1 for f in families.values())          # a family is never 
 assert sorted(set(folds.values())) == [0, 1, 2, 3, 4]
 ```
 
-3. **`datasets.json`** (gitignored; start from `datasets.json.example`) tells the code where it is. The `protocols` of a dataset are
-   the `--protocol` values that read it by default (the first dataset that lists a protocol wins); `--cache <name>` picks a dataset on the
-   command line, `GT_CACHE` overrides everything. `sources` are optional:
+4. **A `datasets.json` entry** declares the same thing on one machine, for a cache or raw inputs outside the repository
+   (start from `datasets.json.example`). The `protocols` of a dataset are the `--protocol` values that read it by default;
+   `--cache <name>` picks a dataset on the command line, `GT_CACHE` overrides everything. `sources` are optional:
 
 ```json example=datasets
 {
@@ -142,7 +154,8 @@ assert sorted(set(folds.values())) == [0, 1, 2, 3, 4]
 }
 ```
 
-   A relative path is relative to the file. `GT_DATASETS` names another file, so a second machine or a test uses its own.
+   A relative path is relative to the file. A file entry named like a catalog dataset replaces it; any other name adds a dataset
+   ahead of the catalog's. `GT_DATASETS` names another file, so a second machine or a test uses its own.
 
 ## A control or an ablation
 
