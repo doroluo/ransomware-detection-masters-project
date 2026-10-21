@@ -43,7 +43,10 @@ no-edges, `--subgraph cap --budget 500 --tag b500`), team gnn500, cb500, sig500 
 vectors. The pooled seed-0 table adds accuracy, precision, recall and the confusion matrix of every arm (ransomware = positive
 class, AUC checkpoint at its validation threshold); each team arm is paired against TF-IDF, R7 and our b500 typed arm, cb500
 against path 2 (same vectors, their GAT against our GNN), sig500v2 (the rebuild with Yanping's streaming preprocess) against
-sig500, R7 and TF-IDF, and our b500 typed arm against R7 (what the 500-block cap costs). The
+sig500, R7 and TF-IDF, and our b500 typed arm against R7 (what the 500-block cap costs). The three sig500v3 arms (the build with
+the main-fix preprocess; `feat` = block features + CFG, Model 2; `emb` = block embeddings + CFG, Model 3) are paired against
+sig500v2 and sig500 (sig500v3 only), against R7 and against our b500 no-edges arm, and feat against emb; a line after the operating
+points gives the per-label match rates of that build (experiments/team_pipelines/match_rates.py). The
 paired differences use the seeds 0 1 2 complete in both arms and carry the pre-registered rule of PLAN_GNN.md section 5.
 Missing arms print as missing.
 
@@ -73,6 +76,7 @@ Missing arms print as missing.
 import argparse
 import json
 from functools import lru_cache
+from pathlib import Path
 
 import numpy as np
 
@@ -587,14 +591,22 @@ TEAM_ARMS = (('TF-IDF', 'tfidf'), ('header-imports LR', 'imports-header'),
              ('ours b500 no-edges', RunConfig(**TEAM_CAP, control='no_edges').group),
              ('team gnn500', team_group('gnn500')), ('team cb500', team_group('cb500')),
              ('team sig500', team_group('sig500')), ('team sig500v2', team_group('sig500v2')),
+             ('team sig500v3', team_group('sig500v3')),
+             ('team sig500v3 feat (Model 2)', team_group('sig500v3-feat')),
+             ('team sig500v3 emb (Model 3)', team_group('sig500v3-emb')),
              ('path 2: typed, CodeBERT vectors', dict(CB_ARMS)['path 2: typed, CodeBERT vectors']))
 TEAM_V2 = 'team sig500v2'
-TEAM_OF = tuple(a for a, _ in TEAM_ARMS if a.startswith('team ') and a != TEAM_V2)
+TEAM_V3 = ('team sig500v3', 'team sig500v3 feat (Model 2)', 'team sig500v3 emb (Model 3)')
+TEAM_V3_BUILD = 'b_sig500_v3'
+TEAM_OF = tuple(a for a, _ in TEAM_ARMS if a.startswith('team ') and a != TEAM_V2 and a not in TEAM_V3)
 TEAM_COST = ('R7 typed, whole graph', 'ours b500 typed')
 TEAM_PAIRS = (tuple(('TF-IDF', a) for a in TEAM_OF) + tuple(('R7 typed, whole graph', a) for a in TEAM_OF)
               + tuple(('ours b500 typed', a) for a in TEAM_OF)
               + (('path 2: typed, CodeBERT vectors', 'team cb500'), TEAM_COST)
-              + (('team sig500', TEAM_V2), ('R7 typed, whole graph', TEAM_V2), ('TF-IDF', TEAM_V2)))
+              + (('team sig500', TEAM_V2), ('R7 typed, whole graph', TEAM_V2), ('TF-IDF', TEAM_V2))
+              + (('team sig500v2', TEAM_V3[0]), ('team sig500', TEAM_V3[0]))
+              + tuple(('R7 typed, whole graph', a) for a in TEAM_V3) + tuple(('ours b500 no-edges', a) for a in TEAM_V3)
+              + ((TEAM_V3[1], TEAM_V3[2]),))
 
 
 def operating_points(arms):
@@ -632,6 +644,24 @@ def team_rule(first, second, result, info):
     return word if len(seeds) == len(TEAM_SEEDS) else f'{word} (seeds {seeds} only: a direction, not the test)'
 
 
+def match_rate_line(build):
+    """One line with the per-label match rates of the pipeline-B build in `build` (experiments/team_pipelines/match_rates.py),
+    or why it cannot be given: no build, or one whose build_summary.json does not account for all 1810 binaries."""
+    from experiments.team_pipelines import match_rates
+    summary = Path(build) / 'build_summary.json'
+    if not summary.is_file():
+        return f'Match rates of `{TEAM_V3_BUILD}`: missing (no {summary.name} under {build}).'
+    done = json.loads(summary.read_text(encoding='utf-8'))
+    if done.get('processed') != done.get('total') or done.get('total') != 1810:
+        return (f"Match rates of `{TEAM_V3_BUILD}`: missing (build incomplete: {done.get('processed')} of {done.get('total')} "
+                'binaries processed).')
+    rates = match_rates.summarize(match_rates.sample_rates(Path(build)))
+    parts = [f"{name} {s['n']} binaries, mean {s['mean_match']:.3f}, below 50% {s['n_below_50']} ({100 * s['share_below_50']:.1f}%), "
+             f"below 90% {s['n_below_90']} ({100 * s['share_below_90']:.1f}%), exactly 0 {100 * s['share_zero']:.1f}%"
+             for name, s in rates.items()]
+    return f'Match rates of `{TEAM_V3_BUILD}` (share of each binary\'s selected instructions paired with a listing line): ' + '; '.join(parts) + '.'
+
+
 def team(resamples):
     intro = ("kfold x86 on the v2 cache, 15% block masking on every GNN arm of ours. `ours b500` is `--subgraph cap --budget 500 "
              "--tag b500` (whole functions ranked non-library, API references, size, up to 500 blocks per binary: the budget "
@@ -640,7 +670,11 @@ def team(resamples):
              f"`{CB_VEC}` of the same 500 blocks, `team sig500` their edge-typed GAT on the 141-d subgraph features "
              "(`experiments/team_pipelines`), `team sig500v2` the same trainer on a rebuild of those subgraphs with Yanping's "
              "streaming `preprocess_full` (main c7899f0, including the two listings sig500 had to leave out; sig500 against "
-             "sig500v2 is read on the binaries both have), all trained on our folds and validation split. The pooled table is seed 0; "
+             "sig500v2 is read on the binaries both have), `team sig500v3` the same trainer on a third build with the `endp` and "
+             "library-function fixes (source main-fix, 8a971b7's s02 pins; `b_sig500_v3`), whose two ablations feed the GAT only the "
+             "77 handcrafted block features (`feat`, Model 2: block features + CFG) or only the 64-d pooled channel embedding "
+             "(`emb`, Model 3: block embeddings + CFG); every v3 pair is read on the binaries both arms have, all trained on "
+             "our folds and validation split. The pooled table is seed 0; "
              f"the paired differences, second minus first for the AUC checkpoint at its validation threshold, use the seeds "
              f"complete in both arms (queue seeds {list(TEAM_SEEDS)}), with the 95% paired cluster bootstrap interval "
              f"({resamples} resamples). Pre-registered rule (PLAN_GNN.md section 5): a second arm beats the first when dAUC >= "
@@ -650,7 +684,8 @@ def team(resamples):
              f"as non-inferiority: lower bound of dAUC above -{NI_AUC} and of dmacro-F1 above -{NI_F1}. A missing arm or fold "
              "is stated.")
     return paired_stage('team', intro, TEAM_ARMS, TEAM_PAIRS, resamples, seeds=TEAM_SEEDS,
-                        after_pooled=operating_points(TEAM_ARMS), rule=team_rule)
+                        after_pooled=operating_points(TEAM_ARMS) + ['', match_rate_line(stats.RUNS / 'team' / TEAM_V3_BUILD)],
+                        rule=team_rule)
 
 
 VOC_GNN = dict(mask_blocks=0.15, control='no_edges')

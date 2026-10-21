@@ -76,7 +76,7 @@ def test_build_b_frozen_from_keeps_the_vocabulary_and_embedder(tmp_path):
 @needs_worktrees
 @needs_real_data
 def test_train_b_arms_read_the_build_of_their_source(tmp_path):
-    assert train_b.ARMS == ('sig500', 'sig500v2')
+    assert train_b.ARMS[:2] == ('sig500', 'sig500v2')
     assert train_b.ARM_DIR['sig500'].name == 'b_sig500' and train_b.ARM_DIR['sig500v2'].name == 'b_sig500_v2'
     assert tp.team_config(2, 1, 'sig500v2').name == 'kfold2_x86_gnn_s1_team-sig500v2'
     assert tp.team_config(2, 1, 'sig500v2').group == gates.team_group('sig500v2') == 'kfold_x86_gnn_team-sig500v2'
@@ -94,7 +94,7 @@ def test_train_b_arms_read_the_build_of_their_source(tmp_path):
     with pytest.raises(SystemExit, match='unknown source'):
         train_b.read_source(v2)
     with pytest.raises(ValueError):
-        train_b.run('sig500v3', 0, 0)
+        train_b.run('sig500v4', 0, 0)
 
 
 def fake_payload(matched, label, api=None, n_blocks=2):

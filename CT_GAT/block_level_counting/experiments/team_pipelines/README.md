@@ -32,10 +32,20 @@ nohup bash scripts/team_gpu_runs.sh > RUNS/logs/team_gpu_runs.log 2>&1 & # GPU, 
   cap --budget 500 --tag b500`, typed and `--control no_edges`, seeds 0 1 2, folds 0-4: 30 runs, directories
   `kfold<f>_x86_gnn[-noedges]-mblk15-sg-cap500_s<seed>_b500`), then `queue_gnn.sh --stage paths_codebert`, then `report.py`, `gates.py
   --stage team > RUNS/gates_team.md` and `gates.py --stage paths_codebert > RUNS/gates_paths_codebert.md`. It stops on `RUNS/STOP`.
+- `scripts/team_v3_runs.sh` (GPU, step 35; `--dry`, `--check-build`): waits until `RUNS/team/b_sig500_v3/build_summary.json` reports
+  1810 of 1810 binaries processed and none excluded (an incomplete summary ends the lane with a message), then runs `train_b
+  --device cuda --source main-fix` for the arms `sig500v3` (`--features all`, 141-d), `sig500v3-feat` (`feat`, the 77 block features
+  + CFG: Model 2) and `sig500v3-emb` (`emb`, the 64-d pooled embedding + CFG: Model 3), seeds 0 1 2 x folds 0-4 (45 runs, seed by
+  seed, the three arms of a seed one after the other), and finally `gates.py --stage team > RUNS/gates_team.md`. Stop file `RUNS/STOP`,
+  one retry, skip on `metrics.json`, logs in `RUNS/logs/<name>.log`, as the other GPU scripts. Launch it before the build ends:
+  `nohup bash scripts/team_v3_runs.sh > RUNS/logs/team_v3_runs.log 2>&1 &`.
 - `python gates.py --stage team` reads whatever is on disk: TF-IDF, the header-imports LR, R7, R2, our b500 arms, the three team arms
   and path 2 on CodeBERT vectors; AUC, PR-AUC, macro-F1, accuracy, precision, recall and the confusion matrix per arm (seed 0
   pooled), the paired differences of each team arm against TF-IDF, R7 and our b500 typed arm (and cb500 against path 2, the b500
-  typed arm against R7), with the pre-registered rule text. A missing arm prints as missing.
+  typed arm against R7), with the pre-registered rule text. The three sig500v3 rows (`team sig500v3`, `team sig500v3 feat (Model 2)`,
+  `team sig500v3 emb (Model 3)`) are paired against sig500v2 and sig500 (sig500v3 only), against R7 and against our b500 no-edges
+  arm, and feat against emb; a line after the operating points gives the per-label match rates of `b_sig500_v3`
+  (`match_rates.py`). A missing arm prints as missing.
 
 `RunConfig` accepts `--budget` from 100 blocks (0 is the binary cap). Below 1000 the variant suffix spells the budget out
 (`sg-cap500`, `sg-cap128`), so two budgets cannot share a directory name; the matched arms still pass `--tag b500`. Every
@@ -160,10 +170,11 @@ python -m experiments.team_pipelines.train_a --fold k --seed s --arm gnn500|cb50
 
 The matched `--subgraph cap --budget 500` arm starts with `train.py --tag b500` (`RunConfig` accepts budgets from 100 blocks).
 
-## train_b.py (arms sig500, sig500v2)
+## train_b.py (arms sig500, sig500v2, sig500v3, sig500v3-feat, sig500v3-emb)
 
 ```
-python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig500v2 [--build DIR] [--smoke N] [--device cuda|cpu]
+python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig500v2|sig500v3|sig500v3-feat|sig500v3-emb
+    [--features all|feat|emb] [--source SOURCE] [--build DIR] [--smoke N] [--device cuda|cpu]
 ```
 
 - Arms. `sig500` reads `RUNS/team/b_sig500` (source `gnn-331ce0b`), `sig500v2` reads `RUNS/team/b_sig500_v2` (source `main-c7899f0`).
@@ -172,6 +183,13 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig5
   `FiveChannelEmbedder` are the same in both; `tests/test_team_pipelines.py` compares them); `graph_full_loader` and `gat_full_model`
   exist only in the gnn source and always come from there. Everything else is identical for the two arms, and `metrics.json` records
   `build_dir`, `build_source` and `build_pins`.
+- Step 35 arms. `sig500v3`, `sig500v3-feat` and `sig500v3-emb` read `RUNS/team/b_sig500_v3` (source `main-fix`) and differ only in
+  the node input: `--features all` (64-d pooled embedding + 77 block features = 141-d, today's input), `feat` (the 77 scaled block
+  features: Model 2 of the team diagram, block features + CFG), `emb` (the 64-d pooled embedding: Model 3, block embeddings + CFG).
+  Edges and edge attributes are the same. The arm names its input, so `--features` defaults to the arm's and a contradicting value
+  is refused; `--source` (default: the arm's) must equal the source in the build's `settings.json`, else the run is refused. The
+  per-fold API remap, the api-kind recount and the one-sample re-pool check run in every mode (`feat` skips only the re-pool of the
+  embeddings, which it never reads). `metrics.json` records `features`.
 - Inputs. The build directory, read only: the `.pt` of the ids in `checkpoint.json` (the embedder state saved
   there), `api_vocab.json`, `channel_embedder.pt`, `build_log.csv`. A full run needs every id of the fold that the build did not exclude, and stops otherwise.
 - What is fitted where. The build's vocabulary covers all 1,810 binaries; per fold it is cut back to the training binaries:
@@ -281,6 +299,10 @@ is not complete, criteria 2-4 are computed on the ids it holds and marked partia
 (synthetic builds and a fake pinned module; one real small binary built and replayed with both sources).
 
 ## Tests
+
+`tests/test_team_v3.py` (step 35): arm table, feature widths 141 / 77 / 64 with identical edges on a 10-binary `main-fix` mini build,
+`--features` / `--source` / build-source refusals, smoke runs of the three arms on the mini build, `team_v3_runs.sh` (`--dry` lists
+the 45 names of `RunConfig.name` with `--device cuda`, `--check-build`, stop file), the v3 gates rows and pairs, the match-rate line.
 
 `tests/test_team_v2.py` (step 21): `build_b --source main-c7899f0` records source and pins and stops on another source; `--frozen-from`
 keeps the vocabulary and embedder; `train_b` arms read the build of their source and stop on a mismatch; `compare_builds`,

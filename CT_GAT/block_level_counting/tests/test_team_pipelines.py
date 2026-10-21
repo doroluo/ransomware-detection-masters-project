@@ -546,9 +546,10 @@ def test_team_groups_are_the_names_the_trainers_write():
     pairs = gates.TEAM_PAIRS
     for ref in ('TF-IDF', 'R7 typed, whole graph', 'ours b500 typed'):
         v2 = ['team sig500v2'] if ref != 'ours b500 typed' else []                  # sig500v2: against sig500, R7 and TF-IDF
-        assert [b for a, b in pairs if a == ref and b.startswith('team ')] == ['team gnn500', 'team cb500', 'team sig500'] + v2
+        v3 = list(gates.TEAM_V3) if ref == 'R7 typed, whole graph' else []          # the three sig500v3 arms: against R7
+        assert [b for a, b in pairs if a == ref and b.startswith('team ')] == ['team gnn500', 'team cb500', 'team sig500'] + v2 + v3
     assert ('team sig500', 'team sig500v2') in pairs
-    assert ('path 2: typed, CodeBERT vectors', 'team cb500') in pairs and gates.TEAM_COST in pairs and len(pairs) == 14
+    assert ('path 2: typed, CodeBERT vectors', 'team cb500') in pairs and gates.TEAM_COST in pairs and len(pairs) == 23
 
 
 def test_team_gates_print_missing_arms(tmp_path, monkeypatch):
