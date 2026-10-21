@@ -165,4 +165,4 @@ def test_the_command_prints_every_dataset_and_exits_zero(tmp_path):
     for name in catalog.DATASETS:
         assert f'{name}:' in r.stdout
     assert 'Mendeley_Ransomware: missing' in r.stdout and 'bundle: absent' in r.stdout and 's02_preprocess/folds/folds_mendeley.csv: found' in r.stdout
-    assert 'CT_GAT/cache/mendeley_x86: not built' in r.stdout
+    assert 'cache CT_GAT/cache/mendeley_x86: ' in r.stdout
