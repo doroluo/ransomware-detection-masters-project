@@ -181,7 +181,7 @@ def test_a_combined_build_without_the_balanced_folders_stops_before_the_cache_ex
     collection(data, 'Mendeley_Ransomware')
     collection(data, 'Mendeley_Goodware')
     r = run_module(tmp_path, '--cache', 'combined_v3', '--limit', '4', GT_CACHE=str(tmp_path / 'cache'))
-    assert r.returncode != 0 and 'MissingSource' in r.stderr
+    assert r.returncode == 1 and 'Traceback' not in r.stderr and 'MissingSource' not in r.stderr
     assert f'{data.as_posix()}/Ransomware_Balanced is missing: unzip Collections/Ransomware_Balanced.zip' in r.stderr
     assert 'Balanced_Goodware.zip' in r.stderr
     assert not (tmp_path / 'cache').exists()
