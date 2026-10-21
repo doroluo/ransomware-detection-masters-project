@@ -73,6 +73,7 @@ These apply to both pipelines unless marked.
   Unmatched instructions lose their opcode and operand channels, so "missing features" is itself a ransomware signal.
   The likely cause is that the Mendeley listings (`ida_asm_mendeley_20261006`) and CFG exports (2026-10-07) come from
   different IDA runs, which disagree most on packed or obfuscated code; this is a hypothesis, not yet checked.
+  (Corrected in section 12: the listings collapse library functions; fixed in main PR #10, section 13.1.)
 - **Operand classes depend on architecture.** `_REG_DATA` (line 241) covers `r8`-`r15` and `eax`-`dl` but not `r8d`,
   `xmm*`, `ah`-`dh`, `sil`/`dil` and others, which fall through to `MEM_GLOBAL_REF` (lines 267, 274), so x64 code has
   inflated `MEM_GLOBAL_REF` rates. On x86-only folds this matters less.
@@ -105,6 +106,7 @@ kfold x86, 1,810 test binaries (1,808 for sig500, which excludes the two 341 MB 
 threshold. The table is seed 0 pooled over the five folds; the paired differences use seeds 0 1 2 where both arms have them
 (TF-IDF, the header-imports LR and our b500 arms: seed 0 only, a direction). Source: `RUNS/gates_team.md` (written by
 `gates.py --stage team`); the same values come out of `python -m evaluation.stats`. Ransomware is the positive class.
+The rows of the fixed build (`sig500v3`, Models 2 and 3), the uncapped arms and the five-channel Model 1 were added later: section 13.
 
 | model | AUC | PR-AUC | macro-F1 | accuracy | precision | recall | TP | FN | FP | TN |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -172,6 +174,8 @@ anywhere. Model 1 itself is run through `token_sequence/` on our folds (`docs/PL
    line by line and keeping only instruction lines fixes it; reading `jsonl.gz` alone (section 9) avoids it.
 6. A: make `--limit` take a balanced prefix; fail or list per-sample errors; check graphs against the split.
 
+(Item 4 and the alignment failure of item 5 were fixed in main PR #10, section 13.1; the listing is streamed since main c7899f0.)
+
 ## 8. The team diagram (2026-10-19) against what exists
 
 | Diagram box | Team code | Ours (`3-block-level-counting`) | Evidence and suggestion |
@@ -186,6 +190,9 @@ anywhere. Model 1 itself is run through `token_sequence/` on our folds (`docs/PL
 | Model 3, block embeddings + CFG | 64-d pooled random embedding (B); CodeBERT (A) | `transformer_paths` path 2: any frozen block encoder, now CodeBERT on register-free text | Running (paths 1 and 2). A trained block encoder is the open slot. |
 | (missing) baselines | none | TF-IDF, header-imports LR, majority and x86-rule floors | **Add** to the diagram: every model is read against them. |
 | (missing) evaluation | one fixed split, random validation | 5-fold family holdout, family-held-out validation, paired bootstrap | **Add** as the box all three models feed. |
+
+(Later results, section 13: after main PR #10 the listing match no longer leaks the label (AUC of `1 - match rate` 0.502); the team's
+Models 2 and 3 and Janice's five-channel Model 1 have run on our folds.)
 
 ## 9. Target architecture (adopted 2026-10-19)
 
@@ -262,6 +269,8 @@ Her version is less correct here: those lines are in the listing at the right ad
 - New, the `selected_rvas` filter (896) drops a line only when no selected instruction lies at or above the span's address, so lines of all spans before the last selected instruction are buffered until the next label and discarded at 861-863. The memory is bounded by the largest code span, not by the selected ones; a function with millions of code lines and no inner label would still be held whole.
 - New, a selected block whose span is never opened (no label at or below its address, or an address the listing does not have) is left unmatched and reported as `rva_before_any_asm_label` (901-905), the only case that gets that reason. The report keeps 32 examples per kind, so only its counts say how many instructions are affected, and those are inflated by the `endp` case above.
 - New, line splitting: `splitlines()` is replaced by iterating the text handle, so form feeds and the other Unicode line boundaries no longer split a line; the 60-sample comparison shows no effect from this.
+
+(The `endp` reset and most of the issues above were addressed in main PR #10, section 13.1.)
 
 ## 12. Why the match fails, and how to check a fix
 
@@ -558,3 +567,211 @@ criterion 1 passes; criterion 2 fails (under 90%: ransomware 32.9%, 373 of 1,134
 criterion 3 fails (under 50%: ransomware 16.8%, 190 of 1,134, goodware 1.0%, 7 of 676); criterion 4 fails (AUC of `1 - match rate`
 0.747, interval [0.650, 0.827] over 712 clusters). The first build, re-run the same way, gives 0.543 [0.461, 0.635]. Section 6 uses
 both numbers.
+
+(The fix landed in main PR #10; the rebuilt output passes all five criteria, section 13.1.)
+
+## 13. Fixed preprocessing, Models 2 and 3, and the cap (2026-10-21)
+
+Setup as in section 6: kfold x86, 1,810 test binaries in 712 clusters, every team arm trained on our folds and family-held-out
+validation split, AUC checkpoint at its validation threshold. A table value is the mean over seeds 0 1 2 of the five-fold pooled
+metric; a difference is second minus first with the 95% paired cluster bootstrap interval (2,000 resamples). "Beats" is the
+pre-registered rule: dAUC >= 0.01 and dmacro-F1 >= 0.02, both intervals above zero. Rows marked seed 0 are a direction, not the test.
+Sources: `RUNS/gates_team.md` and `RUNS/gates_model1_variants.md` (written by `gates.py`), the acceptance files
+`RUNS/team/{v3_full,whole,v3_subset,v3b_subset}_acceptance.json` (`match_acceptance.py`), `match_rates.py` on each build, and main's
+PRs #10, #12 and #13. Every paired difference below was rerun with `python -m evaluation.stats --selection auc` and agrees with the gates
+files; the `-thoof` pair was rerun with main's `s04_evaluation.stats`.
+
+### 13.1 What PR #10 changed, and the acceptance results
+
+Main PR #10 (`s02-endp-library-fix`, merged 2026-10-21 as 8a971b7) changes `s02_preprocess/preprocess_full.py` and
+`tokenize_asm_gz.py`:
+
+- **`endp`.** A line `<name> endp` or `<name> ends` no longer moves the label address (option 3(a) of 12.5), so the epilogue after a
+  function's last inner label is paired again. With `--include-library` (the old block selection) the 60 samples of section 11 come
+  out identical to the first build in every compared array.
+- **Library functions.** `load_cfg` keeps each function's `library` flag and both samplers skip library blocks. A binary with fewer
+  non-library blocks than the budget keeps just those and is not topped up with library blocks; only a binary made entirely of library
+  functions is sampled from them. `--include-library` restores the old selection.
+- **The rest of section 11.** The API vocabulary grows on training rows only and is frozen for the other splits; the embedder is seeded
+  (`torch.manual_seed(--seed)`); per-sample failures are listed in `failures.json` and make `main` return 1; the size caps work again and
+  default to off; the CFG path comes from a `cfg_path` column or `--cfg-root`; `settings.json` stops a resume with other settings;
+  `extrn` rows are read in the aligning pass; the `signal` docstring no longer says connected; the vocabulary and embedder are saved
+  every 50 samples instead of after every sample.
+
+This is option 3(a) plus a change of block selection, not option 1: the opcode and operand channels still come from the listing, and the
+match rate is high because the sampler no longer picks functions that the listing collapses. A side effect is that a binary made mostly
+of library code keeps fewer blocks. On the full 500-block build 136 of 1,134 ransomware (12.0%) and 88 of 676 goodware (13.0%) keep
+fewer than 500 blocks (minimum 40 and 16; median 500 for both), counted from the build's manifests.
+
+Match rates of the four full builds (`match_rates.py`; share of each binary's selected instructions paired with a listing line):
+
+| build | label | binaries | mean match | below 50% | below 90% | exactly 0 |
+|---|---|---|---|---|---|---|
+| v1 `b_sig500` (331ce0b) | ransomware | 1132 | 0.855 | 187 (16.5%) | 238 (21.0%) | 1.7% |
+| v1 `b_sig500` (331ce0b) | goodware | 676 | 0.978 | 7 (1.0%) | 23 (3.4%) | 0.0% |
+| v2 `b_sig500_v2` (c7899f0) | ransomware | 1134 | 0.813 | 190 (16.8%) | 373 (32.9%) | 1.8% |
+| v2 `b_sig500_v2` (c7899f0) | goodware | 676 | 0.965 | 7 (1.0%) | 47 (7.0%) | 0.0% |
+| v3 `b_sig500_v3` (PR #10) | ransomware | 1134 | 0.997 | 0 (0.0%) | 7 (0.6%) | 0.0% |
+| v3 `b_sig500_v3` (PR #10) | goodware | 676 | 0.995 | 0 (0.0%) | 2 (0.3%) | 0.0% |
+| uncapped `b_sigwhole_v3` (PR #10) | ransomware | 1134 | 0.991 | 0 (0.0%) | 6 (0.5%) | 0.0% |
+| uncapped `b_sigwhole_v3` (PR #10) | goodware | 676 | 0.994 | 0 (0.0%) | 2 (0.3%) | 0.0% |
+
+The AUC of `1 - match rate` as a ransomware score, over 712 clusters: v1 0.543 [0.461, 0.635] (1,808 ids), v2 0.747 [0.650, 0.827],
+v3 0.502 [0.440, 0.574], uncapped 0.447 [0.339, 0.562]. The label leak of the match is gone. On the 300-id subset that PR #10 used
+(150 ransomware including the 40 lowest-match of v2, 150 goodware, 182 clusters) the same statistic is v1 0.634, v2 0.790, 0.596 for
+the first version of the fix that topped short samples up with library blocks (`v3_subset_acceptance.json`), and 0.573 [0.480, 0.663]
+for the merged version (`v3b_subset_acceptance.json`); the subset over-represents the worst ransomware, so its values are higher than
+the full builds' and are not comparable with them.
+
+`match_acceptance` on the full v3 build (`v3_full_acceptance.json`): PASS on all five criteria. (1) 1,810 of 1,810 ids built, none
+excluded; (2) under 90% matched: ransomware 0.6% (7 of 1,134), goodware 0.3% (2 of 676), a gap of 0.3 points (limit 2); (3) under 50%:
+0 in both labels (limit 1%); (4) AUC of `1 - match rate` 0.502, interval [0.440, 0.574] (limit 0.55); (5) 5 of 5 sampled ids rebuild
+identically in every field. On the uncapped build (`whole_acceptance.json`) criteria 1 to 4 pass (1,810 of 1,810; 0.5%, 6 of 1,134,
+against 0.3%, 2 of 676, a gap of 0.2 points; 0 under 50%; AUC 0.447 [0.339, 0.562]); criterion 5 was not run, so the script's
+overall verdict reads FAIL.
+
+The residue under 90% is Go: in PR #10's subset the ransomware binaries still under 90% are Go binaries whose non-library functions
+the listing also collapses (`unicode.init`), which the CFG does not mark as library.
+
+### 13.2 The 500-block arms on the fixed build (Models 2 and 3)
+
+`sig500v3` is the trainer of section 5 on the v3 build with all 141 inputs per block; `sig500v3-feat` feeds the GAT only the 77
+handcrafted block features (Model 2: block features + CFG); `sig500v3-emb` only the 64-d pooled five-channel embedding (Model 3: block
+embeddings + CFG). The embedding is the frozen embedder of pipeline B, now seeded, pooled per block; it is not trained.
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| R7 typed, whole graph | 0.979 | 0.987 | 0.935 |
+| team sig500v2 | 0.948 | 0.972 | 0.876 |
+| team sig500v3 | 0.948 | 0.973 | 0.893 |
+| team sig500v3 feat (Model 2) | 0.954 | 0.976 | 0.879 |
+| team sig500v3 emb (Model 3) | 0.966 | 0.982 | 0.909 |
+
+| first | second | dAUC [95% CI] | dmacro-F1 [95% CI] | rule |
+|---|---|---|---|---|
+| team sig500v2 | team sig500v3 | -0.000 [-0.022, +0.019] | +0.017 [-0.014, +0.046] | does not beat |
+| team sig500 | team sig500v3 (1,808 binaries) | -0.001 [-0.023, +0.018] | +0.008 [-0.020, +0.035] | does not beat |
+| R7 | team sig500v3 | -0.031 [-0.064, -0.006] | -0.042 [-0.095, +0.012] | does not beat |
+| R7 | sig500v3 feat (Model 2) | -0.024 [-0.040, -0.010] | -0.057 [-0.121, +0.003] | does not beat |
+| R7 | sig500v3 emb (Model 3) | -0.012 [-0.026, -0.000] | -0.026 [-0.075, +0.028] | does not beat |
+| sig500v3 feat (Model 2) | sig500v3 emb (Model 3) | +0.012 [+0.000, +0.025] | +0.031 [+0.002, +0.069] | **beats** |
+| team sig500v3 | sig500v3 emb (Model 3) | +0.019 [+0.001, +0.042] | +0.016 [-0.008, +0.044] | does not beat |
+| ours b500 no edges (seed 0) | team sig500v3 | +0.003 [-0.020, +0.024] | -0.026 [-0.101, +0.050] | direction |
+| ours b500 no edges (seed 0) | sig500v3 feat (Model 2) | -0.020 [-0.049, +0.007] | -0.073 [-0.151, +0.002] | direction |
+| ours b500 no edges (seed 0) | sig500v3 emb (Model 3) | +0.016 [+0.000, +0.031] | +0.020 [-0.030, +0.077] | direction |
+
+The fix removes the leak but does not change the AUC: v2 to v3 is -0.000 [-0.022, +0.019]. It does move the operating point back. On
+seed 0, v2 had 145 false alarms at precision 0.881; v3 has 38 at precision 0.963 (recall 0.945 to 0.862), close to the first build's
+39 and 0.962. So the v2 shift toward recall and false alarms of section 6 went with the `endp` leak.
+
+Model 3 beats Model 2 under the pre-registered rule: +0.012 AUC and +0.031 macro-F1. The lower AUC bound prints as +0.000; the rule
+requires it to be above zero and it is before rounding, so the pass is at the margin. Removing the 77 features from the full input
+does not hurt (all to emb: +0.019 [+0.001, +0.042] AUC, macro-F1 interval includes zero): at 500 blocks the handcrafted counts add
+nothing to the pooled embedding. No 500-block arm beats R7; Model 3 is the closest (-0.012 AUC).
+
+### 13.3 Removing the cap
+
+`b_sigwhole_v3` is the same PR #10 source with no block budget: `build_b --source main-fix --sample signal --num-blocks 1000000`,
+which keeps every non-library block (it was built before main's PR #13 added `--num-blocks 0` / `--whole`; PR #13's tests show on
+hand-built CFGs that a budget of 10**9 and no budget select the same blocks). The 500-block cap had cut 998 of 1,134 ransomware (88.0%) and 588 of 676 goodware
+(87.0%); uncapped, the median binary has 1,938 (ransomware) and 1,732.5 (goodware) blocks, the largest 189,895. The trainer is
+unchanged except that a batch above 300,000 nodes is split into parts whose gradients are summed (`train_b.py`, `NODE_BUDGET`).
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| R7 typed, whole graph | 0.979 | 0.987 | 0.935 |
+| team sigwhole | 0.970 | 0.982 | 0.899 |
+| team sigwhole feat (Model 2) | 0.970 | 0.983 | 0.929 |
+| team sigwhole emb (Model 3) | 0.981 | 0.989 | 0.901 |
+
+| first | second | dAUC [95% CI] | dmacro-F1 [95% CI] | rule |
+|---|---|---|---|---|
+| team sig500v3 | team sigwhole | +0.022 [+0.002, +0.052] | +0.006 [-0.039, +0.056] | does not beat |
+| sig500v3 feat (Model 2) | sigwhole feat (Model 2) | +0.015 [+0.003, +0.029] | +0.050 [+0.006, +0.108] | **beats** |
+| sig500v3 emb (Model 3) | sigwhole emb (Model 3) | +0.014 [+0.004, +0.025] | -0.009 [-0.034, +0.015] | does not beat |
+| R7 | team sigwhole | -0.009 [-0.023, +0.002] | -0.036 [-0.074, -0.002] | does not beat |
+| R7 | sigwhole feat (Model 2) | -0.009 [-0.021, +0.001] | -0.007 [-0.046, +0.038] | does not beat |
+| R7 | sigwhole emb (Model 3) | +0.002 [-0.005, +0.009] | -0.035 [-0.091, +0.019] | does not beat |
+| sigwhole feat (Model 2) | sigwhole emb (Model 3) | +0.011 [+0.002, +0.022] | -0.028 [-0.069, +0.001] | does not beat |
+| team sigwhole | sigwhole emb (Model 3) | +0.010 [+0.001, +0.023] | +0.001 [-0.042, +0.036] | does not beat |
+
+Removing the cap raises AUC in all three arms, by 0.014 to 0.022 with every interval above zero, and Model 2 also passes the rule
+(+0.015 AUC, +0.050 macro-F1). This is the size of the cost the cap had on our own GNN (section 6: 0.021 no edges, 0.063 typed), and
+it closes most of the gap to R7: the 500-block arms were 0.012 to 0.031 AUC below R7 with no interval reaching above zero (upper ends
+-0.006, -0.010 and -0.000), the uncapped arms are -0.009 to +0.002 with every interval including zero. Uncapped Model 3 is level with R7 on AUC (+0.002 [-0.005, +0.009]) and
+PR-AUC (+0.002 [-0.003, +0.008]) and lower on macro-F1 (-0.035), with an interval that includes zero; by the non-inferiority reading of
+`gates_team.md` (lower bounds above -0.01 AUC and -0.02 macro-F1) it is non-inferior in AUC and not shown non-inferior in macro-F1.
+Uncapped, Model 3 is above Model 2 on AUC (+0.011) but not on macro-F1 (-0.028), so the 500-block ordering of 13.2 holds for the ranking
+only. None of these arms has a no-edge control, so they do not test whether the CFG edges matter.
+
+### 13.4 Janice's five-channel Model 1
+
+`fivechannel` is Janice's `Model1TokenSequence` from main's PR #12 (`s03a_transformer/five_channel/`), unchanged, on the five-channel
+instruction tuples (opcode, two operand roles, API, behaviour) of a pipeline-B build, trained on our folds with the API vocabulary made
+a training-set one per fold. It reads the first `--max-instructions` instructions of each binary: 128 as she wrote it, or 512. L128 and
+L512 read the 500-block v3 build, `L512 whole` the uncapped build.
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| Model 1 tokenseq (ours, `token_sequence/`) | 0.970 | 0.982 | 0.902 |
+| five-channel L128, 500-block build | 0.919 | 0.954 | 0.863 |
+| five-channel L512, 500-block build | 0.926 | 0.958 | 0.878 |
+| five-channel L512, uncapped build | 0.919 | 0.955 | 0.863 |
+
+| first | second | dAUC [95% CI] | dmacro-F1 [95% CI] | rule |
+|---|---|---|---|---|
+| tokenseq | five-channel L128 | -0.051 [-0.083, -0.024] | -0.039 [-0.097, +0.026] | does not beat |
+| tokenseq | five-channel L512 | -0.043 [-0.071, -0.020] | -0.024 [-0.063, +0.022] | does not beat |
+| five-channel L512 | five-channel L512 uncapped | -0.007 [-0.059, +0.038] | -0.015 [-0.072, +0.038] | does not beat |
+| R7 | five-channel L512 uncapped | -0.060 [-0.108, -0.020] | -0.072 [-0.134, -0.022] | does not beat |
+| TF-IDF (seed 0) | five-channel L128 | -0.072 [-0.117, -0.034] | -0.099 [-0.147, -0.058] | direction |
+| TF-IDF (seed 0) | five-channel L512 | -0.063 [-0.100, -0.032] | -0.057 [-0.120, -0.006] | direction |
+
+Why it does not gain: the model sees a prefix of almost every binary. In the seed-0 runs 1,809 of the 1,810 test binaries have more
+than 128 instructions and 1,806 more than 512 (`truncated_instructions` in `metrics.json`, summed over the five folds), in both builds.
+The uncapped build gives it more instructions per binary, but it still reads only the first 512, so it cannot use them, and it does not
+(-0.007, interval across zero). On the same 500-block build L512 is nominally 0.007 AUC above L128 (means; no paired test). Our
+`token_sequence/` Model 1 cuts each binary's whole token stream into windows of 512, encodes each window and averages the window vectors
+per binary; at test time it reads every window, in training a random choice of at most 64 per binary and epoch. It is 0.043 AUC above
+the five-channel L512. The suggestion for her model is the same windowing over all instructions; the five-channel tuples and her
+encoder can stay as they are.
+
+### 13.5 Model 1 with the out-of-fold threshold
+
+Main PR #12 adds `--threshold-from oof`: the decision threshold is chosen on out-of-fold predictions of the training binaries (3 refits on
+folds that keep a ransomware family or a goodware identity group whole) instead of on the validation families, on which the model
+saturates within a few epochs so that a wide band of thresholds ties and the first is taken. Only the threshold of the AUC checkpoint
+changes; the two runs train the same model with the same seed.
+
+| arm | AUC | PR-AUC | macro-F1 |
+|---|---|---|---|
+| Model 1 tokenseq, validation threshold | 0.970 | 0.982 | 0.902 |
+| Model 1 tokenseq, out-of-fold threshold (`-thoof`) | 0.968 | 0.981 | 0.918 |
+
+tokenseq to `-thoof`: dAUC -0.002 [-0.007, +0.002] (level; the 0.002 is run-to-run noise of a retrained model), dPR-AUC -0.001
+[-0.005, +0.003], dmacro-F1 +0.016 [-0.014, +0.054]. Macro-F1 moves from 0.902 to 0.918 but the interval includes zero, so the rule is
+not met. Against TF-IDF (seed 0) `-thoof` is -0.011 [-0.023, -0.002] AUC and -0.014 [-0.063, +0.021] macro-F1.
+
+### 13.6 What this means
+
+Once the 500-block cap is removed, the team pipeline is level with our best model on AUC: uncapped Model 3 (the edge-typed GAT on
+pooled five-channel embeddings) reads 0.981 against R7's 0.979, +0.002 [-0.005, +0.009], with macro-F1 lower by 0.035 and an interval
+that includes zero. Most of the 0.025 to 0.031 AUC gap of section 6 was the cap, which section 6 could not rule out, and the fixed
+preprocessing removed the label leak of the listing match without changing AUC. The earlier conclusions are unchanged. Graph structure:
+these arms have no no-edge control, and on our GNN typed edges are 0.004 AUC above no edges with an interval including zero
+(`PLAN_GNN.md`, "Final results", 1). Imports: the header-imports LR (0.985 AUC, seed 0) is at the level of every arm here (the highest
+seed-0 team AUC is 0.986, uncapped Model 3); no pair against it was run for these arms. Tokens: the best team arm is the one fed only a
+pooled embedding of the instruction tokens, and the 77 handcrafted counts add nothing to it at 500 blocks, which agrees with the
+bag-of-tokens reading of `PLAN_GNN.md`.
+
+Next steps:
+
+- **Yanping (s02).** Run the rebuild check (criterion 5) on the uncapped build, `match_acceptance --build RUNS/team/b_sigwhole_v3`
+  without `--skip-rebuild`. Option 1 of 12.5 (opcode and operand channels from the `.jsonl.gz`) is still open; it would remove the
+  dependence on the listing and the Go residue of 13.1. Use `--whole` (PR #13) for model inputs: every budget tested, on our GNN
+  (section 8) and on these arms, lost AUC.
+- **Dorothy (Models 2 and 3, the GAT).** Train on uncapped builds with a per-batch node budget, as `train_b.py` does; report the `feat`
+  and `emb` arms with family-held-out validation and per-sample predictions (section 7, items 1 and 2). Pair Model 3 against a no-edge
+  version of the same GAT to test the CFG edges. A trained block encoder remains the open slot for Model 3 (section 8).
+- **Janice (Model 1, five-channel).** Window over all instructions instead of the first 128 or 512, as `token_sequence/` does, and use
+  `--threshold-from oof`; then compare with tokenseq (0.970 AUC) and TF-IDF (0.982, seed 0).

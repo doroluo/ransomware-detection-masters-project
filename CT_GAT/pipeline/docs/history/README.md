@@ -1,14 +1,16 @@
 # History: how the pipeline got its numbers
 
 These are the working documents of the `3-block-level-counting` branch, copied as they were when the experiments finished
-(2026-10-20), plus the final gate tables. They are the record behind the headline in [`../../README.md`](../../README.md): read them
-for why an option exists and what was measured, not for the commands, which have moved (table below).
+(2026-10-20), plus the final gate tables. `PLAN_GNN.md`, `TEAM_PIPELINES_REVIEW.md` and `gates_team.md` were updated on 2026-10-21
+with the runs after main's PRs #10, #12 and #13, and `gates_model1_variants.md` was added. They are the record behind the headline in
+[`../../README.md`](../../README.md): read them for why an option exists and what was measured, not for the commands, which have moved
+(table below).
 
 | file | what it is |
 |---|---|
-| [`PLAN_GNN.md`](PLAN_GNN.md) | the plan of the edge-typed hierarchical GNN, its control ladder (R0 TF-IDF, R2 no edges, R4 shuffled edges, R5 untyped, R7 typed), the pre-registered rule, every decision, and the "Final results" section (2026-10-20) |
+| [`PLAN_GNN.md`](PLAN_GNN.md) | the plan of the edge-typed hierarchical GNN, its control ladder (R0 TF-IDF, R2 no edges, R4 shuffled edges, R5 untyped, R7 typed), the pre-registered rule, every decision, and the "Final results" section (2026-10-20; its section 8, the team pipelines after the fixes, 2026-10-21) |
 | [`RESULTS.md`](RESULTS.md) | `report.py` over every run directory: one row per configuration, mean +- sd over seeds |
-| [`TEAM_PIPELINES_REVIEW.md`](TEAM_PIPELINES_REVIEW.md) | the review of the teammates' two GAT pipelines (`gnn`, `yanping`), how we ran them on our folds, the adopted target architecture (section 9, drawn in the root README), the Model 1 adapter contract, and why the listing-to-CFG match fails (section 12) |
+| [`TEAM_PIPELINES_REVIEW.md`](TEAM_PIPELINES_REVIEW.md) | the review of the teammates' two GAT pipelines (`gnn`, `yanping`), how we ran them on our folds, the adopted target architecture (section 9, drawn in the root README), the Model 1 adapter contract, why the listing-to-CFG match fails (section 12), and the results after the s02 fixes: Models 2 and 3, the uncapped build, the five-channel Model 1 (section 13) |
 | [`LITERATURE_REVIEW.md`](LITERATURE_REVIEW.md) | the source and the departure of every layer-level choice |
 | [`GRAPHS_AND_TOKENS.md`](GRAPHS_AND_TOKENS.md) | which file builds the graph, which tokenizes, and where each is described |
 
@@ -19,7 +21,8 @@ differences over the seeds complete in both arms:
 | file | stage | the plan that produced its runs |
 |---|---|---|
 | [`gates_noapi.md`](gates_noapi.md) | `noapi`: the api-token ablation | `noapi`, `r2_noapi` |
-| [`gates_team.md`](gates_team.md) | `team`: the teammates' pipelines under our folds, our 500-block arms | `team`, `paths_codebert`, and the trainers of `experiments/team_pipelines` |
+| [`gates_team.md`](gates_team.md) | `team`: the teammates' pipelines under our folds, our 500-block arms; since 2026-10-21 also the v3 build (`sig500v3`, Models 2 and 3), the uncapped arms (`sigwhole`) and `fivechannel-L512 whole`, written by the branch's `gates.py --stage team` (main's `team` stage does not have these rows) | `team`, `paths_codebert`, and the trainers of `experiments/team_pipelines` (the v3 and uncapped arms: `train_b` of the branch) |
+| [`gates_model1_variants.md`](gates_model1_variants.md) | `model1_variants`: Model 1 with the out-of-fold threshold (`-thoof`), Janice's five-channel Model 1 at 128 and 512 instructions | `model1_variants` |
 | [`gates_v3.md`](gates_v3.md) | `v3`: the combined cache, all architectures, arch-balanced arms | `v3` |
 | [`gates_paths_codebert.md`](gates_paths_codebert.md) | `paths_codebert`: Model 3, the GNN on CodeBERT block vectors | `paths_codebert` |
 | [`gates_model1.md`](gates_model1.md) | `model1`: the token-sequence transformer | `model1` |
