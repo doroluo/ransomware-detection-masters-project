@@ -13,7 +13,7 @@ import torch
 from tiny_cache import tiny  # noqa: F401  (a fixture)
 
 import experiments.train as experiments_train
-from common import paths
+from common import catalog, paths
 from common.config import MAX_INSTRUCTIONS, RunConfig
 from common.manifests import load_index, make_manifest
 from common.paths import source_for
@@ -117,17 +117,39 @@ def test_the_command_line_takes_the_flags_of_the_model():
             experiments_train.parse_args(['--model', model, '--protocol', 'kfold', '--fold', '0', '--build', 'b'])
 
 
+def test_the_default_build_is_the_cfg_subgraphs_folder_of_the_preprocessed_zip(tmp_path, monkeypatch):
+    monkeypatch.delenv('GT_TEAM_B_BUILD', raising=False)
+    monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'none.json'))
+    assert source_for('team_b_build') == catalog.CT_GAT / 'processed' / 'cfg_subgraphs' == catalog.PROCESSED / 'cfg_subgraphs'
+    assert fc.parse_config(['--fold', '0'])[1]['build'] is None
+
+
 def test_the_build_comes_from_the_flag_then_the_environment_then_datasets_json(tmp_path, monkeypatch):
     monkeypatch.delenv('GT_TEAM_B_BUILD', raising=False)
     monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'none.json'))
     monkeypatch.setattr(paths, 'PROCESSED', tmp_path / 'processed')                    # the catalog default is CT_GAT/processed/cfg_subgraphs
-    with pytest.raises(FileNotFoundError, match='cfg_subgraphs is not a directory'):
+    default = tmp_path / 'processed' / 'cfg_subgraphs'
+    with pytest.raises(FileNotFoundError, match='cfg_subgraphs is not a directory') as e:
         fc.resolve_build()
-    (tmp_path / 'processed' / 'cfg_subgraphs').mkdir(parents=True)
-    assert fc.resolve_build() == tmp_path / 'processed' / 'cfg_subgraphs'
-    with pytest.raises(FileNotFoundError, match='not a directory'):
+    for words in ('CT_GAT/processed/cfg_subgraphs', 'unzip Mendeley_x86_cfg_subgraphs_500blocks_v3.zip at CT_GAT/',
+                  'build_b --source repo'):
+        assert words in str(e.value)                                                   # the way to fill the folder, in the message
+    default.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError, match='holds no <sample_id>.pt file') as e:   # an empty folder is as missing
+        fc.resolve_build()
+    assert 'build_b --source repo' in str(e.value)
+    torch.save({}, default / 'channel_embedder.pt')                                    # the embedder is no sample
+    with pytest.raises(FileNotFoundError, match='holds no <sample_id>.pt file'):
+        fc.resolve_build()
+    torch.save({}, default / ('a' * 64 + '.pt'))
+    assert fc.resolve_build() == default
+    with pytest.raises(FileNotFoundError, match='not a directory') as e:
         fc.resolve_build(tmp_path / 'nowhere')
+    assert 'build_b' not in str(e.value)                                                # a given folder gets no advice
     (tmp_path / 'b1').mkdir()
+    with pytest.raises(FileNotFoundError, match='holds no <sample_id>.pt file'):
+        fc.resolve_build(tmp_path / 'b1')
+    torch.save({}, tmp_path / 'b1' / ('a' * 64 + '.pt'))
     assert fc.resolve_build(tmp_path / 'b1') == tmp_path / 'b1'
     monkeypatch.setenv('GT_TEAM_B_BUILD', str(tmp_path / 'b1'))
     assert fc.resolve_build() == tmp_path / 'b1' == source_for('team_b_build')
