@@ -31,7 +31,7 @@ import re
 from pathlib import Path
 
 from common.paths import MissingSource, source_for
-from s02_preprocess.cache.build_cache import corpus_root, corpus_samples, exclusion, read_aliases
+from s02_preprocess.cache.build_cache import corpus_aliases, corpus_samples, exclusion
 
 K = 5
 FIELDS = ['dataset', 'sha256', 'label', 'family', 'group', 'arch', 'orig_set', 'fold', 'corpus']
@@ -89,7 +89,7 @@ def pool_rows(corpus='mendeley', groups=None):
     """The fold pool of one corpus: the rows its cache holds (`build_cache.exclusion` leaves out a missing split, a UPX stub,
     an ineligible or non-x86/x64 row). `groups` maps sample_id -> goodware group; without it the bundle's identity_group
     stands (see the module docstring for what that changes)."""
-    aliases = read_aliases(corpus_root(corpus))
+    aliases = corpus_aliases(corpus)
     rows = []
     for r in corpus_samples(corpus):
         if exclusion(r, aliases.get(r['sample_id'], {})):

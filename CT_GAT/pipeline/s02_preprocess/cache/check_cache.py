@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from s02_preprocess.cache.build_cache import (CACHE, CACHE_VERSION, COUNT_FIELDS, EDGE_KINDS, FCB_EXTERN, TOKEN_KINDS,
-                         corpus_root, corpus_samples, npz_path, read_csv, read_vocab)
+                         corpus_samples, npz_path, read_csv, read_vocab)
 
 V1_CACHE = CACHE.with_name('graph_transformer_cache')
 V1_ARRAYS = ('mn', 'sig', 'beh', 'api', 'blk_insn_ptr', 'blk_api_ptr', 'blk_feat', 'fn_blk_ptr', 'fn_flags',
@@ -125,16 +125,17 @@ def compare_v1(sample_id):
 
 
 def reference_compare(row, vocab):
-    """Rebuild one sample with the bundle's dataset.py reader and compare tokens, APIs and features."""
-    bundle = corpus_root('mendeley')
-    spec = importlib.util.spec_from_file_location('bundle_dataset', bundle / 'dataset.py')
+    """Rebuild one sample with the reader shipped beside its samples.csv (the bundle's dataset.py or a collection's
+    gnn_dataset.py, the same file) and compare tokens, APIs and features."""
+    root = Path(row['root'])
+    spec = importlib.util.spec_from_file_location('bundle_dataset', next(f for f in (root / 'dataset.py', root / 'gnn_dataset.py') if f.exists()))
     ds = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ds)
     z = np.load(npz_path(row['sample_id']))
     mn = [vocab['mn'][i] for i in z['mn']]
     api = [vocab['api'][i] for i in z['api']]
     blk = 0
-    for f, graph in enumerate(ds.iter_file_functions(bundle / row['cfg_path'], row['sample_id'])):
+    for f, graph in enumerate(ds.iter_file_functions(root / row['cfg_path'], row['sample_id'])):
         order = sorted(range(graph['num_nodes']), key=lambda i: graph['node_start_rva'][i])
         assert z['fn_blk_ptr'][f] == blk, 'function block offset'
         for i in order:

@@ -30,6 +30,7 @@ RESERVED = {'cache', 'protocols', 'sources'}
 SOURCES = {
     'bundle': ('GT_BUNDLE', 'the Mendeley_GNN_v1 bundle (samples.csv, cfg/, provenance/)'),
     'collections': ('GT_COLLECTIONS', 'the folder holding Ransomware_Balanced/ and Balanced_Goodware/'),
+    'mendeley_collections': ('GT_MENDELEY_COLLECTIONS', 'the folder holding Mendeley_Ransomware/ and Mendeley_Goodware/ (used when no bundle is configured)'),
     'folds': ('GT_FOLDS', 'the Mendeley family-holdout fold CSV (folds_mendeley.csv)'),
     'folds_v3': ('GT_FOLDS_V3', 'the folder with folds_all.csv and arch_matched.csv'),
     'reader_root': ('GT_READER_ROOT', "the team's operand-role reader output"),

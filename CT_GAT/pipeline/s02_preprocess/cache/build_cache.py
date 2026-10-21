@@ -1,5 +1,5 @@
-"""Stream IDA CFG exports (the Mendeley_GNN_v1 bundle and the collection-cfg-asm/1 collections) into one npz
-per sample, plus index.csv and vocab.json.
+"""Stream IDA CFG exports (the Mendeley_GNN_v1 bundle or the Mendeley_Ransomware and Mendeley_Goodware collections, and
+the other collection-cfg-asm/1 collections) into one npz per sample, plus index.csv and vocab.json.
 
 python -m s02_preprocess.cache.build_cache [--corpora mendeley ...] [--base-cache DIR] [--limit N] [--workers 4]
 (from CT_GAT/pipeline; the cache is GT_CACHE, or the dataset picked by --cache <name> / the protocol, see common/paths.py)
@@ -12,8 +12,10 @@ of npz built against an earlier vocab stay valid; vocab_generations.json lists e
 Corpora other than mendeley go into a new cache (GT_CACHE), never the default one. --base-cache copies
 that cache's vocab.json and the npz of rows it already holds, so those files stay byte-identical.
 
-Inputs (common/paths.py `source_for`; GT_BUNDLE, GT_COLLECTIONS, GT_FOLDS, GT_FOLDS_V3 or "sources" in datasets.json):
-the Mendeley_GNN_v1 bundle, the collection-cfg-asm/1 collections, the Mendeley fold CSV and the v3 fold files.
+Inputs (common/paths.py `source_for`; GT_BUNDLE, GT_MENDELEY_COLLECTIONS, GT_COLLECTIONS, GT_FOLDS, GT_FOLDS_V3 or "sources"
+in datasets.json): Mendeley comes from the Mendeley_GNN_v1 bundle when one is configured, else from the two collections
+under `mendeley_collections` (rows sorted by sample_id as the bundle's are, cfg_path relative to the collection of the row;
+the cache comes out the same). The other collections, the Mendeley fold CSV and the v3 fold files are the remaining inputs.
 
 Behaviour tags: each instruction's behaviour id comes from `s02_preprocess/token_mapping.py` (`categorize_behavior`,
 `_match_api_in_operands`, `strip_opcode_prefixes`, `BEHAVIOR_MAP`), the module the caches were built with. It is Yanping's
@@ -37,10 +39,11 @@ from pathlib import Path
 import numpy as np
 
 from common.config import CACHE, DEFAULT_CACHE
-from common.paths import UNSET, source_for
+from common.paths import UNSET, MissingSource, datasets_file, source_for
 from s02_preprocess import token_mapping
 
 CORPUS_NAMES = ('mendeley', 'ransomware_balanced', 'balanced_goodware')
+MENDELEY_COLLECTIONS = ('Mendeley_Ransomware', 'Mendeley_Goodware')
 SCHEMA = 'ida-cfg-research/2.1'
 
 OPERAND_ABBREV = {'register': 'r', 'immediate': 'i', 'phrase': 'p', 'displacement': 'd',
@@ -60,11 +63,33 @@ def behavior_rules():
     return token_mapping
 
 
-def corpus_root(corpus):
-    """The folder of a corpus's samples.csv, cfg/ and provenance/."""
-    if corpus == 'mendeley':
+def configured_bundle():
+    """The Mendeley_GNN_v1 bundle when GT_BUNDLE or datasets.json names one, else None."""
+    try:
         return source_for('bundle')
-    return source_for('collections') / {'ransomware_balanced': 'Ransomware_Balanced', 'balanced_goodware': 'Balanced_Goodware'}[corpus]
+    except MissingSource:
+        return None
+
+
+def corpus_roots(corpus):
+    """The folders of a corpus's samples.csv, cfg files and provenance/: the bundle, or for Mendeley without a configured
+    bundle its two collections (each row's cfg_path is relative to its own folder)."""
+    if corpus != 'mendeley':
+        return [source_for('collections') / {'ransomware_balanced': 'Ransomware_Balanced', 'balanced_goodware': 'Balanced_Goodware'}[corpus]]
+    bundle = configured_bundle()
+    if bundle:
+        return [bundle]
+    try:
+        base = source_for('mendeley_collections')
+    except MissingSource:
+        base = None
+    roots = [base / name for name in MENDELEY_COLLECTIONS] if base else []
+    if not roots or not all((root / 'samples.csv').is_file() for root in roots):
+        raise MissingSource('no Mendeley data: set GT_BUNDLE (or "bundle" under "sources" in '
+                            f'{datasets_file()}) to the Mendeley_GNN_v1 bundle, or GT_MENDELEY_COLLECTIONS (or '
+                            '"mendeley_collections") to the folder holding Mendeley_Ransomware/ and Mendeley_Goodware/'
+                            + (f'; {base} lacks one of them' if base else ''))
+    return roots
 
 
 def read_csv(path):
@@ -79,11 +104,20 @@ def read_aliases(root):
     return {r['sha256']: r for r in rows}
 
 
+def corpus_aliases(corpus):
+    return {sha: rec for root in corpus_roots(corpus) for sha, rec in read_aliases(root).items()}
+
+
 def corpus_samples(corpus):
-    rows = read_csv(corpus_root(corpus) / 'samples.csv')
-    for r in rows:
-        r['corpus'] = corpus
-    return rows
+    """The samples.csv rows of a corpus, each with its `corpus` and the `root` its cfg_path is relative to. Mendeley's two
+    collections merge sorted by sample_id, the order of the bundle's samples.csv."""
+    roots = corpus_roots(corpus)
+    rows = []
+    for root in roots:
+        for r in read_csv(root / 'samples.csv'):
+            r['corpus'], r['root'] = corpus, str(root)
+            rows.append(r)
+    return sorted(rows, key=lambda r: r['sample_id']) if len(roots) > 1 else rows
 
 
 def exclusion(r, alias):
@@ -126,7 +160,7 @@ def eligible_rows(corpora=('mendeley',)):
     already taken by an earlier corpus is left out as a duplicate."""
     rows, dropped, seen, aliases = [], {}, set(), {}
     for corpus in corpora:
-        aliases[corpus] = read_aliases(corpus_root(corpus))
+        aliases[corpus] = corpus_aliases(corpus)
         for r in corpus_samples(corpus):
             alias = aliases[corpus].get(r['sample_id'], {})
             why = exclusion(r, alias)
@@ -286,7 +320,7 @@ def encode_sample(row):
     import_beh = {}
     footer = None
 
-    with gzip.open(corpus_root(row['corpus']) / row['cfg_path'], 'rt', encoding='utf-8') as stream:
+    with gzip.open(Path(row['root']) / row['cfg_path'], 'rt', encoding='utf-8') as stream:
         header = json.loads(stream.readline())
         if header.get('record') != 'header' or header.get('sha256') != sample_id:
             raise ValueError('header identity mismatch')
@@ -579,8 +613,8 @@ def main():
         raise SystemExit('set GT_CACHE to a new directory before adding corpora; the default cache stays Mendeley-only')
     if args.base_cache and args.base_cache.resolve() == CACHE.resolve():
         raise SystemExit('--base-cache must differ from the cache being built')
-    (CACHE / 'samples').mkdir(parents=True, exist_ok=True)
     rows, dropped = eligible_rows(args.corpora)
+    (CACHE / 'samples').mkdir(parents=True, exist_ok=True)
     if args.limit:
         by_class = {c: sorted((r for r in rows if r['label'] == c), key=lambda r: r['sample_id']) for c in ('0', '1')}
         rows = by_class['0'][:args.limit // 2] + by_class['1'][:args.limit - args.limit // 2]
