@@ -26,6 +26,23 @@ python -m s04_evaluation.gates --stage v3                                       
 | `stats.py` | the paired cluster bootstrap between two arms (clusters are ransomware families and single goodware binaries) |
 | `stage.py`, `gates.py`, `gate_tables.py`, `gate_layouts.py` | a gate stage is data (`experiments/stages/<name>.py`: arms, pairs, seeds, rule, intro); the engine lays out the pooled table and the paired differences |
 
+The import methods (`baselines --imports`, `experiments.train --imports header`) read `<cache>/side/imports/`. Without the
+team's reader output (`GT_READER_ROOT`) the arrays come from the CFG export itself, with the Mendeley data configured as for
+`build_cache` (`GT_BUNDLE`, or `GT_MENDELEY_COLLECTIONS` for the two collections):
+
+```bash
+python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --cache <cache dir> --from-cfg
+```
+
+This reads only the header record of each sample's `.jsonl.gz` (`pe.imports`). Its `header_imports` and `n_entries` equal the
+reader's for all 2,411 samples of `graph_transformer_cache_v2`, and `baselines --protocol kfold --fold 0 1 2 3 4 --imports`
+on such a cache gives the published `imports_header_lr` predictions of `kfold<k>_x86_s0_imp`, row for row (that method reads
+`header_imports` only). `referenced_imports` is the header identities that the cache's instructions name, and the cache leaves
+out the orphan instructions the reader also scans, so `unreferenced_imports` has more entries than the reader's in 194 of the
+2,411 samples. The GNN `--imports header` bag reads `header_imports` too, but its two extra inputs are log1p(`unreferenced_imports`)
+and log1p(`header_imports`): for those 194 samples the first differs from the reader-built value, so a `-imph` model trained
+or evaluated on `--from-cfg` arrays is not bit-identical to the published `-imph` runs.
+
 How to read a gate table, and how to add a stage: [`docs/ADDING_AN_EXPERIMENT.md`](../docs/ADDING_AN_EXPERIMENT.md). The final tables
 of the stages that were run are in [`docs/history/`](../docs/history/README.md). The queue of `experiments/` ends its plans with
 `report` and `gates <stage>`.
