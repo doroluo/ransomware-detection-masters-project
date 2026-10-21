@@ -31,7 +31,7 @@ def test_whole_arms_names_build_source_features_and_budget():
         assert train_b.ARM_DIR[v3].name == 'b_sig500_v3'
         cfg = tp.team_config(3, 2, arm)
         assert cfg.name == f'kfold3_x86_gnn_s2_team-{arm}' and cfg.group == gates.team_group(arm)
-        assert train_b.ARM_HP[arm] == {**train_b.HP, 'node_budget': train_b.NODE_BUDGET}
+        assert train_b.ARM_HP[arm] == {**train_b.HP, 'node_budget': train_b.NODE_BUDGET, 'gpu_cap_gb': train_b.GPU_CAP_GB} and train_b.GPU_CAP_GB <= 12
         assert train_b.ARM_HP[v3] is train_b.HP and 'node_budget' not in train_b.HP                  # v3 and older: no budget
     assert all('node_budget' not in train_b.ARM_HP[a] for a in train_b.ARMS[:5])
 

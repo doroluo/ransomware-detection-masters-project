@@ -217,6 +217,11 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig5
     unchanged code path, so an arm whose batches never exceed it equals the same arm without a budget (`tests/test_team_whole.py`).
     `history.csv` gets a `split_batches` column (batches cut per epoch) and `metrics.json` records `node_budget` in `recipe`. Measured
     peak on the 16 largest graphs of the partial build as one batch (1,728,189 nodes, 9 parts): 6.4 GB training, 3.4 GB evaluation.
+  - The GPU cap. With variable-sized parts the caching allocator's reserved memory grew past the card (16 GB) in a 1,000-binary smoke
+    (7.4, 13.4, 20.5, 27.6 GB over four epochs, allocated peak 8.4 GB); on Windows the driver pages the excess into system RAM and the
+    process's resident set followed (17.6 GB after two epochs). `HP_WHOLE['gpu_cap_gb']` (12) calls `set_per_process_memory_fraction`, so
+    the allocator frees its cache at 12 GB instead of growing: reserved stayed at 10.2 GB and the resident set flat at 7.7 GB (graphs
+    5.8 GB). A full fold holds about 14.8 M nodes of graphs, roughly 11-14 GB resident.
   - Time (smoke of 600 training binaries on the partial build, RTX 5080, scaled to a fold by node count and the v3 runs' epoch counts):
     graphs built in about 40 s for 1,810 binaries, about 5 s per epoch, 17-19 epochs: 2.5 min a run warm (up to about 4 min with the
     14 GB read cold, twice), so 15 runs of an arm take about 40-60 min and the 45 sigwhole runs 2-3 h. The five-channel runs read the

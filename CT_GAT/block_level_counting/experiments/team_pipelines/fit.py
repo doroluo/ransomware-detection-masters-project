@@ -16,6 +16,11 @@ training batch are run one after the other with their gradients summed, each par
 class-weight total of the whole batch, so the optimiser step is the one the whole batch would have given (dropout draws apart). A
 batch within the budget takes the unchanged path, so a run whose batches never exceed the budget is the run without a budget.
 Evaluation is cut the same way and the predictions come back in the order asked.
+
+GPU cap (hp['gpu_cap_gb']). Parts of different sizes fragment the caching allocator, and on Windows (no expandable segments) its
+reserved memory grew past the card's 16 GB in a 600-binary smoke: the driver then pages the excess into system memory (the process's
+resident set grew by 7 GB per epoch, to 17 GB). With the cap `set_per_process_memory_fraction` limits what the process may reserve,
+so at the cap the allocator frees its cached blocks and retries instead of growing; allocated memory is unaffected.
 """
 import csv
 import json
@@ -127,6 +132,11 @@ def fit(model, train_ids, val_ids, graphs, *, hp, seed, device, log=print):
     criterion = nn.CrossEntropyLoss(weight=class_weights)
     criterion_sum = nn.CrossEntropyLoss(weight=class_weights, reduction='sum')
     budget = hp.get('node_budget')
+    if device.type == 'cuda' and hp.get('gpu_cap_gb'):
+        cap_gb = float(hp['gpu_cap_gb'])
+        index = torch.cuda.current_device() if device.index is None else device.index
+        total = torch.cuda.get_device_properties(index).total_memory
+        torch.cuda.set_per_process_memory_fraction(min(1.0, cap_gb * 2**30 / total), index)
     optimizer = torch.optim.AdamW(model.parameters(), lr=hp['lr'], weight_decay=hp['weight_decay'])
     rng = random.Random(seed)
     if device.type == 'cuda':

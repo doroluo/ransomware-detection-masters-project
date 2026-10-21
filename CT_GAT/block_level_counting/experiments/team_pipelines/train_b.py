@@ -78,7 +78,8 @@ ARM_FEATURES = {'sig500': 'all', 'sig500v2': 'all', 'sig500v3': 'all', 'sig500v3
 FEATURE_MODE = {'all': 'both', 'feat': 'features', 'emb': 'embeddings'}      # graph_full_loader._node_features modes
 HP = {'lr': 1e-3, 'weight_decay': 1e-4, 'batch_size': 16, 'epochs': 40, 'patience': 8}
 NODE_BUDGET = 300_000     # nodes per part of a batch: training ~28 KB per node (8.4 GB), evaluation ~15 KB (4.5 GB), under the 12 GB limit
-HP_WHOLE = {**HP, 'node_budget': NODE_BUDGET}
+GPU_CAP_GB = 12          # the allocator may reserve at most this much (fit.py: beyond the card the driver pages into system RAM)
+HP_WHOLE = {**HP, 'node_budget': NODE_BUDGET, 'gpu_cap_gb': GPU_CAP_GB}
 ARM_HP = {arm: HP_WHOLE if arm.startswith('sigwhole') else HP for arm in ARMS}
 KIND_COLUMNS = ('api_none_count', 'api_unresolved_count', 'api_known_count')
 
