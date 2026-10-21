@@ -1,6 +1,9 @@
 """Check cache invariants for every built sample, and compare a few samples against the bundle's own reader.
 
-python -m s02_preprocess.cache.check_cache [--reference N] [--compare-v1 N] [--compare-base DIR]
+python -m s02_preprocess.cache.check_cache [--cache NAME] [--reference N] [--compare-v1 N] [--compare-base DIR]
+
+--cache NAME checks the cache of that dataset (common/paths.py reads it from the command line, as for build_cache); without it
+the cache is GT_CACHE or the first dataset of the registry.
 
 Every built sample is checked against its corpus's samples.csv and the vocab generation its ids belong to.
 --compare-v1 also requires N random Mendeley samples' v1 arrays to be byte-identical to the v1 cache, whose
@@ -14,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
+from common.paths import registry
 from s02_preprocess.cache.build_cache import (CACHE, CACHE_VERSION, COUNT_FIELDS, EDGE_KINDS, FCB_EXTERN, TOKEN_KINDS,
                          corpus_samples, npz_path, read_csv, read_vocab)
 
@@ -151,6 +155,8 @@ def reference_compare(row, vocab):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument('--cache', choices=sorted(registry()), metavar='NAME',
+                    help='dataset whose cache to check (default: GT_CACHE, else the registry default)')
     ap.add_argument('--reference', type=int, default=3, help='samples to compare against the bundle reader')
     ap.add_argument('--compare-v1', type=int, default=0,
                     help='random Mendeley samples to compare byte-for-byte with the v1 cache')

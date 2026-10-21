@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from common import catalog
 from common.catalog import FOLDS_ROOT
 from s02_preprocess.cache import folds
 
@@ -137,14 +138,15 @@ def test_pool_rows_and_cli_on_a_synthetic_bundle(tmp_path, monkeypatch, capsys):
     assert report.startswith('6 files') and 'fold 4:' in report and 'ransomware' in report and 'x64' in report
 
 
-def test_cli_without_out_says_what_to_give_and_never_writes_into_the_committed_folds(tmp_path, monkeypatch):
+def test_cli_without_out_writes_to_the_cache_folder_of_the_dataset_never_into_the_committed_folds(tmp_path, monkeypatch):
     write_bundle(tmp_path / 'bundle')
     monkeypatch.setenv('GT_BUNDLE', str(tmp_path / 'bundle'))
     monkeypatch.delenv('GT_FOLDS', raising=False)
     monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'absent.json'))
+    monkeypatch.setattr(catalog, 'CACHE_ROOT', tmp_path / 'cache')
     before = (FOLDS_ROOT / 'folds_mendeley.csv').read_bytes()
-    with pytest.raises(SystemExit, match='--out'):
-        folds.main([])
+    folds.main([])
+    assert (tmp_path / 'cache' / 'mendeley_x86' / 'folds_mendeley.csv').is_file()
     assert (FOLDS_ROOT / 'folds_mendeley.csv').read_bytes() == before
 
 

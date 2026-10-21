@@ -1,6 +1,10 @@
 """Fold CSV of the 5-fold family-holdout evaluation of a dataset.
 
-python -m s02_preprocess.cache.folds [--corpus mendeley] --out DIR [--groups CSV]
+python -m s02_preprocess.cache.folds [--corpus mendeley] [--dataset NAME] [--out DIR] [--groups CSV]
+
+The CSV goes to --out, by default `CT_GAT/cache/<dataset>/` (the first dataset of common/catalog.py that holds the corpus, or
+--dataset): a generated fold file is not the published one, so it never defaults to the committed `s02_preprocess/folds/`
+that `folds_mendeley.csv` and `v3/` live in, and is never read by a build unless GT_FOLDS points at it.
 
 The assignment is the one of `family_holdout/folds.py` in the LLM_Classification history (results/family_holdout/
 folds_mendeley.csv was written by it), restated for one corpus. It is deterministic and uses no random generator:
@@ -30,6 +34,7 @@ import csv
 import re
 from pathlib import Path
 
+from common import catalog
 from s02_preprocess.cache.build_cache import corpus_aliases, corpus_samples, exclusion
 
 K = 5
@@ -131,13 +136,17 @@ def read_groups(path):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--corpus', default='mendeley', choices=['mendeley', 'ransomware_balanced', 'balanced_goodware'])
-    ap.add_argument('--out', type=Path, help='output folder (required: the committed folds in s02_preprocess/folds are not overwritten)')
+    ap.add_argument('--corpus', default='mendeley', choices=list(catalog.CORPORA))
+    ap.add_argument('--dataset', choices=list(catalog.DATASETS),
+                    help='dataset whose cache folder is the default --out (default: the first one that holds the corpus)')
+    ap.add_argument('--out', type=Path, help='output folder (default: CT_GAT/cache/<dataset>/, not the committed folds in '
+                                             's02_preprocess/folds, which these generated ones are not)')
     ap.add_argument('--groups', type=Path, help='CSV (sample_id, group) replacing the goodware identity groups')
     args = ap.parse_args(argv)
-    out = args.out
-    if out is None:
-        raise SystemExit('give --out: the folds committed in s02_preprocess/folds are not a place for generated ones')
+    dataset = args.dataset or next(n for n, ds in catalog.DATASETS.items() if args.corpus in ds.corpora)
+    if args.dataset and args.corpus not in catalog.DATASETS[dataset].corpora:
+        raise SystemExit(f'{dataset} does not hold {args.corpus} (corpora: {", ".join(catalog.DATASETS[dataset].corpora)})')
+    out = args.out or catalog.CACHE_ROOT / dataset
     out.mkdir(parents=True, exist_ok=True)
     rows = assign_folds(pool_rows(args.corpus, read_groups(args.groups) if args.groups else None))
     write_csv(out / f'folds_{args.corpus}.csv', rows, args.corpus)

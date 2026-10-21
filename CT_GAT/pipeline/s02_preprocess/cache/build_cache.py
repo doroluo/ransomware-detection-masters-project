@@ -1,16 +1,19 @@
 """Stream IDA CFG exports (the Mendeley_GNN_v1 bundle or the Mendeley collections, and
 the other collection-cfg-asm/1 collections) into one npz per sample, plus index.csv and vocab.json.
 
-python -m s02_preprocess.cache.build_cache [--corpora mendeley ...] [--base-cache DIR] [--limit N] [--workers 4]
-(from CT_GAT/pipeline; the cache is GT_CACHE, or the dataset picked by --cache <name> / the protocol, see common/paths.py)
+python -m s02_preprocess.cache.build_cache [--cache NAME] [--corpora mendeley ...] [--base-cache DIR] [--limit N] [--workers 4] [--dry]
+(from CT_GAT/pipeline; the cache is GT_CACHE, or the dataset picked by --cache <name>, see common/paths.py; --dry prints
+what the build resolves and stops)
 
 Idempotent: a sample whose npz loads and whose counts match samples.csv is skipped. Workers write
 ids into a sorted per-sample string table; the finalize pass appends the strings vocab.json lacks
 (sorted among themselves) and rewrites the new npz to global ids. vocab.json only grows, so global ids
 of npz built against an earlier vocab stay valid; vocab_generations.json lists every vocab's sha and sizes.
 
-Corpora other than mendeley go into a new cache (GT_CACHE), never the default one. --base-cache copies
-that cache's vocab.json and the npz of rows it already holds, so those files stay byte-identical.
+The dataset (common/catalog.py DATASETS) fixes the corpora (`--corpora` defaults to them and may not name others) and the base
+cache: `--cache combined_v3` builds mendeley + the two balanced corpora on top of the mendeley_x86 cache, which must be built
+first. --base-cache (default: the cache of the dataset's base) copies that cache's vocab.json and the npz of rows it already
+holds, so those files stay byte-identical. A collection folder that is not unzipped stops the build before the cache is touched.
 
 Inputs (common/paths.py `source_for`; GT_BUNDLE, GT_COLLECTIONS, GT_FOLDS, GT_FOLDS_V3 or "sources" in datasets.json, else
 the defaults of common/catalog.py): Mendeley comes from the Mendeley_GNN_v1 bundle when one is configured or sits under
@@ -41,7 +44,7 @@ import numpy as np
 
 from common import catalog
 from common.config import CACHE, DEFAULT_CACHE
-from common.paths import UNSET, MissingSource, datasets_file, source_for
+from common.paths import UNSET, MissingSource, datasets_file, load_registry, registry, source_for
 from s02_preprocess import token_mapping
 
 CORPUS_NAMES = tuple(catalog.CORPORA)
@@ -118,17 +121,40 @@ def corpus_samples(corpus):
     return sorted(rows, key=lambda r: r['sample_id']) if len(roots) > 1 else rows
 
 
+def require_collections(corpora):
+    """Raise MissingSource naming every collection folder the corpora need and the zip that holds it, all at once. A folder
+    counts when its samples.csv exists; Mendeley may come from a bundle instead (`corpus_roots`)."""
+    base = source_for('collections')
+    problems = []
+    for corpus in corpora:
+        try:
+            roots = corpus_roots(corpus)
+        except MissingSource as exc:
+            problems.append(str(exc))
+            continue
+        for root in roots:
+            if (root / 'samples.csv').is_file():
+                continue
+            if root.name in catalog.CORPORA[corpus].collections:
+                problems.append(f'{root.as_posix()} is missing: unzip Collections/{root.name}.zip into {base.as_posix()}')
+            else:
+                problems.append(f'the {corpus} bundle {root.as_posix()} has no samples.csv')
+    if problems:
+        raise MissingSource('\n'.join(problems))
+
+
 def exclusion(r, alias):
-    """Why a samples.csv row stays out of the cache, or '' if it goes in. UPX stubs are flagged by representation
-    in the bundle, by alias current_representation (stubs of bundle samples) or by the _upx_packed folder elsewhere."""
-    if r['corpus'] == 'mendeley':
+    """Why a samples.csv row stays out of the cache, or '' if it goes in, by the `rule` of the row's corpus in
+    `catalog.CORPORA`. `split`: the row needs a recommended split and may not be a UPX stub by representation (the bundle's
+    and the Mendeley collections' column). `eligible`: eligible_for_gnn, x86 or x64, and no UPX stub by the _upx_packed
+    folder or the alias's current_representation."""
+    if catalog.CORPORA[r['corpus']].rule == 'split':
         if not r['recommended_split']:
             return 'no recommended split'
-    elif r['eligible_for_gnn'] != '1' or r['architecture'] not in ('x86', 'x64'):
+        return 'upx stub' if r['representation'] == 'upx_packed' else ''
+    if r['eligible_for_gnn'] != '1' or r['architecture'] not in ('x86', 'x64'):
         return 'ineligible'
-    if r['corpus'] == 'mendeley' and r['representation'] == 'upx_packed':
-        return 'upx stub'
-    if r['corpus'] != 'mendeley' and (r['family'] == '_upx_packed' or alias.get('current_representation') == 'upx_packed'):
+    if r['family'] == '_upx_packed' or alias.get('current_representation') == 'upx_packed':
         return 'upx stub'
     return ''
 
@@ -596,27 +622,90 @@ def fold_table(index):
     return '\n'.join(out) + '\n'
 
 
+def dataset_corpora(name):
+    """(corpora, base dataset) a named dataset's cache holds, from its row of `catalog.DATASETS`. (None, None) when the
+    corpora are undeclared: no dataset, or an entry of datasets.json, which has no corpora and no base."""
+    if name in catalog.DATASETS and name not in load_registry():
+        ds = catalog.DATASETS[name]
+        return list(ds.corpora), ds.base
+    return None, None
+
+
+def selected_dataset(name, cache, reg):
+    """The dataset a build is for: `--cache <name>`, else the dataset of `reg` whose cache is `cache` (what CACHE resolved to,
+    GT_CACHE included), else None (GT_CACHE is a directory of no dataset)."""
+    if name:
+        return name
+    return next((n for n, entry in reg.items() if Path(entry['cache']).resolve() == Path(cache).resolve()), None)
+
+
+def resolve_build(cache_name, corpora, base_cache, cache, reg):
+    """What a build uses: {'dataset', 'cache', 'corpora', 'base_cache'}. `--corpora` and `--base-cache` win; else the corpora
+    of the dataset (Mendeley where they are undeclared) and the cache of its base dataset. Refuses corpora beyond the
+    dataset's own: a catalog dataset never gets another's corpora, and the default cache (the one of the `bundle` protocol,
+    whose entry in datasets.json declares no corpora) stays Mendeley-only, as before the catalog."""
+    name = selected_dataset(cache_name, cache, reg)
+    own, base_name = dataset_corpora(name)
+    chosen = corpora or own or ['mendeley']
+    if own and [c for c in chosen if c not in own]:
+        raise SystemExit(f'{name} holds {", ".join(own)}: corpora {", ".join(c for c in chosen if c not in own)} do not go into '
+                         f'its cache; build them with --cache <a dataset that lists them> or GT_CACHE <a new directory>')
+    if own is None and set(chosen) != {'mendeley'} and Path(cache).resolve() == DEFAULT_CACHE.resolve():
+        raise SystemExit('set GT_CACHE to a new directory before adding corpora; the default cache stays Mendeley-only')
+    base = base_cache or (Path(reg[base_name]['cache']) if base_name else None)
+    return {'dataset': name, 'cache': Path(cache), 'corpora': chosen, 'base_cache': base}
+
+
+def resolution_lines(plan):
+    """The paths a build resolves, one `key: value` per line (--dry)."""
+    bundle = configured_bundle() or catalog.find_bundle(source_for('collections') / catalog.CORPORA['mendeley'].bundle)
+    lines = [('dataset', plan['dataset'] or '-'), ('cache', plan['cache'].as_posix()), ('corpora', ' '.join(plan['corpora'])),
+             ('base cache', plan['base_cache'].as_posix() if plan['base_cache'] else '-'),
+             ('bundle', bundle.as_posix() if bundle else '-')]
+    lines += [(key, source_for(key).as_posix()) for key in ('collections', 'folds', 'folds_v3')]
+    return [f'{key}: {value}' for key, value in lines]
+
+
 def main():
-    ap = argparse.ArgumentParser()
+    reg = registry()
+    ap = argparse.ArgumentParser(description='Build the CFG cache of a dataset (common/catalog.py) from its collections.')
+    ap.add_argument('--cache', choices=sorted(reg), metavar='NAME',
+                    help=f'dataset to build, a name of the catalog ({", ".join(catalog.DATASETS)}) or of datasets.json '
+                         f'({", ".join(load_registry()) or "none"}); without it the dataset whose cache GT_CACHE or the '
+                         f'default names (mendeley_x86 on an unconfigured machine)')
     ap.add_argument('--limit', type=int, help='build only N samples, half of each class')
     ap.add_argument('--workers', type=int, default=4)
-    ap.add_argument('--corpora', nargs='+', choices=list(CORPUS_NAMES), default=['mendeley'])
-    ap.add_argument('--base-cache', type=Path, help='cache whose vocab.json and npz to start from')
+    ap.add_argument('--corpora', nargs='+', choices=list(CORPUS_NAMES),
+                    help="corpora to build (default: the dataset's, mendeley for a cache of no dataset); never more than the "
+                         "dataset's own")
+    ap.add_argument('--base-cache', type=Path,
+                    help="cache whose vocab.json and npz to start from (default: the cache of the dataset's base, "
+                         "combined_v3's is mendeley_x86, which must be built first)")
+    ap.add_argument('--dry', action='store_true', help='print the cache, corpora, base cache and input paths this build '
+                                                       'resolves and stop')
     args = ap.parse_args()
     if CACHE == UNSET:
         raise SystemExit('no cache configured: set GT_CACHE, or list a dataset in datasets.json and pass --cache <name>')
     if args.workers > 4:
         raise SystemExit('at most 4 workers')
-    if args.corpora != ['mendeley'] and CACHE.resolve() == DEFAULT_CACHE.resolve():
-        raise SystemExit('set GT_CACHE to a new directory before adding corpora; the default cache stays Mendeley-only')
-    if args.base_cache and args.base_cache.resolve() == CACHE.resolve():
+    plan = resolve_build(args.cache, args.corpora, args.base_cache, CACHE, reg)
+    corpora, base_cache = plan['corpora'], plan['base_cache']
+    if base_cache and base_cache.resolve() == CACHE.resolve():
         raise SystemExit('--base-cache must differ from the cache being built')
-    rows, dropped = eligible_rows(args.corpora)
+    if args.dry:
+        print('\n'.join(resolution_lines(plan)))
+        return
+    require_collections(corpora)
+    if base_cache and not (base_cache / 'index.csv').is_file():
+        base_name = next((n for n, entry in reg.items() if Path(entry['cache']).resolve() == base_cache.resolve()), None)
+        raise SystemExit(f'the base cache {base_cache.as_posix()} has no index.csv: build it first with '
+                         f'python -m s02_preprocess.cache.build_cache{f" --cache {base_name}" if base_name else ""}')
+    rows, dropped = eligible_rows(corpora)
     (CACHE / 'samples').mkdir(parents=True, exist_ok=True)
     if args.limit:
         by_class = {c: sorted((r for r in rows if r['label'] == c), key=lambda r: r['sample_id']) for c in ('0', '1')}
         rows = by_class['0'][:args.limit // 2] + by_class['1'][:args.limit - args.limit // 2]
-    copied = seed_from_base(args.base_cache, rows) if args.base_cache else 0
+    copied = seed_from_base(base_cache, rows) if base_cache else 0
     todo = sorted((r for r in rows if not verified(r)), key=lambda r: -int(r['num_instructions']))
     todo_ids = {r['sample_id'] for r in todo}
     print(f'{len(rows)} eligible, {copied} copied from base, {len(rows) - len(todo)} already built, {len(todo)} to build',
@@ -633,10 +722,10 @@ def main():
     (CACHE / 'folds_v3.md').write_text(fold_table(index), encoding='utf-8')
     failed = {s: e for s, (st, e) in results.items() if st != 'ok'}
     stats = edge_stats([r for r in rows if r['sample_id'] not in failed])
-    summary = {'corpora': args.corpora, 'base_cache': str(args.base_cache or ''), 'copied_from_base': copied,
-               'eligible': {c: sum(r['corpus'] == c for r in rows) for c in args.corpora},
+    summary = {'corpora': corpora, 'base_cache': str(base_cache or ''), 'copied_from_base': copied,
+               'eligible': {c: sum(r['corpus'] == c for r in rows) for c in corpora},
                'dropped': {f'{c}: {why}': len(ids) for (c, why), ids in dropped.items()},
-               'no_fold_v3': {c: sum(r['corpus'] == c and not r['fold_v3'] for r in rows) for c in args.corpora},
+               'no_fold_v3': {c: sum(r['corpus'] == c and not r['fold_v3'] for r in rows) for c in corpora},
                'ok': len(rows) - len(failed), 'failed': failed, 'vocab_sizes': sizes,
                'vocab_sha': vocab_sha, **stats, 'npz_rewritten': rewritten, 'build_seconds': round(build_secs, 1),
                'total_seconds': round(time.time() - start, 1),

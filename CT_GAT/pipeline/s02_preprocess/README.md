@@ -112,13 +112,15 @@ A second path through this stage reads only the CFG export (`*.jsonl.gz`) and ne
 
 | Module | What it does | Run from `CT_GAT/pipeline` |
 |---|---|---|
-| `cache/build_cache.py` | each export becomes `<cache>/samples/<sample_id>.npz` (token ids, block and function pointers, CFG and call edges, edge kinds, back edges), with `index.csv` and `vocab.json` beside it | `python -m s02_preprocess.cache.build_cache` |
-| `cache/check_cache.py` | checks every invariant of every built sample and compares a few against the bundle's own reader | `python -m s02_preprocess.cache.check_cache` |
-| `cache/folds.py` | the 5-fold family-holdout fold CSV of a dataset; families and goodware identity groups are never split | `python -m s02_preprocess.cache.folds --out <dir>` |
+| `cache/build_cache.py` | each export becomes `<cache>/samples/<sample_id>.npz` (token ids, block and function pointers, CFG and call edges, edge kinds, back edges), with `index.csv` and `vocab.json` beside it | `python -m s02_preprocess.cache.build_cache [--cache NAME] [--corpora ...] [--base-cache DIR] [--limit N] [--dry]` |
+| `cache/check_cache.py` | checks every invariant of every built sample and compares a few against the bundle's own reader | `python -m s02_preprocess.cache.check_cache [--cache NAME]` |
+| `cache/folds.py` | the 5-fold family-holdout fold CSV of a dataset; families and goodware identity groups are never split | `python -m s02_preprocess.cache.folds [--corpus NAME] [--dataset NAME] [--out <dir>]` |
 | `tokenizer/` | `TokenVocab` maps the cache's global token ids to run ids by training document frequency; `token_table` lays out the tokens of a block selection | imported |
 | `subgraph.py` | `select_subgraph`: whole functions that fit a block budget (policy `cap`) | imported |
 
 Where the data lives is set per machine, not in the code: copy `datasets.json.example` to `datasets.json` (gitignored) and give each dataset its cache folder, the protocols that read it and the raw inputs it is built from; `--cache <name>` picks a dataset and `GT_CACHE` (a folder) overrides it. `common/paths.py` describes the order.
+
+`build_cache --cache <name>` builds the cache of a dataset of `common/catalog.py` (`mendeley_x86`, the default, or `combined_v3`) or of `datasets.json`. `--corpora` defaults to the dataset's corpora and may not name others, `--base-cache` to the cache of the dataset's base (`combined_v3` starts from `mendeley_x86`, which must be built first: `python -m s02_preprocess.cache.build_cache`). A collection folder that is not unzipped under `CT_GAT/data` stops the build with the folder and the zip that holds it. `--dry` prints the cache, corpora, base cache and input paths the command resolves and stops. `folds.py` writes to `CT_GAT/cache/<dataset>/` unless `--out` says otherwise: the folds it generates are not the published ones in `s02_preprocess/folds/`.
 
 **Which models read which path, and why.** The scripts above (`tokenize_asm_gz.py`, `preprocess_full.py`) feed the transformer in `s03a_transformer`. The models that read the cache are the graph models of `s03b_cfg_feature`, the frozen block-encoder path of `s03c_cfg_transformer`, the token-sequence model of `s03a_transformer` and the baselines of `s04_evaluation`; [`../README.md`](../README.md) draws how the stages connect. The reasons are in the team-pipeline review of the 3-block-level-counting branch, [`TEAM_PIPELINES_REVIEW.md`](../docs/history/TEAM_PIPELINES_REVIEW.md):
 
