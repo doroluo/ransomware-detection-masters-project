@@ -1,4 +1,4 @@
-"""Stream IDA CFG exports (the Mendeley_GNN_v1 bundle or the Mendeley_Ransomware and Mendeley_Goodware collections, and
+"""Stream IDA CFG exports (the Mendeley_GNN_v1 bundle or the Mendeley collections, and
 the other collection-cfg-asm/1 collections) into one npz per sample, plus index.csv and vocab.json.
 
 python -m s02_preprocess.cache.build_cache [--corpora mendeley ...] [--base-cache DIR] [--limit N] [--workers 4]
@@ -12,10 +12,11 @@ of npz built against an earlier vocab stay valid; vocab_generations.json lists e
 Corpora other than mendeley go into a new cache (GT_CACHE), never the default one. --base-cache copies
 that cache's vocab.json and the npz of rows it already holds, so those files stay byte-identical.
 
-Inputs (common/paths.py `source_for`; GT_BUNDLE, GT_MENDELEY_COLLECTIONS, GT_COLLECTIONS, GT_FOLDS, GT_FOLDS_V3 or "sources"
-in datasets.json): Mendeley comes from the Mendeley_GNN_v1 bundle when one is configured, else from the two collections
-under `mendeley_collections` (rows sorted by sample_id as the bundle's are, cfg_path relative to the collection of the row;
-the cache comes out the same). The other collections, the Mendeley fold CSV and the v3 fold files are the remaining inputs.
+Inputs (common/paths.py `source_for`; GT_BUNDLE, GT_COLLECTIONS, GT_FOLDS, GT_FOLDS_V3 or "sources" in datasets.json, else
+the defaults of common/catalog.py): Mendeley comes from the Mendeley_GNN_v1 bundle when one is configured or sits under
+`collections`, else from the two Mendeley collections there (rows sorted by sample_id as the bundle's are, cfg_path relative
+to the collection of the row; the cache comes out the same). The other collections, the Mendeley fold CSV and the v3 fold
+files are the remaining inputs.
 
 Behaviour tags: each instruction's behaviour id comes from `s02_preprocess/token_mapping.py` (`categorize_behavior`,
 `_match_api_in_operands`, `strip_opcode_prefixes`, `BEHAVIOR_MAP`), the module the caches were built with. It is Yanping's
@@ -38,12 +39,12 @@ from pathlib import Path
 
 import numpy as np
 
+from common import catalog
 from common.config import CACHE, DEFAULT_CACHE
 from common.paths import UNSET, MissingSource, datasets_file, source_for
 from s02_preprocess import token_mapping
 
-CORPUS_NAMES = ('mendeley', 'ransomware_balanced', 'balanced_goodware')
-MENDELEY_COLLECTIONS = ('Mendeley_Ransomware', 'Mendeley_Goodware')
+CORPUS_NAMES = tuple(catalog.CORPORA)
 SCHEMA = 'ida-cfg-research/2.1'
 
 OPERAND_ABBREV = {'register': 'r', 'immediate': 'i', 'phrase': 'p', 'displacement': 'd',
@@ -72,23 +73,20 @@ def configured_bundle():
 
 
 def corpus_roots(corpus):
-    """The folders of a corpus's samples.csv, cfg files and provenance/: the bundle, or for Mendeley without a configured
-    bundle its two collections (each row's cfg_path is relative to its own folder)."""
-    if corpus != 'mendeley':
-        return [source_for('collections') / {'ransomware_balanced': 'Ransomware_Balanced', 'balanced_goodware': 'Balanced_Goodware'}[corpus]]
-    bundle = configured_bundle()
-    if bundle:
-        return [bundle]
-    try:
-        base = source_for('mendeley_collections')
-    except MissingSource:
-        base = None
-    roots = [base / name for name in MENDELEY_COLLECTIONS] if base else []
-    if not roots or not all((root / 'samples.csv').is_file() for root in roots):
-        raise MissingSource('no Mendeley data: set GT_BUNDLE (or "bundle" under "sources" in '
-                            f'{datasets_file()}) to the Mendeley_GNN_v1 bundle, or GT_MENDELEY_COLLECTIONS (or '
-                            '"mendeley_collections") to the folder holding Mendeley_Ransomware/ and Mendeley_Goodware/'
-                            + (f'; {base} lacks one of them' if base else ''))
+    """The folders of a corpus's samples.csv, cfg files and provenance/: the collections of `catalog.CORPORA`, or for a corpus
+    with a bundle (Mendeley) the configured bundle, else the bundle folder found under `collections`, else its collections
+    (each row's cfg_path is relative to its own folder)."""
+    spec = catalog.CORPORA[corpus]
+    base = source_for('collections')
+    if spec.bundle:
+        bundle = configured_bundle() or catalog.find_bundle(base / spec.bundle)
+        if bundle:
+            return [bundle]
+    roots = [base / name for name in spec.collections]
+    if spec.bundle and not all((root / 'samples.csv').is_file() for root in roots):
+        raise MissingSource(f'no {corpus} data: set GT_BUNDLE (or "bundle" under "sources" in {datasets_file()}) to the '
+                            f'{spec.bundle} bundle, or put {" and ".join(spec.collections)} under {base} '
+                            f'(GT_COLLECTIONS or "collections")')
     return roots
 
 

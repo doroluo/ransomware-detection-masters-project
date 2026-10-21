@@ -1,6 +1,6 @@
 """Fold CSV of the 5-fold family-holdout evaluation of a dataset.
 
-python -m s02_preprocess.cache.folds [--corpus mendeley] [--out DIR] [--groups CSV]
+python -m s02_preprocess.cache.folds [--corpus mendeley] --out DIR [--groups CSV]
 
 The assignment is the one of `family_holdout/folds.py` in the LLM_Classification history (results/family_holdout/
 folds_mendeley.csv was written by it), restated for one corpus. It is deterministic and uses no random generator:
@@ -30,7 +30,6 @@ import csv
 import re
 from pathlib import Path
 
-from common.paths import MissingSource, source_for
 from s02_preprocess.cache.build_cache import corpus_aliases, corpus_samples, exclusion
 
 K = 5
@@ -133,15 +132,12 @@ def read_groups(path):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--corpus', default='mendeley', choices=['mendeley', 'ransomware_balanced', 'balanced_goodware'])
-    ap.add_argument('--out', type=Path, help='output folder (default: the folder of the configured folds CSV)')
+    ap.add_argument('--out', type=Path, help='output folder (required: the committed folds in s02_preprocess/folds are not overwritten)')
     ap.add_argument('--groups', type=Path, help='CSV (sample_id, group) replacing the goodware identity groups')
     args = ap.parse_args(argv)
     out = args.out
     if out is None:
-        try:
-            out = source_for('folds').parent
-        except MissingSource as exc:
-            raise SystemExit(f'give --out: {exc}')
+        raise SystemExit('give --out: the folds committed in s02_preprocess/folds are not a place for generated ones')
     out.mkdir(parents=True, exist_ok=True)
     rows = assign_folds(pool_rows(args.corpus, read_groups(args.groups) if args.groups else None))
     write_csv(out / f'folds_{args.corpus}.csv', rows, args.corpus)

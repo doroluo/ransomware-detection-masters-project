@@ -1,0 +1,127 @@
+"""What the repository knows about its datasets: the collection folders, the corpora built from them, the datasets (an
+evaluation unit: protocols, corpora, fold files, base cache) and where each one lives by default.
+
+Nothing here is a machine path: every root is computed from this file. `common/paths.py` imports this module and merges it
+with the per-machine datasets.json (`paths.registry`), so this one does not import `common.paths`. A new dataset is a row of
+`DATASETS` plus its fold files; a new corpus is a row of `CORPORA`.
+
+    python -m common.catalog        # which collections, bundle, cache and fold files each dataset has on this machine
+"""
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+PIPELINE_ROOT = Path(__file__).resolve().parents[1]           # CT_GAT/pipeline
+CT_GAT = PIPELINE_ROOT.parent                                  # the layout tokenize_asm_gz.PROJECT_ROOT already uses
+FOLDS_ROOT = PIPELINE_ROOT / 's02_preprocess' / 'folds'        # the committed fold CSVs
+DATA_ROOT = CT_GAT / 'data'                                    # the unzipped collections
+CACHE_ROOT = CT_GAT / 'cache'                                  # CT_GAT/cache/<dataset>
+PROCESSED = CT_GAT / 'processed'                               # Yanping's scripts, the preprocessed zips
+
+COLLECTIONS = ('Mendeley_Ransomware', 'Mendeley_Goodware', 'Ransomware_Balanced', 'Balanced_Goodware')   # folder names, as the zips unpack
+BUNDLE_SCHEMA = 'mendeley-gnn-bundle/1'                        # summary.json of Mendeley_GNN_v1
+V3_FILES = ('folds_all.csv', 'arch_matched.csv')               # what the folds_v3 source holds
+
+
+@dataclass(frozen=True)
+class Corpus:
+    collections: tuple          # folders under the collections source, each with samples.csv
+    rule: str                   # 'split' or 'eligible': the branch of build_cache.exclusion
+    bundle: str = ''            # a folder that replaces `collections` when it is configured or found (summary.json schema BUNDLE_SCHEMA)
+
+
+@dataclass(frozen=True)
+class Dataset:
+    protocols: tuple            # --protocol values that read the cache by default
+    corpora: tuple
+    folds: dict                 # source key -> path under FOLDS_ROOT
+    base: str = None            # the dataset whose cache seeds this one
+
+
+CORPORA = {
+    'mendeley': Corpus(('Mendeley_Ransomware', 'Mendeley_Goodware'), 'split', bundle='Mendeley_GNN_v1'),
+    'ransomware_balanced': Corpus(('Ransomware_Balanced',), 'eligible'),
+    'balanced_goodware': Corpus(('Balanced_Goodware',), 'eligible'),
+}
+DATASETS = {                    # order = default protocol resolution order
+    'mendeley_x86': Dataset(('bundle', 'kfold'), ('mendeley',), {'folds': 'folds_mendeley.csv', 'folds_v3': 'v3'}),
+    'combined_v3': Dataset(('kfold_v3',), ('mendeley', 'ransomware_balanced', 'balanced_goodware'),
+                           {'folds': 'folds_mendeley.csv', 'folds_v3': 'v3'}, base='mendeley_x86'),
+}
+
+
+def read_summary(folder):
+    """The parsed summary.json of a folder, or {} when it has none or it is unreadable."""
+    try:
+        return json.loads((Path(folder) / 'summary.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+
+
+def find_bundle(folder):
+    """`folder` when its summary.json carries the bundle's schema, else None."""
+    return Path(folder) if read_summary(folder).get('schema') == BUNDLE_SCHEMA else None
+
+
+def status(data_root=DATA_ROOT, cache_root=CACHE_ROOT, folds_root=FOLDS_ROOT, bundle=None, caches=None, folds=None):
+    """Per dataset, what is on this machine: {name: {'collections': {folder: {'present', 'snapshot'}}, 'bundle': (kind, path),
+    'cache': path, 'built': bool, 'folds': {key: (path, found)}}}. A collection is present when its samples.csv exists under
+    `data_root`; `bundle` is the configured bundle folder or None (kind 'configured', else 'discovered' under `data_root`,
+    else 'absent'); `caches` and `folds` map a dataset name / source key to a path that replaces the default one."""
+    caches, folds = caches or {}, folds or {}
+    found = find_bundle(data_root / CORPORA['mendeley'].bundle)
+    kind, path = ('configured', Path(bundle)) if bundle else ('discovered', found) if found else ('absent', None)
+    report = {}
+    for name, ds in DATASETS.items():
+        folders = dict.fromkeys(f for c in ds.corpora for f in CORPORA[c].collections)
+        cache = Path(caches.get(name, cache_root / name))
+        fold_files = {}
+        for key, rel in ds.folds.items():
+            path_ = Path(folds.get(key, folds_root / rel))
+            fold_files[key] = (path_, all((path_ / f).is_file() for f in V3_FILES) if key == 'folds_v3' else path_.is_file())
+        report[name] = {'collections': {f: {'present': (data_root / f / 'samples.csv').is_file(),
+                                           'snapshot': read_summary(data_root / f).get('snapshot_utc')} for f in folders},
+                        'bundle': (kind, path), 'cache': cache, 'built': (cache / 'index.csv').is_file(), 'folds': fold_files}
+    return report
+
+
+def _show(path):
+    path = Path(path)
+    try:
+        return path.relative_to(CT_GAT.parent).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def render(report, data_root=DATA_ROOT):
+    lines = []
+    for name, info in report.items():
+        ds = DATASETS[name]
+        lines.append(f"{name}: protocols {', '.join(ds.protocols)}; corpora {', '.join(ds.corpora)}"
+                     + (f'; base {ds.base}' if ds.base else ''))
+        lines.append(f'  collections under {_show(data_root)}:')
+        for folder, c in info['collections'].items():
+            when = f" (snapshot {c['snapshot']})" if c['present'] and c['snapshot'] else ''
+            lines.append(f"    {folder}: {'present' if c['present'] else 'missing'}{when}")
+        kind, path = info['bundle']
+        lines.append(f"  bundle: {kind}{f' {_show(path)}' if path else ''}")
+        lines.append(f"  cache {_show(info['cache'])}: {'built' if info['built'] else 'not built'}")
+        for key, (path, ok) in info['folds'].items():
+            lines.append(f"  {key} {_show(path)}: {'found' if ok else 'missing'}")
+    return '\n'.join(lines)
+
+
+def main():
+    from common import paths        # here and not at the top: paths imports this module
+    data = paths.source_for('collections')
+    try:
+        bundle = paths.source_for('bundle')
+    except paths.MissingSource:
+        bundle = None
+    registry = paths.registry()
+    folds = {key: paths.source_for(key) for key in ('folds', 'folds_v3')}
+    print(render(status(data, bundle=bundle, caches={name: registry[name]['cache'] for name in DATASETS}, folds=folds), data))
+
+
+if __name__ == '__main__':
+    main()

@@ -234,6 +234,7 @@ src/idapro/
 
 # Generated data
 CT_GAT/data/
+CT_GAT/cache/
 CT_GAT/processed/
 **/processed_graphs/
 graph_transformer_runs/

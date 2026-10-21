@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from common import paths
+from common import catalog, paths
 from common.paths import UNSET, MissingSource, cache_for, cache_in, export_for, load_registry, protocol_in, runs_for, source_for
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -114,11 +114,11 @@ def probe(code, **env):
     return subprocess.run([sys.executable, '-c', code], cwd=ROOT, capture_output=True, text=True, env=clean_env(**env))
 
 
-def test_importing_config_needs_no_datasets_file(tmp_path):
+def test_importing_config_needs_no_datasets_file_and_resolves_the_catalog_defaults(tmp_path):
     r = probe('from common.config import CACHE, RUNS, EXPORT, DEFAULT_CACHE, COMBINED_CACHE, RunConfig\n'
               'print(CACHE, DEFAULT_CACHE, COMBINED_CACHE, RUNS.name, EXPORT.name)', GT_DATASETS=str(tmp_path / 'none.json'))
     assert r.returncode == 0, r.stderr
-    assert r.stdout.split() == [str(UNSET)] * 3 + ['runs', 'export']
+    assert r.stdout.split() == [str(catalog.CACHE_ROOT / 'mendeley_x86')] * 2 + [str(catalog.CACHE_ROOT / 'combined_v3'), 'runs', 'export']
 
 
 def test_the_module_level_cache_follows_the_environment_the_name_and_the_protocol(tmp_path):

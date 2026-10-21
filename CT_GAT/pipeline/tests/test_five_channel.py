@@ -13,6 +13,7 @@ import torch
 from tiny_cache import tiny  # noqa: F401  (a fixture)
 
 import experiments.train as experiments_train
+from common import paths
 from common.config import MAX_INSTRUCTIONS, RunConfig
 from common.manifests import load_index, make_manifest
 from common.paths import source_for
@@ -119,8 +120,11 @@ def test_the_command_line_takes_the_flags_of_the_model():
 def test_the_build_comes_from_the_flag_then_the_environment_then_datasets_json(tmp_path, monkeypatch):
     monkeypatch.delenv('GT_TEAM_B_BUILD', raising=False)
     monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'none.json'))
-    with pytest.raises(FileNotFoundError, match='GT_TEAM_B_BUILD'):
+    monkeypatch.setattr(paths, 'PROCESSED', tmp_path / 'processed')                    # the catalog default is CT_GAT/processed/cfg_subgraphs
+    with pytest.raises(FileNotFoundError, match='cfg_subgraphs is not a directory'):
         fc.resolve_build()
+    (tmp_path / 'processed' / 'cfg_subgraphs').mkdir(parents=True)
+    assert fc.resolve_build() == tmp_path / 'processed' / 'cfg_subgraphs'
     with pytest.raises(FileNotFoundError, match='not a directory'):
         fc.resolve_build(tmp_path / 'nowhere')
     (tmp_path / 'b1').mkdir()

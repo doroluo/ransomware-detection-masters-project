@@ -1,36 +1,41 @@
 """Where the CFG cache, the run directories, the block exports and the raw exports live on this machine.
 
-Nothing here knows a machine-specific path. `datasets.json` (next to the pipeline root, gitignored, created per machine from
-`datasets.json.example`; `GT_DATASETS` names another file) maps a dataset name to its cache and to the protocols that read it:
+Nothing here knows a machine-specific path. The effective registry (`registry()`) is the per-machine `datasets.json` followed
+by the datasets of `common/catalog.py` that the file does not name; a name in the file replaces the catalog's. `datasets.json`
+(next to the pipeline root, gitignored, optional, created per machine from `datasets.json.example`; `GT_DATASETS` names
+another file) maps a dataset name to its cache and to the protocols that read it:
 
     {"v2": {"cache": "<dir>", "protocols": ["bundle", "kfold"], "sources": {"bundle": "<dir>", ...}},
      "combined": {"cache": "<dir>", "protocols": ["kfold_v3"]}}
 
-A relative path in the file is relative to the file. Resolution of the cache of a run, first match wins:
+A relative path in the file is relative to the file. A catalog dataset has the cache `CT_GAT/cache/<name>` and the source
+defaults of the catalog (the committed folds, `CT_GAT/data` for the collections, `CT_GAT/processed/cfg_subgraphs` for the
+pipeline-B build). Everything is resolved in the order environment variable > datasets.json > catalog default.
+Resolution of the cache of a run, first match wins:
   1. GT_CACHE (a directory; empty counts as unset);
   2. `--cache <name>` on the command line, a dataset name of the registry;
-  3. the first dataset (in file order) that lists the run's protocol;
-  4. `UNSET`, a relative path that does not exist, so that an unconfigured machine imports cleanly and a command that needs
-     data fails with a missing-file error that names GT_CACHE.
+  3. the first dataset of the registry (file order, then catalog order) that lists the run's protocol;
+  4. `UNSET`, a relative path that does not exist, so that a command for a protocol nobody lists fails with a missing-file
+     error that names GT_CACHE.
 
 `GT_RUNS` overrides the run directories and `GT_EXPORT` the block exports (default: `export/` inside the run directories,
 so GT_RUNS alone moves both). The raw inputs a cache is built from (`sources`) are looked up by `source_for`: the
-environment variable of that source, then the first dataset of the registry that defines it.
+environment variable of that source, then the first dataset of the registry that defines it (the file's, then the catalog's).
 """
 import json
 import os
 import sys
 from pathlib import Path
 
-PIPELINE_ROOT = Path(__file__).resolve().parents[1]
+from common.catalog import CACHE_ROOT, DATA_ROOT, DATASETS, FOLDS_ROOT, PIPELINE_ROOT, PROCESSED
+
 UNSET = Path('GT_CACHE-not-set')
 RESERVED = {'cache', 'protocols', 'sources'}
 
 # source name -> (environment variable, what it is)
 SOURCES = {
     'bundle': ('GT_BUNDLE', 'the Mendeley_GNN_v1 bundle (samples.csv, cfg/, provenance/)'),
-    'collections': ('GT_COLLECTIONS', 'the folder holding Ransomware_Balanced/ and Balanced_Goodware/'),
-    'mendeley_collections': ('GT_MENDELEY_COLLECTIONS', 'the folder holding Mendeley_Ransomware/ and Mendeley_Goodware/ (used when no bundle is configured)'),
+    'collections': ('GT_COLLECTIONS', 'the folder holding the unzipped collections (common/catalog.py COLLECTIONS)'),
     'folds': ('GT_FOLDS', 'the Mendeley family-holdout fold CSV (folds_mendeley.csv)'),
     'folds_v3': ('GT_FOLDS_V3', 'the folder with folds_all.csv and arch_matched.csv'),
     'reader_root': ('GT_READER_ROOT', "the team's operand-role reader output"),
@@ -69,16 +74,31 @@ def load_registry(env=None):
     return registry
 
 
+def registry(env=None):
+    """The effective registry: datasets.json in file order, then every catalog dataset the file does not name, with the cache
+    `CT_GAT/cache/<name>` and the catalog's source defaults."""
+    merged = load_registry(env)
+    for name, ds in DATASETS.items():
+        if name not in merged:
+            sources = {'collections': DATA_ROOT, 'team_b_build': PROCESSED / 'cfg_subgraphs',
+                       **{key: FOLDS_ROOT / rel for key, rel in ds.folds.items()}}
+            merged[name] = {'cache': CACHE_ROOT / name, 'protocols': ds.protocols, 'sources': sources}
+    return merged
+
+
+_effective = registry            # `registry` is also a parameter name below
+
+
 def cache_for(protocol, env=None, registry=None, name=None):
     """The cache directory of a run (see the module docstring for the order). `registry` and `name` default to the
-    datasets.json of this machine and to no name."""
+    effective registry of this machine and to no name."""
     env = os.environ if env is None else env
     if env.get('GT_CACHE'):
         return Path(env['GT_CACHE'])
-    registry = load_registry(env) if registry is None else registry
+    registry = _effective(env) if registry is None else registry
     if name:
         if name not in registry:
-            raise ValueError(f'unknown dataset {name!r}; datasets.json has {sorted(registry) or "none (create it from datasets.json.example)"}')
+            raise ValueError(f'unknown dataset {name!r}; the registry has {sorted(registry) or "none (see datasets.json.example)"}')
         return Path(registry[name]['cache'])
     for entry in registry.values():
         if protocol is None or protocol in entry['protocols']:
@@ -87,13 +107,14 @@ def cache_for(protocol, env=None, registry=None, name=None):
 
 
 def source_for(key, env=None, registry=None):
-    """A raw input or output location by source name (`SOURCES`): its environment variable, else the first dataset that
-    defines it. `runs` falls back to `runs/` inside the pipeline root. Raises MissingSource naming both ways to set it."""
+    """A raw input or output location by source name (`SOURCES`): its environment variable, else the first dataset of the
+    registry that defines it (datasets.json, then the catalog). `runs` falls back to `runs/` inside the pipeline root. Raises
+    MissingSource naming both ways to set it."""
     env = os.environ if env is None else env
     var, what = SOURCES[key]
     if env.get(var):
         return Path(env[var])
-    registry = load_registry(env) if registry is None else registry
+    registry = _effective(env) if registry is None else registry
     for entry in registry.values():
         if key in entry['sources']:
             return Path(entry['sources'][key])
@@ -133,7 +154,7 @@ def cache_in(argv, registry):
     return value if value in registry else None
 
 
-_REGISTRY = load_registry()
+_REGISTRY = registry()
 DEFAULT_CACHE = cache_for('bundle', env={}, registry=_REGISTRY)           # the registry's caches, whatever GT_CACHE says
 COMBINED_CACHE = cache_for('kfold_v3', env={}, registry=_REGISTRY)
 CACHE = cache_for(protocol_in(sys.argv[1:]), registry=_REGISTRY, name=cache_in(sys.argv[1:], _REGISTRY))

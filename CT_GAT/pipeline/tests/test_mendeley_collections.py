@@ -1,5 +1,5 @@
-"""The Mendeley corpus of build_cache: the bundle when one is configured, else the Mendeley_Ransomware and Mendeley_Goodware
-collections under the `mendeley_collections` source. Synthetic folders only; the real-data comparison of the two routes is in
+"""The Mendeley corpus of build_cache: the bundle when one is configured or found under `collections`, else the Mendeley_Ransomware
+and Mendeley_Goodware collections there. Synthetic folders only; the real-data comparison of the two routes is in
 the step's build log, not in CI."""
 import csv
 import json
@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from common import catalog
 from common.paths import SOURCES, MissingSource, source_for
 from s02_preprocess.cache import build_cache as bc
 
@@ -29,7 +30,7 @@ def write_samples(folder, rows, cfg):
 def folders(tmp_path, monkeypatch):
     """A bundle (all rows, cfg/<sample>.jsonl.gz, aliases csv) and the same rows split over two collections (cfg_path
     samples/<family>/<sample>.jsonl.gz, aliases json), as the real ones are."""
-    for var in ('GT_BUNDLE', 'GT_MENDELEY_COLLECTIONS'):
+    for var in ('GT_BUNDLE', 'GT_COLLECTIONS'):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv('GT_DATASETS', str(tmp_path / 'no-datasets.json'))
     bundle, coll = tmp_path / 'bundle', tmp_path / 'coll'
@@ -45,15 +46,14 @@ def folders(tmp_path, monkeypatch):
     return bundle, coll
 
 
-def test_the_mendeley_source_has_an_environment_variable_and_no_default(folders):
-    assert SOURCES['mendeley_collections'][0] == 'GT_MENDELEY_COLLECTIONS'
-    with pytest.raises(MissingSource, match='GT_MENDELEY_COLLECTIONS'):
-        source_for('mendeley_collections')
+def test_the_collections_source_defaults_to_the_data_root_and_there_is_no_mendeley_one(folders):
+    assert set(SOURCES) == {'bundle', 'collections', 'folds', 'folds_v3', 'reader_root', 'runs', 'team_b_build'}      # one source for all folders
+    assert source_for('collections') == catalog.DATA_ROOT
 
 
 def test_without_a_bundle_both_collections_are_read_sorted_with_their_own_roots(folders, monkeypatch):
     bundle, coll = folders
-    monkeypatch.setenv('GT_MENDELEY_COLLECTIONS', str(coll))
+    monkeypatch.setenv('GT_COLLECTIONS', str(coll))
     assert bc.configured_bundle() is None
     assert bc.corpus_roots('mendeley') == [coll / 'Mendeley_Ransomware', coll / 'Mendeley_Goodware']
     rows = bc.corpus_samples('mendeley')
@@ -69,7 +69,7 @@ def test_without_a_bundle_both_collections_are_read_sorted_with_their_own_roots(
 
 def test_a_configured_bundle_is_read_as_before_and_beats_the_collections(folders, monkeypatch):
     bundle, coll = folders
-    monkeypatch.setenv('GT_MENDELEY_COLLECTIONS', str(coll))
+    monkeypatch.setenv('GT_COLLECTIONS', str(coll))
     monkeypatch.setenv('GT_BUNDLE', str(bundle))
     assert bc.corpus_roots('mendeley') == [bundle]
     rows = bc.corpus_samples('mendeley')
@@ -81,11 +81,11 @@ def test_a_configured_bundle_is_read_as_before_and_beats_the_collections(folders
 def test_the_bundle_may_come_from_datasets_json(folders, monkeypatch, tmp_path):
     bundle, coll = folders
     registry = tmp_path / 'datasets.json'
-    registry.write_text(json.dumps({'v2': {'cache': 'c', 'sources': {'bundle': str(bundle), 'mendeley_collections': str(coll)}}}),
+    registry.write_text(json.dumps({'v2': {'cache': 'c', 'sources': {'bundle': str(bundle), 'collections': str(coll)}}}),
                         encoding='utf-8')
     monkeypatch.setenv('GT_DATASETS', str(registry))
     assert bc.corpus_roots('mendeley') == [bundle]
-    registry.write_text(json.dumps({'v2': {'cache': 'c', 'sources': {'mendeley_collections': str(coll)}}}), encoding='utf-8')
+    registry.write_text(json.dumps({'v2': {'cache': 'c', 'sources': {'collections': str(coll)}}}), encoding='utf-8')
     assert bc.corpus_roots('mendeley') == [coll / 'Mendeley_Ransomware', coll / 'Mendeley_Goodware']
 
 
@@ -97,17 +97,38 @@ def test_both_routes_exclude_the_same_rows(folders, monkeypatch):
     monkeypatch.setenv('GT_BUNDLE', str(bundle))
     from_bundle = reasons()
     monkeypatch.delenv('GT_BUNDLE')
-    monkeypatch.setenv('GT_MENDELEY_COLLECTIONS', str(coll))
+    monkeypatch.setenv('GT_COLLECTIONS', str(coll))
     assert reasons() == from_bundle == {'a1': '', 'b2': '', 'c3': 'upx stub', 'd4': 'no recommended split', 'e5': ''}
 
 
 def test_neither_route_found_names_both(folders, monkeypatch, tmp_path):
+    monkeypatch.setenv('GT_COLLECTIONS', str(tmp_path / 'empty'))
     with pytest.raises(MissingSource) as e:
         bc.corpus_roots('mendeley')
-    assert 'GT_BUNDLE' in str(e.value) and 'GT_MENDELEY_COLLECTIONS' in str(e.value) and 'Mendeley_Goodware' in str(e.value)
+    assert 'GT_BUNDLE' in str(e.value) and 'GT_COLLECTIONS' in str(e.value) and 'Mendeley_Goodware' in str(e.value)
+    assert 'Mendeley_GNN_v1' in str(e.value) and str(tmp_path / 'empty') in str(e.value)
     (tmp_path / 'half' / 'Mendeley_Ransomware').mkdir(parents=True)                  # one collection is not enough
-    monkeypatch.setenv('GT_MENDELEY_COLLECTIONS', str(tmp_path / 'half'))
-    with pytest.raises(MissingSource, match='half.*lacks one of them'):
+    monkeypatch.setenv('GT_COLLECTIONS', str(tmp_path / 'half'))
+    with pytest.raises(MissingSource, match='half'):
+        bc.corpus_roots('mendeley')
+
+
+def test_the_bundle_is_the_configured_one_then_the_folder_found_under_collections_then_the_two_collections(folders, monkeypatch, tmp_path):
+    bundle, coll = folders
+    found = coll / 'Mendeley_GNN_v1'
+    other = tmp_path / 'configured'
+    monkeypatch.setenv('GT_COLLECTIONS', str(coll))
+    assert bc.corpus_roots('mendeley') == [coll / 'Mendeley_Ransomware', coll / 'Mendeley_Goodware']
+    found.mkdir()
+    (found / 'summary.json').write_text(json.dumps({'schema': 'collection-cfg-asm/1'}), encoding='utf-8')
+    assert bc.corpus_roots('mendeley') == [coll / 'Mendeley_Ransomware', coll / 'Mendeley_Goodware']     # another schema is no bundle
+    (found / 'summary.json').write_text(json.dumps({'schema': catalog.BUNDLE_SCHEMA}), encoding='utf-8')
+    assert bc.corpus_roots('mendeley') == [found]
+    monkeypatch.setenv('GT_BUNDLE', str(other))
+    assert bc.corpus_roots('mendeley') == [other]                                     # a configured bundle beats the found one
+    monkeypatch.delenv('GT_BUNDLE')
+    monkeypatch.setenv('GT_COLLECTIONS', str(tmp_path / 'empty'))
+    with pytest.raises(MissingSource, match='Mendeley_GNN_v1'):
         bc.corpus_roots('mendeley')
 
 
