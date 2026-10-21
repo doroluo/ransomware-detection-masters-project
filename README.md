@@ -6,19 +6,22 @@ never executed. IDA runs on an offline VM, and every later stage reads only the 
 
 ## Data
 
-The binaries are the Mendeley ransomware dataset: https://data.mendeley.com/datasets/p3v94dft2y/3. The code reads the files
-derived from it, which are on the team Google Drive:
+The binaries are the Mendeley ransomware dataset: https://data.mendeley.com/datasets/p3v94dft2y/3. The code reads files derived
+from it, which are on the team Google Drive. Two downloads are required; everything else in the table is optional.
 
-| File | Contents | Read by |
+| File | Contents | Needed for |
 |---|---|---|
-| `Collections/Mendeley_Ransomware.zip`, `Collections/Mendeley_Goodware.zip` | per binary, the IDA CFG export `<sha256>.jsonl.gz` and the IDA listing `<sha256>.asm.gz`, in `samples/<split>/<family>/`; unzip into `CT_GAT/data/` | `preprocess_full.py`, `tokenize_asm_gz.py` |
-| `Mendeley_GNN_v1.zip` | the same CFG exports as one bundle (`samples.csv`, `splits/`, `cfg/`) | the CFG cache (`s02_preprocess/cache`) |
-| `Collections/Ransomware_Balanced.zip`, `Collections/Balanced_Goodware.zip` | two more collections in the same layout, for the all-architecture evaluation | the CFG cache with `--corpora` |
-| `family_holdout_folds.zip` | the 5-fold family-holdout fold assignments of every published result | the CFG cache, and through it every `kfold` run |
-| `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` | the output of `preprocess_full.py` for the 1,810 x86 binaries of the folds, 500 blocks per binary; unzip at `CT_GAT/` | Janice's five-channel model, Models 2 and 3 of the team diagram |
+| `Collections/Mendeley_Ransomware.zip` (5.0 GB) | required. Per binary, the IDA CFG export `<sha256>.jsonl.gz` and the IDA listing `<sha256>.asm.gz`, in `samples/<split>/<family>/`, with the collection's `samples.csv` and `summary.json`. Unzip into `CT_GAT/data/` | the CFG cache and every command that reads it, `build_b`, `preprocess_full.py` |
+| `Collections/Mendeley_Goodware.zip` (1.5 GB) | required. The same for the goodware binaries. Unzip into `CT_GAT/data/` | as above |
+| `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` | the preprocessed samples of Janice's model: one `.pt` file per binary for the 1,810 x86 binaries of the folds, 500 blocks per binary. Unzip at `CT_GAT/`. It saves the 4 h build of `build_b --source repo` | Janice's five-channel model, Models 2 and 3 of the team diagram |
 | `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` | the same with every non-library block of each binary | as above |
+| `Collections/Ransomware_Balanced.zip` (8.9 GB), `Collections/Balanced_Goodware.zip` (15.7 GB) | two more collections in the same layout. Unzip into `CT_GAT/data/` | the all-architecture evaluation (`build_cache --cache combined_v3`) |
+| `Mendeley_GNN_v1.zip` | the Mendeley CFG exports as one bundle (`samples.csv`, `splits/`, `cfg/`), an alternative to the two Mendeley collections | the CFG cache, when the bundle is configured or unzipped into `CT_GAT/data/` |
 
-Each zip has a `.sha256` file beside it and a README inside it.
+The sizes are those of the zips on the Drive. Each zip has a `.sha256` file beside it and a README inside it. The fold
+assignments of every published result are in the repository, in `CT_GAT/pipeline/s02_preprocess/folds/`, so
+`family_holdout_folds.zip` on the Drive is not needed; it holds the same files. With the two Mendeley zips unzipped into
+`CT_GAT/data/` nothing else is downloaded or configured for the commands under "Running".
 
 ## Pipeline
 
@@ -48,9 +51,11 @@ meetings/                         team and advisor meeting notes
 .github/workflows/                CI: the pipeline tests on every push and pull request
 CT_GAT/
     data/                         the unzipped collections (gitignored)
-    processed/                    the output of preprocess_full.py (gitignored)
+    cache/                        the CFG caches the pipeline builds, one folder per dataset: CT_GAT/cache/<dataset> (gitignored)
+    processed/                    the preprocessed .pt samples: the unzipped zips, or the output of preprocess_full.py or build_b (gitignored)
     pipeline/                     all the code; see CT_GAT/pipeline/README.md
         s01_ida_export/  s02_preprocess/  s03a_transformer/  s03b_cfg_feature/  s03c_cfg_transformer/  s04_evaluation/
+        s02_preprocess/folds/     the committed fold assignments of every published result
         common/  experiments/  docs/  tests/
         requirements.txt  datasets.json.example
 ```
@@ -69,10 +74,94 @@ This installs the CPU build of PyTorch. To train on a GPU, install the CUDA buil
 
 ## Running
 
-Every command runs from `CT_GAT/pipeline`. There are two starting points.
+Every command runs from `CT_GAT/pipeline`. Run outputs go to `CT_GAT/pipeline/runs/` (`RUNS` below), which is gitignored.
 
-**From the preprocessed zips** (no IDA, no CFG cache). Unzip one of the `Mendeley_x86_cfg_subgraphs_*` archives at
-`CT_GAT/`. If you take the files from the Drive one by one instead, put them here:
+### Zero-config path
+
+Download `Mendeley_Ransomware.zip` and `Mendeley_Goodware.zip` from the Drive and unzip them into `CT_GAT/data/`. Each zip
+creates its own folder, `CT_GAT/data/Mendeley_Ransomware/` and `CT_GAT/data/Mendeley_Goodware/`. No `datasets.json` and no
+environment variable is needed: the code finds the collections there, reads the fold files from the repository and writes the
+cache to `CT_GAT/cache/mendeley_x86/`.
+
+```bash
+cd CT_GAT/pipeline
+python -m common.catalog
+python -m s02_preprocess.cache.build_cache
+python -m s02_preprocess.cache.check_cache
+```
+
+`common.catalog` prints, per dataset, which collection folders are present under `CT_GAT/data`, whether a bundle is
+configured, whether the cache is built and whether the fold files are found. It always exits 0. After the two unzips it
+shows `mendeley_x86` with both Mendeley folders present and the cache not built, and `combined_v3` with `Ransomware_Balanced`
+and `Balanced_Goodware` missing.
+
+`build_cache` reads the CFG exports of the two collections and writes `samples/<sample_id>.npz`, `index.csv` and `vocab.json` to
+`CT_GAT/cache/mendeley_x86/`. It prints `2411 eligible, 0 copied from base, 0 already built, 2411 to build`, and ends with a
+summary in which `ok` is 2411 and `vocab_sha` starts with `4ded77e0`; 236 binaries without a recommended split and 23 UPX stubs
+are left out. On the development machine `index.csv`, `vocab.json` and all 2,411 `samples/*.npz` are byte-identical to the cache
+the published runs read. A rerun skips the samples already built. `check_cache` checks every invariant of every sample.
+
+Baselines, including the header-imports baseline. The import arrays come from the CFG exports, so the team's reader output
+(`GT_READER_ROOT`, not on the Drive) is not needed:
+
+```bash
+python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0
+python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg
+python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --imports
+```
+
+`import_side --from-cfg` reads the header record of each `.jsonl.gz` and writes `CT_GAT/cache/mendeley_x86/side/imports/`. The
+header-imports baseline on these arrays reproduces the published predictions on all five folds (fold 0 AUC 0.9962).
+
+Model 2, the GNN on block token counts (one run per fold and seed), and Model 1, the transformer over the instruction
+sequence. Model 1 reads a block export, made once:
+
+```bash
+python -m experiments.train --protocol kfold --fold 0 --seed 0 --model gnn --mask-blocks 0.15
+python -m s03c_cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
+python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
+python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0
+```
+
+The export records `export_sha` `e09971a0...` in the tokenseq run, the value of the published runs. `--smoke 8 --device cpu`
+trains 8 binaries for 2 epochs in a temporary folder, as a check of the setup. Model 3 (frozen CodeBERT block vectors) and the
+teammates' GAT pipelines are in [`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md).
+
+Janice's model is in the next section. When the runs you want exist, the tables:
+
+```bash
+python -m s04_evaluation.report
+python -m s04_evaluation.val_threshold
+python -m s04_evaluation.gates --stage model1_variants
+python -m s04_evaluation.gates --stage day1
+```
+
+`report` writes `RUNS/RESULTS.md` over every run found. `val_threshold` re-scores saved predictions, so `RUNS` must exist
+(run it after the baselines). `gates` prints the arms of a stage that it finds and names the missing folds and seeds.
+`--stage v3` needs the all-architecture runs below.
+
+Time and hardware per command, measured on the development machine:
+
+| Command | Hardware | Time |
+|---|---|---|
+| `build_cache` | CPU, 4 workers | 200 s of building for 2,411 samples (244 s in all, from `build_summary.json`) |
+| `check_cache`, `baselines` | CPU | minutes |
+| `import_side --from-cfg` | CPU | 33 s for 2,411 samples |
+| `experiments.train --model gnn` | GPU only: it moves the model to CUDA | not measured here |
+| `block_export` | CPU | minutes |
+| `experiments.train --model tokenseq` | GPU; `--device cpu --smoke 8` runs on the CPU | not measured here |
+| `build_cache --cache combined_v3` | CPU, 4 workers | 1,307 s of building for 5,838 samples (1,494 s in all) |
+| `build_b --source repo` | CPU | 7.6 s per sample, about 4 h for 1,810 binaries at 500 blocks (a measured rate; the zip replaces it) |
+| `experiments.train --model fivechannel` | CPU or GPU (`--device`) | not measured here |
+
+### Janice's model
+
+Janice's five-channel Model 1 trains on a folder of pipeline-B `.pt` files, one per binary, and takes its folds from the CFG
+cache, so `build_cache` above comes first. `--model fivechannel` reads `CT_GAT/processed/cfg_subgraphs` unless `--build` names
+another folder. The folder is filled in one of two ways, and holds one build at a time.
+
+**From the zip** (fast). Unzip `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` (or the
+uncapped one) at `CT_GAT/`. If you take the files from the Drive one by one instead, put them here:
 
 | File | Goes to |
 |---|---|
@@ -82,47 +171,76 @@ Every command runs from `CT_GAT/pipeline`. There are two starting points.
 | `<sha256>.manifest.json` (500-block zip only) | `CT_GAT/processed/cfg_subgraphs/` (alignment report per binary; no model reads it) |
 | `build_info/` | `CT_GAT/processed/cfg_subgraphs/build_info/` (per-binary index and build settings; no model reads it) |
 
-Use one build at a time. Each zip's `.pt` files carry API ids of its own `api_vocab.json` (12,406 names in the 500-block
-build, 12,788 uncapped), so the files of the two zips must not be mixed. Then:
+Each zip's `.pt` files carry API ids of its own `api_vocab.json` (12,406 names in the 500-block build, 12,788 uncapped), so the
+files of the two zips must not be mixed.
+
+**From the collections.** `build_b --source repo` runs `preprocess_full.py` and `tokenize_asm_gz.py` of this repository over
+the CFGs and listings of the unzipped Mendeley collections. It needs the cache for the fold ids, and writes into an empty
+`CT_GAT/processed/cfg_subgraphs/`:
 
 ```bash
-cd CT_GAT/pipeline
+python -m experiments.team_pipelines.build_b --source repo --sample signal --num-blocks 500 --seed 0
+```
+
+This is the published 500-block build: a rebuild of 60 binaries was identical to it in every stored field. The full build takes
+about 4 h on the CPU for the 1,810 binaries (7.6 s per binary, measured on the development machine), resumes from its
+checkpoint, and does not write `CT_GAT/processed/api_vocab.json`, which only the untrained demo reads.
+
+With either build in place:
+
+```bash
+python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
+python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0
 python -m s03a_transformer.five_channel.model --batch-size 4
 ```
 
-This runs Janice's five-channel Model 1 (untrained) over every sample and prints its predictions. `--data-dir` reads
-another folder of `.pt` files; the API vocabulary is always read from `CT_GAT/processed/api_vocab.json`.
+The last command runs the untrained Model 1 over every sample of the folder and prints its predictions (`--data-dir` reads
+another folder; the API vocabulary is always read from `CT_GAT/processed/api_vocab.json`).
 
-To build the samples yourself, unzip `Collections/Mendeley_Ransomware.zip` and `Collections/Mendeley_Goodware.zip` into
-`CT_GAT/data/` and run `preprocess_full.py`. It processes every binary of the collections in `CT_GAT/data/`
-(`--architecture x86` keeps the x86 ones; the zips hold the 1,810 x86 binaries of the folds, built with
-`experiments/team_pipelines/build_b.py`) and writes to `CT_GAT/processed/` by default (`--output` and `--vocab` change
-that):
+`s02_preprocess/preprocess_full.py` is Yanping's own script and a different path from `build_b`: it processes the train rows
+first, freezes the test split and includes 21 UPX-stub x86 rows, so its output is not the published `.pt` set. It reads the
+collections in `CT_GAT/data/` and writes to `CT_GAT/processed/` (`--output` and `--vocab` change that):
 
 ```bash
-python s02_preprocess/preprocess_full.py --sample signal --num-blocks 500 --seed 0 --architecture x86   # 500 blocks
-python s02_preprocess/preprocess_full.py --sample signal --num-blocks 0 --seed 0 --architecture x86     # uncapped
-python s02_preprocess/preprocess_full.py --limit 2 --num-blocks 32 --seed 0                            # a quick try
+python s02_preprocess/preprocess_full.py --sample signal --num-blocks 500 --seed 0 --architecture x86
+python s02_preprocess/preprocess_full.py --sample signal --num-blocks 0 --seed 0 --architecture x86
+python s02_preprocess/preprocess_full.py --limit 2 --num-blocks 32 --seed 0
 ```
 
 The options (sampling, library functions, caps, resuming) are in
 [`CT_GAT/pipeline/s02_preprocess/README.md`](CT_GAT/pipeline/s02_preprocess/README.md).
 
-**The whole pipeline** (training and evaluating every model on the folds). It reads the CFG bundle and the fold files:
-unzip `Mendeley_GNN_v1.zip` and `family_holdout_folds.zip` anywhere, copy `datasets.json.example` to `datasets.json` and
-set `cache` (where the cache will be written) and the paths of `bundle`, `folds` and `runs`. Then build the cache once,
-and train and evaluate:
+### All-architecture evaluation
+
+The all-architecture protocol (`kfold_v3`) adds two collections. Unzip `Ransomware_Balanced.zip` and `Balanced_Goodware.zip` into
+`CT_GAT/data/`; `python -m common.catalog` then lists the four folders of `combined_v3` as present. The combined cache starts
+from the vocabulary and the samples of the `mendeley_x86` cache, which must be built first.
 
 ```bash
-python -m s02_preprocess.cache.build_cache                       # the CFG cache (CPU, once)
-python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --arch x86
-python -m experiments.train --protocol kfold --fold 0 --model gnn --mask-blocks 0.15     # Model 2, one fold
-python -m experiments.queue --plan experiments/plans/day1.txt    # a whole experiment: baselines and five GNN arms
-python -m s04_evaluation.report                                  # RESULTS.md over all runs
+python -m s02_preprocess.cache.build_cache --cache combined_v3
+python -m s02_preprocess.cache.check_cache --cache combined_v3
+python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0
+python -m experiments.queue --plan experiments/plans/v3.txt --budget-min 600
+python -m s04_evaluation.gates --stage v3
 ```
 
-[`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md) has every step: the data settings, Models 1 to 3, the
-teammates' pipelines, the experiment plans, the comparison statistics and where each output goes.
+The combined cache holds 5,838 samples; one CIL binary fails to build, as in the published cache. A `kfold_v3` run reads
+`CT_GAT/cache/combined_v3/` by default. The queue runs the baselines and the GNN arms of the v3 plan (GPU).
+
+### Overrides
+
+Every default above is a fallback. The order is environment variable, then `datasets.json`, then the default of
+`CT_GAT/pipeline/common/catalog.py`. To keep data or caches elsewhere, copy `CT_GAT/pipeline/datasets.json.example` to
+`datasets.json` (gitignored) and edit the paths, or set a variable: `GT_COLLECTIONS` (the folder that holds the unzipped
+collections), `GT_CACHE` (a cache folder), `GT_RUNS` (the run directories), `GT_FOLDS` and `GT_FOLDS_V3` (other fold files),
+`GT_TEAM_B_BUILD` (the build folder of `--model fivechannel`) and `GT_READER_ROOT` (the team's reader output).
+
+The bundle `Mendeley_GNN_v1.zip` replaces the two Mendeley collections as the source of the Mendeley CFG exports. Unzip it
+into `CT_GAT/data/` (the folder `Mendeley_GNN_v1/` with its `summary.json` is found there), or anywhere and set `GT_BUNDLE`
+to that folder; the cache that `build_cache` writes is the same.
+[`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md) lists every setting and what reads it.
+
+### Tests
 
 The tests run on any machine without the data:
 
