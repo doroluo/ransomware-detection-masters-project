@@ -70,7 +70,7 @@ The team Google Drive holds every input (the root [`README.md`](../../README.md)
 |---|---|---|
 | `bundle` | `Mendeley_GNN_v1.zip` (the folder that holds `samples.csv`) | `s02_preprocess.cache.build_cache` |
 | `folds` | `family_holdout_folds.zip`: `family_holdout/folds_mendeley.csv` | the cache's `index.csv`, hence every `kfold` run |
-| `folds_v3` | `family_holdout_folds.zip`: the folder `family_holdout_v3/` | the all-architecture cache (`kfold_v3`) |
+| `folds_v3` | `family_holdout_folds.zip`: the folder `family_holdout_v3/` | every cache build, x86 included (the `kfold_v3` columns of `index.csv`) |
 | `collections` | `Collections/Ransomware_Balanced.zip` and `Balanced_Goodware.zip`, side by side in one folder | the all-architecture cache |
 | `team_b_build` | a `Mendeley_x86_cfg_subgraphs_*` zip at `CT_GAT/`: the folder `CT_GAT/processed/cfg_subgraphs` | `--model fivechannel` |
 
