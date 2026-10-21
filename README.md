@@ -76,7 +76,7 @@ This installs the CPU build of PyTorch. To train on a GPU, install the CUDA buil
 
 Every command runs from `CT_GAT/pipeline`. Run outputs go to `CT_GAT/pipeline/runs/` (`RUNS` below), which is gitignored.
 
-### Zero-config path
+### Quick start
 
 Download `Mendeley_Ransomware.zip` and `Mendeley_Goodware.zip` from the Drive and unzip them into `CT_GAT/data/`. Each zip
 creates its own folder, `CT_GAT/data/Mendeley_Ransomware/` and `CT_GAT/data/Mendeley_Goodware/`. No `datasets.json` and no
