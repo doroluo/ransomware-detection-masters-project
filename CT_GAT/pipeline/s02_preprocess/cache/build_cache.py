@@ -44,6 +44,7 @@ import numpy as np
 
 from common import catalog
 from common.config import CACHE, DEFAULT_CACHE
+from common.manifests import run_command
 from common.paths import UNSET, MissingSource, datasets_file, load_registry, registry, source_for
 from s02_preprocess import token_mapping
 
@@ -738,4 +739,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    run_command(main)

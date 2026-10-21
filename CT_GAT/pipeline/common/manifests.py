@@ -10,7 +10,7 @@ import numpy as np
 
 from common import catalog
 from common.config import CACHE, RunConfig
-from common.paths import cache_in, protocol_in, registry
+from common.paths import MissingSource, cache_in, protocol_in, registry
 
 
 class MissingCache(FileNotFoundError):
@@ -52,10 +52,11 @@ def index_file(cache=None, protocol=None):
 
 
 def run_command(main, *args):
-    """`main(*args)` as a command: a missing cache ends it with its message on stderr and exit code 1, no traceback."""
+    """`main(*args)` as a command: a missing cache or a missing source folder ends it with its message on stderr and exit
+    code 1, no traceback."""
     try:
         return main(*args)
-    except MissingCache as e:
+    except (MissingCache, MissingSource) as e:
         raise SystemExit(str(e)) from None
 
 
