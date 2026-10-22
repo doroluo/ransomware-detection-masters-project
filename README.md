@@ -1,9 +1,5 @@
 # Pipeline
 
-<img width="741" height="750" alt="Team pipeline diagram" src="https://github.com/user-attachments/assets/dbb96697-ee9c-457b-a7c7-5f1022c492e9" />
-
-The diagram above is the team's plan; the chart below is the code as it stands.
-
 ```mermaid
 flowchart TD
     A["IDA export: jsonl.gz CFG and asm.gz listing (s01_ida_export)"] --> P["preprocess_full builds: one .pt sample per binary (s02_preprocess)"]
@@ -45,32 +41,8 @@ full runs of Models 2 and 3 need a CUDA GPU, and their smoke runs use `--device 
 
 # Data
 
-The binaries are the Mendeley ransomware dataset (https://data.mendeley.com/datasets/p3v94dft2y/3). The Mendeley collections and the
-preprocessed zips derive from it; they are on the project Google Drive with a `.sha256` file beside each zip. The two Mendeley collections
-build the `mendeley_x86` cache, whose folds cover the x86 binaries (1,810) or the whole Mendeley dataset (2,411, with 601 x64). With the
-Mendeley collections, the balanced collections (MalwareBazaar ransomware and balanced goodware) build the all-architecture cache
-`combined_v3` (5,652 binaries with a fold, 4,850 of them architecture-matched). The three models train on each of these datasets with its
-preprocessed zip, which replaces a CPU build of 4 to 5 h (500 blocks) or 5.6 h (uncapped) for the x86 dataset, longer for the other two.
-
-| Zip | Size | sha256 | Unzip into | Enables |
-|---|---|---|---|---|
-| `Collections/Mendeley_Ransomware.zip` | 5.0 GB | `c3785afff453792b007eee3f736f725df926f90c34638af88d4feb19772ada9c` | `CT_GAT/data/` | the `mendeley_x86` cache: the labels and folds of Models 1 to 3, `build_b`, `preprocess_full.py` |
-| `Collections/Mendeley_Goodware.zip` | 1.5 GB | `33afd5dc007b1e551cd657209961a68aebbd975cecba9db266e7f6af48cf9cc1` | `CT_GAT/data/` | the same, for the goodware binaries |
-| `Collections/Ransomware_Balanced.zip` | 8.9 GB | `12e379ac1afbd352d58740fe8d51af124c01dfd957d857453f58dda7895a5f67` | `CT_GAT/data/` | with `Balanced_Goodware.zip` and the two Mendeley zips, the `combined_v3` cache (`build_cache --cache combined_v3`) |
-| `Collections/Balanced_Goodware.zip` | 15.7 GB | `c82042b6dd482181e6f977b184cfc09d84a94305c46fa9728322ce399857111c` | `CT_GAT/data/` | the same |
-| `Collections/VirusShare Ransomware.zip` | 14.1 GB | `0a946d1e70d81c616e8e4f744b407b878ff83a2d23178fb1779e4f7088e9794a` | none | nothing: no fold file lists it |
-| `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` | 1.41 GB (9.87 GB unpacked) | `d7b984e4cadc95d2bd143c688bfcdfb99136370da129d48fbe490e2f17cd3421` | `CT_GAT/` | Models 1 to 3 on the x86 folds read any build; the `sig500v3-*` arms need this one |
-| `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip` | 0.81 GB (5.95 GB unpacked) | `61eb2847d8c24842477272f41ddf501f4312b15b96d05902115730a9f0487116` | `CT_GAT/` | the `sig250-*` arms |
-| `Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip` | 1.43 GB (10.11 GB unpacked) | `3f153392fb87fc67b4d968c701a8ea1c828cb654a66393eb25827951b0edae4e` | `CT_GAT/` | the `callwalk500-*` arms |
-| `Mendeley_x86_cfg_subgraphs_callwalk_250blocks_v3.zip` | 0.78 GB (5.53 GB unpacked) | `f52ac00cee289d536aa328a47617f94cd011a29ab3b8d799e66224cded7c1ccd` | `CT_GAT/` | the `callwalk250-*` arms |
-| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` | 2.59 GB (13.29 GB unpacked) | `678beede56597afd1e369248a8e520cce0666a4b6d4af936a960bf5b7d1ccb0e` | `CT_GAT/` | the `sigwhole-*` arms |
-| `Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip` | 1.28 GB | `996649f872beaafc8a651ca3a0a98ba4207c0c90ced703759f1f40a618f8c3c7` | `CT_GAT/` | the whole Mendeley dataset (`--protocol kfold --arch all`); the `sig500v3-*` arms |
-| `Mendeley_all_cfg_subgraphs_signal_250blocks_v3.zip` | 0.72 GB | `71e0b3b26f4b346ff66381c0681d252aebaf8b45a1b92b801ad219b9d0fe7602` | `CT_GAT/` | the same dataset; the `sig250-*` arms |
-| `Mendeley_all_cfg_subgraphs_callwalk_500blocks_v3.zip` | 1.29 GB | `55336eb6247f5b3a1f70d23f1e05a727583f94cd6624f24e6205cd20ef12f511` | `CT_GAT/` | the same dataset; the `callwalk500-*` arms |
-| `Mendeley_all_cfg_subgraphs_callwalk_250blocks_v3.zip` | 0.69 GB | `75cbc91378e134fbae62b823945b3b549ede3f00bf5348f91fb557470f6ab8f2` | `CT_GAT/` | the same dataset; the `callwalk250-*` arms |
-| `Mendeley_all_cfg_subgraphs_uncapped_v3.zip` | 3.44 GB (18.2 GB unpacked) | `6423d217a8f096ea2a9ce458d7a0699a7d668e7af196bc786965228382aeae27` | `CT_GAT/` | the same dataset; the `sigwhole-*` arms |
-| `combined_v3_cfg_subgraphs_signal_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the combined dataset (`--protocol kfold_v3 --arch all` and `matched`); the `sig500v3-*` arms |
-| `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the same dataset; the `callwalk500-*` arms |
+The zips are on the project Google Drive, each with a `.sha256` file beside it; `README_FIRST.md` there lists them. A collection zip
+unzips into `CT_GAT/data/`, a preprocessed zip into `CT_GAT/`.
 
 `CT_GAT/processed/` holds one build, and the zips have different API vocabularies: empty it before unzipping another preprocessed zip.
 `train_b` stops when the build's dataset, sampler or block count differs from the arm's. Move the contents of `CT_GAT/processed/cfg_subgraphs` to
@@ -95,7 +67,7 @@ unzip Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip -d CT_GAT
 ```
 
 A collection zip holds one folder and a preprocessed zip holds `processed/`. In Windows Explorer, set the destination of "Extract All"
-to the folder in the table; the proposed folder is one level too deep. The fold assignments are in the repository. The result is
+to `CT_GAT\data` or `CT_GAT`; the proposed folder is one level too deep. The fold assignments are in the repository. The result is
 `CT_GAT/data/<collection>/samples.csv` for each of the four collections, and `CT_GAT/processed/api_vocab.json` and
 `CT_GAT/processed/cfg_subgraphs/` for a preprocessed zip.
 
@@ -112,17 +84,12 @@ python -m s02_preprocess.cache.check_cache
 python -m s02_preprocess.cache.build_cache --cache combined_v3
 ```
 
-## Models 1 to 3
+## Models
 
-Model 1 is the five-channel transformer over the instruction sequence (`experiments.train --model fivechannel`). Model 2 is a graph
-attention network (GAT) on the 77 block features and the control-flow graph (`--arm sig500v3-feat`). Model 3 is the block transformer
-trained end to end under the GAT (`--arm sig500v3-e2e`); `--arm sig500v3-emb` is Model 3 with the stored 64-d block embeddings. Models 2
-and 3 read the build in `RUNS/team/<build>` when it exists, else in `CT_GAT/processed/cfg_subgraphs`; Model 1 reads the latter unless
-`--build DIR` names another. A Model 1 smoke run trains 8 binaries and scores 8 validation and 8 test binaries, so it needs the `.pt`
-files of those 24; Models 2 and 3 train 8 and score every validation binary.
+<img width="741" height="750" alt="Team pipeline diagram" src="https://github.com/user-attachments/assets/dbb96697-ee9c-457b-a7c7-5f1022c492e9" />
 
 With `--protocol kfold`, `--arch all` trains on the whole Mendeley dataset; with `--protocol kfold_v3`, `--arch all` or `--arch matched`
-trains on the combined one. The other arm families are in the table. `--arch-balance` weights the training binaries by class and
+trains on the combined one. `--arch-balance` weights the training binaries by class and
 architecture. On the whole Mendeley dataset the architecture is a proxy for the label (x86: 1,134 ransomware and 676 goodware, x64: 108
 and 493; the x86 rule alone scores 0.650 macro-F1, and 55% of the x64 ransomware are in fold 2), so a model gains AUC there by scoring x64
 binaries as goodware. Read the recall of ransomware x64 and the cell-balanced metrics (each class and architecture weighted equally), and
@@ -170,4 +137,5 @@ python -m pytest -m "not real_data and not gpu"
 # Further documentation
 
 [`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md) describes the stage folders, the on-disk layout, the overrides,
-`build_b --source repo` (a 500-block build in 4 to 5 h), `preprocess_full.py` and the IDA export. The plan, the result tables and the review are in `docs/history/`.
+`build_b --source repo` (a 500-block build in 4 to 5 h), `preprocess_full.py`, the IDA export, and every zip with its size,
+checksum and arms. The plan, the result tables and the review are in `docs/history/`.
