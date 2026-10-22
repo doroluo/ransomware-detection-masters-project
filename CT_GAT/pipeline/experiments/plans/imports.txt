@@ -1,5 +1,5 @@
 # Import baseline: logistic regression over the header imports, kfold x86, seed 0 (CPU only).
-# Needs <cache>/side/imports/ (s03b_cfg_feature/gnn/s10_unused_import_features/import_side.py; with --from-cfg it is built from the
+# Needs <cache>/side/imports/ (s04_evaluation/import_side.py; with --from-cfg it is built from the
 # CFG exports in 33 s, with no reader output).
 # Source queue: queue_gnn.sh --stage imports.
 #     python -m experiments.queue --plan experiments/plans/imports.txt

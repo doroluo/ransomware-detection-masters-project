@@ -1,5 +1,5 @@
 """Precomputed block vectors: one vector per distinct block key of a fold, written by
-s03c_cfg_transformer/precompute_blockvec.py to <cache>/side/blockvec/<export>_<name>/fold{k}/ and read back here, either by
+reference/cfg_transformer/precompute_blockvec.py to <cache>/side/blockvec/<export>_<name>/fold{k}/ and read back here, either by
 key (`BlockVecs`) or as the vectors of the blocks of one binary (`BlockVecSource`, what `encode_binary_gnn` calls)."""
 import json
 from pathlib import Path

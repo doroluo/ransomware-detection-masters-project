@@ -9,10 +9,10 @@ from s02_preprocess.tokenizer.block_tokens import token_table
 from s02_preprocess.tokenizer.vocab import TokenVocab, uses_reader
 from s02_preprocess import subgraph
 from s02_preprocess.subgraph import select_subgraph
-from s03b_cfg_feature.gnn.s05_block_counting.weights import token_weights
-from s03b_cfg_feature.gnn.s06_gnn_block_cfg.edges import block_edges, control_edges, drop_and_flip_edges
-from s03b_cfg_feature.gnn.s08_gnn_call_graph.calls import call_pairs
-from s03b_cfg_feature.gnn.s11_final_classifier.head import bin_feat
+from reference.gnn.s05_block_counting.weights import token_weights
+from reference.gnn.s06_gnn_block_cfg.edges import block_edges, control_edges, drop_and_flip_edges
+from reference.gnn.s08_gnn_call_graph.calls import call_pairs
+from reference.gnn.s11_final_classifier.head import bin_feat
 
 
 def keep_functions(fn_flags, sizes, cfg, rng):

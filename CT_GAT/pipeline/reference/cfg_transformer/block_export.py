@@ -1,4 +1,4 @@
-"""Block dataset export: python -m s03c_cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
+"""Block dataset export: python -m reference.cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
 
 Writes <out>/store/ (fold-independent arrays in global vocabulary ids) and <out>/fold{k}/ (the fold's manifest,
 global -> fold vocabulary table and the key of every block). Every array, dtype and shape is in EXPORT_SCHEMA.md. Reads
@@ -19,13 +19,13 @@ import numpy as np
 
 from common.config import CACHE, EXPORT, RUNS, RunConfig
 from common.manifests import Manifest, load_index, load_sample, make_manifest, run_command
-from s03b_cfg_feature.gnn.batching import keep_functions
+from reference.gnn.batching import keep_functions
 from s02_preprocess.tokenizer.block_tokens import token_table
 from s02_preprocess.tokenizer.vocab import TOKEN_KINDS, TokenVocab
 from s02_preprocess.subgraph import MAX_BINARY_BLOCKS, select_subgraph
-from s03b_cfg_feature.gnn.s06_gnn_block_cfg.edges import block_edges
-from s03b_cfg_feature.gnn.s08_gnn_call_graph.calls import call_pairs
-from s03b_cfg_feature.gnn.s11_final_classifier.head import bin_feat
+from reference.gnn.s06_gnn_block_cfg.edges import block_edges
+from reference.gnn.s08_gnn_call_graph.calls import call_pairs
+from reference.gnn.s11_final_classifier.head import bin_feat
 
 FORMAT = 1
 MAX_TOKENS, HEAD_TOKENS, TAIL_TOKENS = 192, 160, 32
@@ -242,11 +242,11 @@ def write_fold(store, fold_dir, fold, manifest: Manifest, cfg: RunConfig, binari
 
 
 def code_sha():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     files = [Path(__file__).resolve(), *(root / p for p in (
         's02_preprocess/tokenizer/block_tokens.py', 's02_preprocess/tokenizer/vocab.py',
-        's02_preprocess/subgraph.py', 's03b_cfg_feature/gnn/s06_gnn_block_cfg/edges.py',
-        's03b_cfg_feature/gnn/s08_gnn_call_graph/calls.py'))]
+        's02_preprocess/subgraph.py', 'reference/gnn/s06_gnn_block_cfg/edges.py',
+        'reference/gnn/s08_gnn_call_graph/calls.py'))]
     return hashlib.sha256(b''.join(p.read_bytes() for p in files)).hexdigest()
 
 

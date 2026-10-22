@@ -22,8 +22,8 @@ from common.manifests import load_index, make_manifest
 from common.registry import MODELS, ModelSpec, RunInfo, spec_for
 from experiments import train
 from experiments.train import loss_weight_fn, should_stop, val_auc_of, val_threshold_of
-from s03b_cfg_feature.gnn import spec as gnn_spec
-from s03b_cfg_feature.gnn.spec import GnnSpec
+from reference.gnn import spec as gnn_spec
+from reference.gnn.spec import GnnSpec
 from s04_evaluation.metrics import cell_balanced, cell_weights
 from s04_evaluation.val_threshold import GRID
 from tiny_cache import tiny  # noqa: F401  (a fixture)
@@ -38,8 +38,8 @@ def gnn(**kw):
 # ---- the registry ---------------------------------------------------------------------------------------------------
 
 def test_the_registry_serves_the_gnn_and_returns_a_fresh_spec_per_run():
-    assert MODELS == {'gnn': 's03b_cfg_feature.gnn.spec:GnnSpec',
-                      'tokenseq': 's03a_transformer.token_sequence.spec:TokenSeqSpec',
+    assert MODELS == {'gnn': 'reference.gnn.spec:GnnSpec',
+                      'tokenseq': 'reference.token_sequence.spec:TokenSeqSpec',
                       'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec'}
     a, b = spec_for(RunConfig()), spec_for(RunConfig())
     assert type(a) is GnnSpec and a is not b
@@ -77,7 +77,7 @@ def test_a_model_is_one_spec_and_one_registry_line(monkeypatch):
 
 
 def test_importing_the_registry_imports_no_model_and_no_torch():
-    code = 'import sys\nimport common.registry\nprint(sorted(m for m in sys.modules if m.split(".")[0] in ("torch", "s03b_cfg_feature")))'
+    code = 'import sys\nimport common.registry\nprint(sorted(m for m in sys.modules if m.split(".")[0] in ("torch", "reference")))'
     r = subprocess.run([sys.executable, '-c', code], cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.strip() == '[]', (r.stdout, r.stderr)
 
@@ -111,7 +111,7 @@ def test_unsupported_flags_raise():
 def test_block_vectors_stop_with_a_message_when_the_vectors_package_is_absent(monkeypatch):
     monkeypatch.setattr(gnn_spec, 'vectors_package_present', lambda: False)
     cfg = gnn(protocol='kfold', fold=0, block_input='vec', block_vec='ours_cap0_codebert')
-    with pytest.raises(ModuleNotFoundError, match='s03c_cfg_transformer.precompute_blockvec'):
+    with pytest.raises(ModuleNotFoundError, match='reference.cfg_transformer.precompute_blockvec'):
         gnn_spec.open_block_vecs(cfg)
     with pytest.raises(ModuleNotFoundError, match='block-input vec'):
         GnnSpec().build(cfg, RunInfo(None, None))

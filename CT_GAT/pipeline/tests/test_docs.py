@@ -62,7 +62,7 @@ def test_every_example_of_the_document_has_a_test_and_the_other_way_round():
 # a model ---------------------------------------------------------------------------------------------------------------
 
 def test_the_model_example_builds_loads_and_runs_one_batch(tiny, tmp_path):  # noqa: F811
-    from s03b_cfg_feature.gnn.spec import GnnSpec
+    from reference.gnn.spec import GnnSpec
     mod = run_example('model')
     cfg = RunConfig(model='gnn', protocol='kfold', fold=0, d_model=16, num_workers=0, mask_blocks=0.15)
     manifest = make_manifest(cfg, load_index())
@@ -92,8 +92,8 @@ def test_the_registry_example_extends_the_real_registry_by_one_line(monkeypatch)
 
 def test_the_encoder_example_writes_a_checkpoint_that_precompute_accepts(tiny, tmp_path, monkeypatch):  # noqa: F811
     from common.reader import BlockStore
-    from s03b_cfg_feature.gnn.s05_block_counting.block_vecs import BlockVecSource
-    from s03c_cfg_transformer import block_export as be, encoder_contract as ec, precompute_blockvec as pb
+    from reference.gnn.s05_block_counting.block_vecs import BlockVecSource
+    from reference.cfg_transformer import block_export as be, encoder_contract as ec, precompute_blockvec as pb
     monkeypatch.setattr(be, 'CACHE', tiny.root)
     for path in sorted((tiny.root / 'samples').glob('*.npz')):                 # the real cache records the sha of its vocabulary
         with np.load(path) as z:
@@ -204,7 +204,7 @@ def test_every_relative_link_resolves():
     assert not bad, bad
 
 
-@pytest.mark.parametrize('readme', ['s02_preprocess', 's03a_transformer', 's03b_cfg_feature', 's03c_cfg_transformer', 's04_evaluation'])
+@pytest.mark.parametrize('readme', ['s02_preprocess', 's03a_transformer', 's03b_cfg_feature', 's03c_cfg_transformer', 's04_evaluation', 'reference'])
 def test_a_stage_readme_says_how_to_run_the_stage_from_the_pipeline_root(readme):
     text = (ROOT / readme / 'README.md').read_text(encoding='utf-8')
     assert 'CT_GAT/pipeline' in text and 'python -m' in text
@@ -213,7 +213,7 @@ def test_a_stage_readme_says_how_to_run_the_stage_from_the_pipeline_root(readme)
 def test_the_root_readme_lists_every_stage_folder_and_every_plan():
     text = (ROOT / 'README.md').read_text(encoding='utf-8')
     for folder in ('s01_ida_export', 's02_preprocess', 's03a_transformer', 's03b_cfg_feature', 's03c_cfg_transformer',
-                   's04_evaluation', 'common', 'experiments', 'docs', 'tests'):
+                   's04_evaluation', 'reference', 'common', 'experiments', 'docs', 'tests'):
         assert f'`{folder}/`' in text, folder
     for plan in (ROOT / 'experiments' / 'plans').glob('*.txt'):
         assert f'`{plan.stem}`' in text, plan.name

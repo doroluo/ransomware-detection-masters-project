@@ -24,7 +24,7 @@ class TokenSeqSpec:
 
     def run(self, cfg: RunConfig, out_name=None, **options):
         """Train Model 1 on `cfg` and write <runs>/<out_name or cfg.name>; returns the metrics. `options` are `OPTIONS`."""
-        from s03a_transformer.token_sequence import train
+        from reference.token_sequence import train
         unknown = set(options) - set(OPTIONS)
         if unknown:
             raise TypeError(f'tokenseq takes {", ".join(OPTIONS)}, not {", ".join(sorted(unknown))}')

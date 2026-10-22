@@ -9,11 +9,11 @@ import numpy as np
 
 from common.config import CACHE, RUNS, RunConfig
 from s02_preprocess.tokenizer.vocab import TokenVocab
-from s03b_cfg_feature.gnn.batching import loader
-from s03b_cfg_feature.gnn.model import HierGNN
-from s03b_cfg_feature.gnn.s10_unused_import_features.imports_feat import ImportVocab
+from reference.gnn.batching import loader
+from reference.gnn.model import HierGNN
+from s04_evaluation.imports_feat import ImportVocab
 
-VECTORS_PACKAGE = 's03c_cfg_transformer.precompute_blockvec'
+VECTORS_PACKAGE = 'reference.cfg_transformer.precompute_blockvec'
 
 
 def build_model(cfg: RunConfig, vocab, d_vec=None, n_imports=0):
@@ -31,13 +31,13 @@ def vectors_package_present():
 
 def open_block_vecs(cfg: RunConfig):
     """The BlockVecSource of a block_input='vec' run, checked against the run: same cache, protocol and arch as the export
-    it was computed from. The vectors are written by `s03c_cfg_transformer/precompute_blockvec.py`; without that package
+    it was computed from. The vectors are written by `reference/cfg_transformer/precompute_blockvec.py`; without that package
     the option stops here with a message instead of a missing-file error."""
     if not vectors_package_present():
         raise ModuleNotFoundError(
             f"--block-input vec reads the block vectors written by {VECTORS_PACKAGE}, which this checkout does not have "
-            f"(stage 3c, s03c_cfg_transformer, has not been added); run without --block-input vec or add that package")
-    from s03b_cfg_feature.gnn.s05_block_counting.block_vecs import BlockVecSource
+            f"(reference/cfg_transformer has not been added); run without --block-input vec or add that package")
+    from reference.gnn.s05_block_counting.block_vecs import BlockVecSource
     vecs = BlockVecSource(CACHE, cfg.block_vec, cfg.fold)
     meta = vecs.store_meta()
     if (meta['protocol'], meta['arch']) != (cfg.protocol, cfg.arch) or Path(meta['cache']) != Path(CACHE):

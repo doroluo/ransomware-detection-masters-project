@@ -9,13 +9,13 @@ import torch
 from torch import nn
 
 from common.config import RunConfig
-from s03b_cfg_feature.gnn.s05_block_counting.encoder import BlockEncoder, BlockVecEncoder
-from s03b_cfg_feature.gnn.s06_gnn_block_cfg.edges import N_EDGE_TYPES
-from s03b_cfg_feature.gnn.s06_gnn_block_cfg.layers import DirGINELayer
-from s03b_cfg_feature.gnn.s07_pool_blocks_to_functions.readout import READOUTS
-from s03b_cfg_feature.gnn.s08_gnn_call_graph.calls import call_layers, run_call_layers
-from s03b_cfg_feature.gnn.s10_unused_import_features.imports_feat import ImportBag
-from s03b_cfg_feature.gnn.s11_final_classifier.head import make_head
+from reference.gnn.s05_block_counting.encoder import BlockEncoder, BlockVecEncoder
+from reference.gnn.s06_gnn_block_cfg.edges import N_EDGE_TYPES
+from reference.gnn.s06_gnn_block_cfg.layers import DirGINELayer
+from reference.gnn.s07_pool_blocks_to_functions.readout import READOUTS
+from reference.gnn.s08_gnn_call_graph.calls import call_layers, run_call_layers
+from s04_evaluation.imports_feat import ImportBag
+from reference.gnn.s11_final_classifier.head import make_head
 
 
 @dataclass

@@ -1,7 +1,7 @@
 # Stage 4: evaluation
 
-Every model of the pipeline (Model 1 `s03a_transformer/token_sequence`, Model 2 `s03b_cfg_feature`, Model 3 `s03c_cfg_transformer`,
-the baselines, the teammates' pipelines in `experiments/team_pipelines`) writes the same run directory
+Every model of the pipeline (Models 1 to 3 in `s03a_transformer`, `s03b_cfg_feature` and `s03c_cfg_transformer`, the reference
+models in `reference/`, the baselines, the teammates' pipelines in `experiments/team_pipelines`) writes the same run directory
 (`common/run_io.py`: `config.json`, `manifest.json`, `predictions.csv`, `predictions_auc.csv`, `metrics.json`), and this stage reads
 those directories and nothing else. A model joins the tables by writing that directory under a `RunConfig.name`; no code here
 changes.
@@ -22,6 +22,7 @@ python -m s04_evaluation.gates --stage v3                                       
 | `metrics.py` | accuracy, precision, recall, F1, macro-F1, AUC, PR-AUC, the class x architecture "cell" weights, the majority and x86-rule floors |
 | `val_threshold.py` | the threshold grid and the validation macro-F1 maximiser every AUC-checkpoint result is scored at; `oof_rule`, the out-of-fold threshold of `--threshold-from oof` |
 | `baselines.py` | TF-IDF over the block tokens (and the same over another vocabulary, `--vocab`), the structural features, the header-imports logistic regression (`--imports`), the out-of-fold TF-IDF logits that `--stack-tfidf` reads (`--stack-logits`); writes `<runs>/baselines/<dir>/` |
+| `import_side.py`, `imports_feat.py` | the header-import arrays: `import_side` converts the team's reader output, or with `--from-cfg` the header record of each CFG export, to `<cache>/side/imports/<sample_id>.npz` and `load_imports` reads them back; `imports_feat` is the `ImportVocab` (every header import identity present in at least `min_df` = 2 training binaries, with idf) and the `ImportBag` the reference GNN reads. `baselines --imports` reads both |
 | `report.py` | `RESULTS.md`: one row per configuration, mean +- sd over seeds of the pooled out-of-fold test metrics |
 | `stats.py` | the paired cluster bootstrap between two arms (clusters are ransomware families and single goodware binaries) |
 | `stage.py`, `gates.py`, `gate_tables.py`, `gate_layouts.py` | a gate stage is data (`experiments/stages/<name>.py`: arms, pairs, seeds, rule, intro); the engine lays out the pooled table and the paired differences |
@@ -31,7 +32,7 @@ team's reader output (`GT_READER_ROOT`) the arrays come from the CFG export itse
 (the collections under `CT_GAT/data`, or a configured bundle):
 
 ```bash
-python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg      # writes into the default cache, CT_GAT/cache/mendeley_x86
+python -m s04_evaluation.import_side --from-cfg      # writes into the default cache, CT_GAT/cache/mendeley_x86
 ```
 
 This reads only the header record of each sample's `.jsonl.gz` (`pe.imports`). Its `header_imports` and `n_entries` equal the

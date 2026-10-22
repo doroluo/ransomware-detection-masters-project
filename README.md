@@ -36,13 +36,15 @@ The code is in `CT_GAT/pipeline`, one folder per stage of the diagram:
 |---|---|---|
 | 1. IDA export | `s01_ida_export/` | the IDAPython extractor that writes the `.jsonl.gz` CFG and the `.asm.gz` listing of a binary (runs on the VM) |
 | 2. Preprocessing | `s02_preprocess/` | two routes. `preprocess_full.py` selects blocks from the CFG, aligns their instructions with the listing and writes one `.pt` sample per binary (five-channel token rows, 77 block features, 64-d block embeddings, edges). The CFG cache (`cache/`) reads only the `.jsonl.gz` exports and keeps the whole graph. |
-| 3a. Model 1 | `s03a_transformer/` | transformers over the instruction sequence: `token_sequence/` (on the CFG cache) and Janice's `five_channel/` (on the `.pt` samples) |
-| 3b. Model 2 | `s03b_cfg_feature/` | a hierarchical edge-typed GNN over the block CFG and the call graph, on block token counts |
-| 3c. Model 3 | `s03c_cfg_transformer/` | frozen block encoders (CodeBERT) whose block vectors replace the token counts as the GNN's input |
+| 3a. Model 1 | `s03a_transformer/` | Janice's five-channel transformer over the instruction sequence (on the `.pt` samples) |
+| 3b. Model 2 | `s03b_cfg_feature/` | the team GAT on the 77 block features |
+| 3c. Model 3 | `s03c_cfg_transformer/` | the end-to-end block transformer and GAT |
 | 4. Evaluation | `s04_evaluation/` | baselines, metrics, validation thresholds, paired bootstrap comparisons and result tables |
 
 `experiments/` holds the one training command (`experiments.train`), the experiment plans and their runner
-(`experiments.queue`), and adapters that train the teammates' GAT pipelines on the same folds. Labels are binary; the
+(`experiments.queue`), and adapters that train the teammates' GAT pipelines on the same folds. Reference models: the jsonl-only
+models of the first plan (the hierarchical GNN and its R-ladder, the token-sequence transformer, the frozen-encoder path to
+Model 3) are kept in `reference/`; see [`CT_GAT/pipeline/reference/README.md`](CT_GAT/pipeline/reference/README.md). Labels are binary; the
 behaviour tags of the five-channel tokens (encrypt, file read, ...) describe what an instruction does, and models can use
 them to point at suspicious regions.
 
@@ -58,6 +60,7 @@ CT_GAT/
     processed/                    the preprocessed .pt samples: the unzipped zips, or the output of preprocess_full.py or build_b (gitignored)
     pipeline/                     all the code; see CT_GAT/pipeline/README.md
         s01_ida_export/  s02_preprocess/  s03a_transformer/  s03b_cfg_feature/  s03c_cfg_transformer/  s04_evaluation/
+        reference/                the jsonl-only models, frozen (GNN and R-ladder, token-sequence, frozen-encoder Model 3)
         s02_preprocess/folds/     the committed fold assignments of every published result
         common/  experiments/  docs/  tests/
         requirements.txt  datasets.json.example
@@ -150,28 +153,19 @@ Baselines, including the header-imports baseline. The import arrays come from th
 
 ```bash
 python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0
-python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg
+python -m s04_evaluation.import_side --from-cfg
 python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --imports
 ```
 
 `import_side --from-cfg` reads the header record of each `.jsonl.gz` and writes `CT_GAT/cache/mendeley_x86/side/imports/`. The
 header-imports baseline on these arrays reproduces the published predictions on all five folds (fold 0 AUC 0.9962).
 
-Model 2, the GNN on block token counts (one run per fold and seed), and Model 1, the transformer over the instruction
-sequence. Model 1 reads a block export, made once:
+Model 1, Janice's five-channel model (`--model fivechannel`), reads the pipeline-B samples in `CT_GAT/processed/cfg_subgraphs`;
+its commands are in the next section, after the zip or the build that fills that folder. The teammates' GAT pipelines are in
+[`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md).
 
-```bash
-python -m experiments.train --protocol kfold --fold 0 --seed 0 --model gnn --mask-blocks 0.15
-python -m s03c_cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
-python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
-python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0
-```
-
-The export records `export_sha` `e09971a0...` in the tokenseq run, the value of the published runs. `--smoke 8 --device cpu`
-trains 8 binaries for 2 epochs in a temporary folder, as a check of the setup. Janice's five-channel model (`--model
-fivechannel`) reads the pipeline-B samples in `CT_GAT/processed/cfg_subgraphs`; its commands are in the next section, after
-the zip or the build that fills that folder. Model 3 (frozen CodeBERT block vectors) and the
-teammates' GAT pipelines are in [`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md).
+Reference models: the earlier jsonl-only models (the GNN and its R-ladder, the token-sequence transformer, the frozen-encoder
+path to Model 3) run from the CFG cache; see [`CT_GAT/pipeline/reference/README.md`](CT_GAT/pipeline/reference/README.md).
 
 When the runs you want exist, the tables:
 
@@ -193,9 +187,6 @@ Time and hardware per command, measured on the development machine:
 | `baselines` | CPU | minutes |
 | `check_cache` | CPU | not measured here |
 | `import_side --from-cfg` | CPU | 33 s for 2,411 samples |
-| `experiments.train --model gnn` | GPU only: it moves the model to CUDA | not measured here |
-| `block_export` | CPU | minutes |
-| `experiments.train --model tokenseq` | GPU; `--device cpu --smoke 8` runs on the CPU | not measured here |
 | `build_cache --cache combined_v3` | CPU, 4 workers | 1,307 s of building for 5,838 samples (1,494 s in all) |
 | `build_b --source repo` | CPU | 7.6 s per sample, about 4 h for 1,810 binaries at 500 blocks (a measured rate; the zip replaces it) |
 | `experiments.train --model fivechannel` | CPU or GPU (`--device`) | not measured here |
@@ -308,7 +299,7 @@ from the vocabulary and the samples of the `mendeley_x86` cache, which must be b
 python -m s02_preprocess.cache.build_cache --cache combined_v3
 python -m s02_preprocess.cache.check_cache --cache combined_v3
 python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0
-python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg --cache ../cache/combined_v3
+python -m s04_evaluation.import_side --from-cfg --cache ../cache/combined_v3
 python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --imports
 python -m experiments.queue --plan experiments/plans/v3.txt --budget-min 600
 python -m s04_evaluation.gates --stage v3
@@ -349,12 +340,12 @@ in `combined_v3`); a cache built with `--limit` fails some of them.
 
 5-fold family holdout on the 1,810 Mendeley x86 binaries, 3 seeds; area under the ROC curve (AUC):
 
-* Our edge-typed GNN over the whole CFG (R7) reaches 0.979. A logistic regression on the PE import table (0.985), TF-IDF over
+* Our edge-typed GNN over the whole CFG (R7, a reference model) reaches 0.979. A logistic regression on the PE import table (0.985), TF-IDF over
   the instruction tokens (0.982) and the same GNN with no edges and no API names (0.981) are level with it, so the CFG
   structure adds nothing measurable over the tokens and imports.
 * Pipeline B (`preprocess_full.py`) with the uncapped samples: Model 3 (block embeddings and CFG) 0.981, level with R7;
   Model 2 (block features and CFG) 0.970. At 500 blocks per binary both are lower (0.966 and 0.954).
-* Model 1: the token-sequence transformer 0.970; Janice's five-channel model 0.919 to 0.926, since it reads only the first
+* Model 1: the token-sequence transformer (a reference model) 0.970; Janice's five-channel model 0.919 to 0.926, since it reads only the first
   128 or 512 instructions of each binary.
 
 These are means over 3 seeds. Runs on a GPU are not repeatable to the last digit (CUDA scatter is nondeterministic), so a rerun

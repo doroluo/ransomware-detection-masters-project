@@ -1,3 +1,2 @@
-"""Stage 3b, the CFG feature model: a hierarchical, edge-typed graph neural network over the block CFG and the call graph.
-`gnn` holds the model and its data path, one subpackage per step of the plan; `gnn.spec.GnnSpec` is the model's entry in the
-registry (`common/registry.py`). See README.md."""
+"""Stage 3b, Model 2: the team GAT on the 77 block features (coming with the team-pipeline step; see README.md). The
+hierarchical edge-typed GNN that stood here is `reference/gnn/`."""

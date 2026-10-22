@@ -7,9 +7,9 @@ import torch
 import torch.nn.functional as F
 
 from common.config import RunConfig
-from s03b_cfg_feature.gnn.model import HierGNN
-from s03b_cfg_feature.gnn.s06_gnn_block_cfg.layers import DirGINELayer, segment_softmax, segment_sum
-from s03b_cfg_feature.gnn.s07_pool_blocks_to_functions.readout import FixedReadout, GatedReadout
+from reference.gnn.model import HierGNN
+from reference.gnn.s06_gnn_block_cfg.layers import DirGINELayer, segment_softmax, segment_sum
+from reference.gnn.s07_pool_blocks_to_functions.readout import FixedReadout, GatedReadout
 
 DEV = 'cuda' if torch.cuda.is_available() else 'cpu'
 N_TOKENS = 40

@@ -1,7 +1,7 @@
 """A tiny deterministic encoder for tests and smoke runs: embedding, masked mean pool, linear. Random weights from a
 fixed seed; it is not trained and says nothing about what a transformer would learn.
 
-python -m s03c_cfg_transformer.encoders.reference --export RUNS/export/ours_cap0 --name ref --folds 0 1 2 3 4
+python -m reference.cfg_transformer.encoders.reference --export RUNS/export/ours_cap0 --name ref --folds 0 1 2 3 4
 writes RUNS/encoders/<name>/fold{k}/best.pt, a valid checkpoint (encoder_contract.py) per fold.
 """
 import argparse
@@ -11,7 +11,7 @@ import torch
 from torch import nn
 
 from common.config import EXPORT, RUNS
-from s03c_cfg_transformer.encoder_contract import save_checkpoint
+from reference.cfg_transformer.encoder_contract import save_checkpoint
 from common.reader import BlockStore
 
 

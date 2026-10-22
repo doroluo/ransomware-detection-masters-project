@@ -17,12 +17,12 @@ synthetic cache of `tests/tiny_cache.py`, so they work as written.
 A model is one `ModelSpec` (`common/registry.py` documents the members) and one line in `MODELS`. The training loop owns the class
 weights, the optimiser, patience, the two checkpoints, the validation thresholds and the run directory; the spec owns what is fitted
 on the training manifest (`build`), how a list of binaries becomes batches (`loader`) and the logits of a batch (`forward`).
-`GnnSpec` (`s03b_cfg_feature/gnn/spec.py`) is the full example; the smallest useful model reuses its data path and changes the network:
+`GnnSpec` (`reference/gnn/spec.py`) is the full example; the smallest useful model reuses its data path and changes the network:
 
 ```python example=model
 from dataclasses import replace
 
-from s03b_cfg_feature.gnn.spec import GnnSpec
+from reference.gnn.spec import GnnSpec
 
 
 class ShallowSpec(GnnSpec):
@@ -40,8 +40,8 @@ The registry lines (the first three are the real ones; the module path is where 
 
 ```python example=registry
 MODELS = {
-    'gnn': 's03b_cfg_feature.gnn.spec:GnnSpec',
-    'tokenseq': 's03a_transformer.token_sequence.spec:TokenSeqSpec',
+    'gnn': 'reference.gnn.spec:GnnSpec',
+    'tokenseq': 'reference.token_sequence.spec:TokenSeqSpec',
     'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec',
     'shallow': 'my_stage.spec:ShallowSpec',
 }
@@ -58,7 +58,7 @@ Training needs CUDA. To check a spec without a GPU, build it and run one batch, 
 ## An encoder (Model 3)
 
 A frozen per-block encoder is any `torch.nn.Module` that maps the token ids of one block to a vector and depends on nothing else.
-The contract is `s03c_cfg_transformer/encoder_contract.BlockEncoder` (the rules are in `s03c_cfg_transformer/TRANSFORMER_CONTRACT.md`):
+The contract is `reference/cfg_transformer/encoder_contract.BlockEncoder` (the rules are in `reference/cfg_transformer/TRANSFORMER_CONTRACT.md`):
 attributes `d_out` and `max_len`, and `forward(tokens [B, L] long, mask [B, L] bool) -> [B, d_out]`; the class must be importable by name.
 You train it on `FoldView(store, k, 'train')` of a block export, select on `'val'`, never read `'test'`, and save a checkpoint per fold:
 
@@ -66,7 +66,7 @@ You train it on `FoldView(store, k, 'train')` of a block export, select on `'val
 import torch
 from torch import nn
 
-from s03c_cfg_transformer.encoder_contract import save_checkpoint
+from reference.cfg_transformer.encoder_contract import save_checkpoint
 
 
 class BagEncoder(nn.Module):
@@ -92,9 +92,9 @@ def write_checkpoint(store, export_root, out_path, fold):
 `out_path` is `<runs>/encoders/<name>/fold<k>/best.pt`. Check it, compute the vectors once per distinct block, and train the GNN on them:
 
 ```bash
-python -m s03c_cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
-python -m s03c_cfg_transformer.encoder_contract --ckpt <runs>/encoders/bag/fold0/best.pt --export <runs>/export/ours_cap0 --fold 0
-python -m s03c_cfg_transformer.precompute_blockvec --encoder-name bag --export ours_cap0 --folds 0 1 2 3 4
+python -m reference.cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
+python -m reference.cfg_transformer.encoder_contract --ckpt <runs>/encoders/bag/fold0/best.pt --export <runs>/export/ours_cap0 --fold 0
+python -m reference.cfg_transformer.precompute_blockvec --encoder-name bag --export ours_cap0 --folds 0 1 2 3 4
 python -m experiments.train --protocol kfold --fold 0 --model gnn --mask-blocks 0.15 --block-input vec --block-vec ours_cap0_bag
 ```
 
@@ -185,7 +185,7 @@ binaries instead of the validation families (run name suffix `-thoof`; `experime
 
 A new option is a `RunConfig` field with its default (so that no existing name changes), its token in `RunConfig.variant`, the code
 that reads it, and a case in `tests/test_run_names.py`, which fails if any recorded name changes. A new structural control is also a branch of `control_edges` in
-`s03b_cfg_feature/gnn/s06_gnn_block_cfg/edges.py` and a key of `CONTROLS` in `common/config.py`.
+`reference/gnn/s06_gnn_block_cfg/edges.py` and a key of `CONTROLS` in `common/config.py`.
 
 ## A plan file
 

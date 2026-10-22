@@ -1,9 +1,9 @@
 # Stacking and the block-vector paths 1 and 2 on the reference encoder, kfold x86, seed 0, 15% block masking.
 # The two last train lines read the block vectors of fold 0, which have to exist. Build them once (CPU), in this order,
 # skipping a step whose output is already there:
-#     python -m s03c_cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
-#     python -m s03c_cfg_transformer.encoders.reference --export ours_cap0 --name ref
-#     python -m s03c_cfg_transformer.precompute_blockvec --encoder-name ref --export ours_cap0 --folds 0
+#     python -m reference.cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
+#     python -m reference.cfg_transformer.encoders.reference --export ours_cap0 --name ref
+#     python -m reference.cfg_transformer.precompute_blockvec --encoder-name ref --export ours_cap0 --folds 0
 # Source queue: queue_gnn.sh --stage paths (GPU budget 600 minutes).
 #     python -m experiments.queue --plan experiments/plans/paths.txt --budget-min 600
 

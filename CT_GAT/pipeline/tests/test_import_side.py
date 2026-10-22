@@ -1,5 +1,5 @@
 """python -m pytest tests/test_import_side.py: the converter of the team's import-feature reader output to `side/imports`
-(`s03b_cfg_feature/gnn/s10_unused_import_features/import_side.py`), on one real reader output (tests/fixtures/reader_side: a
+(`s04_evaluation/import_side.py`), on one real reader output (tests/fixtures/reader_side: a
 binary with 29 unreferenced imports, its reader files copied byte for byte, and its cache sample with the vocabulary shrunk) and
 deliberately inconsistent copies of it.
 
@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from common import side_io
-from s03b_cfg_feature.gnn.s10_unused_import_features import import_side as imp
+from s04_evaluation import import_side as imp
 
 FIX = Path(__file__).parent / 'fixtures' / 'reader_side'
 SID = next((FIX / 'reader').iterdir()).name

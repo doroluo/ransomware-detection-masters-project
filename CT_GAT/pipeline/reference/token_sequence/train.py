@@ -2,7 +2,7 @@
 
 python -m experiments.train --model tokenseq --protocol kfold --arch x86 --fold 0 --seed 0 [--seq-len 512 --max-windows 64]
 [--export ours_cap0] [--device cuda|cpu] [--smoke N] [--epochs 40 --patience 8] [--window-budget 128]
-python -m s03a_transformer.token_sequence.train ...        the same run, with the options of Model 1 only
+python -m reference.token_sequence.train ...        the same run, with the options of Model 1 only
 
 Run from CT_GAT/pipeline. `common/registry.py` serves this loop as the model `tokenseq` (`token_sequence/spec.py`), so
 `experiments.train` hands the run over to `run` below. The run directory is <runs>/kfold<f>_x86_tokenseq_s<seed>[-L<n>][-w<n>]

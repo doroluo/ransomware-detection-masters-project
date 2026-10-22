@@ -2,7 +2,7 @@
 import numpy as np
 from torch import nn
 
-from s03b_cfg_feature.gnn.s10_unused_import_features.imports_feat import IMPORT_DIM
+from s04_evaluation.imports_feat import IMPORT_DIM
 
 N_BIN_FEAT = 5
 N_IMPORT_FEAT = 2

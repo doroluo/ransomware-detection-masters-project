@@ -34,7 +34,7 @@ def test_every_module_of_stage_4_imports_without_a_datasets_file(tmp_path):
 
 def test_importing_the_baselines_reads_no_module_of_a_later_step(tmp_path):
     code = ('import sys\nimport s04_evaluation.baselines, s04_evaluation.gates\n'
-            'late = sorted(m for m in sys.modules if m.startswith(("s03b_cfg_feature", "s03c_cfg_transformer", "experiments.side_arrays",'
+            'late = sorted(m for m in sys.modules if m.startswith(("reference", "experiments.side_arrays",'
             ' "experiments.train", "torch")))\nprint(late)')
     r = run(['-c', code], tmp_path)
     assert r.returncode == 0 and r.stdout.strip() == '[]', (r.stdout, r.stderr)

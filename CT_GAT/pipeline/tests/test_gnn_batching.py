@@ -22,8 +22,8 @@ from s02_preprocess import subgraph
 from s02_preprocess.tokenizer import vocab as vocab_module
 from s02_preprocess.tokenizer.block_tokens import ranges
 from s02_preprocess.tokenizer.vocab import TokenVocab
-from s03b_cfg_feature.gnn.batching import BlockBudgetSampler, EpochSampler, collate, encode_binary, keep_functions, loader
-from s03b_cfg_feature.gnn.s05_block_counting.weights import token_weights
+from reference.gnn.batching import BlockBudgetSampler, EpochSampler, collate, encode_binary, keep_functions, loader
+from reference.gnn.s05_block_counting.weights import token_weights
 from test_gnn_data import (gnn, index, needs_combined, real, real_data, real_ids, real_vocab, small_cap,  # noqa: F401
                            synth_binary, train_rows)
 from test_gnn_data import synth as synth_of

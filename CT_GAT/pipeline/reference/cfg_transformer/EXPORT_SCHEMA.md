@@ -5,7 +5,7 @@ that a per-block encoder can be trained and its vectors plugged back into the GN
 It is made by
 
 ```bash
-python -m s03c_cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
+python -m reference.cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
 ```
 
 (run from `CT_GAT/pipeline`; `RUNS` is the run directory, `GT_RUNS` or `common/paths.py`, and exports live under `RUNS/export/` only, or under `GT_EXPORT`). The reference

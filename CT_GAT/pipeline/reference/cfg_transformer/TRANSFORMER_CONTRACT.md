@@ -26,7 +26,7 @@ The data is a block export (`EXPORT_SCHEMA.md`), for example `RUNS/export/ours_c
    `eval()` mode (no dropout, no sampling), because we embed each distinct sequence once and reuse the vector for every
    copy of it.
 4. **Save to `RUNS/encoders/<name>/fold{k}/best.pt`**, with `<name>` the name of your model. The file is the checkpoint
-   dict of `s03c_cfg_transformer/encoder_contract.py` (`save_checkpoint` writes it):
+   dict of `reference/cfg_transformer/encoder_contract.py` (`save_checkpoint` writes it):
    `module`, `class`, `init_kwargs` (the encoder is rebuilt as `module.class(**init_kwargs)`, so the class must be
    importable and `state_dict` must load into it), `state_dict`, `export_sha`, `fold`, `manifest_sha`, `vocab_sha`,
    `train_ids` and `val_ids` (the sample ids you trained and selected on) with `train_ids_sha` and `val_ids_sha`,
@@ -34,7 +34,7 @@ The data is a block export (`EXPORT_SCHEMA.md`), for example `RUNS/export/ours_c
 5. **Run `check_checkpoint` before handing a checkpoint over**, once per fold:
 
    ```
-   python -m s03c_cfg_transformer.encoder_contract --ckpt RUNS/encoders/<name>/fold0/best.pt --export ours_cap0 --fold 0
+   python -m reference.cfg_transformer.encoder_contract --ckpt RUNS/encoders/<name>/fold0/best.pt --export ours_cap0 --fold 0
    ```
 
    It loads the checkpoint and checks that the shas match the export; that `train_ids` are in the fold's `train` and
@@ -42,10 +42,10 @@ The data is a block export (`EXPORT_SCHEMA.md`), for example `RUNS/export/ours_c
    finite; that two eval passes agree; and that a block alone, in a batch, and with extra padding gives the same vector.
    `precompute_blockvec.py` runs the same check and refuses a checkpoint that fails it.
 
-`s03c_cfg_transformer/encoders/reference.py` is a minimal example of a conforming encoder (embedding, masked mean, linear)
+`reference/cfg_transformer/encoders/reference.py` is a minimal example of a conforming encoder (embedding, masked mean, linear)
 and of how to write the checkpoint.
 
-We then run `python -m s03c_cfg_transformer.precompute_blockvec --encoder-name <name> --export <export> --folds 0 1 2 3 4`
+We then run `python -m reference.cfg_transformer.precompute_blockvec --encoder-name <name> --export <export> --folds 0 1 2 3 4`
 and train the GNN arms on the vectors.
 
 ## The CodeBERT encoder (`encoders/codebert.py`)
@@ -65,9 +65,9 @@ The weights are not in `state_dict`, so a checkpoint is about 0.1 MB; `init_kwar
 
 ```bash
 export HF_HOME=<the Hugging Face home that holds microsoft/codebert-base> HF_HUB_OFFLINE=1
-$PY -m s03c_cfg_transformer.encoders.codebert --write-checkpoints --export ours_cap0 --name codebert
-$PY -m s03c_cfg_transformer.encoder_contract --ckpt RUNS/encoders/codebert/fold0/best.pt --export ours_cap0 --fold 0   # per fold
-$PY -m s03c_cfg_transformer.precompute_blockvec --encoder-name codebert --export ours_cap0 --folds 0 1 2 3 4
+$PY -m reference.cfg_transformer.encoders.codebert --write-checkpoints --export ours_cap0 --name codebert
+$PY -m reference.cfg_transformer.encoder_contract --ckpt RUNS/encoders/codebert/fold0/best.pt --export ours_cap0 --fold 0   # per fold
+$PY -m reference.cfg_transformer.precompute_blockvec --encoder-name codebert --export ours_cap0 --folds 0 1 2 3 4
 ```
 
 The vectors land in `<cache_v2>/side/blockvec/ours_cap0_codebert/fold{k}/`; `python -m experiments.train --block-input vec

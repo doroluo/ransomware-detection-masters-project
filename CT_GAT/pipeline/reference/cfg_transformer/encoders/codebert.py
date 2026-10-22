@@ -25,7 +25,7 @@ the local Hugging Face cache (`HF_HOME`, `local_files_only`) when the module is 
 checkpoint is a few hundred kilobytes. `init_kwargs` records the revision of the model and the sha256 of its
 model.safetensors, and loading refuses weights with another sha.
 
-    HF_HOME=<hugging face home> python -m s03c_cfg_transformer.encoders.codebert --write-checkpoints \
+    HF_HOME=<hugging face home> python -m reference.cfg_transformer.encoders.codebert --write-checkpoints \
         --export ours_cap0 --name codebert
 """
 import argparse
@@ -39,7 +39,7 @@ import torch
 from torch import nn
 
 from common.config import EXPORT, RUNS
-from s03c_cfg_transformer.encoder_contract import save_checkpoint
+from reference.cfg_transformer.encoder_contract import save_checkpoint
 from common.reader import BlockStore
 
 MODEL_NAME = 'microsoft/codebert-base'

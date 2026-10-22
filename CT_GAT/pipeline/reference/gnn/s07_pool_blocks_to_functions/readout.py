@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from s03b_cfg_feature.gnn.s06_gnn_block_cfg.layers import segment_softmax, segment_sum
+from reference.gnn.s06_gnn_block_cfg.layers import segment_softmax, segment_sum
 
 
 class FixedReadout(nn.Module):

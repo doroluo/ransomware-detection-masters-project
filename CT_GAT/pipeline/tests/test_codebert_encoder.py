@@ -14,8 +14,8 @@ import torch
 
 from common.config import EXPORT as EXPORT_DIR
 from common.reader import BlockStore, FoldView
-from s03c_cfg_transformer import encoder_contract as ec
-from s03c_cfg_transformer.encoders import codebert as cb
+from reference.cfg_transformer import encoder_contract as ec
+from reference.cfg_transformer.encoders import codebert as cb
 
 pytestmark = pytest.mark.real_data
 EXPORT = EXPORT_DIR / 'ours_cap0'
@@ -143,7 +143,7 @@ def test_checkpoint_is_small_and_passes_the_contract(tmp_path):
     path = cb.write_checkpoints(EXPORT, 'codebert_test', folds=[0], out_root=tmp_path)[0]
     assert path.stat().st_size < 10_000_000
     ckpt = ec.load_checkpoint(path)
-    assert ckpt['state_dict'] == {} and ckpt['module'] == 's03c_cfg_transformer.encoders.codebert'
+    assert ckpt['state_dict'] == {} and ckpt['module'] == 'reference.cfg_transformer.encoders.codebert'
     assert (ckpt['d_out'], ckpt['max_len'], ckpt['fold']) == (768, 192, 0)
     passed = ec.check_checkpoint(path, EXPORT, 0)
     assert set(passed.values()) == {'ok'} and 'batch_independent' in passed and 'padding_independent' in passed

@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from s03b_cfg_feature.gnn.s06_gnn_block_cfg.layers import DirGINELayer
+from reference.gnn.s06_gnn_block_cfg.layers import DirGINELayer
 
 
 def call_pairs(z, fn):

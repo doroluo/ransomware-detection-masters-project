@@ -1,4 +1,4 @@
-"""Model 1, the token-sequence classifier, on the fold vocabulary of a block export (s03c_cfg_transformer/EXPORT_SCHEMA.md).
+"""Model 1, the token-sequence classifier, on the fold vocabulary of a block export (reference/cfg_transformer/EXPORT_SCHEMA.md).
 
 Adapted from `src/models/token_sequence.py` of the branch `origin/TokenSeqModel` (Janice Park). Kept from her model: the
 learned positional embedding, `nn.TransformerEncoder`, the masked mean pool and the two-layer MLP head, and the

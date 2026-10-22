@@ -7,24 +7,27 @@ from this folder (`CT_GAT/pipeline`) as `python -m <package>.<module>`; the test
 
 ```mermaid
 flowchart TD
-    A["IDA export jsonl.gz (no asm.gz) (s01_ida_export)"] --> B["CFG cache: blocks, typed edges, call edges, tokens (s02_preprocess/cache)"]
-    B --> C["Whole graph, deterministic (s02_preprocess/subgraph; 500k-block cap only as a memory guard)"]
-    C --> D["Tokenizer, vocab 'ours', fitted on training binaries (s02_preprocess/tokenizer)"]
-    D --> M1["Model 1: token sequence (s03a_transformer/token_sequence)"]
-    D --> M2["Model 2: block counts + CFG (s03b_cfg_feature, HierGNN)"]
-    D --> ENC["Frozen block encoder (s03c_cfg_transformer): CodeBERT now, our own pretrained encoder later"]
-    ENC --> M3["Model 3: block embeddings + CFG (same HierGNN, --block-input vec)"]
-    BASE["Baselines: header-imports LR, TF-IDF, majority and x86-rule floors (s04_evaluation)"] --> EV
+    A["IDA export: jsonl.gz CFG and asm.gz listing (s01_ida_export)"] --> P["preprocess_full builds: one .pt sample per binary (s02_preprocess)"]
+    P --> M1["Model 1: five-channel token transformer (s03a_transformer)"]
+    P --> M2["Model 2: team GAT on the 77 block features (s03b_cfg_feature)"]
+    P --> M3["Model 3: end-to-end block transformer + GAT (s03c_cfg_transformer)"]
+    A --> B["CFG cache from the jsonl.gz alone: blocks, typed edges, call edges, tokens (s02_preprocess/cache)"]
+    B --> BASE["Baselines: header-imports LR, TF-IDF, majority and x86-rule floors (s04_evaluation)"]
+    B --> REF["Reference models (reference): HierGNN and its R-ladder, token-sequence transformer, frozen-encoder Model 3"]
+    BASE --> EV
+    REF --> EV
     M1 --> EV
     M2 --> EV
     M3 --> EV
     EV["Evaluation (s04_evaluation): x86 5-fold family holdout and v3 all-arch; AUC, PR-AUC, accuracy, precision, recall, macro-F1, confusion matrix; paired cluster bootstrap over 3 seeds x 5 folds"]
 ```
 
-This is the target architecture adopted on 2026-10-19 ([`docs/history/TEAM_PIPELINES_REVIEW.md`](docs/history/TEAM_PIPELINES_REVIEW.md),
-section 9). It drops the `asm.gz` input and the RVA / mnemonic match of the first team diagram (a label-correlated alignment
-failure, section 8 of the review) and random subgraph selection (every budget lost to the whole graph), and adds the baselines
-and the evaluation boxes.
+The main path is the three models of the team over the preprocessed `.pt` builds. The CFG cache, built from the `.jsonl.gz`
+exports alone, serves the baselines and the reference models, which are the jsonl-only pipeline adopted on 2026-10-19
+([`docs/history/TEAM_PIPELINES_REVIEW.md`](docs/history/TEAM_PIPELINES_REVIEW.md), section 9): it drops the `asm.gz` input and
+the RVA / mnemonic match of the first team diagram (a label-correlated alignment failure, section 8 of the review) and random
+subgraph selection (every budget lost to the whole graph). The reference models are frozen; [`reference/README.md`](reference/README.md)
+says what they are and how to run them.
 
 ## The stage folders
 
@@ -32,10 +35,11 @@ and the evaluation boxes.
 |---|---|---|
 | `s01_ida_export/` | the IDAPython extractor that writes the `*.jsonl.gz` CFG export and the `*.asm.gz` listing of a binary (runs inside IDA, on the VM) | [`s01_ida_export/README.md`](s01_ida_export/README.md) |
 | `s02_preprocess/` | the team's two preprocessing scripts for the transformer (flat scripts), and the jsonl-only path: `cache/` (CFG cache builder and checker, fold CSVs), `tokenizer/`, `subgraph.py` | [`s02_preprocess/README.md`](s02_preprocess/README.md) |
-| `s03a_transformer/` | Model 1, the token-sequence transformer (`token_sequence/`), and Janice Park's five-channel Model 1 (`five_channel/`) | [`s03a_transformer/README.md`](s03a_transformer/README.md) |
-| `s03b_cfg_feature/` | Model 2, the hierarchical edge-typed GNN over the block CFG and the call graph (`gnn/`) | [`s03b_cfg_feature/README.md`](s03b_cfg_feature/README.md) |
-| `s03c_cfg_transformer/` | Model 3: block export, encoder contract, CodeBERT and reference encoders, precomputed block vectors | [`s03c_cfg_transformer/README.md`](s03c_cfg_transformer/README.md) |
-| `s04_evaluation/` | metrics, validation thresholds, the baselines, the paired bootstrap, `report.py` and the gate summaries | [`s04_evaluation/README.md`](s04_evaluation/README.md) |
+| `s03a_transformer/` | Model 1, Janice Park's five-channel transformer (`five_channel/`) | [`s03a_transformer/README.md`](s03a_transformer/README.md) |
+| `s03b_cfg_feature/` | Model 2, the team GAT on the 77 block features | [`s03b_cfg_feature/README.md`](s03b_cfg_feature/README.md) |
+| `s03c_cfg_transformer/` | Model 3, the end-to-end block transformer and GAT | [`s03c_cfg_transformer/README.md`](s03c_cfg_transformer/README.md) |
+| `s04_evaluation/` | metrics, validation thresholds, the baselines and the header-import arrays they read, the paired bootstrap, `report.py` and the gate summaries | [`s04_evaluation/README.md`](s04_evaluation/README.md) |
+| `reference/` | the jsonl-only models, frozen: the hierarchical GNN (`gnn/`), the token-sequence transformer (`token_sequence/`) and the frozen-encoder path to Model 3 (`cfg_transformer/`) | [`reference/README.md`](reference/README.md) |
 | `common/` | `RunConfig` (the options of a run and its name), `paths.py` (where the data lives), `manifests.py` (folds), the model registry, `run_io.py` (the run directory every model writes), `reader.py`, `side_io.py` | |
 | `experiments/` | `train.py` (the one training command), `queue.py` and `plans/` (the experiments we ran), `stages/` (the gate definitions), `team_pipelines/` (the teammates' GAT pipelines under our folds), `side_arrays/` | [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md) |
 | `docs/` | [`ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md), and `history/`: the plan, the results, the review, the literature review and the final gate tables | [`docs/history/README.md`](docs/history/README.md) |
@@ -91,7 +95,7 @@ files and is not needed. `s02_preprocess.cache.folds` writes folds with the same
 `--model fivechannel` also reads a folder of pipeline-B `.pt` files, `CT_GAT/processed/cfg_subgraphs`. Fill it with a
 `Mendeley_x86_cfg_subgraphs_*` zip unzipped at `CT_GAT/` (`api_vocab.json` goes to `CT_GAT/processed/api_vocab.json`, where the
 five-channel demo reads it, and the `<sha256>.pt` files, `channel_embedder.pt`, the manifests and `build_info/` go to `CT_GAT/processed/cfg_subgraphs/`), or with
-`build_b --source repo` (step 5 of Running). Keep one build there at a time; the two zips have different vocabularies.
+`build_b --source repo` (step 4 of Running). Keep one build there at a time; the two zips have different vocabularies.
 
 ## On-disk layout
 
@@ -101,13 +105,13 @@ five-channel demo reads it, and the `<sha256>.pt` files, `channel_embedder.pt`, 
     index.csv  vocab.json         one row per binary (label, arch, family, folds); the global token vocabularies
     vocab_generations.json  build_summary.json  folds_v3.md      what the build did: vocabulary hashes, counts and drops, fold table
     side/imports/  side/yanping/  per-binary side arrays (header imports; the team's operand-role ids)
-    side/blockvec/<export>_<encoder>/fold<k>/{keys.npy,vectors.npy,meta.json}      frozen block vectors (stage 3c)
+    side/blockvec/<export>_<encoder>/fold<k>/{keys.npy,vectors.npy,meta.json}      frozen block vectors (`reference/cfg_transformer`)
 <runs>/                           CT_GAT/pipeline/runs/ (GT_RUNS overrides)
     <RunConfig.name>/             one run: config.json manifest.json vocab.json history.csv val_probs.csv best.pt best_auc.pt
                                   predictions.csv predictions_auc.csv metrics.json
     baselines/<dir>/              the TF-IDF / import baselines: metrics.json predictions.csv [stack_logits.csv]
-    export/<name>/                a block export: store/ and fold<k>/ (s03c_cfg_transformer/EXPORT_SCHEMA.md)
-    encoders/<name>/fold<k>/best.pt     encoder checkpoints (s03c_cfg_transformer/TRANSFORMER_CONTRACT.md)
+    export/<name>/                a block export: store/ and fold<k>/ (reference/cfg_transformer/EXPORT_SCHEMA.md)
+    encoders/<name>/fold<k>/best.pt     encoder checkpoints (reference/cfg_transformer/TRANSFORMER_CONTRACT.md)
     gates_<stage>.md  RESULTS.md  val_threshold.md  subgraph_chain.json         the tables
     logs/  STOP                   the queue's per-line logs and its stop file
 ```
@@ -133,7 +137,7 @@ python -m common.catalog                                         # which collect
 It prints one block per dataset and always exits 0. On a fresh unzip `mendeley_x86` shows both Mendeley folders present, the
 bundle absent and the cache not built; `combined_v3` shows `Ransomware_Balanced` and `Balanced_Goodware` missing. A collection
 unzipped one folder too deep (`data/Mendeley_Goodware/Mendeley_Goodware/samples.csv`) shows as `nested`, and a zip left in
-`CT_GAT/data` as `zip`; each line says what to do. Nothing else is configured for steps 1 to 7.
+`CT_GAT/data` as `zip`; each line says what to do. Nothing else is configured for steps 1 to 6.
 
 **1. Preprocessing.** The CFG cache, once per dataset (CPU, 4 workers; a rerun skips the samples already built):
 
@@ -154,17 +158,17 @@ The second build needs `Ransomware_Balanced.zip` and `Balanced_Goodware.zip` unz
 cache built first: it copies that cache's `vocab.json` and the Mendeley samples, and builds the other two corpora. It takes 1,307 s
 of building (1,494 s in all) for 5,838 samples. One binary, a CIL assembly, fails to build, as it does in the published cache.
 
-The `.pt` samples of pipeline B come from the preprocessed zips or from `build_b` (step 5), or from `preprocess_full.py`
+The `.pt` samples of pipeline B come from the preprocessed zips or from `build_b` (step 4), or from `preprocess_full.py`
 ([`s02_preprocess/README.md`](s02_preprocess/README.md)).
 
 **2. Baselines** (CPU, minutes):
 
 ```bash
 python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0     # TF-IDF and the floors
-python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg             # the import arrays, from the CFG exports
+python -m s04_evaluation.import_side --from-cfg                                              # the import arrays, from the CFG exports
 python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --imports               # header-imports LR
 python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0  # needs the combined cache
-python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --from-cfg --cache ../cache/combined_v3
+python -m s04_evaluation.import_side --from-cfg --cache ../cache/combined_v3
 python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --imports # header-imports LR, all architectures
 ```
 
@@ -178,34 +182,15 @@ arrays of the combined cache, which the `kfold_v3` `--imports` baseline reads). 
 reproduces the published predictions on all five folds (fold 0 AUC 0.9962). What differs for the GNN `--imports header` is in
 [`s04_evaluation/README.md`](s04_evaluation/README.md).
 
-**3. Model 2**, the GNN on block token counts (GPU only: `experiments/train.py` moves the GNN to CUDA; one run per fold and seed):
+**3. The reference models** (the GNN and its R-ladder, the frozen-encoder path to Model 3, the token-sequence transformer) are
+run as described in [`reference/README.md`](reference/README.md); `--model gnn` and `--model tokenseq` resolve through `MODELS`
+as before.
 
-```bash
-python -m experiments.train --protocol kfold --fold 0 --seed 0 --model gnn --mask-blocks 0.15                     # R7
-python -m experiments.train --protocol kfold --fold 0 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges  # R2
-```
-
-**4. Model 3**, the same GNN on frozen CodeBERT block vectors. The block export (CPU, minutes), the encoder checkpoints and the
-vectors are made once (`HF_HOME` holds `microsoft/codebert-base`):
-
-```bash
-python -m s03c_cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
-python -m s03c_cfg_transformer.encoders.codebert --write-checkpoints --export ours_cap0 --name codebert
-python -m s03c_cfg_transformer.precompute_blockvec --encoder-name codebert --export ours_cap0 --folds 0 1 2 3 4
-python -m experiments.train --protocol kfold --fold 0 --seed 0 --model gnn --mask-blocks 0.15 --block-input vec --block-vec ours_cap0_codebert
-```
-
-The export records `export_sha` `e09971a020a8...`, the value of the published runs.
-
-**5. Model 1**, the transformers over the instruction sequence. `tokenseq` reads the block export of step 4 (GPU for a full run;
-`--device cpu --smoke 8` trains 8 binaries for 2 epochs on the CPU, as a check). `fivechannel` is Janice's model (CPU or GPU,
-`--device`). `--smoke 8` of `fivechannel` also scores 8 validation and 8 test binaries, so the folder it reads must hold the `.pt`
+**4. Model 1**, Janice's five-channel transformer over the instruction sequence (CPU or GPU, `--device`). `--smoke 8` trains 8
+binaries for 2 epochs and also scores 8 validation and 8 test binaries, so the folder it reads must hold the `.pt`
 files of those 24 binaries (8 train, 8 validation, 8 test); a folder with fewer stops with the ids that have no file:
 
 ```bash
-python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
-python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0                          # on the block export ours_cap0
-python -m experiments.train --model tokenseq --protocol kfold --fold 0 --seed 0 --threshold-from oof     # threshold from out-of-fold predictions
 python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
 python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0
 python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --max-instructions 512
@@ -229,10 +214,10 @@ preprocessed zip provides and `build_b` does not: `build_b` writes `api_vocab.js
 copy it, as in `cp ../processed/cfg_subgraphs/api_vocab.json ../processed/api_vocab.json`. Without the file the demo still runs, but
 the vocabulary is empty and every API id is clamped to one embedding row.
 
-**6. The teammates' GAT pipelines** under the same folds: [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md)
+**5. The teammates' GAT pipelines** under the same folds: [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md)
 (needs `torch_geometric` and, except for `build_b --source repo`, the pinned teammate worktrees).
 
-**7. Evaluation.** Each run writes `RUNS/<name>/metrics.json` and its predictions; these read them:
+**6. Evaluation.** Each run writes `RUNS/<name>/metrics.json` and its predictions; these read them:
 
 ```bash
 python -m s04_evaluation.report                                                       # RESULTS.md: every run
@@ -301,8 +286,9 @@ validation threshold, and differences are paired cluster bootstraps with a pre-r
   are worse than none (-0.012).
 * A logistic regression on the PE import table ties the typed GNN on x86 (0.985 against 0.986) and on the all-architecture pool
   (0.966 against 0.965), and giving the imports to the GNN adds nothing.
-* A third CFG layer, call-graph message passing, CodeBERT block vectors (our Model 3, -0.025 AUC against token counts), the
-  token-sequence transformer (Model 1) and the teammates' GATs are all level with or below the no-edge bag of blocks.
+* A third CFG layer, call-graph message passing, CodeBERT block vectors (the frozen-encoder Model 3 of the first plan, -0.025 AUC
+  against token counts), the token-sequence transformer (the first Model 1) and the teammates' GATs are all level with or below the
+  no-edge bag of blocks. The first three are the reference models of [`reference/README.md`](reference/README.md).
 * The 500-block cap of the teammates' pipelines costs our own GNN 0.021 to 0.063 AUC.
 * Pipeline B after the preprocessing fixes (3 seeds): with every non-library block, Model 3 (pooled block embeddings and
   CFG) reaches 0.981 AUC, level with R7 (+0.002 [-0.005, +0.009]), and Model 2 (77 block features and CFG) 0.970; at 500

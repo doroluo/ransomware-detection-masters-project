@@ -1,7 +1,7 @@
 """The contract between a teammate's per-block encoder and this repository (TRANSFORMER_CONTRACT.md).
 
 BlockEncoder: the interface. save_checkpoint / load_checkpoint / load_encoder: the checkpoint dict. check_checkpoint:
-python -m s03c_cfg_transformer.encoder_contract --ckpt RUNS/encoders/<name>/fold0/best.pt --export RUNS/export/<export>
+python -m reference.cfg_transformer.encoder_contract --ckpt RUNS/encoders/<name>/fold0/best.pt --export RUNS/export/<export>
 --fold 0, to run before handing a checkpoint over; precompute_blockvec.py runs it again and refuses a failing one.
 """
 import argparse
@@ -15,14 +15,14 @@ import numpy as np
 import torch
 
 from common.config import EXPORT
-from s03c_cfg_transformer.block_export import sha_of_ids
+from reference.cfg_transformer.block_export import sha_of_ids
 from common.reader import BlockStore, FoldView
 
 CHECKPOINT_KEYS = ('module', 'class', 'init_kwargs', 'state_dict', 'export_sha', 'fold', 'manifest_sha',
                    'train_ids', 'val_ids', 'train_ids_sha', 'val_ids_sha', 'vocab_sha', 'd_out', 'max_len')
 # module names that checkpoints written before the stage-3c layout record -> where the class lives now
-LEGACY_MODULES = {'transformer_paths.reference_encoder': 's03c_cfg_transformer.encoders.reference',
-                  'transformer_paths.codebert_encoder': 's03c_cfg_transformer.encoders.codebert'}
+LEGACY_MODULES = {'transformer_paths.reference_encoder': 'reference.cfg_transformer.encoders.reference',
+                  'transformer_paths.codebert_encoder': 'reference.cfg_transformer.encoders.codebert'}
 CHECK_BLOCKS = 64
 REL_TOL, ABS_TOL = 1e-3, 1e-4
 

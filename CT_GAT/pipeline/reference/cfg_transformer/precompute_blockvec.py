@@ -1,4 +1,4 @@
-"""Frozen per-fold block vectors: python -m s03c_cfg_transformer.precompute_blockvec --encoder-name ref
+"""Frozen per-fold block vectors: python -m reference.cfg_transformer.precompute_blockvec --encoder-name ref
 --export RUNS/export/ours_cap0 --folds 0 1 2 3 4
 
 For each fold, loads RUNS/encoders/<encoder-name>/fold{k}/best.pt (after check_checkpoint, which refuses a checkpoint
@@ -15,9 +15,9 @@ import numpy as np
 import torch
 
 from common.config import EXPORT, RUNS
-from s03b_cfg_feature.gnn.s05_block_counting.block_vecs import BlockVecs, vec_dir  # noqa: F401
-from s03c_cfg_transformer.block_export import sha_of_file
-from s03c_cfg_transformer.encoder_contract import check_checkpoint, load_encoder
+from reference.gnn.s05_block_counting.block_vecs import BlockVecs, vec_dir  # noqa: F401
+from reference.cfg_transformer.block_export import sha_of_file
+from reference.cfg_transformer.encoder_contract import check_checkpoint, load_encoder
 from common.reader import BlockStore, FoldView
 
 MAX_BATCH_TOKENS, MAX_BATCH_BLOCKS = 1 << 18, 8192

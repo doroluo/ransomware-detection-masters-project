@@ -14,7 +14,7 @@ import numpy as np
 from torch import nn
 
 from common.config import CACHE
-from s03b_cfg_feature.gnn.s10_unused_import_features.import_side import load_imports
+from s04_evaluation.import_side import load_imports
 
 IMPORT_DIM = 32
 

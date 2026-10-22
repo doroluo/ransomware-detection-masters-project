@@ -33,21 +33,21 @@ differences over the seeds complete in both arms:
 
 The documents name files as they were on the branch. In `CT_GAT/pipeline`:
 
-| on the branch | now |
-|---|---|
-| `train.py`, `training/train.py` | `experiments/train.py` (`python -m experiments.train`) |
-| `build_cache.py`, `check_cache.py`, `pipeline/s02_build_cfg_cache/` | `s02_preprocess/cache/` (new: `folds.py`, the fold CSV builder) |
-| `pipeline/s03_tokenizer/`, `pipeline/s04_select_subgraph/` | `s02_preprocess/tokenizer/`, `s02_preprocess/subgraph.py` |
-| `pipeline/s05_*` ... `pipeline/s11_*`, `pipeline/model.py`, `pipeline/batching.py` | `s03b_cfg_feature/gnn/` (same submodule names) |
-| `baselines.py`, `report.py`, `stats.py`, `val_threshold.py`, `gates.py`, `evaluation/` | `s04_evaluation/`; the `--stage` definitions are `experiments/stages/<name>.py` |
-| `evaluation/run_io.py`, `transformer_paths/reader.py` | `common/run_io.py`, `common/reader.py` |
-| `transformer_paths/` | `s03c_cfg_transformer/` (`codebert_encoder.py` and `reference_encoder.py` are `encoders/codebert.py` and `encoders/reference.py`) |
-| `token_sequence/` | `s03a_transformer/token_sequence/` |
-| `queue_gnn.sh --stage <s>`, `scripts/*_runs.sh`, `stop_queue.sh` | `python -m experiments.queue --plan experiments/plans/<s>.txt`, `--stop` |
-| `subgraph_chain.py` | `python -m experiments.subgraph_chain` |
-| `experiments/team_pipelines/` | the same path (needs `GT_TEAM_GNN_ROOT`, `GT_TEAM_MAIN_ROOT`, `torch_geometric`) |
-| `experiments/side_arrays/` | `experiments/side_arrays/import_reader_side.py` only (the operand-role side arrays that `--vocab yanping|hybrid` reads) |
-| `RUNS`, `CACHE` in the text | `GT_RUNS`, `GT_CACHE` / `datasets.json` (`common/paths.py`) |
+| on the branch | now | since the reference move |
+|---|---|---|
+| `train.py`, `training/train.py` | `experiments/train.py` (`python -m experiments.train`) | |
+| `build_cache.py`, `check_cache.py`, `pipeline/s02_build_cfg_cache/` | `s02_preprocess/cache/` (new: `folds.py`, the fold CSV builder) | |
+| `pipeline/s03_tokenizer/`, `pipeline/s04_select_subgraph/` | `s02_preprocess/tokenizer/`, `s02_preprocess/subgraph.py` | |
+| `pipeline/s05_*` ... `pipeline/s11_*`, `pipeline/model.py`, `pipeline/batching.py` | `s03b_cfg_feature/gnn/` (same submodule names) | `reference/gnn/` (same submodule names), except `s10_unused_import_features/`: `s04_evaluation/import_side.py` and `s04_evaluation/imports_feat.py` |
+| `baselines.py`, `report.py`, `stats.py`, `val_threshold.py`, `gates.py`, `evaluation/` | `s04_evaluation/`; the `--stage` definitions are `experiments/stages/<name>.py` | |
+| `evaluation/run_io.py`, `transformer_paths/reader.py` | `common/run_io.py`, `common/reader.py` | |
+| `transformer_paths/` | `s03c_cfg_transformer/` (`codebert_encoder.py` and `reference_encoder.py` are `encoders/codebert.py` and `encoders/reference.py`) | `reference/cfg_transformer/` (`s03c_cfg_transformer/` keeps the README of Model 3 only) |
+| `token_sequence/` | `s03a_transformer/token_sequence/` | `reference/token_sequence/` |
+| `queue_gnn.sh --stage <s>`, `scripts/*_runs.sh`, `stop_queue.sh` | `python -m experiments.queue --plan experiments/plans/<s>.txt`, `--stop` | |
+| `subgraph_chain.py` | `python -m experiments.subgraph_chain` | |
+| `experiments/team_pipelines/` | the same path (needs `GT_TEAM_GNN_ROOT`, `GT_TEAM_MAIN_ROOT`, `torch_geometric`) | |
+| `experiments/side_arrays/` | `experiments/side_arrays/import_reader_side.py` only (the operand-role side arrays that `--vocab yanping|hybrid` reads) | |
+| `RUNS`, `CACHE` in the text | `GT_RUNS`, `GT_CACHE` / `datasets.json` (`common/paths.py`) | |
 | `docs/<file>.md` | `docs/history/<file>.md` |
 
 Not carried over: `smoke_gnn_memory.py`, the def-use and API-tag side arrays (`build_side.py`) and the WL baseline

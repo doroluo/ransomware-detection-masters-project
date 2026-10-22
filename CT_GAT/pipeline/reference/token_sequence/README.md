@@ -1,11 +1,13 @@
-# token_sequence: Model 1, a transformer over the token sequence of a binary
+# reference/token_sequence: a transformer over the token sequence of a binary
+
+A reference model (see [`../README.md`](../README.md)): the jsonl-only Model 1 of the pipeline adopted on 2026-10-19.
 
 Model 1 classifies a binary from the instruction and API tokens of its basic blocks, read as one sequence. It reads a
-block export (`s03c_cfg_transformer/EXPORT_SCHEMA.md`) in the fold vocabulary of one fold; it needs neither the CFG cache nor
+block export (`reference/cfg_transformer/EXPORT_SCHEMA.md`) in the fold vocabulary of one fold; it needs neither the CFG cache nor
 the graph.
 
 ```python
-from s03a_transformer.token_sequence import FoldSequences, collate, Model1TokenSequence, BinaryTokenSequence
+from reference.token_sequence import FoldSequences, collate, Model1TokenSequence, BinaryTokenSequence
 
 train = FoldSequences(export_root, fold=0, split='train', L=512, max_windows=64, seed=0)
 net = BinaryTokenSequence(Model1TokenSequence(n_ids=train.n_ids))
@@ -60,7 +62,7 @@ validation or test id. `'train'` draws random windows (seeded by `(seed, epoch, 
 ```bash
 python -m experiments.train --model tokenseq --protocol kfold --arch x86 --fold 0 --seed 0 [--seq-len 512 --max-windows 64]
     [--export ours_cap0] [--device cuda|cpu] [--smoke N] [--epochs 40 --patience 8] [--window-budget 128] [--threshold-from val|oof]
-python -m s03a_transformer.token_sequence.train --fold 0 --seed 0 ...     # the same loop, with the options of Model 1 only
+python -m reference.token_sequence.train --fold 0 --seed 0 ...     # the same loop, with the options of Model 1 only
 ```
 
 Both run from `CT_GAT/pipeline`. `tokenseq` is registered in `common/registry.py` (`spec.py`). The registry's loop is the loop
@@ -80,7 +82,7 @@ is never printed in the name; none of the GNN options (controls, masking, vector
   more windows than that is alone), so the peak GPU memory is set by the budget. Evaluation runs every window of every
   binary in order under `no_grad`, in chunks of the same size.
 * The decision threshold of the AUC checkpoint is chosen on the validation families (`--threshold-from val`, the default) or on out-of-fold
-  refits of the training binaries (`oof`, run name suffix `-thoof`; `../README.md`, section "The decision threshold").
+  refits of the training binaries (`oof`, run name suffix `-thoof`; `s03a_transformer/README.md`, section "The decision threshold").
 * Each epoch records the validation AUC and the macro-F1 at 0.5 in `history.csv`. `best.pt` is the epoch of the best macro-F1
   (predictions at 0.5), `best_auc.pt` that of the best AUC (predictions at the `val_threshold` maximiser of the validation
   macro-F1). Training stops when the AUC has not improved for `patience` epochs. The test split is read once, after training.
@@ -91,7 +93,9 @@ is never printed in the name; none of the GNN options (controls, masking, vector
   (never under the run directory). It prints s/epoch, peak GPU and RAM, and projects the time of a full fold run from the windows and
   positions of the whole split.
 
-Tests: `python -m pytest tests/test_model1_trainer.py tests/test_tokenseq_config.py`.
+Result: it does not beat TF-IDF, the import-table baseline or the GNN ([`gates_model1.md`](../../docs/history/gates_model1.md)).
+
+Tests: `python -m pytest tests/test_token_sequence.py tests/test_tokenseq_config.py tests/test_model1_trainer.py`.
 
 ## Credit
 

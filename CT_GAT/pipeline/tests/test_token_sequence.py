@@ -1,4 +1,4 @@
-"""python -m pytest tests/test_token_sequence.py: Model 1 (s03a_transformer/token_sequence/): the regrouping of kind-major blocks
+"""python -m pytest tests/test_token_sequence.py: Model 1 (reference/token_sequence/): the regrouping of kind-major blocks
 into instruction triplets and API positions, windows, collation, the model and the split isolation of FoldSequences.
 
 CPU only. The export is built from the small synthetic cache of tests/tiny_cache.py (40 binaries, fold 0); no test needs
@@ -15,9 +15,9 @@ from tiny_cache import tiny  # noqa: F401  (a fixture)
 from common.config import RunConfig
 from common.manifests import load_index, make_manifest
 from common.reader import BlockStore, FoldView
-from s03a_transformer.token_sequence import (BinaryTokenSequence, FoldSequences, InstructionEmbedder, Model1TokenSequence, Stream,
+from reference.token_sequence import (BinaryTokenSequence, FoldSequences, InstructionEmbedder, Model1TokenSequence, Stream,
                                              collate, instruction_stream, regroup, windows)
-from s03c_cfg_transformer import block_export as be
+from reference.cfg_transformer import block_export as be
 
 torch.set_num_threads(2)
 

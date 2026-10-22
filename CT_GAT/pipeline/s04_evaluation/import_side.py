@@ -1,8 +1,8 @@
 """Converter of the team's import-feature reader output to a cache-aligned side array.
 
-python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --cache <cache dir> [<another cache dir>]
+python -m s04_evaluation.import_side --cache <cache dir> [<another cache dir>]
     [--reader-root <reader output dir>] [--limit N] [--sample-id ID ...] [--replace-stale]
-python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --cache <cache dir> --from-cfg    # no reader output
+python -m s04_evaluation.import_side --cache <cache dir> --from-cfg    # no reader output
 
 Each `<reader root>/<sample_id>/imports.json` (schema ida-import-features/1, CT_GAT/IDA_FEATURE_READERS.md) becomes
 `<cache>/side/imports/<sample_id>.npz`:
@@ -56,7 +56,7 @@ CFG_SOURCE = 'cfg-header'
 
 
 def code_hash():
-    return sha256_files(Path(__file__), Path(__file__).parents[3] / 'common' / 'side_io.py')
+    return sha256_files(Path(__file__), Path(__file__).parents[1] / 'common' / 'side_io.py')
 
 
 def check_imports(sample_id, doc, manifest, z, api_strings):
@@ -203,7 +203,7 @@ def load_imports(cache, sample_id):
     path = imports_path(cache, sample_id)
     if not path.exists():
         raise FileNotFoundError(f'{path}: no import side array for {sample_id}; run '
-                                f'python -m s03b_cfg_feature.gnn.s10_unused_import_features.import_side --cache {cache}')
+                                f'python -m s04_evaluation.import_side --cache {cache}')
     with np.load(path, allow_pickle=False) as z:
         if str(z['schema']) != SCHEMA or str(z['sample_id']) != sample_id:
             raise ValueError(f'{path}: schema {z["schema"]} / sample {z["sample_id"]}, expected {SCHEMA} / {sample_id}')

@@ -27,14 +27,14 @@ from common.reader import BlockStore, FoldView, collate_blocks
 from experiments import train
 from s02_preprocess.subgraph import select_subgraph
 from s02_preprocess.tokenizer.vocab import TOKEN_KINDS, TokenVocab
-from s03b_cfg_feature.gnn import spec as gnn_spec
-from s03b_cfg_feature.gnn.batching import BinaryDataset, collate, encode_binary, loader
-from s03b_cfg_feature.gnn.model import HierGNN
-from s03b_cfg_feature.gnn.s05_block_counting.block_vecs import BlockVecs, BlockVecSource, MissingKeys
-from s03c_cfg_transformer import block_export as be
-from s03c_cfg_transformer import encoder_contract as ec
-from s03c_cfg_transformer import precompute_blockvec as pb
-from s03c_cfg_transformer.encoders import reference as re_
+from reference.gnn import spec as gnn_spec
+from reference.gnn.batching import BinaryDataset, collate, encode_binary, loader
+from reference.gnn.model import HierGNN
+from reference.gnn.s05_block_counting.block_vecs import BlockVecs, BlockVecSource, MissingKeys
+from reference.cfg_transformer import block_export as be
+from reference.cfg_transformer import encoder_contract as ec
+from reference.cfg_transformer import precompute_blockvec as pb
+from reference.cfg_transformer.encoders import reference as re_
 
 ROOT = Path(__file__).resolve().parents[1]
 needs_cache = pytest.mark.real_data
@@ -279,7 +279,7 @@ def test_export_refuses_a_directory_outside_runs_export(tmp_path):
 
 @needs_cache
 def test_schema_documents_every_file_and_the_example_runs(mini):
-    text = (ROOT / 's03c_cfg_transformer' / 'EXPORT_SCHEMA.md').read_text(encoding='utf-8')
+    text = (ROOT / 'reference' / 'cfg_transformer' / 'EXPORT_SCHEMA.md').read_text(encoding='utf-8')
     for name in list(be.STORE_ARRAYS) + ['store.json', 'binaries.json', 'manifest.json', 'lut.npy', 'vocab.json',
                                           'block_key.npy']:
         assert f'`{name.removesuffix(".npy")}' in text or name in text, name
@@ -313,7 +313,7 @@ def make_checkpoint(mini, tmp_path, name='ok', model=None, init=None, **override
 def test_reference_checkpoint_passes_every_check(mini, tmp_path):
     path, ckpt = make_checkpoint(mini, tmp_path)
     assert set(ec.CHECKPOINT_KEYS) <= set(ckpt)
-    assert (ckpt['module'], ckpt['class']) == ('s03c_cfg_transformer.encoders.reference', 'ReferenceEncoder')
+    assert (ckpt['module'], ckpt['class']) == ('reference.cfg_transformer.encoders.reference', 'ReferenceEncoder')
     assert (ckpt['d_out'], ckpt['max_len'], ckpt['fold']) == (64, 192, 0)
     passed = ec.check_checkpoint(path, mini.root, 0)
     assert {'export_sha', 'manifest_sha', 'vocab_sha', 'train_ids_in_train', 'val_ids_in_val', 'no_test_ids',
