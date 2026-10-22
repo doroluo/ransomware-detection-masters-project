@@ -1,0 +1,3 @@
+# Keep the bytes the published ida_features manifests hash (reader_sha256, token_mapping_sha256).
+ida_feature_readers.py -text
+token_mapping.py -text
