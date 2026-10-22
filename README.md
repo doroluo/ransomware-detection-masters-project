@@ -16,7 +16,7 @@ The binaries are the Mendeley ransomware dataset (https://data.mendeley.com/data
 preprocessed zips derive from it; they are on the project Google Drive with a `.sha256` file beside each zip. The three models need
 the two Mendeley collections and one preprocessed zip, and train on the Mendeley x86 folds (1,810 binaries). The balanced collections
 are other corpora (MalwareBazaar ransomware and balanced goodware), the input of the all-architecture cache `combined_v3`, which the
-models do not yet train on. A preprocessed zip replaces a CPU build of about 4 h (500 blocks) or 5.6 h (uncapped).
+models do not yet train on. A preprocessed zip replaces a CPU build of 4 to 5 h (500 blocks) or 5.6 h (uncapped).
 
 | Zip | Size | sha256 | Unzip into | Enables |
 |---|---|---|---|---|
@@ -137,4 +137,4 @@ python -m pytest -m "not real_data and not gpu"
 # Further documentation
 
 [`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md) describes the stage folders, the on-disk layout, the overrides,
-`build_b --source repo` (a build in about 4 h), `preprocess_full.py` and the IDA export. The plan, the result tables and the review are in `docs/history/`.
+`build_b --source repo` (a 500-block build in 4 to 5 h), `preprocess_full.py` and the IDA export. The plan, the result tables and the review are in `docs/history/`.
