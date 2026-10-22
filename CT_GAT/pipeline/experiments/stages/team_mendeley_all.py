@@ -50,7 +50,7 @@ def intro(resamples):
             "ransomware. A model therefore gains AUC on this dataset by scoring x64 binaries as goodware. Read the recall of ransomware x64 first, "
             "then the cell-balanced AUC and macro-F1 (each class x architecture cell weighted equally; the x86 rule scores 0.5) "
             "and the `-ab` twin of an arm, which weights its training binaries by cell. `combined_v3` (x86-rule floor 0.690 on all "
-            "architectures, 0.606 on the matched subset, 741 x64 ransomware) is the fair all-architecture test (stages "
+            "architectures, 0.606 on the matched subset, 741 x64 ransomware) is the all-architecture test with the smaller confound (stages "
             "`team_v3_all`, `team_v3_matched`); this stage reports the whole Mendeley dataset because the team asked for it, with "
             "the floor in the same table. The team arms train on the builds `b_<family>_mendeley_all`, each the x86 build of the "
             "same name extended with the 601 x64 binaries, with the teammates' recipe (class-weighted loss, checkpoint chosen by "

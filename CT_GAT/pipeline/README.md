@@ -335,11 +335,11 @@ The runs are named `kfold<f>_all_gnn_s<seed>_team-<arm>`, `v3kfold<f>_matched_gn
 `kfold<f>_all_fivechannel[-L512][-ab]_s<seed>`; the x86 names are as before. On the whole Mendeley dataset the architecture is a label
 proxy: x86 holds 1,134 ransomware and 676 goodware binaries, x64 holds 108 and 493, the x86 rule (ransomware if and only if x86) alone
 scores 0.650 macro-F1 pooled over the folds, and 55% of the x64 ransomware are in fold 2, so a fold's x64 test set can be nearly all
-goodware or hold most of the x64 ransomware. A model therefore gains AUC on `--protocol kfold --arch all` by scoring x64 binaries as goodware. Read the
-recall of ransomware x64, then the cell-balanced AUC and macro-F1 (each class x architecture cell weighted equally, under which the
-x86 rule scores 0.5), and compare an arm with its `-ab` twin. `combined_v3` is the fairer all-architecture test: the x86 rule scores
-0.690 macro-F1 on all and 0.606 on matched, with 741 x64 ransomware. The whole Mendeley dataset is reported because the team asked
-for it, with the floor in the same table.
+goodware or hold most of the x64 ransomware. A model therefore gains AUC on `--protocol kfold --arch all` by scoring x64 binaries as
+goodware. Read the recall of ransomware x64, then the cell-balanced AUC and macro-F1 (each class x architecture cell weighted equally,
+under which the x86 rule scores 0.5), and compare an arm with its `-ab` twin. `combined_v3` is the all-architecture test with the
+smaller confound: the x86 rule scores 0.690 macro-F1 on all and 0.606 on matched, with 741 x64 ransomware. The whole Mendeley dataset is
+reported because the team asked for it, with the floor in the same table.
 
 **4. Evaluation.** Each run writes `RUNS/<name>/metrics.json` and its predictions; these read them:
 

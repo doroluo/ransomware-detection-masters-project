@@ -10,7 +10,8 @@ missing folds, is printed as missing with the folds that are present; nothing is
 than kfold x86 sets `options['scope']` = (protocol, arch), which picks the baseline runs of its `tfidf` arms and the floors of
 its `cells` table, and `options['balanced']` for a second, cell-balanced paired table (`stage.py`).
 
-The runs are read from `common.paths.RUNS` (`GT_RUNS`), the combined cache of the kfold_v3 floors from `datasets.json`.
+The runs are read from `common.paths.RUNS` (`GT_RUNS`), the caches of the floors of a `cells` table from `datasets.json` (the
+combined cache for kfold_v3, the Mendeley cache for kfold).
 """
 import argparse
 import importlib

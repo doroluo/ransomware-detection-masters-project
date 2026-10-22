@@ -16,9 +16,9 @@ The binaries are the Mendeley ransomware dataset (https://data.mendeley.com/data
 preprocessed zips derive from it; they are on the project Google Drive with a `.sha256` file beside each zip. The two Mendeley
 collections build the `mendeley_x86` cache, whose folds cover the x86 binaries (1,810) or the whole Mendeley dataset (2,411, with 601
 x64). The balanced collections (MalwareBazaar ransomware and balanced goodware) add the all-architecture cache `combined_v3` (5,652
-binaries with a fold, 4,850 architecture-matched). The three models train on each of these three datasets, with the collections and the
-preprocessed zip of that dataset; a zip replaces a CPU build of 4 to 5 h (500 blocks) or 5.6 h (uncapped) for the x86 dataset, longer
-for the others.
+binaries with a fold, 4,850 of them architecture-matched). The three models train on each of these three datasets, with the collections
+and the preprocessed zip of that dataset; a zip replaces a CPU build of 4 to 5 h (500 blocks) or 5.6 h (uncapped) for the x86 dataset,
+longer for the other two.
 
 | Zip | Size | sha256 | Unzip into | Enables |
 |---|---|---|---|---|
@@ -88,13 +88,13 @@ models read the build in `CT_GAT/processed/cfg_subgraphs`, or `--build DIR`. A M
 validation and 8 test binaries, so it needs the `.pt` files of those 24; Models 2 and 3 train 8 and score every validation binary.
 
 The x86 folds are the default dataset. With `--protocol kfold`, `--arch all` trains on the whole Mendeley dataset; with
-`--protocol kfold_v3`, `--arch all` or `--arch matched` trains on the combined one. A run reads the build of its zip. The other arm
-families (`sig250-*`, `callwalk500-*`, `callwalk250-*` with `-feat`, `-emb` and `-e2e`, and `sigwhole-*`) are in the table;
-`--arch-balance` weights the training binaries by class and architecture. On the whole Mendeley dataset the architecture is a proxy for
-the label (x86: 1,134 ransomware and 676 goodware, x64: 108 and 493; the x86 rule alone scores 0.650 macro-F1, and 55% of the x64
-ransomware are in fold 2), so a model gains AUC there by scoring x64 binaries as goodware. Read the recall of ransomware x64 and the
-cell-balanced metrics, and take `combined_v3` (x86-rule floor 0.690 on all, 0.606 on matched, 741 x64 ransomware) as the
-all-architecture test. The smoke runs on fold 0 come first, then runs on the other datasets; a full run omits `--smoke 8 --device cpu`:
+`--protocol kfold_v3`, `--arch all` or `--arch matched` trains on the combined one. A run reads the build of its zip, and the other arm
+families are in the table. `--arch-balance` weights the training binaries by class and architecture. On the whole Mendeley dataset the
+architecture is a proxy for the label (x86: 1,134 ransomware and 676 goodware, x64: 108 and 493; the x86 rule alone scores 0.650
+macro-F1, and 55% of the x64 ransomware are in fold 2), so a model gains AUC there by scoring x64 binaries as goodware. Read the recall
+of ransomware x64 and the cell-balanced metrics (each class and architecture weighted equally), and take `combined_v3` (x86-rule floor
+0.690 on all, 0.606 on matched, 741 x64 ransomware) as the all-architecture test. The smoke runs on fold 0 come first, then runs on the
+other datasets; a full run omits `--smoke 8 --device cpu`:
 
 ```bash
 python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
