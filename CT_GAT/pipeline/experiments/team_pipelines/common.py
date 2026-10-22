@@ -5,6 +5,13 @@ Four pieces: a sha256-pinned import of the teammates' code (`import_team`, two p
 (`paths_for`) and `write_run` (`common/run_io.py`, re-exported here), which writes a run directory that
 `s04_evaluation/stats.py`, `report.py` and `gates.py` read like one of ours.
 
+The dataset is a flag, not an arm: `protocol` ('kfold' or 'kfold_v3') and `arch` ('x86', 'all' or 'matched') pick the rows
+(`sample_rows`), the folds (`fold_manifest`, `all_ids`) and the run names (`team_config`); `DATASET_OF`, `DEFAULT_ARCH` and
+`BUILD_ARCHES` name the dataset of a protocol, its default architecture and the architectures a pipeline-B build is made for.
+Every function keeps its zero-argument meaning, the Mendeley kfold x86 binaries, and `paths_for` takes the corpus of the row
+(`mendeley` unless told otherwise). Vocabulary clash: `sig500v3` is the s02-fix *build* version, `kfold_v3` the fold *protocol*
+and `_v3.zip` the preprocessing version of the zips.
+
 Run scripts as modules from CT_GAT/pipeline (`python -m experiments.team_pipelines.build_b`): run as a file, this
 directory would sit first on sys.path and shadow our `common` package.
 
@@ -36,7 +43,8 @@ if __name__ == 'common':
 
 from common.catalog import CT_GAT
 from common.config import RUNS, RunConfig
-from common.manifests import load_index, make_manifest
+from common import manifests
+from common.manifests import arch_rows, load_index, make_manifest
 from common.paths import MissingSource, source_for
 from common.run_io import AUC_RULES, _check_cover, evaluate, truncated_count, write_predictions, write_run  # noqa: F401  (re-exported: the team trainers and tests import them from here)
 from experiments.train import val_threshold_of  # noqa: F401
@@ -270,32 +278,53 @@ def import_team(module, root=None, source=DEFAULT_SOURCE):
     return mod
 
 
-def fold_config(fold, seed):
+DATASET_OF = {'kfold': 'mendeley_x86', 'kfold_v3': 'combined_v3'}          # catalog.DATASETS keys, for messages and settings
+DEFAULT_ARCH = {'kfold': 'x86', 'kfold_v3': 'all'}
+BUILD_ARCHES = {'kfold': ('x86', 'all'), 'kfold_v3': ('all',)}             # a build is made for one of these; `matched` is never built
+
+
+def _check_dataset(protocol, arch):
+    if protocol not in DATASET_OF:
+        raise ValueError(f'protocol {protocol!r}: the team pipelines run on {" or ".join(DATASET_OF)}')
+    if arch not in ('x86', 'all', 'matched'):
+        raise ValueError(f'arch {arch!r}')
+
+
+def fold_config(fold, seed, protocol='kfold', arch='x86'):
     """The RunConfig whose manifest the `kfold_x86_gnn-mblk15_s{seed}` runs use (val_seed None: the validation carve
-    follows the seed)."""
-    return RunConfig(protocol='kfold', fold=fold, arch='x86', seed=seed, model='gnn', mask_blocks=0.15)
+    follows the seed); `protocol` and `arch` name another dataset."""
+    _check_dataset(protocol, arch)
+    return RunConfig(protocol=protocol, fold=fold, arch=arch, seed=seed, model='gnn', mask_blocks=0.15)
 
 
-@lru_cache(maxsize=1)
-def _index():
-    return load_index(protocol='kfold')
-
-
-@lru_cache(maxsize=1)
-def sample_rows():
-    """{sample_id: index row} (label, arch, family, fold, ...) of the x86 binaries that have a fold."""
-    return {r['sample_id']: r for r in _index() if r['arch'] == 'x86' and r['fold'] is not None}
+@lru_cache(maxsize=2)
+def _index(protocol='kfold'):
+    return load_index(protocol=protocol)
 
 
 @lru_cache(maxsize=None)
-def fold_manifest(fold, seed):
-    return make_manifest(fold_config(fold, seed), _index())
+def sample_rows(protocol='kfold', arch='x86'):
+    """{sample_id: index row} (label, arch, family, corpus, fold, ...) of the binaries of a dataset that have a fold under its
+    protocol: the rows of `arch` (`common.manifests.arch_rows`), then those with a fold. Under kfold_v3 `fold` is the v3 fold
+    (rows are copies, as in `make_manifest`), so a build records the fold the models use. The default is the Mendeley x86 binaries."""
+    _check_dataset(protocol, arch)
+    index = _index(protocol)
+    if protocol == 'kfold_v3':
+        if not any(r['fold_v3'] is not None for r in index):
+            raise ValueError(f'{manifests.CACHE} has no fold_v3 column; set GT_CACHE to the combined cache')
+        index = [{**r, 'fold': r['fold_v3']} for r in index]
+    return {r['sample_id']: r for r in arch_rows(arch, index) if r['fold'] is not None}
 
 
-@lru_cache(maxsize=1)
-def all_ids():
+@lru_cache(maxsize=None)
+def fold_manifest(fold, seed, protocol='kfold', arch='x86'):
+    return make_manifest(fold_config(fold, seed, protocol, arch), _index(protocol))
+
+
+@lru_cache(maxsize=None)
+def all_ids(protocol='kfold', arch='x86'):
     """Sorted sample ids of the five folds' test sets; the test sets are disjoint (asserted)."""
-    ids = [r['sample_id'] for f in range(5) for r in fold_manifest(f, 0).test]
+    ids = [r['sample_id'] for f in range(5) for r in fold_manifest(f, 0, protocol, arch).test]
     if len(ids) != len(set(ids)):
         raise AssertionError('a sample is in the test set of two folds')
     return sorted(ids)
@@ -317,26 +346,29 @@ def _zero_config():
     return False
 
 
-@lru_cache(maxsize=2)
-def _collection_rows(collections):
-    """{sample_id: samples.csv row, with its `root`} of the mendeley corpus under the `collections` folder (the argument
-    only keys the cache; `corpus_samples` resolves the folder itself)."""
+@lru_cache(maxsize=4)
+def _collection_rows(collections, corpus='mendeley'):
+    """{sample_id: samples.csv row, with its `root`} of a corpus (default mendeley) under the `collections` folder (the
+    argument only keys the cache; `corpus_samples` resolves the folder itself)."""
     from s02_preprocess.cache import build_cache
     try:
-        return {r['sample_id']: r for r in build_cache.corpus_samples('mendeley')}
+        if corpus != 'mendeley':
+            build_cache.require_collections([corpus])             # names the missing folder and the zip that holds it
+        return {r['sample_id']: r for r in build_cache.corpus_samples(corpus)}
     except MissingSource as e:
-        raise TeamSourceNotConfigured(f'{e}; or set GT_BUNDLE and GT_TEAM_ASM_DIR') from e
+        raise TeamSourceNotConfigured(f'{e}; or set GT_BUNDLE and GT_TEAM_ASM_DIR' if corpus == 'mendeley' else str(e)) from e
 
 
-def _sample_row(sample_id):
-    """(samples.csv row, cfg_path, asm_path) of a binary, before any existence check: the bundle's row with the listing in
-    `asm_dir()`, or without a bundle and GT_TEAM_ASM_DIR the collection row with its CFG and listing, each relative to the
-    folder of the row (`root`)."""
-    if _zero_config():
+def _sample_row(sample_id, corpus='mendeley'):
+    """(samples.csv row, cfg_path, asm_path) of a binary, before any existence check. A mendeley binary: the bundle's row with
+    the listing in `asm_dir()`, or without a bundle and GT_TEAM_ASM_DIR the collection row with its CFG and listing, each
+    relative to the folder of the row (`root`). A binary of another corpus (the `corpus` of its index row): always the row of
+    its collection, whatever the bundle and GT_TEAM_ASM_DIR say."""
+    if corpus != 'mendeley' or _zero_config():
         collections = source_for('collections')
-        row = _collection_rows(str(collections)).get(sample_id)
+        row = _collection_rows(str(collections), corpus).get(sample_id)
         if row is None:
-            raise KeyError(f'{sample_id}: no row of the mendeley corpus under {collections}')
+            raise KeyError(f'{sample_id}: no row of the {corpus} corpus under {collections}')
         if not row['asm_path']:
             raise FileNotFoundError(f'{sample_id}: the samples.csv of {row["root"]} has no listing for it (asm_path is empty)')
         root = Path(row['root'])
@@ -348,29 +380,33 @@ def _sample_row(sample_id):
     return row, bundle / row['cfg_path'], asm_dir() / f'{sample_id}.asm.gz'
 
 
-def paths_for(sample_id):
+def paths_for(sample_id, corpus='mendeley'):
     """(cfg_path, asm_path) of a binary: the CFG in the Mendeley bundle (samples.csv cfg_path, `bundle_dir()`), the IDA
     listing in `asm_dir()`. Without a bundle and without GT_TEAM_ASM_DIR both come from the Mendeley collections
     (`common.paths.source_for('collections')`, `CT_GAT/data` by default). A missing row or file is an error; a half-configured
-    machine (the bundle without GT_TEAM_ASM_DIR or the reverse) is a TeamSourceNotConfigured naming the missing one."""
-    _, cfg_path, asm_path = _sample_row(sample_id)
+    machine (the bundle without GT_TEAM_ASM_DIR or the reverse) is a TeamSourceNotConfigured naming the missing one.
+    `corpus` is the corpus of the binary's index row: a binary of `ransomware_balanced` or `balanced_goodware` has both files in
+    its collection (`build_cache.corpus_samples`), and the bundle and GT_TEAM_ASM_DIR do not apply to it."""
+    _, cfg_path, asm_path = _sample_row(sample_id, corpus)
     for p in (cfg_path, asm_path):
         if not p.is_file():
             raise FileNotFoundError(f'{sample_id}: missing {p}')
     return cfg_path, asm_path
 
 
-def team_row(sample_id):
+def team_row(sample_id, corpus='mendeley'):
     """The row `construct_blocks.gnn_graph_from_export` / `graph_from_export` expect, from the bundle's samples.csv or the
     collections' (the fields `load_split_rows` fills: the csv columns, an int `label`, `cfg_file`). A missing row or file is
-    an error."""
-    cfg_path, _ = paths_for(sample_id)
-    row = {k: v for k, v in _sample_row(sample_id)[0].items() if k != 'root'}
+    an error. `corpus` as in `paths_for`."""
+    cfg_path, _ = paths_for(sample_id, corpus)
+    row = {k: v for k, v in _sample_row(sample_id, corpus)[0].items() if k != 'root'}
     row['label'] = int(row['label'])
     row['cfg_file'] = cfg_path
     return row
 
 
-def team_config(fold, seed, arm):
-    """The RunConfig of a team arm; its `.name` is the run directory name (`kfold{f}_x86_gnn_s{seed}_team-<arm>`)."""
-    return RunConfig(protocol='kfold', fold=fold, arch='x86', seed=seed, model='gnn', tag=f'team-{arm}')
+def team_config(fold, seed, arm, protocol='kfold', arch='x86', arch_balance=False):
+    """The RunConfig of a team arm; its `.name` is the run directory name (`kfold{f}_x86_gnn_s{seed}_team-<arm>`, and
+    `v3kfold{f}_all_gnn-ab_s{seed}_team-<arm>` for kfold_v3, all and `arch_balance`)."""
+    _check_dataset(protocol, arch)
+    return RunConfig(protocol=protocol, fold=fold, arch=arch, seed=seed, model='gnn', tag=f'team-{arm}', arch_balance=arch_balance)

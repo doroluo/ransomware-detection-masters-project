@@ -70,7 +70,7 @@ def needs_real_data(fn):
 
 
 def clear_team_caches():
-    for cached in (tp._index, tp.sample_rows, tp.fold_manifest, tp.all_ids, tp._rows_of):
+    for cached in (tp._index, tp.sample_rows, tp.fold_manifest, tp.all_ids, tp._rows_of, tp._collection_rows):
         cached.cache_clear()
 
 
