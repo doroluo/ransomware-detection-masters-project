@@ -36,11 +36,14 @@ import json
 import os
 import sys
 import zipfile
+from collections import Counter
 from pathlib import Path
 
 import torch
 
 from common.catalog import COLLECTIONS, V3_FILES
+from common.manifests import load_index
+from common.paths import cache_for
 from experiments.team_pipelines.build_b import dataset_of, resolve_dir
 from experiments.team_pipelines.train_b import UNCAPPED_BLOCKS
 
@@ -61,7 +64,8 @@ DATASETS = {
                        'what': 'Mendeley x86 binaries of our 5-fold family-holdout set', 'origin': MENDELEY_ORIGIN,
                        'fold': 'our kfold fold'},
     ('kfold', 'all'): {'label': 'Mendeley_all', 'title': 'Mendeley all-architecture (x86 and x64)',
-                       'what': 'Mendeley binaries (x86 and x64) of our 5-fold family-holdout set', 'origin': MENDELEY_ORIGIN,
+                       'what': 'Mendeley binaries (x86 and x64) of our 5-fold family-holdout set `kfold` (`folds_mendeley.csv`)',
+                       'origin': MENDELEY_ORIGIN,
                        'fold': 'our kfold fold'},
     ('kfold_v3', 'all'): {'label': 'combined_v3', 'title': 'combined_v3 (all architectures)',
                           'what': f'binaries (x86 and x64) of the combined_v3 dataset that have a fold of our 5-fold family-holdout '
@@ -163,10 +167,29 @@ def cell_text(rows):
     return ', '.join(f'{name} {arch} {count(label, arch)}' for name, label in (('R', 1), ('G', 0)) for arch in ('x86', 'x64'))
 
 
-def readme_text(settings, summary, rows, manifests=True):
+def corpus_text(rows, corpora):
+    """'mendeley n, ransomware_balanced n, ...': the binaries of the archive per corpus (`corpora`: {sample_id: corpus}, from the
+    cache index: the payloads do not record it); '' when there is no map."""
+    if not corpora:
+        return ''
+    counts = Counter(corpora.get(r['sample_id'], 'unknown') for r in rows)
+    return f"\nPer corpus: {', '.join(f'{c} {n}' for c, n in sorted(counts.items()))}.\n"
+
+
+def corpora_of(settings):
+    """{sample_id: corpus} of the cache index of the build's dataset (`common.paths.cache_for` of its protocol: GT_CACHE, else the
+    registry), or {} when that cache is not built on this machine."""
+    protocol, _ = dataset_of(settings)
+    try:
+        return {r['sample_id']: r['corpus'] for r in load_index(cache_for(protocol), protocol)}
+    except FileNotFoundError:
+        return {}
+
+
+def readme_text(settings, summary, rows, manifests=True, corpora=None):
     """The README of the zip, from the build's settings.json and build_summary.json and the index rows. The text of a Mendeley x86
     build is the one of the first zips; any other dataset (`DATASETS`) says what it holds, per class and architecture, where its CFGs
-    come from, what an extension added and which binaries were excluded."""
+    come from, what an extension added and which binaries were excluded; `corpora` ({sample_id: corpus}) adds the count per corpus."""
     dataset = dataset_text(settings)
     x86 = dataset is DATASETS['kfold', 'x86']
     sampler, blocks, uncapped = settings['sample'], settings['num_blocks'], zip_name(settings).endswith(f'uncapped_{VERSION}.zip')
@@ -183,7 +206,7 @@ def readme_text(settings, summary, rows, manifests=True):
     manifest_line = 'CT_GAT/processed/cfg_subgraphs/<sha256>.manifest.json   per-sample alignment report\n' if manifests else ''
     left_out = ('' if manifests else '\n(the per-sample manifest json files, alignment diagnostics that the models do not read, are '
                                       'left out of this archive; available on request)\n')
-    cells = '' if x86 else f"\nPer class and architecture: {cell_text(rows)}.\n"
+    cells = '' if x86 else f"\nPer class and architecture: {cell_text(rows)}.\n{corpus_text(rows, corpora)}"
     extension = '' if x86 else extension_text(settings, rows)
     left_out_ids = '' if x86 else excluded_text(excluded)
     matched = '' if x86 or dataset['label'] != 'combined_v3' else (
@@ -241,7 +264,10 @@ def package(build, out, manifests=True, deflate_pt=False):
     settings, summary, paths = read_build(build)
     name = zip_name(settings)
     rows = index_rows(build, paths)
-    readme = readme_text(settings, summary, rows, manifests)
+    corpora = {} if dataset_text(settings) is DATASETS['kfold', 'x86'] else corpora_of(settings)
+    if not corpora and dataset_text(settings) is not DATASETS['kfold', 'x86']:
+        print('no cache index for this dataset on this machine: the README gives no count per corpus', file=sys.stderr)
+    readme = readme_text(settings, summary, rows, manifests, corpora)
     out.mkdir(parents=True, exist_ok=True)
     zpath = out / name
     part = zpath.with_name(zpath.name + '.part')

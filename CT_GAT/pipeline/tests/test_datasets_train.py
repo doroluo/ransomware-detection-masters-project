@@ -687,7 +687,8 @@ def test_the_readme_of_a_mendeley_all_build_says_what_the_extension_added():
     rows = dataset_rows()
     text = pb.readme_text(settings, {'processed': 9, 'total': 9, 'excluded': {}}, rows, manifests=False)
     assert text.startswith('# Mendeley all-architecture (x86 and x64) CFG subgraphs (signal, 500 blocks), pipeline B of the team pipelines')
-    assert 'the 9 Mendeley binaries (x86 and x64) of our 5-fold family-holdout set (4 ransomware,' in text
+    assert 'the 9 Mendeley binaries (x86 and x64) of our 5-fold family-holdout set `kfold` (`folds_mendeley.csv`) (4 ransomware,' in text
+    assert 'Per corpus' not in text                                                  # no corpus map: no line
     assert 'Per class and architecture: R x86 3, R x64 1, G x86 3, G x64 2.' in text
     assert ('its 6 x86 samples are byte-identical to the ones in `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip`' in text
             and 'the 3 x64 samples were added to it with `build_b --extend` (code source `repo`, files of the repository when extended:' in text)
@@ -705,7 +706,9 @@ def test_the_readme_of_a_combined_build_lists_the_excluded_binaries_with_their_r
     settings = {'sample': 'callwalk', 'num_blocks': 500, 'seed': 0, 'source': 'repo', 'protocol': 'kfold_v3', 'arch': 'all'}
     rows = dataset_rows(6, 6)
     excluded = {f'{99 - i:064x}': WHY for i in range(3)}
-    text = pb.readme_text(settings, {'processed': 12, 'total': 15, 'excluded': excluded}, rows)
+    corpora = {r['sample_id']: ('mendeley' if i < 4 else 'ransomware_balanced' if i < 8 else 'balanced_goodware') for i, r in enumerate(rows)}
+    text = pb.readme_text(settings, {'processed': 12, 'total': 15, 'excluded': excluded}, rows, corpora=corpora)
+    assert 'Per corpus: balanced_goodware 4, mendeley 4, ransomware_balanced 4.' in text
     assert text.startswith('# combined_v3 (all architectures) CFG subgraphs (callwalk, 500 blocks), pipeline B of the team pipelines')
     assert 'the 15 binaries (x86 and x64) of the combined_v3 dataset that have a fold of our 5-fold family-holdout set `kfold_v3`' in text
     assert '3 excluded on purpose' in text and 'Per class and architecture: R x86 3, R x64 3, G x86 3, G x64 3.' in text
@@ -744,7 +747,7 @@ def finished_dataset_build(root, label, extra=None, excluded=None):
 
 @needs_pyg
 @pytest.mark.parametrize('label', ['Mendeley_all', 'combined_v3'])
-def test_a_packaged_build_of_another_dataset_unzips_and_the_trainers_read_it(tiny_v3, tmp_path, label):   # noqa: F811
+def test_a_packaged_build_of_another_dataset_unzips_and_the_trainers_read_it(tiny_v3, tmp_path, monkeypatch, label):   # noqa: F811
     import zipfile
     protocol = 'kfold_v3' if label == 'combined_v3' else 'kfold'
     victims = {sorted(tp.sample_rows(protocol, 'all'))[0]: WHY} if label == 'combined_v3' else None
@@ -754,11 +757,17 @@ def test_a_packaged_build_of_another_dataset_unzips_and_the_trainers_read_it(tin
         extra = {'extensions': [{'arch': 'all', 'ids_added': n_x64, 'source': 'repo', 'pins': {'p.py': 'a' * 64},
                                  'embedder_rows': 'seeded-per-id', 'date': '2026-10-23'}]}
     build, rows, ids = finished_dataset_build(tmp_path / 'b', label, extra, victims)
+    monkeypatch.setattr(pb, 'cache_for', lambda protocol: tiny_v3.root)
     zpath, digest = pb.package(build, tmp_path / 'out', manifests=False)
     assert zpath.name == f'{label}_cfg_subgraphs_signal_500blocks_v3.zip'
     text = (tmp_path / 'out' / f'{zpath.stem}.README.md').read_text(encoding='utf-8')
     assert (f'the {len(rows)} ' in text) and (('Excluded on purpose (1;' in text) == (victims is not None))
     assert ('byte-identical' in text) == (extra is not None)
+    per_corpus = {}
+    for r in tiny_v3.rows:
+        if r['sample_id'] in ids:
+            per_corpus[r['corpus']] = per_corpus.get(r['corpus'], 0) + 1
+    assert f"Per corpus: {', '.join(f'{c} {n}' for c, n in sorted(per_corpus.items()))}." in text      # from the cache index
     with zipfile.ZipFile(zpath) as z:
         assert z.read(f'README_{zpath.stem}.md').decode('utf-8') == text
         z.extractall(tmp_path / 'CT_GAT')
