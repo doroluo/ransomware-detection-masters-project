@@ -824,7 +824,6 @@ def tiny_model():
 
 
 @needs_pyg
-@needs_worktrees
 def test_run_arm_writes_a_run_the_harness_reads(tiny, tmp_path, monkeypatch):  # noqa: F811
     monkeypatch.setattr(fit, 'RUNS', tmp_path)
     graphs, sizes = synthetic_graphs(tp.all_ids(), np.random.default_rng(0))

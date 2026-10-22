@@ -24,7 +24,7 @@ import torch.nn as nn
 
 from common.config import RUNS, RunConfig
 from common.manifests import load_sample, run_command
-from experiments.team_pipelines.common import fold_manifest, import_team, sample_rows
+from experiments.team_pipelines.common import fold_manifest, sample_rows
 from experiments.team_pipelines.fit import run_arm, smoke_ids
 from s02_preprocess.subgraph import select_subgraph
 from reference.gnn.spec import open_block_vecs
@@ -85,7 +85,7 @@ def run(arm, fold, seed, smoke=None, block_vec=DEFAULT_BLOCK_VEC, device=None, g
     if arm not in ARMS:
         raise ValueError(f'arm {arm}: one of {ARMS}')
     device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
-    tc = import_team('train_cfg')
+    from s03b_cfg_feature.gat import train_cfg as tc      # imported here: this module imports without torch_geometric
     manifest = fold_manifest(fold, seed)
     want = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test]
     extra = {'budget': BUDGET}

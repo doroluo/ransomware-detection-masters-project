@@ -153,6 +153,27 @@ SOURCES = {
 }
 
 
+# The labels a build's settings.json may name (`source`) and the source whose code a run imports for each. `repo` is the files of
+# this repository; `main-fix` is the label of the builds made from the s02-endp-library-fix branch (145ed35: `b_sig500_v3`,
+# `b_sigwhole_v3`; pins 2ad59852... / e7b13fcc...), which merged into main: a run of such a build imports the embedder and the
+# pooling from this repository's files, and `train_b.check_repool` (one sample re-pooled with the stored ids must reproduce the
+# stored block embeddings to 1e-5 and the api-kind columns exactly) is what guards the alias. A build records its own pins in
+# its settings.json; a run records them as `build_pins` and the sha256 of the files it imported as `code_pins`.
+SOURCE_CODE = {'gnn-331ce0b': 'gnn-331ce0b', 'main-c7899f0': 'main-c7899f0', 'main-fix': 'repo', 'repo': 'repo'}
+
+
+def source_label_ok(label, allowed=None):
+    """True when `label` is a source label a build may record (SOURCE_CODE), and, if `allowed` is given, one of those."""
+    return label in SOURCE_CODE and (allowed is None or label in allowed)
+
+
+def code_source(label):
+    """The key of SOURCES whose files a run imports for a build that records `label`."""
+    if label not in SOURCE_CODE:
+        raise KeyError(f'unknown build source {label}; known: {sorted(SOURCE_CODE)}')
+    return SOURCE_CODE[label]
+
+
 def _origin(src):
     return f"teammate commit {src['commit']}" if src['commit'] else 'the files of this repository'
 

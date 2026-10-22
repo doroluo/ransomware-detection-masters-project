@@ -1,8 +1,9 @@
 name: pipeline-tests
 
 # The tests of CT_GAT/pipeline that need neither the CFG caches of the author's machine nor a GPU. The tests marked
-# real_data and gpu run where the data and CUDA are (see CT_GAT/pipeline/README.md). torch_geometric is not installed on
-# purpose: the guards of experiments/team_pipelines are part of what is tested.
+# real_data and gpu run where the data and CUDA are (see CT_GAT/pipeline/README.md). requirements.txt pins torch_geometric, so
+# the trainer loop of experiments/team_pipelines runs here on synthetic graphs; the guard test fakes the package, so the lazy
+# imports of those modules stay tested.
 
 on:
   push:

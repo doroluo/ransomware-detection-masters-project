@@ -70,11 +70,13 @@ def save_state(out, pp, vocab, embedder, done, settings):
         json.dumps({'settings': settings, 'done': sorted(done), 'api_names': len(vocab.names)}), encoding='utf-8'))
 
 
-def load_vocab_embedder(directory, pp):
-    """(vocab, embedder) from a build directory's api_vocab.json and channel_embedder.pt (the embedder is grown to the
-    saved table first)."""
+def load_vocab_embedder(directory, pp, vocab_path=None):
+    """(vocab, embedder) from a build directory's api_vocab.json (`vocab_path` names another file, as the unzipped Drive zips
+    keep it one level up) and channel_embedder.pt (the embedder is grown to the saved table first). A missing vocabulary file is an
+    empty vocabulary (`load_api_vocab`), so the embedder is then sized from the rows of `api_embedding.weight` alone: a trainer
+    needs the embedder, not the names."""
     directory = Path(directory)
-    vocab = pp.tok.load_api_vocab(directory / 'api_vocab.json')
+    vocab = pp.tok.load_api_vocab(Path(vocab_path) if vocab_path else directory / 'api_vocab.json')
     embedder = pp.FiveChannelEmbedder(pp.api_table_size(vocab))
     weights = torch.load(directory / 'channel_embedder.pt', map_location='cpu')
     embedder.expand_api(int(weights['api_embedding.weight'].shape[0]))

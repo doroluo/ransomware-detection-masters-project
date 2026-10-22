@@ -14,16 +14,18 @@ argument stands for it.
 
 Everything here is optional for the rest of the pipeline: importing any module of this package works without the teammates'
 code, without `torch_geometric` and without `psutil`, and the tests of these modules skip with a reason when an input is absent.
-What the commands need:
+Models 2 and 3 (`train_b --arm sig500v3-feat|sig500v3-emb`, the `sigwhole` arms) need no `GT_TEAM_*` variable: Dorothy's graph
+loader, model and training helpers are copied into [`s03b_cfg_feature/gat`](../../s03b_cfg_feature/README.md) and a build made with the
+fixed preprocess is embedded and pooled by this repository's own `s02_preprocess` files. What the commands need:
 
 | need | for | set with |
 |---|---|---|
-| the teammates' gnn worktree at commit 331ce0b | `build_a`, `build_b` (default source), `train_a`, `train_b`, `fit`, match tools | `GT_TEAM_GNN_ROOT` |
-| the teammates' main worktree at commit c7899f0 | `build_b --source main-c7899f0`, `train_b --arm sig500v2` builds | `GT_TEAM_MAIN_ROOT` |
+| the teammates' gnn worktree at commit 331ce0b | `build_a`, `build_b` (default source), `train_b --arm sig500`, match tools, the identity test `tests/test_gat_port.py` | `GT_TEAM_GNN_ROOT` |
+| the teammates' main worktree at commit c7899f0 | `build_b --source main-c7899f0`, `train_b --arm sig500v2` | `GT_TEAM_MAIN_ROOT` |
 | the Mendeley bundle (`samples.csv`, `cfg/`) | `paths_for`, `team_row`, both builds, when the listings are configured too | `GT_BUNDLE` (or the `bundle` source of `datasets.json`) |
 | the IDA listings `<sample_id>.asm.gz` | `build_b`, the match tools' replay, when the bundle is configured too | `GT_TEAM_ASM_DIR` |
 | the two Mendeley collections, unzipped (`CT_GAT/data/Mendeley_{Ransomware,Goodware}`) | `paths_for`, `team_row`, `build_b` when neither the bundle nor `GT_TEAM_ASM_DIR` is set (their CFGs and listings, from `samples.csv`) | `GT_COLLECTIONS` (default `CT_GAT/data`) |
-| `torch_geometric` | `build_a`, `train_a`, `train_b` (graphs and the GAT) | `pip install torch_geometric` |
+| `torch_geometric` (2.8.1, pinned in `requirements.txt`, installed by CI) | `train_a`, `train_b` (graphs and the GAT) | `pip install -r requirements.txt` |
 | `psutil` | `measure_rss` | `pip install psutil` |
 
 The variables are read when a function needs them, never at import; an unset one raises `TeamSourceNotConfigured` (a
@@ -52,6 +54,22 @@ python -m experiments.team_pipelines.train_a --fold F --seed S --arm cb500 --blo
 python -m experiments.team_pipelines.train_b --fold F --seed S --arm sig500 --device cpu
 ```
 
+- Models 2 and 3 on the fixed build (`sig500v3-feat`, `sig500v3-emb`; the same three inputs on the uncapped build are the `sigwhole`
+  arms) from a clone of this repository, with the Drive zip `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` unzipped at `CT_GAT/` and
+  nothing else configured:
+
+  ```
+  python -m experiments.team_pipelines.train_b --arm sig500v3-emb --fold F --seed S
+  python -m experiments.team_pipelines.train_b --arm sig500v3-feat --fold F --seed S
+  ```
+
+  Without `--build`, the arm's folder under `<runs>/team` is used when it exists, else the `team_b_build` source
+  (`CT_GAT/processed/cfg_subgraphs`, where the zips unpack); `--build DIR` names a folder of either layout (below). In the
+  experiment queue the line is `train_b --fold F --seed S --arm sig500v3-emb [--build DIR]` (`experiments/queue.py`), finished
+  when `<runs>/kfold{F}_x86_gnn_s{S}_team-<arm>/metrics.json` exists, counted in `--budget-min` and held back by STOP like a
+  `train` line. Main's five-channel Model 1 on the uncapped build is the harness command `python -m experiments.train --model
+  fivechannel --protocol kfold --fold F --seed S --max-instructions 512 --tag whole --build <uncapped build>`
+  (`--tag` is a field of `RunConfig`, so the flag exists for every model; the run is `kfold{F}_x86_fivechannel-L512_s{S}_whole`).
 - `gnn500` and `cb500` (`train_a`) need no build but `gnn500`'s (`build_a`); `cb500` reads the CodeBERT block vectors
   `ours_cap0_codebert` of the cache (`reference/cfg_transformer/precompute_blockvec.py`). 15 runs per arm (3 seeds x 5 folds), names
   `kfold{F}_x86_gnn_s{S}_team-gnn500` and `..._team-cb500`.
@@ -214,20 +232,42 @@ python -m experiments.team_pipelines.train_a --fold k --seed s --arm gnn500|cb50
 
 The matched `--subgraph cap --budget 500` arm starts with `python -m experiments.train ... --tag b500` (`RunConfig` accepts budgets from 100 blocks).
 
-## train_b.py (arms sig500, sig500v2)
+## train_b.py (the arms of `ARM_TABLE`)
 
 ```
-python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig500v2 [--build DIR] [--smoke N] [--device cuda|cpu]
+python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--features all|feat|emb] [--source LABEL] [--build DIR] [--smoke N] [--device cuda|cpu]
 ```
 
-- Arms. `sig500` reads `RUNS/team/b_sig500` (source `gnn-331ce0b`), `sig500v2` reads `RUNS/team/b_sig500_v2` (source `main-c7899f0`).
-  `--build DIR` overrides the directory of either arm; the build's `settings.json` names its source and the arm must match it
-  (a mismatch stops). The build's own `preprocess_full` is imported for the embedder and the pooling (the constants and the
-  `FiveChannelEmbedder` are the same in both; `tests/test_team_pipelines.py` compares them); `graph_full_loader` and `gat_full_model`
-  exist only in the gnn source and always come from there. Everything else is identical for the two arms, and `metrics.json` records
-  `build_dir`, `build_source` and `build_pins`.
-- Inputs. The build directory, read only: the `.pt` of the ids in `checkpoint.json` (the embedder state saved
-  there), `api_vocab.json`, `channel_embedder.pt`, `build_log.csv`. A full run needs every id of the fold that the build did not exclude, and stops otherwise.
+- Arms. `ARM_TABLE` has one row per arm (sampler, block budget, node input, the source labels its build may record, the default
+  build folder, the hyperparameters); a new arm is a new row.
+
+  | arm | build (default folder under `<runs>/team`) | node input | source labels | needs |
+  |---|---|---|---|---|
+  | `sig500` | `b_sig500`, 500 blocks | `all`, 141-d | `gnn-331ce0b` | `GT_TEAM_GNN_ROOT` |
+  | `sig500v2` | `b_sig500_v2`, 500 blocks | `all` | `main-c7899f0` | `GT_TEAM_MAIN_ROOT` |
+  | `sig500v3` | `b_sig500_v3`, 500 blocks | `all` | `main-fix`, `repo` | nothing |
+  | `sig500v3-feat` (Model 2) | `b_sig500_v3` | `feat`, the 77 scaled block features | `main-fix`, `repo` | nothing |
+  | `sig500v3-emb` (Model 3) | `b_sig500_v3` | `emb`, the 64-d pooled channel embedding | `main-fix`, `repo` | nothing |
+  | `sigwhole`, `sigwhole-feat`, `sigwhole-emb` | `b_sigwhole_v3`, uncapped (`num_blocks` at least 1,000,000) | `all`, `feat`, `emb` | `main-fix`, `repo` | nothing; a node budget per batch (`HP_WHOLE`, `fit.py`) |
+
+  `--features` and `--source` are refused when they contradict the arm. The build's settings (`settings.json`, or
+  `build_info/build_settings.json` of a zip) name its sampler, block budget and source label; a run refuses a build that
+  contradicts the arm in any of the three and the message names the three values of the arm and of the build (the two first
+  arms skip the keys their builds never wrote). The label picks the code that embeds and pools (`common.SOURCE_CODE`): the
+  pinned worktree for `gnn-331ce0b` and `main-c7899f0`, this repository's `s02_preprocess` files for `main-fix` and `repo`.
+  `main-fix` is the label of the published builds, made from the `s02-endp-library-fix` branch (145ed35) that merged into main
+  (their recorded pins are the hashes of that checkout); a build made from main's own files says `repo`. The alias is guarded by
+  `check_repool`, which re-pools one sample of every run with the stored ids and must reproduce its `block_embeddings`
+  (1e-5) and api-kind columns, and was checked on the whole build: the graphs this trainer makes from `b_sig500_v3` are
+  bit-identical (`torch.equal` on `x`, `edge_index`, `edge_attr`, `y`) to those of the branch's trainer in all three input modes. `metrics.json` records `features`, `build_dir`, `build_binaries`,
+  `build_source` (the label), `build_pins` (the pins in the build's settings, never those of the files now in the repository)
+  and `code_pins` (the sha256 of the files this run imported).
+- Build layouts (`train_b.build_layout`). A `build_b` folder (`settings.json`, `build_log.csv`, `checkpoint.json`,
+  `api_vocab.json`), or an unzipped Drive zip: `build_info/build_settings.json`, `build_info/build_log.csv`, `checkpoint.json` if the
+  zip has one, else the ids are the `<sha256>.pt` stems; `api_vocab.json` in the folder or one level up, else the embedder is sized
+  from `channel_embedder.pt`. `--build` keeps resolving a leading `RUNS/`.
+- Inputs. The build directory, read only: the `.pt` of the ids it covers (the embedder state saved with it),
+  `api_vocab.json`, `channel_embedder.pt`, the build log. A full run needs every id of the fold that the build did not exclude, and stops otherwise.
 - What is fitted where. The build's vocabulary covers all 1,810 binaries; per fold it is cut back to the training binaries:
   API ids (>= `FIRST_API_ID`) that no training binary uses become `UNK_API` in `instruction_ids[:, 3]`; the instruction
   vectors are re-embedded with `FiveChannelEmbedder` (the saved state, never trained) and re-pooled with
@@ -236,8 +276,9 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig5
   operand and behaviour channels stay as built: a name that a real freeze would give `UNK_API` keeps its behaviour tag.
   Before the swap one sample is re-pooled unchanged and must reproduce its stored `block_embeddings` (1e-5) and api-kind
   columns (checked at every start, and by the tests).
-- Graph and model. `graph_full_loader._node_features(.., 'both', scale=True)` (unit-length embedding plus scaled features,
-  141 d) and `_edge_attr` (one-hot relation plus back-edge bit, edge_dim 8); `FullBlockGAT` with its defaults.
+- Graph and model. `graph_full_loader._node_features(.., mode, scale=True)` (unit-length embedding plus scaled features,
+  141 d; `feat` and `emb` keep one of the two parts) and `_edge_attr` (one-hot relation plus back-edge bit, edge_dim 8, the same
+  in the three modes); `FullBlockGAT` with its defaults. Both are Dorothy's, in `s03b_cfg_feature/gat`.
 - Recipe (train_full_gat): AdamW lr 1e-3, weight decay 1e-4, class-weighted cross-entropy, batch 16, at most 40 epochs,
   patience 8 on the validation ransomware F1 at 0.5. Both selection rules, outputs and `--smoke` as in train_a.
   `n_segments_total` is empty (the build does not record the function count); `n_blocks_total` comes from `build_log.csv`.
@@ -245,7 +286,11 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm sig500|sig5
 ## Teammate sources
 
 `common.SOURCES` holds two sha256-pinned sources and the repository's own copy of Yanping's files; `import_team(module, source=...)`
-imports from one of them and `check_pins` checks the files first. A mismatch raises with the file name.
+imports from one of them and `check_pins` checks the files first. A mismatch raises with the file name. `common.SOURCE_CODE` maps
+the label a build records (`gnn-331ce0b`, `main-c7899f0`, `main-fix`, `repo`) to the source whose code a run imports: `main-fix` and
+`repo` to `repo`. Dorothy's `graph_full_loader`, `gat_full_model` and the kept part of `train_cfg` are no longer imported from her
+worktree by the trainers (`s03b_cfg_feature/gat` holds them); their pins and closures stay, so `tests/test_gat_port.py` can
+compare the copies with the worktree.
 
 | source | worktree (environment variable) | commit | files (under the worktree) |
 |---|---|---|---|
@@ -257,7 +302,7 @@ imports from one of them and `check_pins` checks the files first. A mismatch rai
 other source's modules of that import (`preprocess_full`, `tokenize_asm_gz`, and the gnn source's `transformer_model` and
 `token_mapping`) from `sys.modules` and puts that source's directories first on `sys.path`; a module that is already the pinned file
 of the requested source stays loaded. Main's `preprocess_full` imports only `tokenize_asm_gz` (the opcode and operand vocabulary
-sizes are literals), and main has no graph loader or model: `graph_full_loader` and `gat_full_model` always come from the gnn source.
+sizes are literals), and main has no graph loader or model: `graph_full_loader` and `gat_full_model` are the copies in `s03b_cfg_feature/gat`.
 Never modify, format or write into either worktree; the import switches bytecode caching off.
 
 The runs reported in the review used torch 2.11 (CUDA 12.8 wheels), torch_geometric 2.8.1 and transformers 5.20.2. CodeBERT
@@ -289,7 +334,9 @@ python -m experiments.team_pipelines.match_rates --build RUNS/team/b_sig500 --am
 ```
 
 `compare_builds compare` checks, per sample, `block_keys`, `instruction_matched`, `instruction_ids` columns 0, 1, 2 and 4, column 3
-(api), `block_features`, `edge_index` and `edge_attr`, and says which arrays differ and by how much. `python -m s04_evaluation.gates --stage team` has the
+(api), `block_features`, `edge_index` and `edge_attr`, and says which arrays differ and by how much. `--state` adds, for two
+builds that should be the same (a build from main against a published one): `block_embeddings` compared exactly with the largest
+difference printed, the names and ids of `api_vocab.json`, and every tensor of `channel_embedder.pt` with its largest difference. `python -m s04_evaluation.gates --stage team` has the
 row `team sig500v2` and pairs it with `team sig500`, R7 and TF-IDF.
 
 ## Match diagnosis and acceptance (step 24)
@@ -335,7 +382,8 @@ is not complete, criteria 2-4 are computed on the ids it holds and marked partia
 
 ## Tests
 
-`tests/test_team_pipelines.py`, `test_team_exclusion.py`, `test_team_v2.py`, `test_match_diagnosis.py` (CPU). They run everywhere
+`tests/test_team_pipelines.py`, `test_team_exclusion.py`, `test_team_v2.py`, `test_team_v3.py`, `test_team_whole.py`,
+`test_gat_port.py`, `test_match_diagnosis.py` (CPU). They run everywhere
 on the tiny cache of `tests/tiny_cache.py` and on synthetic builds: every module imports without `torch_geometric`, `psutil`
 and the worktrees (a subprocess with fake packages that raise `ImportError`); the environment variables name the missing input;
 the pin check and `import_team` on a toy source; `paths_for` and `team_row` on a synthetic collection root (neither the bundle nor
@@ -346,8 +394,13 @@ train, val and test; a synthetic five-fold `write_run` arm is read by `s04_evalu
 and by the `team` stage of the gates, and its directory name equals `RunConfig.name`; explicit exclusions of pipeline B;
 `compare_builds`, `match_rates` and `match_diagnosis` / `match_acceptance` on synthetic builds (a fake pinned module).
 
+`test_team_v3.py` and `test_team_whole.py` train the v3 and uncapped arms on synthetic builds in both layouts (a build
+folder and an unzipped Drive zip) and check the settings refusals, the provenance keys of `metrics.json`, the node budget and the v3
+rows of the gates; `test_gat_port.py` checks the attribution of Dorothy's copies and, with `GT_TEAM_GNN_ROOT`, that every copied
+definition equals the original's source text.
+
 They skip with a reason without their input: both pin sets pass on the worktrees and a tampered copy of either raises, importing
 one source never leaves the other's modules in `sys.modules` (`GT_TEAM_GNN_ROOT`, `GT_TEAM_MAIN_ROOT`); the trainers on a
-synthetic `run_arm` (`torch_geometric`); `measure_rss` (`psutil`); the checks over all 1,810 binaries, `paths_for` on every id, the
+synthetic `run_arm` and the arms trained on synthetic builds (`torch_geometric`, which `requirements.txt` pins and CI installs); `measure_rss` (`psutil`); the checks over all 1,810 binaries, `paths_for` on every id, the
 builds, re-pooling, the UNK swap, `cb500` against `encode_binary_gnn` of the matched arm and the three `--smoke` paths (marked
 `real_data`: the cache, `GT_BUNDLE`, `GT_TEAM_ASM_DIR`, and the build or vector directories where they read them).

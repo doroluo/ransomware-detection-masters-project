@@ -331,3 +331,91 @@ def test_cli_runs_a_plan_end_to_end_with_the_python_option(tmp_path):
     r = cli('--plan', str(plan), '--runs', str(runs), '--python', f'{Path(sys.executable).as_posix()} {STUB.as_posix()}')
     assert r.returncode == 0, r.stderr
     assert (runs / 'stub_a' / 'metrics.json').is_file() and 'queue done' in r.stdout
+
+
+# the train_b verb -------------------------------------------------------------------------------------------------------------
+
+TRAIN_B = ['train_b --fold 0 --seed 0 --arm sig500v3-emb', 'train_b --fold 1 --seed 2 --arm sigwhole-feat --build RUNS/team/b_sigwhole_v3']
+
+
+def test_train_b_lines_are_named_like_the_runs_they_write():
+    from experiments.team_pipelines import common as team
+    steps = q.parse_plan('\n'.join(TRAIN_B) + '\n')
+    assert [s.label for s in steps] == ['kfold0_x86_gnn_s0_team-sig500v3-emb', 'kfold1_x86_gnn_s2_team-sigwhole-feat']
+    assert [s.label for s in steps] == [team.team_config(0, 0, 'sig500v3-emb').name, team.team_config(1, 2, 'sigwhole-feat').name]
+    assert [s.label for s in steps] == [RunConfig(protocol='kfold', fold=f, arch='x86', seed=s, model='gnn', tag=f'team-{a}').name
+                                        for f, s, a in ((0, 0, 'sig500v3-emb'), (1, 2, 'sigwhole-feat'))]
+    assert steps[0].module == 'experiments.team_pipelines.train_b' and steps[1].module_args[-2:] == ('--build', 'RUNS/team/b_sigwhole_v3')
+    assert steps[0].done_files == ('kfold0_x86_gnn_s0_team-sig500v3-emb/metrics.json',)
+    assert all(s.verb in q.WORK and s.verb in q.TRAIN for s in steps)
+
+
+@pytest.mark.parametrize('text, message', [
+    ('train_b --seed 0 --arm sig500v3\n', 'required'), ('train_b --fold 0 --seed 0\n', 'required'),
+    ('train_b --fold 0 --arm nonesuch\n', 'invalid choice'), ('train_b --fold x --arm sig500v3\n', 'invalid int'),
+    ('train_b --fold 0 --arm sig500v3 --smoke 4\n', 'unrecognized'),
+])
+def test_a_bad_train_b_line_is_refused_with_its_line_number(text, message):
+    with pytest.raises(q.PlanError, match=message) as e:
+        q.parse_plan('# first\n' + text, 'p.txt')
+    assert 'p.txt:2' in str(e.value)
+
+
+def test_dry_run_prints_the_two_run_names_of_a_train_b_plan(tmp_path):
+    plan = tmp_path / 'two.txt'
+    plan.write_text('\n'.join(TRAIN_B) + '\n', encoding='utf-8')
+    r = cli('--plan', str(plan), '--dry')
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.splitlines() == [
+        'run kfold0_x86_gnn_s0_team-sig500v3-emb train_b --fold 0 --seed 0 --arm sig500v3-emb',
+        'run kfold1_x86_gnn_s2_team-sigwhole-feat train_b --fold 1 --seed 2 --arm sigwhole-feat --build RUNS/team/b_sigwhole_v3']
+
+
+def test_train_b_lines_are_charged_to_the_budget_and_skipped_or_stopped_like_train_lines(tmp_path):
+    lines = [*TRAIN_B, 'train --out stub_a --protocol kfold --fold 0 --model gnn']
+    out = io.StringIO()
+    assert q.Queue(q.parse_plan('\n'.join(lines) + '\n'), tmp_path, dry=True, dry_min=100, budget_min=150, out=out).run() == 0
+    said = out.getvalue().splitlines()
+    assert said[0].startswith('run kfold0_x86_gnn_s0_team-sig500v3-emb train_b ') and said[1].startswith('run kfold1_x86_gnn_s2_')
+    assert said[2] == 'skipped (budget) stub_a'                                    # the two train_b lines were charged 200 minutes
+    done = tmp_path / 'kfold0_x86_gnn_s0_team-sig500v3-emb'
+    done.mkdir()
+    (done / 'metrics.json').write_text('{}')
+    (tmp_path / 'logs').mkdir()
+    ran = []
+
+    class StopAfterOne(q.Queue):
+        def launch(self, command, stdout_path, stderr_path):
+            ran.append(command[-1])
+            (self.runs / 'STOP').touch()                                                 # as `queue --stop` does while a run is going
+            return 0
+    out = io.StringIO()
+    assert StopAfterOne(q.parse_plan('\n'.join(lines) + '\n'), tmp_path, out=out).run() == 0
+    said = out.getvalue().splitlines()
+    assert said[0] == 'skip kfold0_x86_gnn_s0_team-sig500v3-emb' and ran == ['RUNS/team/b_sigwhole_v3']     # the finished line is skipped
+    assert said[1].startswith('start kfold1_x86_gnn_s2_team-sigwhole-feat') and 'stopped before stub_a' in said
+
+
+def test_a_train_b_line_runs_its_module_with_its_arguments_and_counts_toward_the_budget(tmp_path):
+    started = []
+
+    class Fake(q.Queue):
+        def launch(self, command, stdout_path, stderr_path):
+            started.append(command)
+            name = (f"kfold{command[command.index('--fold') + 1]}_x86_gnn_s{command[command.index('--seed') + 1]}_team-"
+                    f"{command[command.index('--arm') + 1]}")
+            (self.runs / name).mkdir(parents=True, exist_ok=True)
+            (self.runs / name / 'metrics.json').write_text('{}')
+            return 0
+    out = io.StringIO()
+    runs = tmp_path / 'runs'
+    queue = Fake(q.parse_plan(TRAIN_B[0] + '\n' + TRAIN_B[0].replace('--fold 0', '--fold 3') + '\n'), runs, python=['py'], out=out)
+    assert queue.run() == 0
+    assert [c[:3] for c in started] == [['py', '-m', 'experiments.team_pipelines.train_b']] * 2
+    assert started[0][3:] == ['--fold', '0', '--seed', '0', '--arm', 'sig500v3-emb']
+    said = out.getvalue().splitlines()
+    assert any(l.startswith('finished kfold0_x86_gnn_s0_team-sig500v3-emb rc=0') and 'gpu_min=' in l for l in said)
+    assert (runs / 'kfold3_x86_gnn_s0_team-sig500v3-emb' / 'metrics.json').is_file() 
+    out = io.StringIO()
+    again = Fake(q.parse_plan(TRAIN_B[0] + '\n'), runs, python=['py'], out=out)
+    assert again.run() == 0 and out.getvalue().splitlines()[0] == 'skip kfold0_x86_gnn_s0_team-sig500v3-emb' and len(started) == 2

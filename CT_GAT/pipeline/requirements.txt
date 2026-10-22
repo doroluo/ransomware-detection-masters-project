@@ -9,8 +9,9 @@ scipy==1.18.1
 scikit-learn==1.9.1
 pytest==9.1.1
 PyYAML==6.0.3
+# The GAT of Models 2 and 3 (experiments/team_pipelines, s03b_cfg_feature/gat). A pure-python wheel: it runs on the CPU or the CUDA torch.
+torch_geometric==2.8.1
 
 # Optional, not installed by CI (the tests that need them skip with a reason):
-#   torch_geometric  the teammates' GAT pipelines in experiments/team_pipelines (also needs GT_TEAM_GNN_ROOT, GT_TEAM_MAIN_ROOT)
 #   psutil           experiments/team_pipelines/measure_rss.py
 #   transformers, safetensors   the CodeBERT block encoder (reference/cfg_transformer/encoders/codebert.py), with HF_HOME set

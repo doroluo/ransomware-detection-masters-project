@@ -21,7 +21,7 @@ differences over the seeds complete in both arms:
 | file | stage | the plan that produced its runs |
 |---|---|---|
 | [`gates_noapi.md`](gates_noapi.md) | `noapi`: the api-token ablation | `noapi`, `r2_noapi` |
-| [`gates_team.md`](gates_team.md) | `team`: the teammates' pipelines under our folds, our 500-block arms; since 2026-10-21 also the v3 build (`sig500v3`, Models 2 and 3), the uncapped arms (`sigwhole`) and `fivechannel-L512 whole`, written by the branch's `gates.py --stage team` (main's `team` stage does not have these rows) | `team`, `paths_codebert`, and the trainers of `experiments/team_pipelines` (the v3 and uncapped arms: `train_b` of the branch) |
+| [`gates_team.md`](gates_team.md) | `team`: the teammates' pipelines under our folds, our 500-block arms; since 2026-10-21 also the v3 build (`sig500v3`, Models 2 and 3), the uncapped arms (`sigwhole`) and `fivechannel-L512 whole`, reproduced line for line by `python -m s04_evaluation.gates --stage team` on the same runs | `team`, `paths_codebert`, and the trainers of `experiments/team_pipelines` (the v3 and uncapped arms: `train_b`) |
 | [`gates_model1_variants.md`](gates_model1_variants.md) | `model1_variants`: Model 1 with the out-of-fold threshold (`-thoof`), Janice's five-channel Model 1 at 128 and 512 instructions | `model1_variants` |
 | [`gates_v3.md`](gates_v3.md) | `v3`: the combined cache, all architectures, arch-balanced arms | `v3` |
 | [`gates_paths_codebert.md`](gates_paths_codebert.md) | `paths_codebert`: Model 3, the GNN on CodeBERT block vectors | `paths_codebert` |

@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 import experiments.stages as stages_package
+from experiments.stages import team as team_stage
 from common.config import RunConfig
 from eval_synth import (CHAIN, FAKE_FLOORS, V3_MASKED, build_fake, build_subgraph_fake, build_v3_ab_fake, build_v3_fake,  # noqa: F401
                         gnn, write_baseline, write_truncated_v3_run, write_v3_run)
@@ -158,12 +159,38 @@ def test_team_groups_are_the_names_the_trainers_write():
     assert arms['path 2: typed, CodeBERT vectors'] == 'kfold_x86_gnn-mblk15-bv-ours_cap0_codebert'
     assert arms['header-imports LR'] == 'imports-header' and arms['TF-IDF'] == 'tfidf'
     pairs = s.pairs
+    first = ('team gnn500', 'team cb500', 'team sig500', 'team sig500v2')                 # the arms of the first four builds
     for ref in ('TF-IDF', 'R7 typed, whole graph', 'ours b500 typed'):
         v2 = ['team sig500v2'] if ref != 'ours b500 typed' else []                  # sig500v2: against sig500, R7 and TF-IDF
-        assert [b for a, b in pairs if a == ref and b.startswith('team ')] == ['team gnn500', 'team cb500', 'team sig500'] + v2
+        assert [b for a, b in pairs if a == ref and b in first] == ['team gnn500', 'team cb500', 'team sig500'] + v2
     assert ('team sig500', 'team sig500v2') in pairs
     assert ('path 2: typed, CodeBERT vectors', 'team cb500') in pairs and ('R7 typed, whole graph', 'ours b500 typed') in pairs
-    assert len(pairs) == 14 and s.extra == 'operating_points' and s.seeds == (0, 1, 2)
+    assert len(pairs) == len(set(pairs)) == 31 and s.extra == 'operating_points' and s.seeds == (0, 1, 2)
+    assert s.options['match_rate_builds'] == (('b_sig500_v3', 'team/b_sig500_v3'), ('b_sigwhole_v3', 'team/b_sigwhole_v3'))
+
+
+def test_team_gates_v3_and_whole_rows_and_pairs():
+    s = stage('team')
+    arms = dict(s.arms)
+    for label, arm in (('team sig500v3', 'sig500v3'), ('team sig500v3 feat (Model 2)', 'sig500v3-feat'),
+                       ('team sig500v3 emb (Model 3)', 'sig500v3-emb'), ('team sigwhole', 'sigwhole'),
+                       ('team sigwhole feat (Model 2)', 'sigwhole-feat'), ('team sigwhole emb (Model 3)', 'sigwhole-emb')):
+        assert arms[label] == RunConfig(protocol='kfold', fold=0, arch='x86', model='gnn', tag=f'team-{arm}').group
+    # main's Model 1 on the uncapped build: written by `--model fivechannel --max-instructions 512 --tag whole`
+    assert arms['fivechannel-L512 whole'] == RunConfig(protocol='kfold', fold=0, arch='x86', model='fivechannel', max_instructions=512,
+                                                       tag='whole').group == 'kfold_x86_fivechannel-L512_whole'
+    pairs = s.pairs
+    v3, feat, emb = team_stage.V3
+    for ref in ('R7 typed, whole graph', 'ours b500 no-edges'):
+        assert [b for a, b in pairs if a == ref and b in team_stage.V3] == [v3, feat, emb]
+    assert [a for a, b in pairs if b == v3] == ['team sig500v2', 'team sig500', 'R7 typed, whole graph', 'ours b500 no-edges']
+    assert (feat, emb) in pairs and not any(b in team_stage.V3 for a, b in pairs if a in ('TF-IDF', 'ours b500 typed'))
+    for before, after in zip(team_stage.V3, team_stage.WHOLE):
+        assert (before, after) in pairs
+    assert [b for a, b in pairs if a == 'R7 typed, whole graph' and b in team_stage.WHOLE_ROWS] == list(team_stage.WHOLE_ROWS)
+    assert (team_stage.WHOLE[1], team_stage.WHOLE[2]) in pairs
+    assert not set(team_stage.V3 + team_stage.WHOLE) & set(team_stage.TEAM_OF)
+    assert not any(b in team_stage.WHOLE_ROWS for a, b in pairs if a in ('TF-IDF', 'ours b500 typed'))
 
 
 def test_team_gates_pair_sig500v2_with_sig500_r7_and_tfidf():

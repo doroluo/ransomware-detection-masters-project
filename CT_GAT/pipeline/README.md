@@ -48,8 +48,8 @@ says what they are and how to run them.
 ## Setup
 
 Python 3.12 and the packages of [`requirements.txt`](requirements.txt) (`pip install --extra-index-url https://download.pytorch.org/whl/cpu
--r requirements.txt` for a CPU machine; install the CUDA build of torch for training). `torch_geometric` is optional: only the
-team adapters in `experiments/team_pipelines` use it, and their tests skip without it.
+-r requirements.txt` for a CPU machine; install the CUDA build of torch for training). `torch_geometric` (pinned in `requirements.txt`) is used only by the
+team adapters in `experiments/team_pipelines` and `s03b_cfg_feature/gat`; they import it when they run, and their tests skip without it.
 
 Every input has a default location, so a machine that unzips the two Mendeley collections into `CT_GAT/data/` needs no
 configuration file and no environment variable. The datasets are rows of [`common/catalog.py`](common/catalog.py), which
@@ -214,8 +214,9 @@ preprocessed zip provides and `build_b` does not: `build_b` writes `api_vocab.js
 copy it, as in `cp ../processed/cfg_subgraphs/api_vocab.json ../processed/api_vocab.json`. Without the file the demo still runs, but
 the vocabulary is empty and every API id is clamped to one embedding row.
 
-**5. The teammates' GAT pipelines** under the same folds: [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md)
-(needs `torch_geometric` and, except for `build_b --source repo`, the pinned teammate worktrees).
+**5. Models 2 and 3, the team GAT** under the same folds: [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md)
+(`torch_geometric` is in `requirements.txt`; the pinned teammate worktrees are needed only for `build_a`, the older builds and
+`train_b --arm sig500|sig500v2`).
 
 **6. Evaluation.** Each run writes `RUNS/<name>/metrics.json` and its predictions; these read them:
 

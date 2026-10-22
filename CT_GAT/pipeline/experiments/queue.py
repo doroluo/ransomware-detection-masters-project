@@ -5,6 +5,8 @@
 A plan is a text file with one command per line; blank lines and lines that start with `#` are ignored.
 
     train <experiments.train arguments>      python -m experiments.train <arguments>
+    train_b --fold F --seed S --arm ARM [--build DIR]
+                                             python -m experiments.team_pipelines.train_b <arguments>   (a team pipeline-B arm)
     baselines <s04_evaluation.baselines arguments>
     report                                   python -m s04_evaluation.report
     val_threshold                            python -m s04_evaluation.val_threshold      > <runs>/val_threshold.md
@@ -15,20 +17,20 @@ The whole plan is parsed first (a bad line, an unknown gates stage, an unknown t
 
 Semantics, from the shell queues the experiments were run with:
   * a `train` line is skipped (`skip <name>`) when `<runs>/<name>/metrics.json` exists, <name> being `RunConfig.name` of its
-    arguments (or `--out`); a `baselines` line is skipped when every directory it would write already holds a metrics.json with
+    arguments (or `--out`; a `train_b` line: `team_config(F, S, ARM).name`, `kfold{F}_x86_gnn_s{S}_team-{ARM}`); a `baselines` line is skipped when every directory it would write already holds a metrics.json with
     a validation threshold (`stack_logits.csv` with --stack-logits);
-  * when the STOP file (`<runs>/STOP`, or `--stop-file`) exists before a `train` or `baselines` line, the line is logged as
+  * when the STOP file (`<runs>/STOP`, or `--stop-file`) exists before a `train`, `train_b` or `baselines` line, the line is logged as
     `stopped before <name>` and skipped; `report`, `val_threshold` and `gates` still run, so the tables of what finished are
     written. A STOP file left from an earlier session is removed at the start and logged. `--stop` creates it;
-  * `--budget-min N` caps the wall time spent in `train` lines (retries included): once N minutes are used, the remaining
-    `train` lines are logged as `skipped (budget) <name>`; the other lines still run;
+  * `--budget-min N` caps the wall time spent in `train` and `train_b` lines (retries included): once N minutes are used, the
+    remaining `train` and `train_b` lines are logged as `skipped (budget) <name>`; the other lines still run;
   * a line that exits non-zero is retried once (`retry <name>`; the first log is kept as `<name>.log.try1`), not when the STOP
     file exists, so stopping the queue and killing the run does not restart it;
   * every line logs to `<runs>/logs/<name>.log`; `start <name> HH:MM:SS` and `finished <name> rc=<rc> HH:MM:SS` mark each one;
   * the exit code is 1 when a line failed after its retry (the queue goes on to the next line), 0 otherwise, 2 for a bad plan.
 
-`--dry` prints `run <name> <arguments>` for every `train` line and `cpu <command>` for the others, writes nothing and skips
-nothing that exists; `--dry-min N` charges N minutes per `train` line so that the budget guard can be tried. `--python CMD`
+`--dry` prints `run <name> <arguments>` for every `train` line (`run <name> train_b <arguments>` for a `train_b` line) and
+`cpu <command>` for the others, writes nothing and skips nothing that exists; `--dry-min N` charges N minutes per `train` line so that the budget guard can be tried. `--python CMD`
 (or `GT_PY`) names the interpreter, default the one running the queue. Every child runs with the pipeline root as its working
 directory, `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (the GPU is shared) and `PYTHONUNBUFFERED=1`.
 Python only: the same plan runs on Windows and Linux.
@@ -46,8 +48,9 @@ from pathlib import Path
 
 PIPELINE_ROOT = Path(__file__).resolve().parents[1]
 PLANS = PIPELINE_ROOT / 'experiments' / 'plans'
-VERBS = ('train', 'baselines', 'report', 'val_threshold', 'gates')
-WORK = ('train', 'baselines')                     # the lines that the STOP file and the budget hold back
+VERBS = ('train', 'train_b', 'baselines', 'report', 'val_threshold', 'gates')
+TRAIN = ('train', 'train_b')                      # the lines that use the GPU: the budget counts them
+WORK = ('train', 'train_b', 'baselines')          # the lines that the STOP file and the budget hold back
 
 
 class PlanError(ValueError):
@@ -85,6 +88,25 @@ def _train_step(args, where):
     return Step('train', tuple(args), name, 'experiments.train', tuple(args), done_files=(f'{name}/metrics.json',))
 
 
+def _train_b_step(args, where):
+    import argparse
+
+    from experiments.team_pipelines import common, train_b
+
+    class Refuse(argparse.ArgumentParser):
+        def error(self, message):
+            raise PlanError(f'{where}: `train_b {" ".join(args)}`: {message}')
+
+    ap = Refuse(prog='train_b', add_help=False)
+    ap.add_argument('--fold', type=int, required=True)
+    ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--arm', choices=train_b.ARMS, required=True)
+    ap.add_argument('--build')
+    parsed = ap.parse_args(list(args))
+    name = common.team_config(parsed.fold, parsed.seed, parsed.arm).name
+    return Step('train_b', tuple(args), name, 'experiments.team_pipelines.train_b', tuple(args), done_files=(f'{name}/metrics.json',))
+
+
 def _baselines_step(args, where):
     from s04_evaluation import baselines
     try:
@@ -111,6 +133,8 @@ def parse_line(line, where='plan'):
         raise PlanError(f'{where}: unknown command {verb!r}; the plan commands are {", ".join(VERBS)}')
     if verb == 'train':
         return _train_step(args, where)
+    if verb == 'train_b':
+        return _train_b_step(args, where)
     if verb == 'baselines':
         return _baselines_step(args, where)
     if verb == 'report':
@@ -232,8 +256,8 @@ class Queue:
         return rc, time.monotonic() - start
 
     def dry_line(self, step):
-        if step.verb == 'train':
-            return f'run {step.label} {step.text}'
+        if step.verb in TRAIN:
+            return f'run {step.label} {"train_b " if step.verb == "train_b" else ""}{step.text}'
         target = f' > <runs>/{step.stdout}' if step.stdout else ''
         return f'cpu {step.verb}{" " + step.text if step.text else ""}{target}'
 
@@ -253,18 +277,18 @@ class Queue:
                 self.say(f'skip {step.label}')
             elif work and self.stop.exists():
                 self.say(f'stopped before {step.label}')
-            elif step.verb == 'train' and self.over_budget():
+            elif step.verb in TRAIN and self.over_budget():
                 self.say(f'skipped (budget) {step.label}')
             elif self.dry:
                 self.say(self.dry_line(step))
-                if step.verb == 'train':
+                if step.verb in TRAIN:
                     self.used_s += self.dry_s
             else:
                 rc, seconds = self.run_step(step)
-                if step.verb == 'train':
+                if step.verb in TRAIN:
                     self.used_s += seconds
                 self.say(f'finished {step.label} rc={rc} {clock()}' + (f' gpu_min={int(self.used_s // 60)}'
-                                                                      if step.verb == 'train' else ''))
+                                                                      if step.verb in TRAIN else ''))
                 if rc != 0:
                     self.failed.append(step.label)
         if not self.dry:

@@ -3,7 +3,9 @@
 Moved unchanged from the single-file `gates.py` of the 3-block-level-counting branch; the stage definitions that call them
 live in `experiments/stages/`, the layouts that arrange them in `gate_layouts.py`, the engine in `gates.py`.
 """
+import json
 from functools import lru_cache
+from pathlib import Path
 
 import numpy as np
 
@@ -80,6 +82,34 @@ def operating_points(arms):
                  + [f'{ratio(tp + tn, len(p.y)):.3f}', f'{ratio(tp, tp + fp):.3f}', f'{ratio(tp, tp + fn):.3f}']
                  + [str(v) for v in (tp, fn, fp, tn)])
         out.append(f'| {arm} | ' + ' | '.join(cells) + ' |')
+    return out
+
+
+def match_rate_line(build, name):
+    """One line with the per-label match rates of the pipeline-B build in `build`, called `name` in the line
+    (experiments/team_pipelines/match_rates.py), or why it cannot be given: no build, or one whose build_summary.json does not
+    account for all 1810 binaries."""
+    from experiments.team_pipelines import match_rates
+    summary = Path(build) / 'build_summary.json'
+    if not summary.is_file():
+        return f'Match rates of `{name}`: missing (no {summary.name} under {build}).'
+    done = json.loads(summary.read_text(encoding='utf-8'))
+    if done.get('processed') != done.get('total') or done.get('total') != 1810:
+        return (f"Match rates of `{name}`: missing (build incomplete: {done.get('processed')} of {done.get('total')} "
+                'binaries processed).')
+    rates = match_rates.summarize(match_rates.sample_rates(Path(build)))
+    parts = [f"{name} {s['n']} binaries, mean {s['mean_match']:.3f}, below 50% {s['n_below_50']} ({100 * s['share_below_50']:.1f}%), "
+             f"below 90% {s['n_below_90']} ({100 * s['share_below_90']:.1f}%), exactly 0 {100 * s['share_zero']:.1f}%"
+             for name, s in rates.items()]
+    return f'Match rates of `{name}` (share of each binary\'s selected instructions paired with a listing line): ' + '; '.join(parts) + '.'
+
+
+def match_rate_lines(builds):
+    """The lines a stage's `options['match_rate_builds']` asks for: `match_rate_line` of each (name, folder under the run
+    directory), each after a blank line. The folder is resolved when the lines are made, with the run directory `stats` reads."""
+    out = []
+    for name, folder in builds:
+        out += ['', match_rate_line(stats.RUNS / folder, name)]
     return out
 
 

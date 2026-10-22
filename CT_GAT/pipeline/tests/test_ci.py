@@ -24,7 +24,7 @@ def test_the_workflow_runs_the_cpu_tests_on_ubuntu_with_python_312():
     commands = [s['run'] for s in steps if 'run' in s]
     assert any('pip install -r requirements.txt' in c for c in commands)
     assert commands[-1] == 'python -m pytest -m "not real_data and not gpu" -q -p no:cacheprovider'
-    assert 'torch_geometric' not in WORKFLOW.read_text(encoding='utf-8').replace('torch_geometric is not installed', '')
+    assert 'not installed on' not in WORKFLOW.read_text(encoding='utf-8')                  # torch_geometric comes from requirements.txt
     triggers = doc.get(True) or doc.get('on')
     assert 'CT_GAT/pipeline/**' in triggers['pull_request']['paths']
 
@@ -34,8 +34,9 @@ def test_the_requirements_are_pinned_and_use_the_cpu_torch_index():
     active = [l for l in lines if l and not l.startswith('#')]
     assert active[0] == '--extra-index-url https://download.pytorch.org/whl/cpu'
     pins = dict(l.split('==') for l in active[1:])
-    assert set(pins) == {'torch', 'numpy', 'scipy', 'scikit-learn', 'pytest', 'PyYAML'} and all(re.fullmatch(r'\d+(\.\d+)+', v) for v in pins.values())
-    assert not any('geometric' in l for l in active)                         # optional, so that the guards are exercised
+    assert set(pins) == {'torch', 'numpy', 'scipy', 'scikit-learn', 'pytest', 'PyYAML', 'torch_geometric'}
+    assert all(re.fullmatch(r'\d+(\.\d+)+', v) for v in pins.values())
+    assert pins['torch_geometric'] == '2.8.1'                                # what the published runs used; CI installs it
 
 
 def test_no_file_of_the_pipeline_names_a_machine():
