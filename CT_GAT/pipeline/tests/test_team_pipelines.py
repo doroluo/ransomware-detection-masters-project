@@ -32,7 +32,7 @@ from tiny_cache import tiny  # noqa: F401  (a fixture)
 FOLDS = range(5)
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ('build_a', 'build_b', 'common', 'compare_builds', 'fit', 'match_acceptance', 'match_diagnosis', 'match_rates',
-           'measure_rss', 'train_a', 'train_b')
+           'measure_rss', 'package_build', 'train_a', 'train_b')
 
 
 def _importable(name):
