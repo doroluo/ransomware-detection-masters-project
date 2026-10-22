@@ -480,7 +480,7 @@ def test_max_instructions_excludes_the_larger_binaries_with_the_automatic_reason
             assert not left & big
 
 
-def test_max_instructions_is_recorded_only_when_given_and_a_resume_warns_when_it_differs(stand_in, tmp_path, capsys):
+def test_max_instructions_is_recorded_only_when_given_and_a_resume_must_pass_it_again(stand_in, tmp_path, capsys):
     rows = tp.sample_rows('kfold_v3', 'all')
     sizes = sorted(int(r['num_instructions']) for r in rows.values())
     cap, lower = sizes[len(sizes) // 2], sizes[len(sizes) // 4]
@@ -496,10 +496,18 @@ def test_max_instructions_is_recorded_only_when_given_and_a_resume_warns_when_it
     summary = run(out, *flags, '--max-instructions', str(lower))                             # lower: warns, goes on, records the new cap
     assert f'--max-instructions {cap}' in capsys.readouterr().err and json_of(out / 'settings.json')['max_instructions'] == lower
     assert summary['processed'] + len(summary['excluded']) == summary['total']
-    run(out, *flags)                                                                         # omitted: warns with the recorded value
-    assert f'--max-instructions {lower}, this run omits it' in capsys.readouterr().err
-    assert 'max_instructions' not in json_of(out / 'settings.json')
-    run(out, *flags)
+    before = (out / 'settings.json').read_bytes()
+    with pytest.raises(SystemExit) as refused:                                               # omitted: refused, nothing is rewritten
+        run(out, *flags)
+    assert f'records --max-instructions {lower}' in str(refused.value) and f'pass --max-instructions {lower}' in str(refused.value)
+    assert '--max-instructions 0' in str(refused.value) and (out / 'settings.json').read_bytes() == before
+    assert run(out, *flags, '--max-instructions', str(lower))['built_this_run'] == 0           # the recorded value: resumes, silent
+    assert 'WARNING' not in capsys.readouterr().err and json_of(out / 'settings.json')['max_instructions'] == lower
+    uncapped = run(out, *flags, '--max-instructions', '0')                                   # 0: the cap is dropped, the excluded ids are built
+    assert f'--max-instructions {lower}, this run passes 0' in capsys.readouterr().err
+    assert 'max_instructions' not in json_of(out / 'settings.json') and uncapped['excluded'] == {}
+    assert uncapped['processed'] == uncapped['total'] == len(rows)
+    run(out, *flags)                                                                         # no record any more: omitting it is as before
     assert 'WARNING' not in capsys.readouterr().err
     plain = tmp_path / 'plain'                                                               # a build without a cap neither records nor warns
     run(plain, *flags, '--ids', *list(rows)[:2])
@@ -511,8 +519,13 @@ def test_max_instructions_of_an_extension_is_recorded_and_checked_like_any_other
     base = base_build(tmp_path)
     extend(base, '--max-instructions', '10000000')
     assert json_of(base / 'settings.json')['max_instructions'] == 10000000 and 'WARNING' not in capsys.readouterr().err
-    extend(base)
-    assert '--max-instructions 10000000, this run omits it' in capsys.readouterr().err
+    with pytest.raises(SystemExit, match='records --max-instructions 10000000'):
+        extend(base)
+    assert json_of(base / 'settings.json')['max_instructions'] == 10000000
+    extend(base, '--max-instructions', '10000000')
+    assert 'WARNING' not in capsys.readouterr().err
+    extend(base, '--max-instructions', '0')
+    assert '--max-instructions 10000000, this run passes 0' in capsys.readouterr().err
     assert 'max_instructions' not in json_of(base / 'settings.json')
 
 

@@ -61,8 +61,10 @@ about 4,000,000 instructions does not fit this machine). They are recorded like 
 `build_summary.json` `excluded`, and the trainers leave them out of every split; pass the same N on every resume (a lower N on a
 resume is how a MemoryError is answered). An id the checkpoint already holds stays built and is not excluded. N is recorded as
 `max_instructions` in `settings.json` (only by a build that passes it, so the settings of the kfold x86 builds keep their keys, and
-not in the checkpoint's settings); a resume of a build that records a cap prints a warning naming it when the flag is omitted or
-differs, and goes on (the cap of the run is what counts, and replaces the record).
+not in the checkpoint's settings). A resume of a build that records a cap is refused when the flag is omitted: the message names
+the recorded value, and the resume is run with that value or with `--max-instructions 0`, which drops the cap (the record is
+removed and every id is attempted again). A resume that passes another N prints a warning naming the recorded one and goes on (the
+cap of the run is what counts, and replaces the record).
 
 --extend (the full-Mendeley builds): grow a finished kfold x86 build, copied to --out, to all 2,411 Mendeley ids with
 `--protocol kfold --arch all --source repo`, with the copy's own --sample, --num-blocks and --seed. The copy's vocabulary, embedder
@@ -289,7 +291,8 @@ def main(argv=None):
     ap.add_argument('--arch', choices=['x86', 'all', 'matched'],
                     help='the architectures built (default: x86 for kfold, all for kfold_v3); matched is refused, it is a filter of the all build')
     ap.add_argument('--max-instructions', type=int, metavar='N',
-                    help='leave out the ids whose index num_instructions exceeds N, with an automatic reason (load_cfg needs about 3 KB per instruction)')
+                    help='leave out the ids whose index num_instructions exceeds N, with an automatic reason (load_cfg needs about 3 KB per instruction); '
+                    'required again on a resume of a build that records it, and 0 drops the cap')
     ap.add_argument('--extend', action='store_true', help='grow the finished kfold x86 build in --out to kfold all (the x64 ids): see the module docstring')
     ap.add_argument('--out', type=Path, help='the build folder (default: the team_b_build source, CT_GAT/processed/cfg_subgraphs; '
                     'required for any dataset but kfold x86)')
@@ -342,17 +345,21 @@ def main(argv=None):
     out.mkdir(parents=True, exist_ok=True)
     refuse_foreign_folder(out)
     recorded_cap = read_max_instructions(out)
+    if recorded_cap is not None and args.max_instructions is None:
+        raise SystemExit(f'{out} records --max-instructions {recorded_cap}: pass --max-instructions {recorded_cap} to resume it with the same cap, '
+                         f'or --max-instructions 0 to drop the cap (every id is then attempted again)')
+    cap = args.max_instructions or None                      # 0 drops the cap
     vocab, embedder, done = load_state(out, pp, settings, **({'extend': True} if args.extend else {}))
-    if recorded_cap is not None and args.max_instructions != recorded_cap:
+    if recorded_cap is not None and cap != recorded_cap:
         print(f'WARNING {out}: the build records --max-instructions {recorded_cap}, this run '
-              + ('omits it' if args.max_instructions is None else f'passes {args.max_instructions}'), file=sys.stderr, flush=True)
+              + ('passes 0, which drops it' if cap is None else f'passes {cap}'), file=sys.stderr, flush=True)
     built_excluded = sorted(set(excluded) & done)
     if built_excluded:
         raise SystemExit(f'the checkpoint already holds {built_excluded}: they cannot be excluded')
-    if args.max_instructions is not None:
-        reason = f'num_instructions > {args.max_instructions}: load_cfg needs about 3 KB per instruction (31 GB RAM)'
+    if cap is not None:
+        reason = f'num_instructions > {cap}: load_cfg needs about 3 KB per instruction (31 GB RAM)'
         too_big = {i: reason for i in ids if i not in done and i not in excluded
-                   and int(rows[i]['num_instructions']) > args.max_instructions}      # an id the checkpoint holds stays built
+                   and int(rows[i]['num_instructions']) > cap}      # an id the checkpoint holds stays built
         excluded = dict(sorted({**too_big, **excluded}.items()))
     dropped = drop_unfinished(out, done)
     todo = [i for i in ids if i not in done and i not in excluded]
@@ -361,8 +368,8 @@ def main(argv=None):
     else:
         document = {**settings, 'pins': source_pins(args.source), 'excluded': excluded}
     document.pop('max_instructions', None)           # the record is the cap of this run
-    if args.max_instructions is not None:
-        document['max_instructions'] = args.max_instructions
+    if cap is not None:
+        document['max_instructions'] = cap
     write_settings = lambda: atomic(out / 'settings.json', lambda p: p.write_text(json.dumps(document, indent=2), encoding='utf-8'))      # noqa: E731
 
     def save():
