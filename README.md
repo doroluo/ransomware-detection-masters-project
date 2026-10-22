@@ -19,7 +19,9 @@ from it, which are on the team Google Drive. Two downloads are required; everyth
 | `Collections/VirusShare Ransomware.zip` | unzips to `VirusShare_Malware/`. It is in no dataset: no fold file lists it and all its rows are in `splits/unassigned.csv`, so no command of the pipeline reads it | nothing |
 | `Mendeley_GNN_v1.zip` | the Mendeley CFG exports as one bundle (`samples.csv`, `splits/`, `cfg/`), an alternative to the two Mendeley collections | the CFG cache, when the bundle is configured or unzipped into `CT_GAT/data/` |
 
-The sizes are those of the zips on the Drive. Each zip has a `.sha256` file beside it and a README inside it. The fold
+The sizes are those of the zips on the Drive. Each zip has a `.sha256` file beside it and a README inside it. The commands for
+every unzip are in Running, Quick start (the two Mendeley zips), Janice's model (the preprocessed zips) and All-architecture
+evaluation (the two balanced zips). The fold
 assignments of every published result are in the repository, in `CT_GAT/pipeline/s02_preprocess/folds/`, so
 `family_holdout_folds.zip` on the Drive is not needed; it holds the same fold assignments. With the two Mendeley zips unzipped into
 `CT_GAT/data/` nothing else is downloaded or configured for the commands under "Running".
@@ -79,10 +81,41 @@ Every command runs from `CT_GAT/pipeline`. Run outputs go to `CT_GAT/pipeline/ru
 
 ### Quick start
 
-Download `Mendeley_Ransomware.zip` and `Mendeley_Goodware.zip` from the Drive and unzip them into `CT_GAT/data/`. Each zip
-creates its own folder, `CT_GAT/data/Mendeley_Ransomware/` and `CT_GAT/data/Mendeley_Goodware/`. No `datasets.json` and no
-environment variable is needed: the code finds the collections there, reads the fold files from the repository and writes the
-cache to `CT_GAT/cache/mendeley_x86/`.
+Download `Mendeley_Ransomware.zip` and `Mendeley_Goodware.zip` from the Drive and unzip them into `CT_GAT/data/`. Each zip holds
+one top-level folder named like the zip, so the unzip creates `CT_GAT/data/Mendeley_Ransomware/` and
+`CT_GAT/data/Mendeley_Goodware/`, and the destination is `CT_GAT/data` itself. The repository does not ship `CT_GAT/data/`
+(it is gitignored), so create it first. From the repository root, with `<path to>` the folder that holds the downloaded zips:
+
+```bash
+# Windows, PowerShell or cmd (tar is the one that comes with Windows and reads zips)
+mkdir CT_GAT\data
+tar -xf <path to>\Mendeley_Ransomware.zip -C CT_GAT\data
+tar -xf <path to>\Mendeley_Goodware.zip -C CT_GAT\data
+
+# macOS and Linux (on macOS, tar -xf <zip> -C CT_GAT/data also works)
+mkdir -p CT_GAT/data
+unzip <path to>/Mendeley_Ransomware.zip -d CT_GAT/data
+unzip <path to>/Mendeley_Goodware.zip -d CT_GAT/data
+```
+
+Git Bash on Windows has `unzip`, so the macOS and Linux form works there; its `tar` is GNU tar and cannot read zips. In Windows
+Explorer, "Extract All" works only if the destination is set to `CT_GAT\data`; the destination it proposes is a folder named
+after the zip, which leaves `CT_GAT\data\Mendeley_Ransomware\Mendeley_Ransomware\samples.csv`, one folder too deep. On macOS,
+double-clicking a zip extracts it next to the zip (in Downloads); move the extracted folder into `CT_GAT/data/`. Either way
+the result is
+
+```
+CT_GAT/data/
+    Mendeley_Ransomware/
+        samples.csv  summary.json  START_HERE.md  SHA256SUMS.txt  (and three Python scripts)
+        splits/  provenance/
+        samples/<split>/<family>/<sha256>.jsonl.gz, <sha256>.asm.gz
+    Mendeley_Goodware/        the same
+```
+
+A collection counts as present when `CT_GAT/data/<name>/samples.csv` exists. No `datasets.json` and no environment variable is
+needed: the code finds the collections there, reads the fold files from the repository and writes the cache to
+`CT_GAT/cache/mendeley_x86/`.
 
 ```bash
 cd CT_GAT/pipeline
@@ -94,7 +127,17 @@ python -m s02_preprocess.cache.check_cache
 `common.catalog` prints, per dataset, which collection folders are present under `CT_GAT/data`, whether a bundle is
 configured, whether the cache is built and whether the fold files are found. It always exits 0. After the two unzips it
 shows `mendeley_x86` with both Mendeley folders present and the cache not built, and `combined_v3` with `Ransomware_Balanced`
-and `Balanced_Goodware` missing.
+and `Balanced_Goodware` missing:
+
+```
+mendeley_x86: protocols bundle, kfold; corpora mendeley
+  collections under CT_GAT/data:
+    Mendeley_Ransomware: present (snapshot 20261008T184757Z)
+    Mendeley_Goodware: present (snapshot 20261008T184719Z)
+```
+
+A folder that holds the collection one level too deep is listed as `nested`, with the folder to move up, and a zip that
+is in `CT_GAT/data` but not unzipped is listed as `zip`. `build_cache` stops with the same message.
 
 `build_cache` reads the CFG exports of the two collections and writes `samples/<sample_id>.npz`, `index.csv` and `vocab.json` to
 `CT_GAT/cache/mendeley_x86/`. It prints `2411 eligible, 0 copied from base, 0 already built, 2411 to build`, and ends with a
@@ -164,7 +207,19 @@ cache, so `build_cache` above comes first. `--model fivechannel` reads `CT_GAT/p
 another folder. The folder is filled in one of two ways, and holds one build at a time.
 
 **From the zip** (fast). Unzip `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` (or the
-uncapped one) at `CT_GAT/`. If you take the files from the Drive one by one instead, put them here:
+uncapped one) at `CT_GAT/`. The zip has no top-level folder: it holds `processed/` and a README, so the destination is `CT_GAT`
+itself and not `CT_GAT/processed`. From the repository root:
+
+```bash
+# Windows, PowerShell or cmd
+tar -xf <path to>\Mendeley_x86_cfg_subgraphs_500blocks_v3.zip -C CT_GAT
+# macOS and Linux
+unzip <path to>/Mendeley_x86_cfg_subgraphs_500blocks_v3.zip -d CT_GAT
+```
+
+This creates `CT_GAT/processed/api_vocab.json`, `CT_GAT/processed/cfg_subgraphs/` and the README at `CT_GAT/`. In Windows
+Explorer, set the destination of "Extract All" to `CT_GAT`; the proposed folder named after the zip puts everything one folder
+too deep, where nothing reads it. If you take the files from the Drive one by one instead, put them here:
 
 | File | Goes to |
 |---|---|
@@ -235,7 +290,18 @@ The options (sampling, library functions, caps, resuming) are in
 ### All-architecture evaluation
 
 The all-architecture protocol (`kfold_v3`) adds two collections. Unzip `Ransomware_Balanced.zip` and `Balanced_Goodware.zip` into
-`CT_GAT/data/`; `python -m common.catalog` then lists the four folders of `combined_v3` as present. The combined cache starts
+`CT_GAT/data/` as in the Quick start, from the repository root:
+
+```bash
+# Windows, PowerShell or cmd
+tar -xf <path to>\Ransomware_Balanced.zip -C CT_GAT\data
+tar -xf <path to>\Balanced_Goodware.zip -C CT_GAT\data
+# macOS and Linux
+unzip <path to>/Ransomware_Balanced.zip -d CT_GAT/data
+unzip <path to>/Balanced_Goodware.zip -d CT_GAT/data
+```
+
+`python -m common.catalog` (from `CT_GAT/pipeline`) then lists the four folders of `combined_v3` as present. The combined cache starts
 from the vocabulary and the samples of the `mendeley_x86` cache, which must be built first.
 
 ```bash

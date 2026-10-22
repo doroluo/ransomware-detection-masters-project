@@ -73,7 +73,7 @@ When something is set in more than one place, the order is environment variable,
 ### Input data
 
 The team Google Drive holds the inputs (the root [`README.md`](../../README.md) lists the files). The collection zips unpack into
-`CT_GAT/data/`. What each dataset needs:
+`CT_GAT/data/`, each as a folder of its own name (the unzip commands are in the root README, Running, Quick start). What each dataset needs:
 
 | dataset | collection folders (zip) | what reads it |
 |---|---|---|
@@ -122,15 +122,18 @@ Every command runs from this folder. `RUNS` in a path means the run directory (`
 repeat a run that already has its `metrics.json`. A run with `--epochs 2` (or `--smoke 8 --device cpu` for Model 1) checks a
 setup in a few minutes before a full run. Times are measured on the development machine; where none is given, none was measured.
 
-**0. Data.** Unzip `Mendeley_Ransomware.zip` and `Mendeley_Goodware.zip` into `CT_GAT/data/`, then:
+**0. Data.** Unzip `Mendeley_Ransomware.zip` and `Mendeley_Goodware.zip` into `CT_GAT/data/` (the commands, from the repository
+root, are in the root [`README.md`](../../README.md), Running, Quick start; the destination is `CT_GAT/data` itself, so that
+`CT_GAT/data/Mendeley_Ransomware/samples.csv` exists), then:
 
 ```bash
 python -m common.catalog                                         # which collections, caches and fold files are there
 ```
 
 It prints one block per dataset and always exits 0. On a fresh unzip `mendeley_x86` shows both Mendeley folders present, the
-bundle absent and the cache not built; `combined_v3` shows `Ransomware_Balanced` and `Balanced_Goodware` missing. Nothing else is
-configured for steps 1 to 7.
+bundle absent and the cache not built; `combined_v3` shows `Ransomware_Balanced` and `Balanced_Goodware` missing. A collection
+unzipped one folder too deep (`data/Mendeley_Goodware/Mendeley_Goodware/samples.csv`) shows as `nested`, and a zip left in
+`CT_GAT/data` as `zip`; each line says what to do. Nothing else is configured for steps 1 to 7.
 
 **1. Preprocessing.** The CFG cache, once per dataset (CPU, 4 workers; a rerun skips the samples already built):
 
@@ -146,7 +149,8 @@ built, 2411 to build` and a summary with `ok` 2411, 236 binaries dropped for no 
 sizes mn 609, sig 1337, api 14509, beh 9, and `vocab_sha` `4ded77e0cd6b...`. The cache is byte-identical to the one the published runs read
 (`index.csv`, `vocab.json` and all 2,411 `samples/*.npz`). `--dry` prints the cache, corpora and input paths a build resolves and stops.
 
-The second build needs `Ransomware_Balanced.zip` and `Balanced_Goodware.zip` unzipped into `CT_GAT/data/` and the `mendeley_x86`
+The second build needs `Ransomware_Balanced.zip` and `Balanced_Goodware.zip` unzipped into `CT_GAT/data/` (commands in the root
+[`README.md`](../../README.md), All-architecture evaluation) and the `mendeley_x86`
 cache built first: it copies that cache's `vocab.json` and the Mendeley samples, and builds the other two corpora. It takes 1,307 s
 of building (1,494 s in all) for 5,838 samples. One binary, a CIL assembly, fails to build, as it does in the published cache.
 
@@ -211,7 +215,8 @@ python -m s03a_transformer.five_channel.model                     # the five-cha
 `--model fivechannel` trains on a folder of pipeline-B `.pt` files and takes the folds from the CFG cache's `index.csv`, so it needs
 the cache of step 1 as well. Without `--build` it reads `CT_GAT/processed/cfg_subgraphs`, which is filled in one of two ways:
 
-* the zip `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` (or the uncapped one), unzipped at `CT_GAT/`;
+* the zip `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` (or the uncapped one), unzipped at `CT_GAT/` (`-C CT_GAT` or `-d CT_GAT`, not
+  `CT_GAT/processed`; the root [`README.md`](../../README.md), Janice's model, has the commands);
 * `python -m experiments.team_pipelines.build_b --source repo --sample signal --num-blocks 500 --seed 0`, which runs the
   `s02_preprocess` scripts of this repository over the Mendeley collections into an empty `CT_GAT/processed/cfg_subgraphs`. It is
   the published 500-block build (a 60-binary rebuild was identical to it in every stored field), takes about 4 h on the CPU for
