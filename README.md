@@ -40,8 +40,8 @@ for the others.
 | `combined_v3_cfg_subgraphs_signal_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the combined dataset (`--protocol kfold_v3 --arch all` and `matched`); the `sig500v3-*` arms |
 | `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the same dataset; the `callwalk500-*` arms |
 
-`CT_GAT/processed/` holds one build, and the zips have different API vocabularies: empty it before unzipping another preprocessed
-zip. `train_b` stops when the build's dataset, sampler or block count differs from the arm's. The plans look for each build in
+`CT_GAT/processed/` holds one build, and the zips have different API vocabularies: empty it before unzipping another preprocessed zip.
+`train_b` stops when the build's dataset, sampler or block count differs from the arm's. The plans look for each build in
 `CT_GAT/pipeline/runs/team/` (folder names in the pipeline README): move `CT_GAT/processed/cfg_subgraphs` there, or pass `--build DIR`.
 
 From the repository root, with the zips in it, on Windows (PowerShell or cmd); the other zips unzip like the last one:
@@ -82,34 +82,34 @@ python -m s02_preprocess.cache.build_cache --cache combined_v3
 ## Models 1 to 3
 
 Model 1 is the five-channel transformer over the instruction sequence (`experiments.train --model fivechannel`). Model 2 is a graph
-attention network (GAT) on the 77 block features and the control-flow graph (`--arm sig500v3-feat`). Model 3 is the block
-transformer trained end to end under the GAT (`--arm sig500v3-e2e`); `--arm sig500v3-emb` is Model 3 with the stored 64-d block
-embeddings. The models read the build in `CT_GAT/processed/cfg_subgraphs`, or `--build DIR`. A Model 1 smoke run trains 8 binaries and
-scores 8 validation and 8 test binaries, so it needs the `.pt` files of those 24; Models 2 and 3 train 8 and score every validation binary.
+attention network (GAT) on the 77 block features and the control-flow graph (`--arm sig500v3-feat`). Model 3 is the block transformer
+trained end to end under the GAT (`--arm sig500v3-e2e`); `--arm sig500v3-emb` is Model 3 with the stored 64-d block embeddings. The
+models read the build in `CT_GAT/processed/cfg_subgraphs`, or `--build DIR`. A Model 1 smoke run trains 8 binaries and scores 8
+validation and 8 test binaries, so it needs the `.pt` files of those 24; Models 2 and 3 train 8 and score every validation binary.
 
 The x86 folds are the default dataset. With `--protocol kfold`, `--arch all` trains on the whole Mendeley dataset; with
 `--protocol kfold_v3`, `--arch all` or `--arch matched` trains on the combined one. A run reads the build of its zip. The other arm
 families (`sig250-*`, `callwalk500-*`, `callwalk250-*` with `-feat`, `-emb` and `-e2e`, and `sigwhole-*`) are in the table;
-`--arch-balance` weights the training binaries by class and architecture. On the whole Mendeley dataset the architecture is a proxy for the label (x86: 1,134
-ransomware and 676 goodware, x64: 108 and 493; the x86 rule alone scores 0.650 macro-F1, and 55% of the x64 ransomware are in fold
-2), so a model gains AUC there by scoring x64 binaries as goodware. Read the recall of ransomware x64 and the cell-balanced metrics, and
-take `combined_v3` (x86-rule floor 0.690 on all, 0.606 on matched, 741 x64 ransomware) as the all-architecture test. The smoke runs
-on fold 0 come first, then runs on the other datasets; a full run omits `--smoke 8 --device cpu`:
+`--arch-balance` weights the training binaries by class and architecture. On the whole Mendeley dataset the architecture is a proxy for
+the label (x86: 1,134 ransomware and 676 goodware, x64: 108 and 493; the x86 rule alone scores 0.650 macro-F1, and 55% of the x64
+ransomware are in fold 2), so a model gains AUC there by scoring x64 binaries as goodware. Read the recall of ransomware x64 and the
+cell-balanced metrics, and take `combined_v3` (x86-rule floor 0.690 on all, 0.606 on matched, 741 x64 ransomware) as the
+all-architecture test. The smoke runs on fold 0 come first, then runs on the other datasets; a full run omits `--smoke 8 --device cpu`:
 
 ```bash
 python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
 python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --fold 0 --seed 0 --smoke 8 --device cpu
-python -m experiments.train --model fivechannel --protocol kfold --arch all --fold 0 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+python -m experiments.train --model fivechannel --protocol kfold --arch all --fold 0 --seed 0 --build runs/team/b_sig500_mendeley_all
 python -m experiments.team_pipelines.train_b --arm sig500v3-feat --protocol kfold --arch all --fold 0 --seed 0
 python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --protocol kfold_v3 --arch all --fold 0 --seed 0
-python -m experiments.train --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
+python -m experiments.train --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 0 --seed 0 --build runs/team/b_sig500_combined_v3
 ```
 
 ## Plans and tables
 
 A plan in `experiments/plans/` is one experiment for `experiments.queue`: `model1_variants`, `team_b`, `team_builds` (135 runs),
-`team_mendeley_all` (345 runs, whole Mendeley dataset) and `team_v3` (390 runs, combined dataset). `report` writes `RESULTS.md` in
-the run directory. `gates` prints the arms of a stage and names the missing folds and seeds; `--stage team` also compares with published
+`team_mendeley_all` (345 runs, whole Mendeley dataset) and `team_v3` (390 runs, combined dataset). `report` writes `RESULTS.md` in the
+run directory. `gates` prints the arms of a stage and names the missing folds and seeds; `--stage team` also compares with published
 arms, which print as missing unless the published runs are in `GT_RUNS`, and `team_mendeley_all`, `team_v3_all` and `team_v3_matched`
 add the recall of each class and architecture. GPU runs differ in the last digits, so compare models through several seeds. The block
 prints a plan's runs (`--dry`), writes the tables, checks the arms and runs the tests, with no dataset:

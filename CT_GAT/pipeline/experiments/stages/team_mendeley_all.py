@@ -2,7 +2,8 @@
 
 Stage team_mendeley_all reads Models 1 to 3 on the whole Mendeley dataset: `--protocol kfold --arch all`, the 2,411 binaries (1,810
 x86 and 601 x64) of the `mendeley_x86` cache, seed 0 pooled and the seeds 0 1 2 paired (experiments/plans/team_mendeley_all.txt).
-The rows are TF-IDF on the same folds (`kfold{k}_all_s0`); the team arms of the five builds `RUNS/team/b_<family>_mendeley_all`
+The rows are TF-IDF on the same folds (`kfold{k}_all_s0`, which have no validation threshold: its AUC-checkpoint row prints as
+missing); the team arms of the five builds `RUNS/team/b_<family>_mendeley_all`
 (`sig500v3`, `sig250`, `callwalk500` and `callwalk250`, each with `feat` Model 2, `emb` Model 3 and `e2e` Model 3 trained end to end,
 and the three arms `sigwhole`, `sigwhole-feat` and `sigwhole-emb` on the uncapped build); Model 1 (`fivechannel`) at 128 and 512
 instructions on the 500-block signal build and at 512 on the uncapped one; and the `-ab` twins (`--arch-balance`) of the three
@@ -58,8 +59,9 @@ def intro(resamples):
             f"seeds complete in both arms (queue seeds {list(SEEDS)}), with the 95% paired cluster bootstrap interval "
             f"({resamples} resamples), once with every binary weighted equally and once cell-balanced. The rule column is the "
             "pre-registered minimum effect of PLAN_GNN.md section 5 (dAUC >= 0.01 and dmacro-F1 >= 0.02, both intervals "
-            "excluding zero, 3 seeds x 5 folds); TF-IDF exists for seed 0 only, so a pair against it is a direction. A missing arm "
-            "or fold is stated.")
+            "excluding zero, 3 seeds x 5 folds); TF-IDF exists for seed 0 only, so a pair against it is a direction. A TF-IDF run "
+            "made before the validation threshold was recorded has none to score the AUC checkpoint with (the `kfold{k}_all_s0` "
+            "runs are of that kind), so its row and its pairs print as missing. A missing arm or fold is stated.")
 
 
 STAGE = Stage('team_mendeley_all', intro=intro, arms=ARMS, pairs=PAIRS, seeds=SEEDS, rule=seed_rule, extra='cells',

@@ -18,7 +18,7 @@ import experiments.stages as stages_package
 from experiments import queue as q
 from experiments.stages import team as team_stage
 from common.config import RunConfig
-from eval_synth import FAKE_FLOORS, V3_MASKED, build_fake, build_v3_ab_fake, write_v3_run
+from eval_synth import build_fake, build_v3_ab_fake, write_v3_baseline, write_v3_run
 from experiments.team_pipelines import common as tp
 from s04_evaluation import gate_tables, gates, report, stats
 from s04_evaluation.stage import DEFAULT_SCOPE, LABEL, Stage, beats, non_inferior
@@ -407,3 +407,16 @@ def test_the_match_rate_line_counts_the_total_of_the_builds_dataset(tmp_path, sc
         assert 'ransomware 1 binaries, mean 0.750' in line and 'goodware 1 binaries, mean 1.000' in line
     else:
         assert 'missing (build incomplete' in line
+
+
+def test_a_tfidf_run_without_a_validation_threshold_gives_the_same_reason_in_the_pooled_and_the_cells_table(tmp_path, monkeypatch):
+    synthetic_v3_runs(tmp_path, monkeypatch)
+    for fold in range(5):                       # the kfold arch all baselines on disk: no threshold_val, so no AUC-checkpoint scores
+        write_v3_baseline(tmp_path / 'other', 'all', fold, 1.3, threshold=None)
+        (tmp_path / 'other' / 'baselines' / f'v3kfold{fold}_all_s0').rename(tmp_path / 'baselines' / f'kfold{fold}_all_s0')
+    gate_tables.pooled.cache_clear()
+    reason = 'missing (baseline has no validation threshold)'
+    assert gate_tables.pooled('tfidf', 'auc', ('kfold', 'all')) == reason
+    assert gate_tables.cell_row('tfidf', ('kfold', 'all')) == reason
+    assert not isinstance(gate_tables.cell_row('tfidf', ('kfold_v3', 'all')), str)           # the kfold_v3 baselines have one
+    gate_tables.pooled.cache_clear()

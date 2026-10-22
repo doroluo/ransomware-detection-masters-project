@@ -226,7 +226,9 @@ the recall of each class x architecture cell with the cell-balanced metrics and 
 ordinary and cell-balanced (`s04_evaluation/stage.py`: the stage options `scope` and `balanced`). The v3 stages read the published
 GNN arms R7, R2, R4 `ab` and TF-IDF of `docs/history/gates_v3.md` next to the team arms. The published GNN arms select their AUC
 checkpoint by the validation cell-balanced AUC (`selcell`) and the team arms by the teammates' rule, so a difference mixes the model
-with the rule. `report.py` prints the kfold rows of arch all in its cell-balanced section. The plans, 3 seeds x 5 folds per group:
+with the rule. `report.py` prints the kfold rows of arch all in its cell-balanced section. The TF-IDF runs of the whole Mendeley dataset on disk
+(`kfold{k}_all_s0`) were made before the baselines recorded a validation threshold, so the TF-IDF row of `team_mendeley_all` and its
+pairs print as missing until they are re-run. The plans, 3 seeds x 5 folds per group:
 
 ```
 python -m experiments.queue --plan experiments/plans/team_mendeley_all.txt --budget-min 1800

@@ -143,11 +143,9 @@ def cell_row(group, scope):
     """[AUC, PR-AUC, macro-F1, R x86, R x64, G x86, G x64 recall, cell-balanced AUC, cell-balanced macro-F1] of the seed-0
     pooled predictions of the AUC checkpoint at its validation threshold (a baseline group is read for `scope`), or a string
     saying what is missing. A cell without a test binary has recall nan."""
-    complete, partial = stats.load_group(group, 'auc', scope)
+    complete, _ = stats.load_group(group, 'auc', scope)
     if SEED not in complete:
-        present = partial.get(SEED, [])
-        other = f'; complete seeds {sorted(complete)}' if complete else ''
-        return f'missing (seed {SEED} folds present {present} of 0-4{other})'
+        return pooled(group, 'auc', scope)                               # the reason the pooled table gives
     p = complete[SEED]
     order, grp = stats.ranking(p)
     recalls = [float(np.mean(p.pred[m] == label)) if (m := (p.y == label) & (p.arch == arch)).any() else float('nan')

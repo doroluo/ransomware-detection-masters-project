@@ -238,9 +238,13 @@ def test_the_new_run_names_collide_with_nothing_known():
     assert len(new) == 6 * len(train_b.ARMS) * 15 and not new & {n for n in names if n not in new}
     groups = {tp.team_config(0, 0, arm, p, a, ab).group for arm in train_b.ARMS for p, a in DATASETS[1:] for ab in (False, True)}
     assert len(groups) == 6 * len(train_b.ARMS)
+    recordings = {'team_mendeley_all', 'team_v3'}               # the recorded plans on the new datasets name exactly these runs
     for fixture in (HERE / 'fixtures').rglob('*'):
         if fixture.is_file() and fixture.suffix in ('.txt', '.json', '.csv', '.md'):
             tokens = set(re.findall(r'[\w-]*kfold[\w-]*', fixture.read_text(encoding='utf-8', errors='replace')))
+            if fixture.parent.name == 'plans_dry' and fixture.stem in recordings:
+                assert not [t for t in tokens if re.match(r'kfold\d_x86_', t)] and tokens & new, fixture      # none is a run of the x86 dataset
+                continue
             assert not tokens & (new | groups), fixture
     if Path(RUNS).is_dir():
         assert not new & {p.name for p in Path(RUNS).iterdir()}
