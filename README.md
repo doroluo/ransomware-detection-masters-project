@@ -31,11 +31,11 @@ preprocessed zip, which replaces a CPU build of 4 to 5 h (500 blocks) or 5.6 h (
 | `Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip` | 1.43 GB (10.11 GB unpacked) | `3f153392fb87fc67b4d968c701a8ea1c828cb654a66393eb25827951b0edae4e` | `CT_GAT/` | the `callwalk500-*` arms |
 | `Mendeley_x86_cfg_subgraphs_callwalk_250blocks_v3.zip` | 0.78 GB (5.53 GB unpacked) | `f52ac00cee289d536aa328a47617f94cd011a29ab3b8d799e66224cded7c1ccd` | `CT_GAT/` | the `callwalk250-*` arms |
 | `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` | 2.59 GB (13.29 GB unpacked) | `678beede56597afd1e369248a8e520cce0666a4b6d4af936a960bf5b7d1ccb0e` | `CT_GAT/` | the `sigwhole-*` arms |
-| `Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the whole Mendeley dataset (`--protocol kfold --arch all`); the `sig500v3-*` arms |
-| `Mendeley_all_cfg_subgraphs_signal_250blocks_v3.zip` | pending | pending | `CT_GAT/` | the same dataset; the `sig250-*` arms |
-| `Mendeley_all_cfg_subgraphs_callwalk_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the same dataset; the `callwalk500-*` arms |
-| `Mendeley_all_cfg_subgraphs_callwalk_250blocks_v3.zip` | pending | pending | `CT_GAT/` | the same dataset; the `callwalk250-*` arms |
-| `Mendeley_all_cfg_subgraphs_uncapped_v3.zip` | pending | pending | `CT_GAT/` | the same dataset; the `sigwhole-*` arms |
+| `Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip` | 1.28 GB | `996649f872beaafc8a651ca3a0a98ba4207c0c90ced703759f1f40a618f8c3c7` | `CT_GAT/` | the whole Mendeley dataset (`--protocol kfold --arch all`); the `sig500v3-*` arms |
+| `Mendeley_all_cfg_subgraphs_signal_250blocks_v3.zip` | 0.72 GB | `71e0b3b26f4b346ff66381c0681d252aebaf8b45a1b92b801ad219b9d0fe7602` | `CT_GAT/` | the same dataset; the `sig250-*` arms |
+| `Mendeley_all_cfg_subgraphs_callwalk_500blocks_v3.zip` | 1.29 GB | `55336eb6247f5b3a1f70d23f1e05a727583f94cd6624f24e6205cd20ef12f511` | `CT_GAT/` | the same dataset; the `callwalk500-*` arms |
+| `Mendeley_all_cfg_subgraphs_callwalk_250blocks_v3.zip` | 0.69 GB | `75cbc91378e134fbae62b823945b3b549ede3f00bf5348f91fb557470f6ab8f2` | `CT_GAT/` | the same dataset; the `callwalk250-*` arms |
+| `Mendeley_all_cfg_subgraphs_uncapped_v3.zip` | 3.44 GB (18.2 GB unpacked) | `6423d217a8f096ea2a9ce458d7a0699a7d668e7af196bc786965228382aeae27` | `CT_GAT/` | the same dataset; the `sigwhole-*` arms |
 | `combined_v3_cfg_subgraphs_signal_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the combined dataset (`--protocol kfold_v3 --arch all` and `matched`); the `sig500v3-*` arms |
 | `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the same dataset; the `callwalk500-*` arms |
 
