@@ -69,7 +69,6 @@ def test_write_run_takes_an_explicit_excluded_list(tiny, tmp_path):  # noqa: F81
 
 
 @needs_pyg
-@needs_worktrees
 def test_run_arm_leaves_the_excluded_ids_out_of_every_split(tiny, tmp_path, monkeypatch):  # noqa: F811
     monkeypatch.setattr(fit, 'RUNS', tmp_path)
     manifest = tp.fold_manifest(2, 1)
