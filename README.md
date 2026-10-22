@@ -68,9 +68,9 @@ to the folder in the table; the proposed folder is one level too deep. The fold 
 
 # Run
 
-Commands run from `CT_GAT/pipeline`. Run outputs go to `CT_GAT/pipeline/runs/`; `GT_RUNS` changes it. `common.catalog` lists the
-collections, caches and fold files it finds and exits 0. `build_cache` reads the two Mendeley collections, `check_cache` verifies the
-result, and `--cache combined_v3` builds the all-architecture cache (5,838 samples) from the balanced zips and the cache above:
+Commands run from `CT_GAT/pipeline`. Run outputs go to `CT_GAT/pipeline/runs/` (`RUNS/` in a command); `GT_RUNS` changes it.
+`common.catalog` lists the collections, caches and fold files. `build_cache` reads the two Mendeley collections, `check_cache` verifies
+the result, and `--cache combined_v3` builds the all-architecture cache (5,838 samples) from the balanced zips and the cache above:
 
 ```bash
 python -m common.catalog
@@ -99,10 +99,10 @@ other datasets; a full run omits `--smoke 8 --device cpu`:
 ```bash
 python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
 python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --fold 0 --seed 0 --smoke 8 --device cpu
-python -m experiments.train --model fivechannel --protocol kfold --arch all --fold 0 --seed 0 --build runs/team/b_sig500_mendeley_all
+python -m experiments.train --model fivechannel --protocol kfold --arch all --fold 0 --seed 0 --build RUNS/team/b_sig500_mendeley_all
 python -m experiments.team_pipelines.train_b --arm sig500v3-feat --protocol kfold --arch all --fold 0 --seed 0
 python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --protocol kfold_v3 --arch all --fold 0 --seed 0
-python -m experiments.train --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 0 --seed 0 --build runs/team/b_sig500_combined_v3
+python -m experiments.train --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
 ```
 
 ## Plans and tables

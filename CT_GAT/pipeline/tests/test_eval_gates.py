@@ -394,14 +394,21 @@ def test_the_cells_table_prints_missing_floors_when_the_cache_is_not_built(tmp_p
         cached.cache_clear()
 
 
-@pytest.mark.parametrize('scope,summary,complete', [(('kfold_v3', 'all'), {'processed': 2, 'total': 4, 'excluded': {'x': 'r', 'y': 'r'}}, True),
-                                                     (('kfold_v3', 'all'), {'processed': 2, 'total': 4, 'excluded': {'x': 'r'}}, False),
-                                                     (('kfold', 'all'), {'processed': 4, 'total': 4}, True),
-                                                     (DEFAULT_SCOPE, {'processed': 4, 'total': 4}, False)])         # the x86 builds hold 1810
-def test_the_match_rate_line_counts_the_total_of_the_builds_dataset(tmp_path, scope, summary, complete):
+EXCLUDED = {f'x{i}': 'num_instructions > 4000000' for i in range(34)}
+MATCH_CASES = [(('kfold_v3', 'all'), {'processed': 2, 'total': 4, 'excluded': {'x': 'r', 'y': 'r'}}, 4, True),
+               (('kfold_v3', 'all'), {'processed': 2, 'total': 4, 'excluded': {'x': 'r'}}, 4, False),
+               (('kfold', 'all'), {'processed': 4, 'total': 4}, 4, True),
+               (DEFAULT_SCOPE, {'processed': 4, 'total': 4}, None, False),                           # the x86 builds hold 1810
+               (('kfold', 'all'), {'processed': 2411, 'total': 2411}, None, True),
+               (('kfold', 'all'), {'processed': 1810, 'total': 1810}, None, False),                 # the summary of the x86 build a --extend is still extending
+               (('kfold_v3', 'matched'), {'processed': 5618, 'total': 5652, 'excluded': EXCLUDED}, None, True)]      # a matched run reads the all build
+
+
+@pytest.mark.parametrize('scope,summary,total,complete', MATCH_CASES)
+def test_the_match_rate_line_counts_the_total_of_the_builds_dataset(tmp_path, scope, summary, total, complete):
     fake_build(tmp_path / 'b', {'r1': fake_payload([1, 1, 1, 0], 1), 'g1': fake_payload([1, 1, 1, 1], 0)})
     (tmp_path / 'b' / 'build_summary.json').write_text(json.dumps(summary), encoding='utf-8')
-    line = gate_tables.match_rate_line(tmp_path / 'b', 'b_test', scope)
+    line = gate_tables.match_rate_line(tmp_path / 'b', 'b_test', scope, total)
     assert line.startswith('Match rates of `b_test` (share of') == complete
     if complete:
         assert 'ransomware 1 binaries, mean 0.750' in line and 'goodware 1 binaries, mean 1.000' in line

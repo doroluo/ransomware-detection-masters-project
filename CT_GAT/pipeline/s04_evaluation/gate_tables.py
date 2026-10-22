@@ -105,18 +105,25 @@ def operating_points(arms, scope=DEFAULT_SCOPE):
     return out
 
 
-def match_rate_line(build, name, scope=DEFAULT_SCOPE):
+BUILD_TOTAL = {('kfold', 'x86'): 1810, ('kfold', 'all'): 2411, ('kfold_v3', 'all'): 5652, ('kfold_v3', 'matched'): 5652}
+# binaries of the build a stage's scope reads (a matched run reads the all build)
+
+
+def match_rate_line(build, name, scope=DEFAULT_SCOPE, total=None):
     """One line with the per-label match rates of the pipeline-B build in `build`, called `name` in the line
     (experiments/team_pipelines/match_rates.py), or why it cannot be given: no build, or one whose build_summary.json does not
-    account for all the binaries. The kfold x86 builds hold 1810; for another scope the build's own total counts, `processed`
-    plus the ids it excluded on purpose (`--exclude`, `--max-instructions`)."""
+    account for all the binaries of the scope (`BUILD_TOTAL`, or `total`). The kfold x86 builds hold 1810, with none excluded;
+    for another scope `processed` plus the ids excluded on purpose (`--exclude`, `--max-instructions`) must equal the summary's
+    total, which must be the scope's: the copy of an x86 build that `build_b --extend` is still extending holds the summary of
+    the x86 build (1810 of 1810)."""
     from experiments.team_pipelines import match_rates
     summary = Path(build) / 'build_summary.json'
     if not summary.is_file():
         return f'Match rates of `{name}`: missing (no {summary.name} under {build}).'
     done = json.loads(summary.read_text(encoding='utf-8'))
+    total = BUILD_TOTAL[tuple(scope)] if total is None else total
     complete = (done.get('processed') == done.get('total') == 1810 if scope == DEFAULT_SCOPE
-                else (done.get('processed') or 0) + len(done.get('excluded') or {}) == done.get('total'))
+                else done.get('total') == total and (done.get('processed') or 0) + len(done.get('excluded') or {}) == total)
     if not complete:
         return (f"Match rates of `{name}`: missing (build incomplete: {done.get('processed')} of {done.get('total')} "
                 'binaries processed).')
@@ -132,7 +139,7 @@ def match_rate_lines(builds, scope=DEFAULT_SCOPE):
     directory), each after a blank line. The folder is resolved when the lines are made, with the run directory `stats` reads."""
     out = []
     for name, folder in builds:
-        out += ['', match_rate_line(stats.RUNS / folder, name, scope)]
+        out += ['', match_rate_line(stats.RUNS / folder, name, tuple(scope))]
     return out
 
 
