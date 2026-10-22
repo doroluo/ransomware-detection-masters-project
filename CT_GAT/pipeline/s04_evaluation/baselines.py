@@ -29,7 +29,7 @@ written beside it as `tfidf_sig_lr`, to read the ablation both ways.
 a TF-IDF (sublinear) logistic regression) to the directory with the suffix `_imp`. The earlier unreferenced-import methods
 (`imports_unref_lr`, `tfidf_sig_api_imp_lr`) were removed in step 25; the directories written before that still hold them.
 A feature space with no column left (no import kept) gives the constant 0.5, stated in metrics.json. It needs
-<cache>/side/imports/ (s03b_cfg_feature/gnn/s10_unused_import_features/import_side.py).
+<cache>/side/imports/ (s04_evaluation/import_side.py).
 
 --stack-logits writes <out-root>/<same directory>/stack_logits.csv and nothing else: the TF-IDF logistic regression's
 logit (decision function) of every row of the manifest, for `train.py --stack-tfidf`. Training rows get out-of-fold
@@ -99,7 +99,7 @@ def load_vocab_features(rows, sizes, vocab):
 
 def import_matrix(rows, vocab):
     """Presence matrix [len(rows), len(vocab)] of the header import identities of `vocab` (an ImportVocab)."""
-    from s03b_cfg_feature.gnn.s10_unused_import_features.import_side import load_imports
+    from s04_evaluation.import_side import load_imports
     indptr, indices = [0], []
     for r in rows:
         ids = vocab.ids(load_imports(vocab.cache, r['sample_id'])['header_imports'])
@@ -249,7 +249,7 @@ def features_and_models(cfg: RunConfig, sizes, train, val, test, vocab, imports,
     x_test_tok, x_test_st = load_features(test, sizes)
     keep = np.asarray((x_train_tok > 0).sum(0)).ravel() >= cfg.min_df
     if imports:
-        from s03b_cfg_feature.gnn.s10_unused_import_features.imports_feat import ImportVocab
+        from s04_evaluation.imports_feat import ImportVocab
         header = ImportVocab(train, cfg.min_df)
         mats = [import_matrix(rows, header) for rows in (train, val, test)]
         models = {'imports_header_lr': (tfidf_lr(mats[0], class_weight), *mats)}

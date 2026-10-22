@@ -21,7 +21,7 @@ COMMANDS = {
     'train': (['experiments.train', '--protocol', 'kfold', '--fold', '0'], 'mendeley_x86'),
     'baselines': (['s04_evaluation.baselines', '--protocol', 'kfold_v3', '--fold', '0', '--arch', 'all'], 'combined_v3'),
     'subgraph_chain': (['experiments.subgraph_chain'], 'mendeley_x86'),
-    'block_export': (['s03c_cfg_transformer.block_export', '--protocol', 'kfold_v3', '--arch', 'all', '--out', '{runs}/export/x'], 'combined_v3'),
+    'block_export': (['reference.cfg_transformer.block_export', '--protocol', 'kfold_v3', '--arch', 'all', '--out', '{runs}/export/x'], 'combined_v3'),
 }
 
 

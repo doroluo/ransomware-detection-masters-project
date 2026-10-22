@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from common.side_io import atomic_npz
-from s03b_cfg_feature.gnn.s10_unused_import_features import import_side as imp
+from s04_evaluation import import_side as imp
 
 N_MN, N_SIG, N_API, N_BEH = 30, 50, 24, 9
 IMPORT_POOL = [f'lib{i % 4}.dll!fn{i}' for i in range(40)]
@@ -103,7 +103,7 @@ def tiny(tmp_path_factory):
     """The tiny cache, with every module-level CACHE pointed at it."""
     from common import manifests
     from s02_preprocess.tokenizer import vocab as vocab_module
-    from s03b_cfg_feature.gnn.s10_unused_import_features import imports_feat
+    from s04_evaluation import imports_feat
     root = tmp_path_factory.mktemp('tiny') / 'cache'
     info = build(root)
     with pytest.MonkeyPatch.context() as mp:

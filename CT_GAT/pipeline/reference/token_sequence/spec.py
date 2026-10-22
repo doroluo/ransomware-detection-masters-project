@@ -1,0 +1,50 @@
+"""Model 1 as a `common.registry.ModelSpec`: the model `tokenseq`.
+
+The loop of the registry (`experiments/train.py`) is the loop of the graph models: one logit per binary, binary cross entropy,
+batches of binaries from the CFG cache. Model 1 reads a block export instead of the cache, takes two logits per binary,
+packs whole binaries into batches by their number of windows and stops on the validation AUC alone, so it keeps its own loop
+(`token_sequence/train.py`). A spec that owns its loop says so with `run(cfg, out_name, **options)`; `experiments.train.run`
+hands the run over to it before it reads the cache. `build`, `loader` and `forward` are not used and refuse.
+
+The loop module is imported on `run`, not when the registry builds the spec.
+"""
+import shutil
+
+from common.config import RUNS, RunConfig
+
+OPTIONS = ('export', 'device', 'smoke', 'window_budget')       # what `run` takes besides the config (experiments.train flags)
+
+
+class TokenSeqSpec:
+    name = 'tokenseq'
+    requires = ()              # the block export is the input, not the CFG cache; `run` checks it
+
+    def check(self, cfg: RunConfig):
+        cfg.check_tokenseq()
+
+    def run(self, cfg: RunConfig, out_name=None, **options):
+        """Train Model 1 on `cfg` and write <runs>/<out_name or cfg.name>; returns the metrics. `options` are `OPTIONS`."""
+        from reference.token_sequence import train
+        unknown = set(options) - set(OPTIONS)
+        if unknown:
+            raise TypeError(f'tokenseq takes {", ".join(OPTIONS)}, not {", ".join(sorted(unknown))}')
+        if out_name in (None, cfg.name) or options.get('smoke') is not None:
+            return train.run(cfg, **options)
+        stage = RUNS / f'.stage-{out_name}'                  # write_run insists on a directory named like the config
+        shutil.rmtree(stage, ignore_errors=True)
+        try:
+            metrics = train.run(cfg, out_root=stage, **options)
+            (RUNS / out_name).mkdir(parents=True, exist_ok=True)
+            for path in (stage / cfg.name).iterdir():
+                path.replace(RUNS / out_name / path.name)
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)
+        return metrics
+
+    def build(self, cfg, info):
+        raise NotImplementedError('tokenseq runs its own loop (run); the registry loop does not build it')
+
+    loader = forward = build
+
+    def variant_tokens(self, cfg: RunConfig):
+        return tuple(cfg.variant.split('-'))

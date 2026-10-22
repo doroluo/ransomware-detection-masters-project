@@ -29,8 +29,8 @@ from typing import Any, Iterable, Protocol, runtime_checkable
 from common.manifests import Manifest
 
 MODELS = {
-    'gnn': 's03b_cfg_feature.gnn.spec:GnnSpec',
-    'tokenseq': 's03a_transformer.token_sequence.spec:TokenSeqSpec',
+    'gnn': 'reference.gnn.spec:GnnSpec',
+    'tokenseq': 'reference.token_sequence.spec:TokenSeqSpec',
     'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec',
 }
 

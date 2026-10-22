@@ -13,4 +13,4 @@ PyYAML==6.0.3
 # Optional, not installed by CI (the tests that need them skip with a reason):
 #   torch_geometric  the teammates' GAT pipelines in experiments/team_pipelines (also needs GT_TEAM_GNN_ROOT, GT_TEAM_MAIN_ROOT)
 #   psutil           experiments/team_pipelines/measure_rss.py
-#   transformers, safetensors   the CodeBERT block encoder (s03c_cfg_transformer/encoders/codebert.py), with HF_HOME set
+#   transformers, safetensors   the CodeBERT block encoder (reference/cfg_transformer/encoders/codebert.py), with HF_HOME set

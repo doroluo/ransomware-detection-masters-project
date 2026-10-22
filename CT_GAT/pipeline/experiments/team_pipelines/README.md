@@ -53,7 +53,7 @@ python -m experiments.team_pipelines.train_b --fold F --seed S --arm sig500 --de
 ```
 
 - `gnn500` and `cb500` (`train_a`) need no build but `gnn500`'s (`build_a`); `cb500` reads the CodeBERT block vectors
-  `ours_cap0_codebert` of the cache (`s03c_cfg_transformer/precompute_blockvec.py`). 15 runs per arm (3 seeds x 5 folds), names
+  `ours_cap0_codebert` of the cache (`reference/cfg_transformer/precompute_blockvec.py`). 15 runs per arm (3 seeds x 5 folds), names
   `kfold{F}_x86_gnn_s{S}_team-gnn500` and `..._team-cb500`.
 - `sig500` (`train_b`) starts when `<runs>/team/b_sig500/build_summary.json` accounts for all 1810 binaries: `total` is 1810 and
   `processed` plus the number of ids in `excluded` is 1810 (the ids `build_b --exclude` left out on purpose count; `train_b`

@@ -46,7 +46,7 @@ def test_the_fixture_names_the_runs_of_the_two_arms():
 
 @pytest.mark.gpu
 def test_the_reference_encoder_vectors_of_fold_0_equal_the_branchs(tmp_path):
-    from s03c_cfg_transformer import precompute_blockvec as pb
+    from reference.cfg_transformer import precompute_blockvec as pb
     theirs = CACHE / 'side' / 'blockvec' / 'ours_cap0_ref' / 'fold0'
     if not (theirs / 'vectors.npy').is_file() or not (EXPORT / 'ours_cap0' / 'store' / 'store.json').is_file() \
             or not (RUNS / 'encoders' / 'ref' / 'fold0' / 'best.pt').is_file():
@@ -101,8 +101,8 @@ def test_two_epochs_of_model_1_on_fold_0_equal_the_branchs(tmp_path, monkeypatch
     if not (EXPORT / 'ours_cap0' / 'store' / 'store.json').is_file():
         pytest.skip('needs the export ours_cap0')
     from experiments import train
-    from s03a_transformer.token_sequence import spec as spec_module
-    from s03a_transformer.token_sequence import train as ts
+    from reference.token_sequence import spec as spec_module
+    from reference.token_sequence import train as ts
     for module in (train, spec_module, ts):
         monkeypatch.setattr(module, 'RUNS', tmp_path)
     cfg = RunConfig(model='tokenseq', protocol='kfold', fold=0, arch='x86', seed=0, epochs=2)

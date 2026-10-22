@@ -773,8 +773,8 @@ def edge_set_of(out):
 @needs_ref_vecs
 def test_cb500_blocks_and_edges_equal_the_matched_arm():
     from common.manifests import load_sample
-    from s03b_cfg_feature.gnn.batching import encode_binary_gnn
-    from s03b_cfg_feature.gnn.spec import open_block_vecs
+    from reference.gnn.batching import encode_binary_gnn
+    from reference.gnn.spec import open_block_vecs
     rows = [r for r in tp.sample_rows().values() if r['fold'] is not None]
     by_size = sorted(rows, key=lambda r: int(r['num_blocks']))
     picks = [by_size[100], by_size[len(by_size) // 2], by_size[-300]]

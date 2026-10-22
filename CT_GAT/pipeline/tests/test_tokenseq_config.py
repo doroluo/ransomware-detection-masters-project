@@ -11,7 +11,7 @@ import pytest
 from common.config import MAX_WINDOWS, SEQ_LEN, RunConfig
 from common.registry import spec_for
 from experiments.train import parse_config
-from s03a_transformer.token_sequence import train as ts_train
+from reference.token_sequence import train as ts_train
 
 
 def tok(**kw):

@@ -19,8 +19,8 @@ from eval_synth import evaltiny  # noqa: F401  (a fixture)
 from experiments.train import parse_config
 from s02_preprocess.tokenizer.block_tokens import token_table
 from s02_preprocess.tokenizer.vocab import VOCAB_KINDS, TokenVocab
-from s03b_cfg_feature.gnn.batching import BinaryDataset, encode_binary, loader
-from s03b_cfg_feature.gnn.spec import build_model
+from reference.gnn.batching import BinaryDataset, encode_binary, loader
+from reference.gnn.spec import build_model
 from s04_evaluation import baselines, gate_tables, stats
 from tiny_cache import N_API, N_BEH, N_MN, tiny  # noqa: F401  (a fixture that tiny_yanping builds on)
 from yanping_side import tiny_yanping  # noqa: F401  (a fixture)

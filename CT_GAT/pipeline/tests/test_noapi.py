@@ -15,8 +15,8 @@ from common.manifests import load_sample
 from experiments.train import parse_config
 from s02_preprocess.tokenizer.block_tokens import token_table
 from s02_preprocess.tokenizer.vocab import VOCAB_INSN_KINDS, VOCAB_KINDS, TokenVocab, uses_reader
-from s03b_cfg_feature.gnn.batching import encode_binary, loader
-from s03b_cfg_feature.gnn.spec import build_model
+from reference.gnn.batching import encode_binary, loader
+from reference.gnn.spec import build_model
 from tiny_cache import tiny  # noqa: F401  (a fixture)
 
 

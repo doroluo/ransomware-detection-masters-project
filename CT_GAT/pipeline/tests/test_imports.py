@@ -10,11 +10,11 @@ import torch
 
 from common.config import RunConfig
 from s02_preprocess.tokenizer.vocab import TokenVocab
-from s03b_cfg_feature.gnn import spec as gnn_spec
-from s03b_cfg_feature.gnn.batching import BinaryDataset, loader
-from s03b_cfg_feature.gnn.model import HierGNN
-from s03b_cfg_feature.gnn.s10_unused_import_features import imports_feat
-from s03b_cfg_feature.gnn.s10_unused_import_features.imports_feat import IMPORT_DIM, ImportVocab
+from reference.gnn import spec as gnn_spec
+from reference.gnn.batching import BinaryDataset, loader
+from reference.gnn.model import HierGNN
+from s04_evaluation import imports_feat
+from s04_evaluation.imports_feat import IMPORT_DIM, ImportVocab
 from tiny_cache import tiny  # noqa: F401  (a fixture)
 
 
@@ -109,7 +109,7 @@ def test_header_item_is_a_normalised_idf_bag_and_the_same_two_log_counts(tiny): 
 
 
 def test_a_missing_side_array_names_the_sample_and_the_command(tiny):  # noqa: F811
-    with pytest.raises(FileNotFoundError, match='s10_unused_import_features.import_side'):
+    with pytest.raises(FileNotFoundError, match='s04_evaluation.import_side'):
         imports_feat.load_imports(tiny.root.parent / 'elsewhere', tiny.rows[0]['sample_id'])
 
 

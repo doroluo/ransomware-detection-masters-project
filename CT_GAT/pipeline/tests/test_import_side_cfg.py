@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from common import side_io
-from s03b_cfg_feature.gnn.s10_unused_import_features import import_side as imp
+from s04_evaluation import import_side as imp
 from test_import_side import FIX, SID as READER_SID
 
 SID = 'c' * 64

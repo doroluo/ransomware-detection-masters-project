@@ -1,4 +1,4 @@
-"""python -m pytest tests/test_model1_trainer.py: Model 1 (`s03a_transformer/token_sequence/train.py`), its registry entry
+"""python -m pytest tests/test_model1_trainer.py: Model 1 (`reference/token_sequence/train.py`), its registry entry
 `tokenseq` and the gate stage `model1` on synthetic runs.
 
 Ported from the 3-block-level-counting branch (tests/test_model1_trainer.py). CPU only. The block export is built from the small
@@ -25,11 +25,11 @@ from common.reader import BlockStore
 from common.registry import MODELS, spec_for
 from experiments.train import val_threshold_of
 from s04_evaluation.val_threshold import GRID
-from s03a_transformer.token_sequence import BinaryTokenSequence, FoldSequences, Model1TokenSequence
-from s03a_transformer.token_sequence import train as ts
-from s03a_transformer.token_sequence import spec as spec_module
-from s03a_transformer.token_sequence.spec import TokenSeqSpec
-from s03c_cfg_transformer import block_export as be
+from reference.token_sequence import BinaryTokenSequence, FoldSequences, Model1TokenSequence
+from reference.token_sequence import train as ts
+from reference.token_sequence import spec as spec_module
+from reference.token_sequence.spec import TokenSeqSpec
+from reference.cfg_transformer import block_export as be
 from s04_evaluation import gate_tables, gates, report, stats
 
 torch.set_num_threads(2)
@@ -439,7 +439,7 @@ def test_command_line():
 # ---- the registry entry and `python -m experiments.train --model tokenseq` -------------------------------------------------
 
 def test_tokenseq_is_registered_and_owns_its_loop():
-    assert MODELS['tokenseq'] == 's03a_transformer.token_sequence.spec:TokenSeqSpec'
+    assert MODELS['tokenseq'] == 'reference.token_sequence.spec:TokenSeqSpec'
     spec = spec_for(tok())
     assert type(spec) is TokenSeqSpec and spec is not spec_for(tok()) and spec.name == 'tokenseq' and spec.requires == ()
     spec.check(tok())

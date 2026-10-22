@@ -21,7 +21,7 @@ training manifest instead of by its class weight; every metrics block gains `cel
 test do not change with the seed; the run name gains `-vs<k>` when k differs from the seed.
 
 --block-input vec replaces the token bag of step 5 by the precomputed block vectors <cache>/side/blockvec/<block-vec>/
-fold<k>/ (s03c_cfg_transformer/precompute_blockvec.py; without that package the option stops with a message). `--control
+fold<k>/ (reference/cfg_transformer/precompute_blockvec.py; without that package the option stops with a message). `--control
 no_edges --block-input vec` is path 1 of the transformer paths plan and the typed GNN with it is path 2. Fold runs of
 protocol kfold only.
 
@@ -35,7 +35,7 @@ per instruction plus our api tokens, hybrid = our mn and beh plus the reader's t
 
 --imports header adds an EmbeddingBag over every header import name (vocabulary and idf fitted on the training binaries,
 min_df 2) and two log counts (log1p of the unreferenced and of the header imports) to the head input (<cache>/side/imports/,
-s03b_cfg_feature/gnn/s10_unused_import_features); the run name gains `-imph`.
+s04_evaluation/imports_feat.py); the run name gains `-imph`.
 
 --select-on cell picks best_auc.pt by the validation cell-balanced AUC instead of the validation AUC, and the validation
 threshold of the AUC checkpoint (threshold_val, predictions_auc.csv) by the validation cell-balanced macro-F1 instead of
@@ -57,7 +57,7 @@ build (experiments/team_pipelines/build_b.py) under our folds (`--protocol kfold
 (default: the `team_b_build` source of datasets.json, or GT_TEAM_B_BUILD), --device and --smoke N, and --max-instructions N
 (default 128, as she wrote it; 512 gives the run name suffix -L512). See that package's README.
 
---model tokenseq trains Model 1, the token-sequence transformer of s03a_transformer/token_sequence, on a fold of a block export
+--model tokenseq trains Model 1, the token-sequence transformer of reference/token_sequence, on a fold of a block export
 (`--protocol kfold --fold <k>`); its loop is its own and the registry hands the run over to it. It takes four more flags,
 refused for other models: --export <name or directory> (default ours_cap0, under the export directory), --device cuda|cpu,
 --smoke N (N binaries, 2 epochs, a temporary directory) and --window-budget N (windows per batch). See that package's README.

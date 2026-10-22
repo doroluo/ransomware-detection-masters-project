@@ -16,19 +16,19 @@ import pytest
 import torch
 
 from common import paths
-from s03b_cfg_feature.gnn import spec as gnn_spec
-from s03c_cfg_transformer import encoder_contract as ec
+from reference.gnn import spec as gnn_spec
+from reference.cfg_transformer import encoder_contract as ec
 
 ROOT = Path(__file__).resolve().parents[1]
-S03C, S03A = ROOT / 's03c_cfg_transformer', ROOT / 's03a_transformer'
-MODULES = ('s03c_cfg_transformer', 's03c_cfg_transformer.block_export', 's03c_cfg_transformer.encoder_contract',
-           's03c_cfg_transformer.precompute_blockvec', 's03c_cfg_transformer.encoders',
-           's03c_cfg_transformer.encoders.codebert', 's03c_cfg_transformer.encoders.reference', 's03a_transformer',
-           's03a_transformer.token_sequence', 's03a_transformer.token_sequence.data', 's03a_transformer.token_sequence.model',
-           's03a_transformer.token_sequence.train', 's03a_transformer.token_sequence.spec')
-COMMANDS = ('s03c_cfg_transformer.block_export', 's03c_cfg_transformer.encoder_contract', 's03c_cfg_transformer.precompute_blockvec',
-            's03c_cfg_transformer.encoders.codebert', 's03c_cfg_transformer.encoders.reference',
-            's03a_transformer.token_sequence.train')
+S03C, S03A, TS = ROOT / 'reference' / 'cfg_transformer', ROOT / 's03a_transformer', ROOT / 'reference' / 'token_sequence'
+MODULES = ('reference', 'reference.cfg_transformer', 'reference.cfg_transformer.block_export', 'reference.cfg_transformer.encoder_contract',
+           'reference.cfg_transformer.precompute_blockvec', 'reference.cfg_transformer.encoders',
+           'reference.cfg_transformer.encoders.codebert', 'reference.cfg_transformer.encoders.reference', 's03a_transformer',
+           'reference.token_sequence', 'reference.token_sequence.data', 'reference.token_sequence.model',
+           'reference.token_sequence.train', 'reference.token_sequence.spec')
+COMMANDS = ('reference.cfg_transformer.block_export', 'reference.cfg_transformer.encoder_contract', 'reference.cfg_transformer.precompute_blockvec',
+            'reference.cfg_transformer.encoders.codebert', 'reference.cfg_transformer.encoders.reference',
+            'reference.token_sequence.train')
 
 
 def clean_env(tmp_path, **extra):
@@ -55,11 +55,13 @@ def test_the_commands_run_as_modules_from_the_package_root(module, tmp_path):
 
 def test_the_placeholder_is_gone_and_the_stages_are_packages():
     assert not (S03C / 'placeholder.py').exists()
-    for stage in (S03C, S03A):
+    for stage in (S03C, S03A, TS):
         assert (stage / '__init__.py').is_file()
-    assert (S03C / 'README.md').is_file() and (S03A / 'token_sequence' / 'README.md').is_file()
+    assert (TS / 'README.md').is_file() and (S03C / 'EXPORT_SCHEMA.md').is_file()
+    assert (ROOT / 's03c_cfg_transformer' / 'README.md').is_file() and (ROOT / 's03c_cfg_transformer' / '__init__.py').is_file()
     assert sorted(p.name for p in S03C.glob('*.py')) == ['__init__.py', 'block_export.py', 'encoder_contract.py',
                                                           'precompute_blockvec.py']
+    assert sorted(p.name for p in (ROOT / 's03c_cfg_transformer').glob('*.py')) == ['__init__.py']
     assert sorted(p.name for p in (S03C / 'encoders').glob('*.py')) == ['__init__.py', 'codebert.py', 'reference.py']
     assert not (S03A / 'transformer_model.py').exists()                 # removed by PR #8: it was only a placeholder
     assert (S03A / 'five_channel' / 'model.py').is_file()                # Janice's model, moved off the name of the package
@@ -69,7 +71,7 @@ def test_the_stage_imports_only_the_package_and_the_libraries():
     """No import of the branch's flat layout (pipeline.*, training.*, evaluation.*, transformer_paths.*, token_sequence.*)."""
     old = {'pipeline', 'training', 'evaluation', 'transformer_paths', 'token_sequence'}
     offenders = []
-    for path in list(S03C.rglob('*.py')) + list((S03A / 'token_sequence').rglob('*.py')) + list((S03A / 'five_channel').rglob('*.py')):
+    for path in list(S03C.rglob('*.py')) + list(TS.rglob('*.py')) + list((S03A / 'five_channel').rglob('*.py')):
         for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
             names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module] if isinstance(
                 node, ast.ImportFrom) and node.module else []
@@ -78,9 +80,9 @@ def test_the_stage_imports_only_the_package_and_the_libraries():
 
 
 def test_the_export_is_read_through_common_reader_and_there_is_no_second_copy():
-    assert not (S03C / 'reader.py').exists() and not (S03A / 'token_sequence' / 'reader.py').exists()
+    assert not (S03C / 'reader.py').exists() and not (TS / 'reader.py').exists()
     for path in (S03C / 'encoder_contract.py', S03C / 'precompute_blockvec.py',
-                 S03A / 'token_sequence' / 'data.py', S03A / 'token_sequence' / 'train.py'):
+                 TS / 'data.py', TS / 'train.py'):
         assert 'from common.reader import' in path.read_text(encoding='utf-8'), path.name
 
 
@@ -88,7 +90,7 @@ def test_no_module_spells_the_runs_or_export_path_itself():
     """Only common/paths.py names a run directory; no module builds `RUNS / 'export'`."""
     code_files = [p for p in ROOT.rglob('*.py') if not {'tests', '.git', '__pycache__'} & set(p.relative_to(ROOT).parts)]
     assert [p.relative_to(ROOT).as_posix() for p in code_files if "RUNS / 'export'" in p.read_text(encoding='utf-8')] == []
-    for path in list(S03C.rglob('*.py')) + list((S03A / 'token_sequence').rglob('*.py')) + list((S03A / 'five_channel').rglob('*.py')):
+    for path in list(S03C.rglob('*.py')) + list(TS.rglob('*.py')) + list((S03A / 'five_channel').rglob('*.py')):
         text = path.read_text(encoding='utf-8')
         assert not re.search(r"graph_transformer|Path\('[A-Za-z]:", text), path.name
 
@@ -103,8 +105,8 @@ def probe(env, code, tmp_path):
 PROBE = '''
 import json
 from common.config import EXPORT, RUNS
-from s03a_transformer.token_sequence import train
-from s03c_cfg_transformer import block_export as be
+from reference.token_sequence import train
+from reference.cfg_transformer import block_export as be
 print(json.dumps({"runs": str(RUNS), "export": str(EXPORT), "trainer_runs": str(train.RUNS), "be_export": str(be.EXPORT),
                   "resolved": str(train.resolve_export("ours_cap0")), "be_out": str(be.resolve_out("RUNS/export/x"))}))
 '''
@@ -128,7 +130,7 @@ def test_gt_export_moves_the_exports_only(tmp_path):
 def test_resolve_out_follows_gt_export(tmp_path):
     out = probe({'GT_EXPORT': str(tmp_path / 'e')}, '''
 import json
-from s03c_cfg_transformer import block_export as be
+from reference.cfg_transformer import block_export as be
 refused = []
 for bad in ("RUNS/other/x", "RUNS/export", "x"):
     try:
@@ -142,15 +144,15 @@ print(json.dumps({"ok": str(be.resolve_out("RUNS/export/ours_cap0")), "refused":
 
 def test_the_vec_input_of_the_gnn_finds_its_package():
     """PR 3 stopped `--block-input vec` with a message when stage 3c was absent; the package is here now."""
-    assert gnn_spec.vectors_package_present() and gnn_spec.VECTORS_PACKAGE == 's03c_cfg_transformer.precompute_blockvec'
+    assert gnn_spec.vectors_package_present() and gnn_spec.VECTORS_PACKAGE == 'reference.cfg_transformer.precompute_blockvec'
 
 
 def test_checkpoints_of_the_branch_layout_still_load(tmp_path):
     """A checkpoint written before the move names `transformer_paths.<x>_encoder`; `load_encoder` imports the new module."""
-    from s03c_cfg_transformer.encoders.reference import ReferenceEncoder
+    from reference.cfg_transformer.encoders.reference import ReferenceEncoder
     model = ReferenceEncoder(n_ids=20)
     for old, new in ec.LEGACY_MODULES.items():
-        assert old.startswith('transformer_paths.') and new.startswith('s03c_cfg_transformer.encoders.')
+        assert old.startswith('transformer_paths.') and new.startswith('reference.cfg_transformer.encoders.')
     ckpt = {'module': 'transformer_paths.reference_encoder', 'class': 'ReferenceEncoder', 'init_kwargs': {'n_ids': 20},
             'state_dict': model.state_dict()}
     path = tmp_path / 'old.pt'
@@ -173,8 +175,8 @@ def test_the_teammates_files_of_stage_2_still_import():
 
 def test_token_sequence_is_the_package_and_janices_file_is_five_channel_model():
     import importlib
-    package = importlib.import_module('s03a_transformer.token_sequence')
-    assert Path(package.__file__).resolve() == (S03A / 'token_sequence' / '__init__.py').resolve() and hasattr(package, '__path__')
+    package = importlib.import_module('reference.token_sequence')
+    assert Path(package.__file__).resolve() == (TS / '__init__.py').resolve() and hasattr(package, '__path__')
     janice = importlib.import_module('s03a_transformer.five_channel.model')
     assert Path(janice.__file__).resolve() == (S03A / 'five_channel' / 'model.py').resolve()
     assert hasattr(janice, 'Model1TokenSequence') and not (S03A / 'token_sequence.py').exists()
@@ -182,7 +184,7 @@ def test_token_sequence_is_the_package_and_janices_file_is_five_channel_model():
 
 def test_the_earlier_stages_read_nothing_of_these_at_import_time(tmp_path):
     code = ('import sys\nimport common.config, common.manifests, common.run_io, common.registry, s04_evaluation.baselines, '
-            's04_evaluation.gates, s03b_cfg_feature.gnn.spec\n'
-            'print(sorted(m for m in sys.modules if m.startswith(("s03c_cfg_transformer", "s03a_transformer.token_sequence"))))')
+            's04_evaluation.gates, reference.gnn.spec\n'
+            'print(sorted(m for m in sys.modules if m.startswith(("reference.cfg_transformer", "reference.token_sequence"))))')
     r = run(['-c', code], tmp_path)
     assert r.returncode == 0 and r.stdout.strip() == '[]', (r.stdout, r.stderr)

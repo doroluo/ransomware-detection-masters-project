@@ -7,7 +7,7 @@ python -m experiments.team_pipelines.train_a --fold 0 --seed 0 --arm cb500 [--bl
 gnn500  the graphs of build_a.py (their gnn_graph_from_export, 500 blocks, 57 opcode / API-group / structure features).
 cb500   graphs from OUR cache: the blocks of `select_subgraph(..., 'cap', 500, rng=None)` (what the matched
         `--subgraph cap --budget 500` arm evaluates), the cache's directed intra-function CFG edges among them, and the
-        block vectors of s03c_cfg_transformer.precompute_blockvec (`BlockVecSource`, keyed by the export's block_key). No raw
+        block vectors of reference.cfg_transformer.precompute_blockvec (`BlockVecSource`, keyed by the export's block_key). No raw
         export is parsed. The graphs are built in memory per fold; x is held as float16 and cast per batch.
 Both: BlockGAT(hidden 128, heads 4, dropout 0.2), AdamW lr 1e-3 / weight decay 1e-4, class-weighted cross-entropy, batch 8,
 20 epochs, patience 5 on the validation ransomware F1 at 0.5 (see fit.py), our `fold_manifest(fold, seed)` for train,
@@ -27,7 +27,7 @@ from common.manifests import load_sample, run_command
 from experiments.team_pipelines.common import fold_manifest, import_team, sample_rows
 from experiments.team_pipelines.fit import run_arm, smoke_ids
 from s02_preprocess.subgraph import select_subgraph
-from s03b_cfg_feature.gnn.spec import open_block_vecs
+from reference.gnn.spec import open_block_vecs
 
 ARMS = ('gnn500', 'cb500')
 BUDGET = 500

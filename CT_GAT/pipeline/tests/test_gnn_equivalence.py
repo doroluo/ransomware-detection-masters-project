@@ -16,9 +16,9 @@ from common.config import RunConfig
 from common.manifests import load_index, make_manifest
 from gnn_equivalence_cases import CASES, compute
 from s02_preprocess.tokenizer.vocab import TokenVocab
-from s03b_cfg_feature.gnn.batching import loader
-from s03b_cfg_feature.gnn.model import HierGNN
-from s03b_cfg_feature.gnn.s10_unused_import_features.imports_feat import ImportVocab
+from reference.gnn.batching import loader
+from reference.gnn.model import HierGNN
+from s04_evaluation.imports_feat import ImportVocab
 from tiny_cache import tiny  # noqa: F401  (a fixture)
 
 FIXTURE = Path(__file__).resolve().parent / 'fixtures' / 'gnn_equivalence.npz'

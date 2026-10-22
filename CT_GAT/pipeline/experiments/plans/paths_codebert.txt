@@ -1,8 +1,8 @@
 # CodeBERT block vectors, paths 1 and 2, kfold x86, 15% block masking, seeds 0 1 2, folds 0-4 (30 runs, seed by seed).
 # Build the checkpoints and the vectors once before the first line. HF_HOME names the Hugging Face home that
 # holds microsoft/codebert-base; the block export ours_cap0 is the one of the plan `paths`:
-#     python -m s03c_cfg_transformer.encoders.codebert --write-checkpoints --export ours_cap0 --name codebert
-#     python -m s03c_cfg_transformer.precompute_blockvec --encoder-name codebert --export ours_cap0 --folds 0 1 2 3 4
+#     python -m reference.cfg_transformer.encoders.codebert --write-checkpoints --export ours_cap0 --name codebert
+#     python -m reference.cfg_transformer.precompute_blockvec --encoder-name codebert --export ours_cap0 --folds 0 1 2 3 4
 # Source queue: queue_gnn.sh --stage paths_codebert (GPU budget 600 minutes).
 #     python -m experiments.queue --plan experiments/plans/paths_codebert.txt --budget-min 600
 
