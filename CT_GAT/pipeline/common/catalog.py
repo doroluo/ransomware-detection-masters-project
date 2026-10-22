@@ -63,10 +63,36 @@ def find_bundle(folder):
     return Path(folder) if read_summary(folder).get('schema') == BUNDLE_SCHEMA else None
 
 
+def collection_state(data_root, name):
+    """Where the collection `name` stands under `data_root`: 'present' (its samples.csv is there), 'nested' (only
+    `<name>/<name>/samples.csv` is: the unzip went one folder too deep, as Windows Explorer's "Extract All" does with its
+    default destination), 'zip' (`<name>.zip` is there and no folder: not unzipped yet) or 'missing'."""
+    data_root = Path(data_root)
+    if (data_root / name / 'samples.csv').is_file():
+        return 'present'
+    if (data_root / name / name / 'samples.csv').is_file():
+        return 'nested'
+    if (data_root / f'{name}.zip').is_file() and not (data_root / name).exists():
+        return 'zip'
+    return 'missing'
+
+
+def collection_hint(data_root, name, state=None):
+    """What to do about a collection that is nested or still zipped; '' when it is present or plainly missing."""
+    data_root = Path(data_root)
+    state = state or collection_state(data_root, name)
+    if state == 'nested':
+        return (f'{(data_root / name / name).as_posix()}/samples.csv is one folder too deep (the unzip went into a folder named '
+                f'after the zip): move the inner {name} folder up so that {(data_root / name).as_posix()}/samples.csv exists')
+    if state == 'zip':
+        return f'{(data_root / (name + ".zip")).as_posix()} is not unzipped: unzip it into {data_root.as_posix()}'
+    return ''
+
+
 def status(data_root=DATA_ROOT, cache_root=CACHE_ROOT, folds_root=FOLDS_ROOT, bundle=None, caches=None, folds=None):
-    """Per dataset, what is on this machine: {name: {'collections': {folder: {'present', 'snapshot'}}, 'bundle': (kind, path),
-    'cache': path, 'built': bool, 'folds': {key: (path, found)}}}. A collection is present when its samples.csv exists under
-    `data_root`; `bundle` is the configured bundle folder or None (kind 'configured', else 'discovered' under `data_root`,
+    """Per dataset, what is on this machine: {name: {'collections': {folder: {'present', 'state', 'snapshot'}}, 'bundle': (kind,
+    path), 'cache': path, 'built': bool, 'folds': {key: (path, found)}}}. A collection is present when its samples.csv exists
+    under `data_root`; its `state` is also 'nested', 'zip' or 'missing' (`collection_state`); `bundle` is the configured bundle folder or None (kind 'configured', else 'discovered' under `data_root`,
     else 'absent'); `caches` maps a dataset name to a path that replaces its default cache and `folds` maps a dataset name to
     {source key: path} for the fold files that replace its own."""
     caches, folds = caches or {}, folds or {}
@@ -80,7 +106,8 @@ def status(data_root=DATA_ROOT, cache_root=CACHE_ROOT, folds_root=FOLDS_ROOT, bu
         for key, rel in ds.folds.items():
             path_ = Path(folds.get(name, {}).get(key, folds_root / rel))
             fold_files[key] = (path_, all((path_ / f).is_file() for f in V3_FILES) if key == 'folds_v3' else path_.is_file())
-        report[name] = {'collections': {f: {'present': (data_root / f / 'samples.csv').is_file(),
+        states = {f: collection_state(data_root, f) for f in folders}
+        report[name] = {'collections': {f: {'present': states[f] == 'present', 'state': states[f],
                                            'snapshot': read_summary(data_root / f).get('snapshot_utc')} for f in folders},
                         'bundle': (kind, path), 'cache': cache, 'built': (cache / 'index.csv').is_file(), 'folds': fold_files}
     return report
@@ -103,7 +130,8 @@ def render(report, data_root=DATA_ROOT):
         lines.append(f'  collections under {show(data_root)}:')
         for folder, c in info['collections'].items():
             when = f" (snapshot {c['snapshot']})" if c['present'] and c['snapshot'] else ''
-            lines.append(f"    {folder}: {'present' if c['present'] else 'missing'}{when}")
+            hint = collection_hint(data_root, folder, c['state'])
+            lines.append(f"    {folder}: {'present' if c['present'] else c['state']}{when}" + (f'; {hint}' if hint else ''))
         kind, path = info['bundle']
         lines.append(f"  bundle: {kind}{f' {show(path)}' if path else ''}")
         lines.append(f"  cache {show(info['cache'])}: {'built' if info['built'] else 'not built'}")

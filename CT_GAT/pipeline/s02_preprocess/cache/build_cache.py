@@ -88,9 +88,10 @@ def corpus_roots(corpus):
             return [bundle]
     roots = [base / name for name in spec.collections]
     if spec.bundle and not all((root / 'samples.csv').is_file() for root in roots):
+        hints = [h for name in spec.collections if (h := catalog.collection_hint(base, name))]
         raise MissingSource(f'no {corpus} data: set GT_BUNDLE (or "bundle" under "sources" in {datasets_file()}) to the '
                             f'{spec.bundle} bundle, or put {" and ".join(spec.collections)} under {base} '
-                            f'(GT_COLLECTIONS or "collections")')
+                            f'(GT_COLLECTIONS or "collections")' + ''.join(f'\n{h}' for h in hints))
     return roots
 
 
@@ -137,7 +138,8 @@ def require_collections(corpora):
             if (root / 'samples.csv').is_file():
                 continue
             if root.name in catalog.CORPORA[corpus].collections:
-                problems.append(f'{root.as_posix()} is missing: unzip Collections/{root.name}.zip into {base.as_posix()}')
+                hint = catalog.collection_hint(base, root.name)
+                problems.append(f'{root.as_posix()} is missing: ' + (hint or f'unzip Collections/{root.name}.zip into {base.as_posix()}'))
             else:
                 problems.append(f'the {corpus} bundle {root.as_posix()} has no samples.csv')
     if problems:
