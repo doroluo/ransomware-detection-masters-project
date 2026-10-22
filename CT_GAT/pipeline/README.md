@@ -43,7 +43,7 @@ branch `jsonl-reference-models`; their results are in `docs/history/`.
 | 3c. Model 3 | `s03c_cfg_transformer/` | the block transformer trained end to end under the GAT | [`s03c_cfg_transformer/README.md`](s03c_cfg_transformer/README.md) |
 | 4. Evaluation | `s04_evaluation/` | metrics, validation thresholds, the paired bootstrap, `report.py` and the gate summaries | [`s04_evaluation/README.md`](s04_evaluation/README.md) |
 | | `common/` | `RunConfig` (the options of a run and its name), `paths.py` (where the data lives), `catalog.py` (the datasets), `manifests.py` (folds), the model registry, `run_io.py` (the run directory every model writes) | |
-| | `experiments/` | `train.py` (the training command of Model 1), `queue.py` and `plans/` (`model1_variants`, `team_b`), `stages/` (the gate definitions `model1_variants` and `team`), `team_pipelines/` (the GAT trainers of Models 2 and 3 under our folds) | [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md) |
+| | `experiments/` | `train.py` (the training command of Model 1), `queue.py` and `plans/` (`model1_variants`, `team_b`, `team_builds`), `stages/` (the gate definitions `model1_variants` and `team`), `team_pipelines/` (the GAT trainers of Models 2 and 3 under our folds, `build_b.py` and `package_build.py`, which zips a finished build) | [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md) |
 | | `docs/` | [`ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md), and `history/`: the plan, the results, the review, the literature review and the final gate tables | [`docs/history/README.md`](docs/history/README.md) |
 | | `tests/` | the test suite (`pytest.ini` has the markers) | |
 
@@ -112,7 +112,8 @@ Drive, and each zip has a `.sha256` file beside it and a README inside it.
 | `Collections/Mendeley_Ransomware.zip` (5.0 GB) | required. Per binary, the IDA CFG export `<sha256>.jsonl.gz` and the IDA listing `<sha256>.asm.gz`, in `samples/<split>/<family>/`, with the collection's `samples.csv` and `summary.json`. Unzip into `CT_GAT/data/` | the CFG cache and every command that reads it, `build_b`, `preprocess_full.py` |
 | `Collections/Mendeley_Goodware.zip` (1.5 GB) | required. The same for the goodware binaries. Unzip into `CT_GAT/data/` | as above |
 | `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` (1.4 GB) | the preprocessed samples of Models 1 to 3: one `.pt` file per binary for the 1,810 x86 binaries of the folds, 500 blocks per binary. Unzip at `CT_GAT/`; it unpacks to 9.9 GB. It saves the 4 h build of `build_b --source repo` | Models 1, 2 and 3 |
-| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (2.6 GB) | the same with every non-library block of each binary; it unpacks to 13.3 GB and saves a 5.6 h build | as above |
+| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (2.6 GB) | the same with every non-library block of each binary; it unpacks to 13.3 GB and saves a 5.6 h build. With no block budget the `callwalk` sampler restarts until every allowed block is chosen and the samples are saved in block order, so this one zip serves both samplers | as above |
+| `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip`, `..._callwalk_500blocks_v3.zip`, `..._callwalk_250blocks_v3.zip` | the same samples from `build_b --sample signal --num-blocks 250` and `--sample callwalk` at 500 and 250 blocks (`callwalk` grows its subgraph across calls: [`s02_preprocess/README.md`](s02_preprocess/README.md)); packaged by `experiments.team_pipelines.package_build`, which names the zip after the sampler and the block count | Models 1, 2 and 3 |
 | `Collections/Ransomware_Balanced.zip` (8.9 GB), `Collections/Balanced_Goodware.zip` (15.7 GB) | two more collections in the same layout. Unzip into `CT_GAT/data/` | the all-architecture cache (`build_cache --cache combined_v3`) |
 | `Collections/VirusShare Ransomware.zip` | unzips to `VirusShare_Malware/`. It is in no dataset: no fold file lists it and all its rows are in `splits/unassigned.csv`, so no command of the pipeline reads it | nothing |
 | `Mendeley_GNN_v1.zip` | the Mendeley CFG exports as one bundle (`samples.csv`, `splits/`, `cfg/`), an alternative to the two Mendeley collections | the CFG cache, when the bundle is configured or unzipped into `CT_GAT/data/` |
@@ -298,7 +299,11 @@ python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --fold 0 --seed 
 python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --fold 0 --seed 0
 ```
 
-On the uncapped zip the arms are `sigwhole-feat` and `sigwhole-emb`. `--build DIR` names a build folder elsewhere. The arm table, the
+The arm families: `sig500v3-*`, `sig250-*`, `callwalk500-*` and `callwalk250-*` (each `-feat`, `-emb`, `-e2e`, on the build of that
+sampler and block count: `b_sig500_v3`, `b_sig250_main`, `b_callwalk500_main`, `b_callwalk250_main`) and, on the uncapped zip,
+`sigwhole-feat` and `sigwhole-emb`. An arm refuses a build of another sampler, block count or code source. `--build DIR` names a build
+folder elsewhere. The finished build of a sampler is zipped with `python -m experiments.team_pipelines.package_build RUNS/team/<build>
+--out <dir>`: `Mendeley_x86_cfg_subgraphs_<signal|callwalk>_<N>blocks_v3.zip` and its `.sha256`. The arm table, the
 builds and the older team arms (`sig500`, `sig500v2`, which need the pinned teammate worktrees) are in
 [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md); Model 3 is described in
 [`s03c_cfg_transformer/README.md`](s03c_cfg_transformer/README.md).
@@ -316,7 +321,7 @@ python -m s04_evaluation.gates --stage team                                     
 `stats` and `gates` need all five folds of a seed for each arm, and name the missing ones otherwise.
 
 **A whole experiment.** Each file in `experiments/plans/` is one experiment, as `train`, `train_b`, `report`, `val_threshold` and
-`gates` lines; its header names the CPU steps to run once before it, when it needs any (`team_b` names none):
+`gates` lines; its header names the CPU steps to run once before it, when it needs any (`team_b` and `team_builds` name none):
 
 ```bash
 python -m experiments.queue --plan experiments/plans/team_b.txt --dry          # print what would run
@@ -325,7 +330,9 @@ python -m experiments.queue --stop                                             #
 ```
 
 The queue skips a finished run and retries a failed line once. The plans are `model1_variants` (Model 1 at 128 and 512 instructions,
-30 runs) and `team_b` (Model 3 end to end, `train_b --arm sig500v3-e2e`, 3 seeds x 5 folds = 15 runs).
+30 runs), `team_b` (Model 3 end to end, `train_b --arm sig500v3-e2e`, 3 seeds x 5 folds = 15 runs) and `team_builds` (the nine arms
+`sig250-*`, `callwalk500-*` and `callwalk250-*`, 135 runs, then `report` and `gates team`, which pairs each callwalk arm with its signal
+arm and each 250-block arm with its 500-block arm).
 [`docs/ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md) shows how to add a model, a dataset, a control, a plan and a gates
 stage, and how to read the tables.
 

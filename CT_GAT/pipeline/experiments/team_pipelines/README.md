@@ -113,13 +113,14 @@ plus under a minute of loading and prediction. The 15 runs of an arm therefore t
   - `team_row(sample_id)`: the row `construct_blocks` expects (bundle `samples.csv` row, int `label`, `cfg_file`).
 - `match_diagnosis.py`, `match_acceptance.py`: why the listing-to-CFG match fails and the PASS/FAIL checks for a fix (step 24, below).
 - `build_b.py`, `build_a.py`: the two preprocessing builds; `train_a.py`, `train_b.py`: the trainers; `fit.py`: the
-  teammates' training loop on our manifests (shared by both trainers). See below.
+  teammates' training loop on our manifests (shared by both trainers); `package_build.py`: the zip of a finished `build_b` folder.
+  See below.
 - `compare_builds.py`, `match_rates.py`, `measure_rss.py`: small tools on builds (step 21, below).
 
 ## build_b.py
 
 ```
-python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --seed 0 [--out RUNS/team/b_sig500]
+python -m experiments.team_pipelines.build_b --sample signal|walk|callwalk --num-blocks 500 --seed 0 [--out RUNS/team/b_sig500]
        [--source gnn-331ce0b|main-c7899f0|repo] [--limit N] [--ids <sample_id> ...] [--frozen-from <build dir>] [--seeded-rows]
 ```
 
@@ -156,6 +157,20 @@ file of theirs is parsed by new code. The size caps (`--max-asm-bytes`, `--max-c
 live in their `main`, which is not called: nothing is skipped. One shared `ApiVocab` and one `FiveChannelEmbedder`
 (created after `torch.manual_seed(seed)`) are used for the whole build.
 
+`--sample callwalk` is the sampler of `s02_preprocess/preprocess_full.py` that walks across calls (the paragraph in
+[`s02_preprocess/README.md`](../../s02_preprocess/README.md)): it grows from a seeded random block over the CFG edges and the call
+edges in both directions, restarts from another seeded random block when the region is smaller than the budget, and saves only the
+CFG edges among the chosen blocks, so a sample has the same fields and edge types as a `signal` one. With no budget it restarts until
+every allowed block is chosen and the payloads are written in canonical block order, so an uncapped `callwalk` build equals the
+uncapped `signal` build (`b_sigwhole_v3` serves both). The builds of this repository's own files that the arms below read are, all
+`--source repo --seed 0`:
+
+```
+python -m experiments.team_pipelines.build_b --source repo --sample signal   --num-blocks 250 --out RUNS/team/b_sig250_main
+python -m experiments.team_pipelines.build_b --source repo --sample callwalk --num-blocks 500 --out RUNS/team/b_callwalk500_main
+python -m experiments.team_pipelines.build_b --source repo --sample callwalk --num-blocks 250 --out RUNS/team/b_callwalk250_main
+```
+
 Output in `<out>`: `<id>.pt` and `<id>.manifest.json` per sample (keys of the `.pt`: `instruction_ids [N,5]`,
 `insn_to_block`, `instruction_matched`, `instruction_rvas`, `block_features [B,77]`, `block_embeddings [B,64]`,
 `edge_index`, `edge_type`, `edge_attr`, `edge_back`, `block_types`, `block_external`, `block_keys`, `label`,
@@ -191,6 +206,25 @@ test of every fold; the other 1,809 are unchanged), `common.write_run(excluded=,
 `stats.py` / `gates.py` print "N excluded from both arms: <ids> (<reason>)" under every paired difference that involves a sig500 run.
 
 Each manifest json is 3-6 MB (about 8 GB for the full build); the `.pt` files are about 0.5 MB.
+
+## package_build.py (the zip of a build)
+
+```
+python -m experiments.team_pipelines.package_build RUNS/team/<build> [--out DIR] [--no-manifests] [--deflate-pt]
+```
+
+Zips a finished `build_b` folder (read only; the summary must account for every id and every sample file must be there) as the
+preprocessed zips of the Drive: unzipped at `CT_GAT/` it gives `processed/api_vocab.json` and `processed/cfg_subgraphs/` (the samples,
+their manifests, `channel_embedder.pt`, `build_info/{index.csv, build_settings.json, build_summary.json, build_log.csv}`), which
+`train_b` reads as an unzipped Drive zip (`build_layout`) and `--model fivechannel --build CT_GAT/processed/cfg_subgraphs` reads
+directly. The name comes from the build's `settings.json`: `Mendeley_x86_cfg_subgraphs_<signal|callwalk>_<N>blocks_v3.zip`, or
+`Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` when `num_blocks` is 0 or at least `train_b.UNCAPPED_BLOCKS` (1,000,000), whose README
+says it serves both samplers. `--out` (default: the current directory) receives the zip, `<zip>.sha256` and `<zip stem>.README.md`,
+the text that is also the first file of the zip. The README is generated from `settings.json`, `build_summary.json` and the samples
+(counts of ransomware and goodware, sampler and budget, the source and sha256 pins of the code, `--seeded-rows` when the build has
+it) and names no machine path. `--no-manifests` leaves out the per-sample manifest json files (3-6 MB each, read by no model; the
+README says so); `--deflate-pt` compresses the `.pt` files (level 1) instead of storing them. Only `signal` and `callwalk` builds are
+packaged. `tests/test_package_build.py` runs it on a synthetic build and reads the unzipped result back through `train_b`.
 
 ## build_a.py (pipeline A, opcode mode)
 
@@ -247,6 +281,9 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   | `sig500v3-feat` (Model 2) | `b_sig500_v3` | `feat`, the 77 scaled block features | `main-fix`, `repo` | nothing |
   | `sig500v3-emb` (Model 3) | `b_sig500_v3` | `emb`, the 64-d pooled channel embedding | `main-fix`, `repo` | nothing |
   | `sig500v3-e2e` (Model 3, trained encoder) | `b_sig500_v3` | `e2e`, the instructions of each block (below) | `main-fix`, `repo` | nothing; lr 3e-4, gradient clip 1.0 (`HP_E2E`) |
+  | `sig250-feat`, `sig250-emb`, `sig250-e2e` | `b_sig250_main`, `signal`, 250 blocks | `feat`, `emb`, `e2e` | `repo` | nothing; `-e2e` as `sig500v3-e2e` |
+  | `callwalk500-feat`, `-emb`, `-e2e` | `b_callwalk500_main`, `callwalk`, 500 blocks | `feat`, `emb`, `e2e` | `repo` | nothing; `-e2e` as `sig500v3-e2e` |
+  | `callwalk250-feat`, `-emb`, `-e2e` | `b_callwalk250_main`, `callwalk`, 250 blocks | `feat`, `emb`, `e2e` | `repo` | nothing; `-e2e` as `sig500v3-e2e` |
   | `sigwhole`, `sigwhole-feat`, `sigwhole-emb` | `b_sigwhole_v3`, uncapped (`num_blocks` at least 1,000,000) | `all`, `feat`, `emb` | `main-fix`, `repo` | nothing; a node budget per batch (`HP_WHOLE`, `fit.py`) |
 
   `--features`, `--block-len` and `--source` are refused when they contradict the arm. The build's settings (`settings.json`, or
@@ -286,6 +323,21 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   ```
   python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --fold F --seed S
   ```
+- The arms of the builds of this repository's own files (`sig250-*`, `callwalk500-*`, `callwalk250-*`; each `-feat` Model 2, `-emb`
+  Model 3 with fixed embeddings, `-e2e` Model 3 end to end with `HP_E2E`) have no `all` input and read only builds whose
+  `settings.json` says `source: repo` and the arm's sampler and block count; a build of another sampler, budget or source is refused
+  with the three values of both sides. Runs are `kfold{F}_x86_gnn_s{S}_team-<arm>`, none of which exists in an earlier plan or
+  fixture. The plan `experiments/plans/team_builds.txt` has the 135 `train_b` lines (nine arms, build by build, 3 seeds x 5 folds),
+  then `report` and `gates team`:
+
+  ```
+  python -m experiments.queue --plan experiments/plans/team_builds.txt --budget-min 1200
+  ```
+
+  `gates team` gives each new arm a row (`team sig250 feat (Model 2)`, `team callwalk500 emb (Model 3)`, ...) and pairs each callwalk
+  arm with the signal arm of the same budget and input (callwalk500 with sig500v3, callwalk250 with sig250), each 250-block arm with
+  its 500-block arm (sig250 with sig500v3, callwalk250 with callwalk500), and prints a match-rate line for `b_sig250_main`,
+  `b_callwalk500_main` and `b_callwalk250_main` as for the other builds. The earlier rows and pairs are unchanged.
 - Build layouts (`train_b.build_layout`). A `build_b` folder (`settings.json`, `build_log.csv`, `checkpoint.json`,
   `api_vocab.json`), or an unzipped Drive zip: `build_info/build_settings.json`, `build_info/build_log.csv`, `checkpoint.json` if the
   zip has one, else the ids are the `<sha256>.pt` stems; `api_vocab.json` in the folder or one level up, else the embedder is sized
@@ -405,6 +457,7 @@ is not complete, criteria 2-4 are computed on the ids it holds and marked partia
 ## Tests
 
 `tests/test_team_pipelines.py`, `test_team_exclusion.py`, `test_seeded_rows.py`, `test_team_v2.py`, `test_team_v3.py`, `test_team_whole.py`,
+`test_team_builds.py` (the nine new arms, their refusals, the rows and pairs of `gates team`, the plan), `test_package_build.py`,
 `test_gat_port.py`, `test_model3_e2e.py`, `test_match_diagnosis.py` (CPU). They run everywhere
 on the tiny cache of `tests/tiny_cache.py` and on synthetic builds: every module imports without `torch_geometric`, `psutil`
 and the worktrees (a subprocess with fake packages that raise `ImportError`); the environment variables name the missing input;
