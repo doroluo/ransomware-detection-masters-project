@@ -143,7 +143,7 @@ def resolve_dir(path):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--sample', choices=['signal', 'walk'], default='signal')
+    ap.add_argument('--sample', choices=['signal', 'walk', 'callwalk'], default='signal')
     ap.add_argument('--num-blocks', type=int, default=500)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--source', choices=sorted(SOURCES), default=DEFAULT_SOURCE,
