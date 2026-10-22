@@ -8,6 +8,7 @@ What is checked, on the second synthetic dataset `tiny_v3` (tests/tiny_cache.py)
     `CrossEntropyLoss(weight=)`, the API remap from the training ids only, `queue --dry` names;
   * B2, `fivechannel`: the four (protocol, arch) pairs, the `-ab` name, the build check, the cell weights and their loss;
   * B3, `package_build`: the zip name and the README text of the three labels, and the recorded x86 README text;
+  * the (protocol, arch) tables of the modules name the same datasets, and (`real_data`) `BUILD_TOTAL` is the number of ids of each;
   * `real_data` (read only): the published builds are kfold x86 builds that only the x86 arms read, no run directory has a name of this
     step, the real folds give the four cell weights from the training manifest.
 The tests that train need torch_geometric and skip with a reason without it; the refusals, names and weights do not.
@@ -24,11 +25,12 @@ import torch.nn as nn
 
 import experiments.train as experiments_train
 from common import manifests
-from common.config import COMBINED_CACHE, DEFAULT_CACHE, RUNS, RunConfig
+from common.config import COMBINED_CACHE, DEFAULT_CACHE, FIVECHANNEL_DATASETS, RUNS, RunConfig
 from common.manifests import load_index, make_manifest
 from experiments import queue as q
 from experiments.team_pipelines import common as tp, fit, package_build as pb, train_b
 from s03a_transformer.five_channel import train as fc
+from s04_evaluation import gate_tables, report
 from s04_evaluation.metrics import cell_weights
 from test_five_channel import fivechannel, write_build
 from test_team_pipelines import fresh_team_caches, needs_pyg, pinned_team_modules  # noqa: F401
@@ -841,3 +843,39 @@ def test_the_real_folds_give_four_cell_weights_from_the_training_manifest(monkey
             assert w == pytest.approx(len(ids) / (4 * n_cell))                                              # N / (C n_cell)
         if arch == 'matched':
             assert all(str(r['arch_matched']) == '1' for r in manifest.train + manifest.val + manifest.test)
+
+
+# ---- the (protocol, arch) tables name the same datasets ----------------------------------------------------------------------
+
+def pairs_of(table):
+    """{protocol: (arch, ...)} as the flat list of (protocol, arch)."""
+    return [(protocol, arch) for protocol, archs in table.items() for arch in archs]
+
+
+def test_the_protocol_and_arch_tables_of_the_modules_name_the_same_datasets():
+    built, run = pairs_of(tp.BUILD_ARCHES), pairs_of(train_b.RUN_ARCHES)
+    assert list(FIVECHANNEL_DATASETS) == run                                                   # config's pairs are the trainers' run pairs, in order
+    assert set(run) - set(built) == {('kfold_v3', 'matched')} and set(built) < set(run)          # a run adds `matched`, a filter of the all build
+    assert set(pb.DATASETS) == set(built)                                                      # every built dataset is packaged, no other
+    assert set(fc.FILL_BUILD_OF) == set(built)                                                 # fill_build maps `matched` to `all` before the lookup
+    assert set(tp.DATASET_OF) == set(tp.DEFAULT_ARCH) == set(tp.BUILD_ARCHES) == set(train_b.RUN_ARCHES)
+    assert all(tp.DEFAULT_ARCH[protocol] in archs for protocol, archs in tp.BUILD_ARCHES.items())
+    assert set(gate_tables.BUILD_TOTAL) == set(run)                                            # one total per scope a stage can name
+    assert gate_tables.BUILD_TOTAL['kfold_v3', 'matched'] == gate_tables.BUILD_TOTAL['kfold_v3', 'all']      # a matched run reads the all build
+    assert set(report.CELL_SCOPES) == {pair for pair in run if pair[1] != 'x86'}                 # the datasets whose test sets hold both architectures
+    for pair in built:
+        assert fc.fill_build(*pair) is fc.FILL_BUILD_OF[pair]
+    assert fc.fill_build('kfold_v3', 'matched') is fc.FILL_BUILD_OF['kfold_v3', 'all']
+
+
+@real_data
+@pytest.mark.parametrize('pair', [pytest.param(('kfold', 'x86'), marks=needs_v2), pytest.param(('kfold', 'all'), marks=needs_v2),
+                                  pytest.param(('kfold_v3', 'all'), marks=needs_combined),
+                                  pytest.param(('kfold_v3', 'matched'), marks=needs_combined)])
+def test_real_build_total_is_the_number_of_ids_of_the_dataset(pair, monkeypatch):
+    monkeypatch.setattr(manifests, 'CACHE', Path(DEFAULT_CACHE if pair[0] == 'kfold' else COMBINED_CACHE))      # each dataset on its own cache
+    ids = tp.all_ids(*pair)
+    if pair == ('kfold_v3', 'matched'):                                       # the build is the all build; the matched ids are a subset of it
+        assert gate_tables.BUILD_TOTAL[pair] == len(tp.all_ids('kfold_v3', 'all')) > len(ids) == 4850
+    else:
+        assert gate_tables.BUILD_TOTAL[pair] == len(ids)
