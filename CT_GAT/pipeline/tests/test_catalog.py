@@ -130,8 +130,8 @@ def test_status_on_a_data_root_with_one_of_two_folders(tmp_path):
     (caches / 'mendeley_x86' / 'index.csv').write_text('sample_id\n', encoding='utf-8')
     report = catalog.status(data, caches, folds_root=tmp_path / 'nofolds')
     mendeley = report['mendeley_x86']
-    assert mendeley['collections'] == {'Mendeley_Ransomware': {'present': True, 'snapshot': '20261008T184757Z'},
-                                       'Mendeley_Goodware': {'present': False, 'snapshot': None}}
+    assert mendeley['collections'] == {'Mendeley_Ransomware': {'present': True, 'state': 'present', 'snapshot': '20261008T184757Z'},
+                                       'Mendeley_Goodware': {'present': False, 'state': 'missing', 'snapshot': None}}
     assert mendeley['bundle'] == ('absent', None)
     assert mendeley['cache'] == caches / 'mendeley_x86' and mendeley['built'] is True
     assert mendeley['folds']['folds'] == (tmp_path / 'nofolds' / 'folds_mendeley.csv', False)
@@ -149,6 +149,50 @@ def test_status_on_a_data_root_with_one_of_two_folders(tmp_path):
     assert 'Mendeley_Ransomware: present (snapshot 20261008T184757Z)' in text and 'Ransomware_Balanced: missing' in text
     assert 'mendeley_x86: protocols bundle, kfold' in text and 'cache CT_GAT/cache/mendeley_x86' not in text   # the test cache is under tmp
     assert text.count(': built') == 1 and text.count('not built') == 1
+
+
+def states(data):
+    report = catalog.status(data, data / 'cache', folds_root=data / 'nofolds')
+    return {f: c['state'] for f, c in report['combined_v3']['collections'].items()}
+
+
+def test_the_normal_unzip_is_present_and_prints_as_before(tmp_path):
+    data = tmp_path / 'data'
+    write_collection(data, 'Mendeley_Ransomware', '20261008T184757Z')
+    assert states(data) == {'Mendeley_Ransomware': 'present', 'Mendeley_Goodware': 'missing',
+                            'Ransomware_Balanced': 'missing', 'Balanced_Goodware': 'missing'}
+    text = catalog.render(catalog.status(data, data / 'cache'), data)
+    assert 'Mendeley_Ransomware: present (snapshot 20261008T184757Z)\n' in text
+    assert 'Mendeley_Goodware: missing\n' in text and 'one folder too deep' not in text and 'not unzipped' not in text
+
+
+def test_a_collection_one_folder_too_deep_is_reported_nested_with_the_folder_to_move_up(tmp_path):
+    data = tmp_path / 'data'
+    write_collection(data / 'Mendeley_Goodware', 'Mendeley_Goodware')                   # data/G/G/samples.csv, as "Extract All" leaves it
+    write_collection(data, 'Mendeley_Ransomware')
+    assert states(data)['Mendeley_Goodware'] == 'nested' and states(data)['Mendeley_Ransomware'] == 'present'
+    entry = catalog.status(data, data / 'cache')['mendeley_x86']['collections']['Mendeley_Goodware']
+    assert entry['present'] is False
+    text = catalog.render(catalog.status(data, data / 'cache'), data)
+    inner, outer = (data / 'Mendeley_Goodware' / 'Mendeley_Goodware').as_posix(), (data / 'Mendeley_Goodware').as_posix()
+    assert f'Mendeley_Goodware: nested; {inner}/samples.csv is one folder too deep' in text
+    assert f'move the inner Mendeley_Goodware folder up so that {outer}/samples.csv exists' in text
+    assert 'Mendeley_Ransomware: present' in text
+
+
+def test_a_zip_left_in_the_data_folder_is_reported_as_not_unzipped(tmp_path):
+    data = tmp_path / 'data'
+    data.mkdir()
+    (data / 'Mendeley_Ransomware.zip').write_bytes(b'PK')
+    assert states(data)['Mendeley_Ransomware'] == 'zip'
+    text = catalog.render(catalog.status(data, data / 'cache'), data)
+    zipped = (data / 'Mendeley_Ransomware.zip').as_posix()
+    assert f'Mendeley_Ransomware: zip; {zipped} is not unzipped: unzip it into {data.as_posix()}' in text
+    (data / 'Mendeley_Ransomware').mkdir()                                              # a folder that exists, even empty, is not "not unzipped"
+    assert states(data)['Mendeley_Ransomware'] == 'missing'
+    write_collection(data, 'Mendeley_Goodware')
+    (data / 'Mendeley_Goodware.zip').write_bytes(b'PK')                                 # unzipped and the zip kept: present
+    assert states(data)['Mendeley_Goodware'] == 'present'
 
 
 def test_status_bundle_kinds(tmp_path):
@@ -171,3 +215,15 @@ def test_the_command_prints_every_dataset_and_exits_zero(tmp_path):
         assert f'{name}:' in r.stdout
     assert 'Mendeley_Ransomware: missing' in r.stdout and 'bundle: absent' in r.stdout and 's02_preprocess/folds/folds_mendeley.csv: found' in r.stdout
     assert 'cache CT_GAT/cache/mendeley_x86: ' in r.stdout
+
+
+def test_the_command_says_nested_and_unzip_it(tmp_path):
+    data = tmp_path / 'data'
+    write_collection(data / 'Mendeley_Goodware', 'Mendeley_Goodware')
+    (data / 'Mendeley_Ransomware.zip').write_bytes(b'PK')
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GT_')}
+    env.update(GT_DATASETS=str(tmp_path / 'none.json'), GT_COLLECTIONS=str(data), PYTHONDONTWRITEBYTECODE='1')
+    r = subprocess.run([sys.executable, '-m', 'common.catalog'], cwd=ROOT, capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    assert 'Mendeley_Goodware: nested; ' in r.stdout and 'one folder too deep' in r.stdout
+    assert 'Mendeley_Ransomware: zip; ' in r.stdout and 'unzip it into' in r.stdout

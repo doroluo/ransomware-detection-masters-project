@@ -171,6 +171,30 @@ def test_missing_collections_are_all_named_with_their_resolved_path_and_zip(env)
     assert 'Ransomware_Balanced' not in str(e.value) and 'Balanced_Goodware.zip' in str(e.value)
 
 
+def test_a_nested_or_still_zipped_collection_says_so_and_a_plain_missing_one_keeps_the_old_text(env):
+    data = env / 'data'
+    collection(data / 'Ransomware_Balanced', 'Ransomware_Balanced')                  # one folder too deep
+    (data / 'Balanced_Goodware.zip').write_bytes(b'PK')                               # not unzipped
+    with pytest.raises(MissingSource) as e:
+        bc.require_collections(['ransomware_balanced', 'balanced_goodware'])
+    text = str(e.value)
+    assert f'{data.as_posix()}/Ransomware_Balanced/Ransomware_Balanced/samples.csv is one folder too deep' in text
+    assert f'move the inner Ransomware_Balanced folder up so that {data.as_posix()}/Ransomware_Balanced/samples.csv exists' in text
+    assert f'{data.as_posix()}/Balanced_Goodware.zip is not unzipped: unzip it into {data.as_posix()}' in text
+    assert 'unzip Collections/' not in text
+
+
+def test_a_missing_mendeley_corpus_names_a_nested_folder_and_a_zip_left_unextracted(env):
+    data = env / 'data'
+    collection(data / 'Mendeley_Ransomware', 'Mendeley_Ransomware')
+    (data / 'Mendeley_Goodware.zip').write_bytes(b'PK')
+    with pytest.raises(MissingSource) as e:
+        bc.require_collections(['mendeley'])
+    text = str(e.value)
+    assert 'GT_BUNDLE' in text and 'Mendeley_Ransomware/Mendeley_Ransomware/samples.csv is one folder too deep' in text
+    assert 'Mendeley_Goodware.zip is not unzipped' in text
+
+
 def test_a_missing_mendeley_corpus_keeps_the_bundle_or_collections_message(env):
     with pytest.raises(MissingSource, match='GT_BUNDLE.*Mendeley_Ransomware and Mendeley_Goodware'):
         bc.require_collections(['mendeley'])
