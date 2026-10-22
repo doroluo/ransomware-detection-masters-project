@@ -9,6 +9,13 @@ not improved for `patience` epochs) and the F1 state itself (ransomware-class F1
 What is ours: the train / val / test ids (`common.fold_manifest`), the second state (best validation AUC, strictly
 greater, tracked while the F1 rule keeps training) with its validation threshold (`val_threshold_of`), and the output.
 
+Architecture balance (`arch_balance`, the `-ab` twin of a run on a dataset with both architectures). Instead of the class weight
+N / n_class every training graph carries the weight of its (class, architecture) cell, N / (C n_cell) over the non-empty cells of the
+training manifest (`s04_evaluation.metrics.cell_weights`, as `experiments.train.loss_weight_fn`). The loss stays a weighted mean,
+sum(l_i w_i) / sum(w_i) over the batch (under a node budget the parts' sum(l_i w_i) divided by the whole batch's sum(w_i)), which is
+what `CrossEntropyLoss(weight=...)` computes for per-class weights; without the flag the step is that very object, unchanged. The
+four weights are recorded in metrics.json `recipe`. Selection stays the teammates' (ransomware F1 at 0.5, the AUC state).
+
 Node budget (hp['node_budget']; absent or None: off, every arm but the uncapped ones). A batch of 16 uncapped graphs can hold a million
 nodes (training takes about 28 KB of GPU memory per node, evaluation about 15 KB). With a budget the batches are still the teammates'
 (`_batches`: the same shuffle, 16 graphs each, the rng consumed the same way); only a batch whose node total exceeds the budget is cut
@@ -37,10 +44,12 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from common.config import RUNS
 from experiments.team_pipelines.common import (evaluate, fold_manifest, sample_rows, team_config,
                                                val_threshold_of, write_run)
+from s04_evaluation.metrics import cell_weights
 
 
 def configure_threads():
@@ -93,26 +102,42 @@ def predict(tc, model, graphs, device, batch_size, budget=None):
     return torch.cat([p for p, _ in parts]), torch.cat([y for _, y in parts])
 
 
-def train_batch(model, batch, criterion, criterion_sum, optimizer, device, budget=None, grad_clip=None):
+def weighted_mean(logits, y, weight):
+    """sum(l_i w_i) / sum(w_i): the mean cross-entropy of a batch with a weight per sample (what `CrossEntropyLoss(weight=...)`
+    is when the weight is a function of the class)."""
+    return (F.cross_entropy(logits, y, reduction='none') * weight).sum() / weight.sum()
+
+
+def train_batch(model, batch, criterion, criterion_sum, optimizer, device, budget=None, grad_clip=None, sample_weight=None):
     """One optimiser step on a collated batch; returns (loss, number of parts the batch was cut into). Within the budget (or
     without one) it is the teammates' step; above it the parts' gradients add up to the whole batch's. `grad_clip` clips the
-    gradient norm before the step."""
+    gradient norm before the step. `sample_weight` (batch -> a weight per graph, `arch_balance`) replaces the class weights of
+    `criterion` and `criterion_sum` by `weighted_mean`; without it the criteria are used as they are."""
     optimizer.zero_grad()
     if budget is None or int(batch.num_nodes) <= budget:
         batch = batch.to(device)
-        loss = criterion(model(batch), batch.y.view(-1))
+        if sample_weight is None:
+            loss = criterion(model(batch), batch.y.view(-1))
+        else:
+            loss = weighted_mean(model(batch), batch.y.view(-1), sample_weight(batch))
         loss.backward()
         if grad_clip is not None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
         return float(loss.detach()), 1
     from torch_geometric.data import Batch
-    total_weight = criterion.weight[batch.y.view(-1).to(criterion.weight.device)].sum()
+    if sample_weight is None:
+        total_weight = criterion.weight[batch.y.view(-1).to(criterion.weight.device)].sum()
+    else:
+        total_weight = sample_weight(batch).sum()
     parts = pack(batch.to_data_list(), budget)
     total = 0.0
     for part in parts:
         sub = Batch.from_data_list(part).to(device)
-        loss = criterion_sum(model(sub), sub.y.view(-1)) / total_weight
+        if sample_weight is None:
+            loss = criterion_sum(model(sub), sub.y.view(-1)) / total_weight
+        else:
+            loss = (F.cross_entropy(model(sub), sub.y.view(-1), reduction='none') * sample_weight(sub)).sum() / total_weight
         loss.backward()
         total += float(loss.detach())
         del sub, loss
@@ -129,17 +154,36 @@ def predict_rows(tc, model, ids, graphs, sizes, device, batch_size, budget=None)
     return list(ids), probs.numpy().astype(np.float64), [sizes[i] for i in ids], labels.numpy()
 
 
-def fit(model, train_ids, val_ids, graphs, *, hp, seed, device, log=print):
+def cell_name(label, arch):
+    """The name of a (class, architecture) cell as metrics.json prints it: R_x86, G_x64, ..."""
+    return f"{'R' if label else 'G'}_{arch}"
+
+
+def cell_weight_table(rows, ids):
+    """({sample_id: N / (C n_cell)}, {cell name: that weight}) over `ids`, the rows of the training manifest
+    (`s04_evaluation.metrics.cell_weights`: every non-empty (class, architecture) cell weighs the same, the mean weight is 1)."""
+    labels, arches = [rows[i]['label'] for i in ids], [rows[i]['arch'] for i in ids]
+    weights = cell_weights(labels, arches)
+    return dict(zip(ids, weights.tolist())), {cell_name(*c): float(w) for c, w in zip(zip(labels, arches), weights)}
+
+
+def fit(model, train_ids, val_ids, graphs, *, hp, seed, device, log=print, protocol='kfold', arch='x86', arch_balance=False):
     """Train `model` on graphs[train_ids]; returns a dict with the F1 state, the AUC state, the history and the timing.
-    hp holds lr, weight_decay, batch_size, epochs, patience (and optionally node_budget, gpu_cap_gb, grad_clip)."""
+    hp holds lr, weight_decay, batch_size, epochs, patience (and optionally node_budget, gpu_cap_gb, grad_clip). `protocol` and
+    `arch` name the dataset of the ids (`common.sample_rows`); `arch_balance` weights the training graphs by cell (module
+    docstring) and adds the four weights to the result as `cell_weights`."""
     from s03b_cfg_feature.gat import train_cfg as tc      # imported here: this module imports without torch_geometric
-    rows = sample_rows()
+    rows = sample_rows(protocol, arch)
     train = [graphs[i] for i in train_ids]
     labels = torch.tensor([int(g.y.item()) for g in train])
     counts = torch.bincount(labels, minlength=2).float().clamp(min=1)
     class_weights = (counts.sum() / counts).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights)
     criterion_sum = nn.CrossEntropyLoss(weight=class_weights, reduction='sum')
+    sample_weight, cells = None, None
+    if arch_balance:
+        by_id, cells = cell_weight_table(rows, list(train_ids))
+        sample_weight = lambda batch: torch.tensor([by_id[i] for i in batch.sample_id], dtype=torch.float32, device=device)   # noqa: E731
     budget = hp.get('node_budget')
     if device.type == 'cuda' and hp.get('gpu_cap_gb'):
         cap_gb = float(hp['gpu_cap_gb'])
@@ -159,7 +203,8 @@ def fit(model, train_ids, val_ids, graphs, *, hp, seed, device, log=print):
         start, total_loss, seen, split = time.time(), 0.0, 0, 0
         for batch in tc._batches(train, hp['batch_size'], rng):
             n_graphs = batch.num_graphs
-            loss, parts = train_batch(model, batch, criterion, criterion_sum, optimizer, device, budget, hp.get('grad_clip'))
+            loss, parts = train_batch(model, batch, criterion, criterion_sum, optimizer, device, budget, hp.get('grad_clip'),
+                                      sample_weight)
             split += parts > 1
             total_loss += loss * n_graphs
             seen += n_graphs
@@ -186,7 +231,8 @@ def fit(model, train_ids, val_ids, graphs, *, hp, seed, device, log=print):
             log(f'early stop at epoch {epoch}')
             break
     return {'history': history, 'f1_state': f1_state, 'f1_epoch': best_f1_epoch, 'val_f1': best_f1,
-            'val_macro_f1': f1_macro, 'auc_state': auc_state, 'auc_epoch': best_auc_epoch, 'val_auc': best_auc}
+            'val_macro_f1': f1_macro, 'auc_state': auc_state, 'auc_epoch': best_auc_epoch, 'val_auc': best_auc,
+            **({'cell_weights': cells} if arch_balance else {})}
 
 
 def stratified(ids, labels, n):
@@ -213,18 +259,19 @@ def smoke_ids(manifest, available, n):
 
 
 def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=None, smoke_split=None, extra=None,
-            log=print, excluded=(), excluded_reason=''):
+            log=print, excluded=(), excluded_reason='', protocol='kfold', arch='x86', arch_balance=False):
     """Train one (arm, fold, seed). graphs / sizes map sample_id -> PyG Data / (n_segments, kept, total); build_model is
     called after torch.manual_seed(seed). Without `smoke` every id of the fold's manifest must be in graphs and the run is
     written to RUNS/<team_config name>. With smoke=N it trains on N available training ids for 2 epochs and writes only
     a temp directory (a mkdtemp, never under RUNS; smoke_split = (train ids, val ids) overrides the choice): returns that directory's path and the history.
     `excluded` (ids, with `excluded_reason`): binaries the arm's build could not process; they are left out of the training,
     validation and test ids and recorded in metrics.json (common.write_run). Every other binary of the manifest still needs
-    a graph."""
+    a graph. `protocol` and `arch` pick the dataset (the manifest and the run name, `common.team_config`); `arch_balance` is the
+    `-ab` twin (module docstring)."""
     from s03b_cfg_feature.gat import train_cfg as tc      # imported here: this module imports without torch_geometric
     threads = configure_threads()
-    manifest = fold_manifest(fold, seed)
-    cfg = team_config(fold, seed, arm)
+    manifest = fold_manifest(fold, seed, protocol, arch)
+    cfg = team_config(fold, seed, arm, protocol, arch, arch_balance)
     random.seed(seed)
     torch.manual_seed(seed)
     model = build_model().to(device)
@@ -246,7 +293,8 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
         out = RUNS / cfg.name
         log(f'{cfg.name}: train {len(train_ids)} val {len(val_ids)} test {len(test_ids)} device {device}, '
             f'{threads} torch threads' + (f', {len(skip)} excluded ({excluded_reason})' if skip else ''))
-    result = fit(model, train_ids, val_ids, graphs, hp=hp, seed=seed, device=device, log=log)
+    result = fit(model, train_ids, val_ids, graphs, hp=hp, seed=seed, device=device, log=log, protocol=protocol, arch=arch,
+                 arch_balance=arch_balance)
     history = result['history']
     peak = max(h['peak_gpu_mb'] for h in history)
     mean_epoch = float(np.mean([h['train_secs'] + h['val_secs'] for h in history]))
@@ -279,7 +327,8 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
             'n_blocks_total': {'test_sum': int(sum(total)), 'test_mean': float(np.mean(total)),
                                'test_max': int(max(total))},
             'recipe': {**hp, 'arm': arm, 'selection_f1': 'ransomware F1 at 0.5 (train_cfg.metrics_at), stop on it',
-                       'selection_auc': 'validation AUC, tracked while training', 'device': str(device)},
+                       'selection_auc': 'validation AUC, tracked while training', 'device': str(device),
+                       **({'arch_balance': True, 'cell_weights': result['cell_weights']} if arch_balance else {})},
             **(extra or {})}
     metrics = write_run(out, cfg, by_split['f1'], by_split['auc'], thr_f1, thr_auc, info, excluded=sorted(skip),
                         excluded_reason=excluded_reason)

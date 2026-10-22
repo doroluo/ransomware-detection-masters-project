@@ -5,7 +5,7 @@
 A plan is a text file with one command per line; blank lines and lines that start with `#` are ignored.
 
     train <experiments.train arguments>      python -m experiments.train <arguments>
-    train_b --fold F --seed S --arm ARM [--build DIR]
+    train_b --fold F --seed S --arm ARM [--protocol P --arch A --arch-balance] [--build DIR]
                                              python -m experiments.team_pipelines.train_b <arguments>   (a team pipeline-B arm)
     report                                   python -m s04_evaluation.report
     val_threshold                            python -m s04_evaluation.val_threshold      > <runs>/val_threshold.md
@@ -16,7 +16,8 @@ The whole plan is parsed first (a bad line, an unknown gates stage, an unknown t
 
 Semantics, from the shell queues the experiments were run with:
   * a `train` line is skipped (`skip <name>`) when `<runs>/<name>/metrics.json` exists, <name> being `RunConfig.name` of its
-    arguments (or `--out`; a `train_b` line: `team_config(F, S, ARM).name`, `kfold{F}_x86_gnn_s{S}_team-{ARM}`);
+    arguments (or `--out`; a `train_b` line: `team_config(F, S, ARM, P, A, AB).name`, `kfold{F}_x86_gnn_s{S}_team-{ARM}` for
+    the Mendeley x86 default, `v3kfold{F}_matched_gnn-ab_s{S}_team-{ARM}` for `--protocol kfold_v3 --arch matched --arch-balance`);
   * when the STOP file (`<runs>/STOP`, or `--stop-file`) exists before a `train` or `train_b` line, the line is logged as
     `stopped before <name>` and skipped; `report`, `val_threshold` and `gates` still run, so the tables of what finished are
     written. A STOP file left from an earlier session is removed at the start and logged. `--stop` creates it;
@@ -96,9 +97,17 @@ def _train_b_step(args, where):
     ap.add_argument('--fold', type=int, required=True)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--arm', choices=train_b.ARMS, required=True)
+    ap.add_argument('--protocol', choices=sorted(common.DATASET_OF), default='kfold')
+    ap.add_argument('--arch', choices=['x86', 'all', 'matched'])
+    ap.add_argument('--arch-balance', action='store_true')
     ap.add_argument('--build')
     parsed = ap.parse_args(list(args))
-    name = common.team_config(parsed.fold, parsed.seed, parsed.arm).name
+    arch = parsed.arch or common.DEFAULT_ARCH[parsed.protocol]
+    try:
+        train_b.check_arm_dataset(parsed.arm, parsed.protocol, arch, parsed.arch_balance)
+    except SystemExit as e:
+        raise PlanError(f'{where}: `train_b {" ".join(args)}`: {e}') from e
+    name = common.team_config(parsed.fold, parsed.seed, parsed.arm, parsed.protocol, arch, parsed.arch_balance).name
     return Step('train_b', tuple(args), name, 'experiments.team_pipelines.train_b', tuple(args), done_files=(f'{name}/metrics.json',))
 
 
