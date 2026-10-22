@@ -5,7 +5,7 @@
 A stage is a data file, `experiments/stages/<name>.py`, that defines `STAGE` (see `stage.py`): the arms it reads, the pairs it
 compares, the seeds, the rule column and the intro text. The stages that were run are listed in
 `experiments/stages/__init__.py`, and each file's docstring says what the stage reads. A new stage is a new file there (and
-its name in that list); this engine, `gate_tables.py` and `gate_layouts.py` do not change. An arm that is not on disk, or has
+its name in that list); this engine and `gate_tables.py` do not change. An arm that is not on disk, or has
 missing folds, is printed as missing with the folds that are present; nothing is dropped silently.
 
 The runs are read from `common.paths.RUNS` (`GT_RUNS`), the combined cache of the kfold_v3 floors from `datasets.json`.
@@ -14,7 +14,6 @@ import argparse
 import importlib
 
 from common.manifests import run_command
-from s04_evaluation.gate_layouts import LAYOUTS
 from s04_evaluation.gate_tables import EXTRAS, match_rate_lines, paired_stage
 
 
@@ -34,8 +33,6 @@ def load_stage(name):
 
 def render(stage, resamples=2000):
     """The markdown lines of a stage."""
-    if stage.layout != 'paired':
-        return LAYOUTS[stage.layout](stage, resamples)
     after = list(EXTRAS[stage.extra](stage.arms)) if stage.extra else []
     after += match_rate_lines(stage.options.get('match_rate_builds', ()))
     return paired_stage(stage.name, stage.intro_text(resamples), stage.arms, stage.pairs, resamples, stage.seeds,

@@ -16,12 +16,9 @@ from s04_evaluation import report
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = 'python -m s02_preprocess.cache.build_cache --cache '
 COMMANDS = {
-    'gates': (['s04_evaluation.gates', '--stage', 'v3'], 'combined_v3'),
     'check_cache': (['s02_preprocess.cache.check_cache', '--cache', 'combined_v3'], 'combined_v3'),
-    'train': (['experiments.train', '--protocol', 'kfold', '--fold', '0'], 'mendeley_x86'),
-    'baselines': (['s04_evaluation.baselines', '--protocol', 'kfold_v3', '--fold', '0', '--arch', 'all'], 'combined_v3'),
-    'subgraph_chain': (['experiments.subgraph_chain'], 'mendeley_x86'),
-    'block_export': (['reference.cfg_transformer.block_export', '--protocol', 'kfold_v3', '--arch', 'all', '--out', '{runs}/export/x'], 'combined_v3'),
+    'train': (['experiments.train', '--model', 'fivechannel', '--protocol', 'kfold', '--fold', '0', '--build', '{runs}/build'],
+              'mendeley_x86'),
 }
 
 
@@ -60,10 +57,12 @@ def test_a_command_without_the_cache_prints_the_message_and_exits_1(name, tmp_pa
     cache = tmp_path / 'cache'
     cache.mkdir()
     args = [a.format(runs=tmp_path / 'runs') for a in args]
+    (tmp_path / 'runs' / 'build').mkdir(parents=True)
+    (tmp_path / 'runs' / 'build' / 'x.pt').write_bytes(b'')                   # a build that exists: the cache is what is missing
     assert_message(run(args, tmp_path, GT_CACHE=str(cache)), cache, dataset)
 
 
-@pytest.mark.parametrize('name', ['gates', 'check_cache'])
+@pytest.mark.parametrize('name', ['check_cache'])
 def test_a_registry_entry_pointing_at_an_empty_folder_gets_the_same_message(name, tmp_path):
     args, dataset = COMMANDS[name]
     cache = tmp_path / 'cache'

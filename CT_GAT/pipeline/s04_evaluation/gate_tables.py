@@ -1,7 +1,7 @@
 """The tables every gate stage is made of: the pooled seed-0 row of a group, the paired-difference tables, the operating points.
 
 Moved unchanged from the single-file `gates.py` of the 3-block-level-counting branch; the stage definitions that call them
-live in `experiments/stages/`, the layouts that arrange them in `gate_layouts.py`, the engine in `gates.py`.
+live in `experiments/stages/`, the engine in `gates.py`.
 """
 import json
 from functools import lru_cache
@@ -11,8 +11,6 @@ import numpy as np
 
 from s04_evaluation import stats
 from s04_evaluation.stage import LABEL, SEED, signed_ci
-
-SELECTIONS = (('f1', 'F1 checkpoint (macro-F1 at 0.5)'), ('auc', 'AUC checkpoint (macro-F1 at validation threshold)'))
 
 
 @lru_cache(maxsize=None)
@@ -25,7 +23,7 @@ def pooled(group, selection):
         return stats.metrics_weighted(p, order, grp, np.ones(len(p.y)))
     present = partial.get(SEED, [])
     if stats.baseline_method(group) and selection == 'auc' and not present and SEED in partial:
-        return 'missing (baseline has no validation threshold; re-run baselines.py)'
+        return 'missing (baseline has no validation threshold)'
     other = f'; complete seeds {sorted(complete)}' if complete else ''
     return f'missing (seed {SEED} folds present {present} of 0-4{other})'
 

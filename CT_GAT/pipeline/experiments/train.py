@@ -1,18 +1,17 @@
-"""One run, from CT_GAT/pipeline: python -m experiments.train --protocol bundle --arch x86 --seed 0 | --protocol kfold --fold 2
-| --protocol kfold_v3 --fold 2 --arch all|matched (the cache is the first dataset of datasets.json that lists the protocol,
-`--cache <name>` picks another, GT_CACHE overrides) [--model gnn]
-[--control no_edges --encoder mean --untyped --fixed-epochs N --direction forward --drop-edges 0.2
---flip-edges 0.2] [--train-fraction 0.5] [--arch-balance] [--val-seed 0]
-[--block-input vec --block-vec <export>_<name>] [--stack-tfidf] [--vocab yanping|hybrid|noapi] [--imports header]
+"""One run, from CT_GAT/pipeline: python -m experiments.train --model fivechannel --protocol kfold --fold 2 --seed 0
+(the cache is the first dataset of datasets.json that lists the protocol, `--cache <name>` picks another, GT_CACHE overrides)
+[--build DIR] [--device cuda|cpu] [--smoke N] [--max-instructions N] [--threshold-from oof] [--tag NAME] [--out NAME]
 
-The loop is the same for every model; what a model builds and feeds is its `common.registry.ModelSpec` (`--model` names it).
-The loop owns the class weights, AdamW, gradient clipping, patience, the two checkpoints, the validation thresholds and the
+`--model` is required and names a model of the registry (`common/registry.py`); the earlier jsonl-only models,
+`gnn` and `tokenseq`, are on branch `jsonl-reference-models` and stop with a message that says so. A model is its
+`common.registry.ModelSpec`: it either owns its loop (`spec.run`, as `fivechannel` does) or is trained by the registry loop
+below, which owns the class weights, AdamW, gradient clipping, patience, the two checkpoints, the validation thresholds and the
 run directory (`common.run_io.write_run`).
 
-Writes config.json (with the cache path used), manifest.json, vocab.json (sizes), history.csv, val_probs.csv, best.pt
-(best validation macro-F1 at cfg.threshold), best_auc.pt (best validation AUC), predictions.csv (F1 checkpoint, pred at
-cfg.threshold), predictions_auc.csv (AUC checkpoint, pred at its validation threshold) and metrics.json to
-<runs>/<run name>/ (GT_RUNS, `runs_for` of common/paths.py).
+The run directory is <runs>/<run name>/ (GT_RUNS, `runs_for` of common/paths.py): config.json (with the cache path used),
+manifest.json, history.csv, val_probs.csv, best.pt (best validation macro-F1 at cfg.threshold), best_auc.pt (best validation
+AUC), predictions.csv (F1 checkpoint, pred at cfg.threshold), predictions_auc.csv (AUC checkpoint, pred at its validation
+threshold) and metrics.json.
 
 --arch-balance weights each training sample's loss by N / (C n_cell) over the non-empty (label, arch) cells of the
 training manifest instead of by its class weight; every metrics block gains `cell_balanced` (each cell weighs equally).
@@ -20,47 +19,25 @@ training manifest instead of by its class weight; every metrics block gains `cel
 --val-seed k carves the validation set (and the train-fraction subsample) with seed k instead of --seed, so train, val and
 test do not change with the seed; the run name gains `-vs<k>` when k differs from the seed.
 
---block-input vec replaces the token bag of step 5 by the precomputed block vectors <cache>/side/blockvec/<block-vec>/
-fold<k>/ (reference/cfg_transformer/precompute_blockvec.py; without that package the option stops with a message). `--control
-no_edges --block-input vec` is path 1 of the transformer paths plan and the typed GNN with it is path 2. Fold runs of
-protocol kfold only.
-
---stack-tfidf feeds the out-of-fold TF-IDF logit of `s04_evaluation/baselines.py --stack-logits` to the head: it is read from
-<runs>/baselines/<baseline dir>/stack_logits.csv by sample id and standardised on the training rows.
-
---vocab yanping|hybrid (an experiment, not on the main path) swaps the instruction tokens of the block bag for the team's
-operand-role ids (<cache>/side/yanping/, experiments/side_arrays/import_reader_side.py): yanping = the reader's three ids
-per instruction plus our api tokens, hybrid = our mn and beh plus the reader's two operand ids plus api. The run name gains
-`-voc-<name>`; noapi drops the api tokens.
-
---imports header adds an EmbeddingBag over every header import name (vocabulary and idf fitted on the training binaries,
-min_df 2) and two log counts (log1p of the unreferenced and of the header imports) to the head input (<cache>/side/imports/,
-s04_evaluation/imports_feat.py); the run name gains `-imph`.
-
 --select-on cell picks best_auc.pt by the validation cell-balanced AUC instead of the validation AUC, and the validation
 threshold of the AUC checkpoint (threshold_val, predictions_auc.csv) by the validation cell-balanced macro-F1 instead of
-the macro-F1. best.pt, the F1 checkpoint and its threshold are unchanged. As the gnn stops on the later of the F1 and
-AUC bests, the AUC rule also moves the stopping epoch. metrics.json records the rule (`select_on`, `selection.auc.rule`).
+the macro-F1. best.pt, the F1 checkpoint and its threshold are unchanged. metrics.json records the rule (`select_on`,
+`selection.auc.rule`).
 
 --out names the run directory instead of the config's name (smoke runs).
 
---threshold-from oof (--model tokenseq|fivechannel; any model that gives `choose_thresholds` a refit can use it) chooses the
-decision threshold of a run on out-of-fold predictions instead of the validation families (which saturate: validation AUC
-near 1.0 within a few epochs, so the first threshold of a wide band wins and macro-F1 swings between folds). The training
-binaries are split in 3 folds that keep a ransomware family or a goodware identity group whole, the model is refit on 2 of
-them for the epoch count of each checkpoint, and the pooled held-out predictions give the GRID threshold with the highest
-macro-F1. metrics.json records the rule (`threshold_rule`, `selection.auc.rule`); the run name gains `-thoof`. The default,
+--threshold-from oof (any model that gives `choose_thresholds` a refit can use it; `fivechannel` does) chooses the decision
+threshold of a run on out-of-fold predictions instead of the validation families (which saturate: validation AUC near 1.0
+within a few epochs, so the first threshold of a wide band wins and macro-F1 swings between folds). The training binaries are
+split in 3 folds that keep a ransomware family or a goodware identity group whole, the model is refit on 2 of them for the
+epoch count of each checkpoint, and the pooled held-out predictions give the GRID threshold with the highest macro-F1.
+metrics.json records the rule (`threshold_rule`, `selection.auc.rule`); the run name gains `-thoof`. The default,
 `--threshold-from val`, is the rule above and changes no name or result.
 
 --model fivechannel trains Janice Park's five-channel Model 1 (s03a_transformer/five_channel) on the .pt files of a pipeline-B
 build (experiments/team_pipelines/build_b.py) under our folds (`--protocol kfold --fold <k>`, x86). It takes --build <dir>
 (default: the `team_b_build` source of datasets.json, or GT_TEAM_B_BUILD), --device and --smoke N, and --max-instructions N
 (default 128, as she wrote it; 512 gives the run name suffix -L512). See that package's README.
-
---model tokenseq trains Model 1, the token-sequence transformer of reference/token_sequence, on a fold of a block export
-(`--protocol kfold --fold <k>`); its loop is its own and the registry hands the run over to it. It takes four more flags,
-refused for other models: --export <name or directory> (default ours_cap0, under the export directory), --device cuda|cpu,
---smoke N (N binaries, 2 epochs, a temporary directory) and --window-budget N (windows per batch). See that package's README.
 """
 import argparse
 import csv
@@ -78,15 +55,22 @@ import torch.nn.functional as F
 from common.config import BLOCK_INPUTS, CACHE, DIRECTIONS, ENCODERS, IMPORTS, RUNS, THRESHOLD_FROM, VOCABS, RunConfig
 from common.manifests import MissingCache, load_index, make_manifest, missing_cache_message, run_command
 from common.paths import registry
-from common.registry import MODELS, RunInfo, spec_for
+from common.registry import MODELS, RunInfo, spec_for, unknown_model_message
 from common.run_io import AUC_RULES, evaluate, truncated_count, write_predictions, write_run  # noqa: F401  (re-exported)
 from s04_evaluation.metrics import cell_balanced, cell_weights
 from s04_evaluation.val_threshold import GRID, macro_f1, oof_rule
 
 
 # the flags of the models that own their loop and are not RunConfig fields, per model
-MODEL_OPTIONS = {'tokenseq': ('export', 'device', 'smoke', 'window_budget'), 'fivechannel': ('build', 'device', 'smoke')}
+MODEL_OPTIONS = {'fivechannel': ('build', 'device', 'smoke')}
 ALL_OPTIONS = tuple(dict.fromkeys(o for options in MODEL_OPTIONS.values() for o in options))
+
+
+def model_name(name):
+    """The `--model` value: a model of the registry, else the registry's message (the earlier jsonl-only models are on a branch)."""
+    if name not in MODELS:
+        raise argparse.ArgumentTypeError(unknown_model_message(name))
+    return name
 
 
 def parse_args(argv=None):
@@ -97,7 +81,7 @@ def parse_args(argv=None):
     ap.add_argument('--arch', choices=['x86', 'all', 'matched'], default='x86')
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--val-seed', type=int, default=None)
-    ap.add_argument('--model', choices=list(MODELS), default='gnn')
+    ap.add_argument('--model', type=model_name, choices=list(MODELS), required=True)
     ap.add_argument('--encoder', choices=ENCODERS, default=None)
     ap.add_argument('--readout', choices=['fixed', 'gated'], default='fixed')
     ap.add_argument('--control', choices=['', 'no_edges', 'chain', 'shuffle', 'permute_types'], default='')
@@ -106,14 +90,12 @@ def parse_args(argv=None):
     ap.add_argument('--vocab', choices=VOCABS, default='ours')
     ap.add_argument('--imports', choices=IMPORTS, default='')
     ap.add_argument('--out', help='run directory name override (default: derived from the config)')
-    ap.add_argument('--export', help="--model tokenseq: the block export, a directory or a name under the export directory")
-    ap.add_argument('--device', choices=['cuda', 'cpu'], help='--model tokenseq|fivechannel: default cuda when available')
-    ap.add_argument('--smoke', type=int, help='--model tokenseq|fivechannel: N train binaries, 2 epochs, temporary directory')
-    ap.add_argument('--window-budget', type=int, help='--model tokenseq: windows per batch')
+    ap.add_argument('--device', choices=['cuda', 'cpu'], help='--model fivechannel: default cuda when available')
+    ap.add_argument('--smoke', type=int, help='--model fivechannel: N train binaries, 2 epochs, temporary directory')
     ap.add_argument('--build', help='--model fivechannel: the pipeline-B build folder of <sample_id>.pt files (default: the '
                                     'team_b_build source of datasets.json, GT_TEAM_B_BUILD)')
     ap.add_argument('--threshold-from', choices=THRESHOLD_FROM, default='val',
-                    help="--model tokenseq|fivechannel: choose the decision threshold on the validation families ('val') or on "
+                    help="--model fivechannel: choose the decision threshold on the validation families ('val') or on "
                          "out-of-fold predictions of grouped refits of the training binaries ('oof', run name suffix -thoof)")
     done = {a.dest for a in ap._actions}
     for f in fields(RunConfig):
@@ -139,7 +121,7 @@ def parse_args(argv=None):
 
 
 def parse_config(argv=None):
-    """(RunConfig, --out) of a command line; the flags that only `--model tokenseq` takes are in `parse_args`."""
+    """(RunConfig, --out) of a command line; the flags that only a model with its own loop takes are in `parse_args`."""
     return parse_args(argv)[:2]
 
 
@@ -155,7 +137,7 @@ def predict(spec, model, data, device):
     for batch in data:
         with torch.autocast('cuda', dtype=torch.bfloat16):
             logits = spec.forward(model, to_device(batch, device))
-        probs.append(torch.sigmoid(logits).cpu().numpy())
+        probs.append(torch.sigmoid(logits).float().cpu().numpy())
         ids += batch['sample_id']
         none = [None] * len(batch['sample_id'])
         sizes += zip(batch['n_segments_total'], batch.get('n_blocks_kept', none), batch.get('n_blocks_total', none))
@@ -244,8 +226,7 @@ def write_run_as(out_name, cfg, *args, **kw):
 
 
 def run(cfg: RunConfig, out_name=None, **options):
-    """One run. `options` are the flags of MODEL_OPTIONS[model], for a model that owns its loop (`spec.run`: `tokenseq`,
-    `fivechannel`)."""
+    """One run. `options` are the flags of MODEL_OPTIONS[model], for a model that owns its loop (`spec.run`: `fivechannel`)."""
     spec = spec_for(cfg)
     spec.check(cfg)
     if hasattr(spec, 'run'):

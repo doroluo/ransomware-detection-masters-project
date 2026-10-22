@@ -2,9 +2,9 @@
 
 `write_run` takes the predictions of a trained model in its two states (best validation macro-F1, best validation AUC)
 and writes config.json, manifest.json, predictions.csv, predictions_auc.csv and metrics.json. The team trainers and the
-Model 1 trainer (`reference/token_sequence/train.py`) call it with the manifest of their own fold or block export.
+Model 1 trainer (`s03a_transformer/five_channel/train.py`) call it with the manifest of their own fold.
 
-`AUC_RULES`, `evaluate`, `write_predictions` and `truncated_count` are the four helpers of the GNN trainer that `write_run`
+`AUC_RULES`, `evaluate`, `write_predictions` and `truncated_count` are the four helpers of the registry loop that `write_run`
 needs; they live here so that this module reads no trainer, and `experiments/train.py` imports them from here.
 """
 import csv

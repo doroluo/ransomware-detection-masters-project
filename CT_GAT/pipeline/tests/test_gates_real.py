@@ -21,7 +21,7 @@ from common.config import RUNS, RunConfig
 from common.manifests import load_index, make_manifest
 from common.run_io import write_run
 from eval_synth import val_threshold_of
-from s04_evaluation import gate_layouts, gate_tables, gates, report, stats
+from s04_evaluation import gate_tables, gates, report, stats
 
 pytestmark = pytest.mark.real_data
 if not RUNS.is_dir():
@@ -68,10 +68,10 @@ def recorded(name):
 
 @pytest.fixture(autouse=True)
 def fresh_caches():
-    for cache in (gate_tables.pooled, gate_layouts.v3_cell, report.v3_floors):
+    for cache in (gate_tables.pooled, report.v3_floors):
         cache.cache_clear()
     yield
-    for cache in (gate_tables.pooled, gate_layouts.v3_cell, report.v3_floors):
+    for cache in (gate_tables.pooled, report.v3_floors):
         cache.cache_clear()
 
 
@@ -189,48 +189,9 @@ def test_team_gates_from_synthetic_runs(tmp_path, monkeypatch):
     assert 'seeds [0] only' in pair[('TF-IDF', 'team sig500v2')]
 
 
-@needs_baselines
-def test_noapi_gates_from_synthetic_runs(tmp_path, monkeypatch):
-    runs = tmp_path / 'runs'
-    copy_baselines(runs)
-    for f in FOLDS:
-        noapi_dir = runs / 'baselines' / f'kfold{f}_x86_s0_voc-noapi'                    # a TF-IDF noapi that is the plain one renamed
-        shutil.copytree(runs / 'baselines' / f'kfold{f}_x86_s0', noapi_dir)
-        m = json.loads((noapi_dir / 'metrics.json').read_text(encoding='utf-8'))
-        m['methods'] = {'tfidf_noapi_lr': m['methods']['tfidf_sig_api_lr']}
-        (noapi_dir / 'metrics.json').write_text(json.dumps(m), encoding='utf-8')
-        lines = (noapi_dir / 'predictions.csv').read_text(encoding='utf-8').splitlines()
-        (noapi_dir / 'predictions.csv').write_text('\n'.join([lines[0]] + [l.replace('tfidf_sig_api_lr', 'tfidf_noapi_lr')
-                                                                         for l in lines[1:] if 'tfidf_sig_api_lr' in l]),
-                                                   encoding='utf-8')
-    base = dict(protocol='kfold', arch='x86', model='gnn', mask_blocks=0.15)
-    fake_group(runs, lambda f, s: RunConfig(**base, fold=f, seed=s), 1.2)                              # R7, 3 seeds
-    fake_group(runs, lambda f, s: RunConfig(**base, fold=f, seed=s, vocab='noapi'), 0.2)               # R7 noapi, much weaker
-    monkeypatch.setattr(stats, 'RUNS', runs)
-    text = '\n'.join(gates.run_stage('noapi', 60))
-    noapi = gates.load_stage('noapi')
-    pair = {(l.split('|')[1].strip(), l.split('|')[2].strip()): l.split('|')[-2].strip()
-            for l in text.splitlines() if l.startswith('| ') and l.count('|') == 6
-            and (l.split('|')[1].strip(), l.split('|')[2].strip()) in noapi.pairs}
-    assert len(pair) == 4
-    assert pair[('R7 typed', 'R7 noapi')] == 'api loss shown'                                          # 3 seeds in both arms
-    assert pair[('TF-IDF', 'TF-IDF noapi')].startswith('api loss not shown (seed 0 only: a direction, not the test)')
-    assert pair[('TF-IDF noapi', 'R7 noapi')].endswith('(seed 0 only: a direction, not the test)')
-    assert pair[('TF-IDF noapi', 'R7 noapi')].startswith('does not beat')
-    assert pair[('header-imports LR', 'R7 noapi')] == 'missing'                                         # header-imports LR was not copied
-    arms = dict(noapi.arms)
-    pooled_rows = {l.split('|')[1].strip(): l.split('|')[3].strip() for l in text.splitlines()
-                   if l.startswith('| ') and l.count('|') == 6 and arms.get(l.split('|')[1].strip()) == l.split('|')[2].strip()}
-    want = f"{gate_tables.pooled('tfidf', 'auc')[0]:.3f}"
-    assert pooled_rows['TF-IDF'] == pooled_rows['TF-IDF noapi'] == want
-    assert float(pooled_rows['R7 typed']) > float(pooled_rows['R7 noapi'])
-    assert pooled_rows['header-imports LR'].startswith('missing')
-    assert 'seed 0 only: a direction' in text and 'seeds [0, 1, 2]' in text
-
-
 def test_the_stage_commands_run_on_the_real_run_directory_from_the_pipeline_root():
     root = Path(__file__).resolve().parents[1]
-    r = subprocess.run([sys.executable, '-m', 's04_evaluation.gates', '--stage', 'paths', '--resamples', '20'], cwd=root,
+    r = subprocess.run([sys.executable, '-m', 's04_evaluation.gates', '--stage', 'team', '--resamples', '20'], cwd=root,
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert '## Pooled, AUC checkpoint' in r.stdout and '## Paired differences, second minus first' in r.stdout

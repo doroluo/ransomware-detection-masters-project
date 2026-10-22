@@ -1,5 +1,0 @@
-run kfold0_x86_gnn-mblk15-imph_s0 --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --imports header
-run kfold1_x86_gnn-mblk15-imph_s0 --protocol kfold --fold 1 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --imports header
-run kfold2_x86_gnn-mblk15-imph_s0 --protocol kfold --fold 2 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --imports header
-run kfold3_x86_gnn-mblk15-imph_s0 --protocol kfold --fold 3 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --imports header
-run kfold4_x86_gnn-mblk15-imph_s0 --protocol kfold --fold 4 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --imports header

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from common import catalog, paths
-from common.paths import UNSET, MissingSource, cache_for, cache_in, export_for, load_registry, protocol_in, runs_for, source_for
+from common.paths import UNSET, MissingSource, cache_for, cache_in, load_registry, protocol_in, runs_for, source_for
 
 ROOT = Path(__file__).resolve().parents[1]
 V2, COMBINED = Path('data/v2'), Path('data/combined')
@@ -88,12 +88,10 @@ def test_sources_come_from_the_environment_then_the_registry():
         source_for('reader_root', {}, {})
 
 
-def test_runs_and_exports():
+def test_runs():
     assert runs_for({}, REGISTRY) == paths.PIPELINE_ROOT / 'runs'
     assert runs_for({'GT_RUNS': 'R'}, REGISTRY) == Path('R')
     assert runs_for({}, {'a': entry(V2, [], runs='my/runs')}) == Path('my/runs')
-    assert export_for({'GT_RUNS': 'R'}, REGISTRY) == Path('R') / 'export'              # GT_RUNS alone moves both
-    assert export_for({'GT_RUNS': 'R', 'GT_EXPORT': 'E'}, REGISTRY) == Path('E')
 
 
 def test_the_example_file_is_a_valid_registry():
@@ -115,10 +113,10 @@ def probe(code, **env):
 
 
 def test_importing_config_needs_no_datasets_file_and_resolves_the_catalog_defaults(tmp_path):
-    r = probe('from common.config import CACHE, RUNS, EXPORT, DEFAULT_CACHE, COMBINED_CACHE, RunConfig\n'
-              'print(CACHE, DEFAULT_CACHE, COMBINED_CACHE, RUNS.name, EXPORT.name)', GT_DATASETS=str(tmp_path / 'none.json'))
+    r = probe('from common.config import CACHE, RUNS, DEFAULT_CACHE, COMBINED_CACHE, RunConfig\n'
+              'print(CACHE, DEFAULT_CACHE, COMBINED_CACHE, RUNS.name)', GT_DATASETS=str(tmp_path / 'none.json'))
     assert r.returncode == 0, r.stderr
-    assert r.stdout.split() == [str(catalog.CACHE_ROOT / 'mendeley_x86')] * 2 + [str(catalog.CACHE_ROOT / 'combined_v3'), 'runs', 'export']
+    assert r.stdout.split() == [str(catalog.CACHE_ROOT / 'mendeley_x86')] * 2 + [str(catalog.CACHE_ROOT / 'combined_v3'), 'runs']
 
 
 def test_the_module_level_cache_follows_the_environment_the_name_and_the_protocol(tmp_path):

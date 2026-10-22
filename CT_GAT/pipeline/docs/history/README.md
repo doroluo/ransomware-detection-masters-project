@@ -16,7 +16,8 @@ with the runs after main's PRs #10, #12 and #13, and `gates_model1_variants.md` 
 
 The final gate summaries, written by `python -m s04_evaluation.gates --stage <stage>` on the runs of the author's machine (the
 numbers of the "Final results" section of `PLAN_GNN.md` are read from them). All are seed 0 pooled tables with the paired
-differences over the seeds complete in both arms:
+differences over the seeds complete in both arms. Only the stages `team` and `model1_variants` (and the plan `model1_variants`) are on
+main; the other stages and plans named below are on branch `jsonl-reference-models`:
 
 | file | stage | the plan that produced its runs |
 |---|---|---|
@@ -35,18 +36,20 @@ The documents name files as they were on the branch. In `CT_GAT/pipeline`:
 
 | on the branch | now | since the reference move |
 |---|---|---|
-| `train.py`, `training/train.py` | `experiments/train.py` (`python -m experiments.train`) | |
+| `train.py`, `training/train.py` | `experiments/train.py` (`python -m experiments.train`; `--model` is required, and `gnn` and `tokenseq` stop with a message naming the branch) | |
 | `build_cache.py`, `check_cache.py`, `pipeline/s02_build_cfg_cache/` | `s02_preprocess/cache/` (new: `folds.py`, the fold CSV builder) | |
-| `pipeline/s03_tokenizer/`, `pipeline/s04_select_subgraph/` | `s02_preprocess/tokenizer/`, `s02_preprocess/subgraph.py` | |
-| `pipeline/s05_*` ... `pipeline/s11_*`, `pipeline/model.py`, `pipeline/batching.py` | `s03b_cfg_feature/gnn/` (same submodule names) | `reference/gnn/` (same submodule names), except `s10_unused_import_features/`: `s04_evaluation/import_side.py` and `s04_evaluation/imports_feat.py` |
-| `baselines.py`, `report.py`, `stats.py`, `val_threshold.py`, `gates.py`, `evaluation/` | `s04_evaluation/`; the `--stage` definitions are `experiments/stages/<name>.py` | |
-| `evaluation/run_io.py`, `transformer_paths/reader.py` | `common/run_io.py`, `common/reader.py` | |
-| `transformer_paths/` | `s03c_cfg_transformer/` (`codebert_encoder.py` and `reference_encoder.py` are `encoders/codebert.py` and `encoders/reference.py`) | `reference/cfg_transformer/` (`s03c_cfg_transformer/` keeps the README of Model 3 only) |
-| `token_sequence/` | `s03a_transformer/token_sequence/` | `reference/token_sequence/` |
-| `queue_gnn.sh --stage <s>`, `scripts/*_runs.sh`, `stop_queue.sh` | `python -m experiments.queue --plan experiments/plans/<s>.txt`, `--stop` | |
-| `subgraph_chain.py` | `python -m experiments.subgraph_chain` | |
-| `experiments/team_pipelines/` | the same path (needs `GT_TEAM_GNN_ROOT`, `GT_TEAM_MAIN_ROOT`, `torch_geometric`) | |
-| `experiments/side_arrays/` | `experiments/side_arrays/import_reader_side.py` only (the operand-role side arrays that `--vocab yanping|hybrid` reads) | |
+| `pipeline/s03_tokenizer/`, `pipeline/s04_select_subgraph/` | `s02_preprocess/tokenizer/`, `s02_preprocess/subgraph.py` | removed from main; on branch `jsonl-reference-models` |
+| `pipeline/s05_*` ... `pipeline/s11_*`, `pipeline/model.py`, `pipeline/batching.py` | `s03b_cfg_feature/gnn/` (same submodule names) | `reference/gnn/` (same submodule names), except `s10_unused_import_features/`: `s04_evaluation/import_side.py` and `s04_evaluation/imports_feat.py`; removed from main; on branch `jsonl-reference-models` |
+| `baselines.py` | `s04_evaluation/baselines.py` | removed from main; on branch `jsonl-reference-models` |
+| `report.py`, `stats.py`, `val_threshold.py`, `gates.py`, `evaluation/` | `s04_evaluation/`; the `--stage` definitions are `experiments/stages/<name>.py` (only `team` and `model1_variants` are on main; the others are on branch `jsonl-reference-models`, with their plans) | |
+| `evaluation/run_io.py` | `common/run_io.py` | |
+| `transformer_paths/reader.py` | `common/reader.py` | removed from main; on branch `jsonl-reference-models` |
+| `transformer_paths/` | `s03c_cfg_transformer/` (`codebert_encoder.py` and `reference_encoder.py` are `encoders/codebert.py` and `encoders/reference.py`) | `reference/cfg_transformer/` (`s03c_cfg_transformer/` keeps the README of Model 3 only); removed from main; on branch `jsonl-reference-models` |
+| `token_sequence/` | `s03a_transformer/token_sequence/` | `reference/token_sequence/`; removed from main; on branch `jsonl-reference-models` |
+| `queue_gnn.sh --stage <s>`, `scripts/*_runs.sh`, `stop_queue.sh` | `python -m experiments.queue --plan experiments/plans/<s>.txt`, `--stop` (only `model1_variants` is on main; the other plans are on branch `jsonl-reference-models`) | |
+| `subgraph_chain.py` | `python -m experiments.subgraph_chain` | removed from main; on branch `jsonl-reference-models` |
+| `experiments/team_pipelines/` | the same path (needs `GT_TEAM_GNN_ROOT`, `GT_TEAM_MAIN_ROOT`, `torch_geometric`); its `cb500` arm is removed from main, on branch `jsonl-reference-models` | |
+| `experiments/side_arrays/` | `experiments/side_arrays/import_reader_side.py` only (the operand-role side arrays that `--vocab yanping|hybrid` reads) | removed from main; on branch `jsonl-reference-models` |
 | `RUNS`, `CACHE` in the text | `GT_RUNS`, `GT_CACHE` / `datasets.json` (`common/paths.py`) | |
 | `docs/<file>.md` | `docs/history/<file>.md` |
 

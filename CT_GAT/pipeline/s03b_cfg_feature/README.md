@@ -10,9 +10,6 @@ python -m experiments.team_pipelines.train_b --arm sig500v3-feat --fold 0 --seed
 python -m experiments.team_pipelines.train_b --help
 ```
 
-The hierarchical edge-typed GNN that stood here, with its R-ladder of controls, is a reference model: its code is in
-[`../reference/gnn/`](../reference/gnn/README.md) and the commands to run it are in [`../reference/README.md`](../reference/README.md).
-
 ## The teammate GAT (`gat/`)
 
 Models 2 and 3 are the GAT of Dorothy Luo (`doroluo`) on the block subgraphs that `s02_preprocess/preprocess_full.py` writes.

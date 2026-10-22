@@ -1,11 +1,10 @@
-"""The training loop of `experiments/train.py` and the model registry it runs through (`common/registry.py`).
+"""The model registry (`common/registry.py`) and the helpers of the training loop of `experiments/train.py`: patience, the
+validation threshold, the loss weights, the selection rule and the run directory.
 
-Ported from the 3-block-level-counting branch (tests/test_harness.py: patience, the supported options, the validation threshold,
-the loss weights, the selection rule; tests/test_harness_prep.py: `check_supported`). The runs that train a network need CUDA
-(marked `gpu`) and use the tiny cache (tests/tiny_cache.py), so they do not need the real data.
+Ported from the 3-block-level-counting branch (tests/test_harness.py). The earlier jsonl-only models are on branch
+`jsonl-reference-models`: the registry refuses them by name. The tests use the tiny cache (tests/tiny_cache.py), so they do not
+need the real data.
 """
-import csv
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -19,11 +18,9 @@ from sklearn.metrics import f1_score
 from common import registry
 from common.config import RunConfig
 from common.manifests import load_index, make_manifest
-from common.registry import MODELS, ModelSpec, RunInfo, spec_for
+from common.registry import MODELS, REFERENCE_BRANCH, ModelSpec, RunInfo, spec_for, unknown_model_message
 from experiments import train
 from experiments.train import loss_weight_fn, should_stop, val_auc_of, val_threshold_of
-from reference.gnn import spec as gnn_spec
-from reference.gnn.spec import GnnSpec
 from s04_evaluation.metrics import cell_balanced, cell_weights
 from s04_evaluation.val_threshold import GRID
 from tiny_cache import tiny  # noqa: F401  (a fixture)
@@ -32,28 +29,34 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def gnn(**kw):
-    return RunConfig(model='gnn', **kw)
+    """A config of the defaults of RunConfig (model 'gnn', the name of the earlier runs): the loop helpers read its options."""
+    return RunConfig(**kw)
 
 
 # ---- the registry ---------------------------------------------------------------------------------------------------
 
-def test_the_registry_serves_the_gnn_and_returns_a_fresh_spec_per_run():
-    assert MODELS == {'gnn': 'reference.gnn.spec:GnnSpec',
-                      'tokenseq': 'reference.token_sequence.spec:TokenSeqSpec',
-                      'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec'}
-    a, b = spec_for(RunConfig()), spec_for(RunConfig())
-    assert type(a) is GnnSpec and a is not b
-    assert isinstance(a, ModelSpec) and a.name == 'gnn' and a.requires == ('index.csv', 'vocab.json', 'samples')
-    for member in ('build', 'loader', 'forward', 'variant_tokens', 'check'):
+def test_the_registry_serves_fivechannel_and_returns_a_fresh_spec_per_run():
+    assert MODELS == {'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec'}
+    a, b = spec_for(RunConfig(model='fivechannel', protocol='kfold', fold=0)), spec_for(RunConfig(model='fivechannel', protocol='kfold', fold=1))
+    assert a is not b and isinstance(a, ModelSpec) and a.name == 'fivechannel' and a.requires == ('index.csv',)
+    for member in ('run', 'variant_tokens', 'check'):
         assert callable(getattr(a, member))
 
 
-def test_a_model_without_a_spec_is_refused_by_name(monkeypatch):
-    monkeypatch.delitem(MODELS, 'tokenseq')
-    with pytest.raises(NotImplementedError, match="tokenseq.*MODELS"):
-        spec_for(RunConfig(model='tokenseq', protocol='kfold', fold=0))
-    with pytest.raises(NotImplementedError):
-        train.run(RunConfig(model='tokenseq', protocol='kfold', fold=0))
+@pytest.mark.parametrize('name', ['gnn', 'tokenseq'])
+def test_the_removed_models_are_refused_with_the_branch_that_has_them(name):
+    cfg = RunConfig(model=name, protocol='kfold', fold=0)
+    for call in (lambda: spec_for(cfg), lambda: train.run(cfg)):
+        with pytest.raises(NotImplementedError, match=f'{name!r}.*{REFERENCE_BRANCH}'):
+            call()
+    assert REFERENCE_BRANCH in unknown_model_message(name) and 'fivechannel' in unknown_model_message(name)
+
+
+def test_a_name_that_was_never_a_model_is_refused_by_the_table():
+    with pytest.raises(NotImplementedError, match="'nonesuch'.*MODELS"):
+        spec_for(SimpleNamespace(model='nonesuch'))
+    assert REFERENCE_BRANCH not in unknown_model_message('nonesuch')
+
 
 
 def test_a_model_is_one_spec_and_one_registry_line(monkeypatch):
@@ -77,65 +80,10 @@ def test_a_model_is_one_spec_and_one_registry_line(monkeypatch):
 
 
 def test_importing_the_registry_imports_no_model_and_no_torch():
-    code = 'import sys\nimport common.registry\nprint(sorted(m for m in sys.modules if m.split(".")[0] in ("torch", "reference")))'
+    code = 'import sys\nimport common.registry\nprint(sorted(m for m in sys.modules if m.split(".")[0] in ("torch", "s03a_transformer")))'
     r = subprocess.run([sys.executable, '-c', code], cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.strip() == '[]', (r.stdout, r.stderr)
 
-
-def test_variant_tokens_are_the_tokens_of_the_run_name_variant():
-    spec = GnnSpec()
-    assert spec.variant_tokens(gnn()) == ('gnn',)
-    cfg = gnn(control='no_edges', mask_blocks=0.15, imports='header', arch_balance=True, select_on='cell', budget=20000)
-    assert spec.variant_tokens(cfg) == ('gnn', 'noedges', 'mblk15', 'ab', 'imph', 'selcell', 'sg', 'cap20k')
-    assert '-'.join(spec.variant_tokens(cfg)) == cfg.variant and cfg.name.split('_')[2] == cfg.variant
-
-
-# ---- the options a spec refuses or needs ------------------------------------------------------------------------------
-
-def test_unsupported_flags_raise():
-    spec = GnnSpec()
-    spec.check(gnn())
-    spec.check(gnn(stack_tfidf=True))                                        # supported since step 12
-    for kw in (dict(aux_recon=0.1), dict(aux_edge=0.1)):
-        with pytest.raises(NotImplementedError):
-            spec.check(gnn(**kw))
-    cfg, _ = train.parse_config(['--model', 'gnn', '--aux-edge', '0.1'])
-    with pytest.raises(NotImplementedError):
-        spec.check(cfg)
-    with pytest.raises(NotImplementedError):
-        train.run(cfg)
-    cfg, _ = train.parse_config(['--model', 'gnn', '--stack-tfidf'])
-    spec.check(cfg)
-
-
-def test_block_vectors_stop_with_a_message_when_the_vectors_package_is_absent(monkeypatch):
-    monkeypatch.setattr(gnn_spec, 'vectors_package_present', lambda: False)
-    cfg = gnn(protocol='kfold', fold=0, block_input='vec', block_vec='ours_cap0_codebert')
-    with pytest.raises(ModuleNotFoundError, match='reference.cfg_transformer.precompute_blockvec'):
-        gnn_spec.open_block_vecs(cfg)
-    with pytest.raises(ModuleNotFoundError, match='block-input vec'):
-        GnnSpec().build(cfg, RunInfo(None, None))
-
-
-def test_with_stage_3c_present_the_option_reads_the_vectors_and_names_a_missing_directory(tmp_path, monkeypatch):
-    """Stage 3c is in this checkout: `--block-input vec` no longer stops at the package, it goes on to the vectors."""
-    assert gnn_spec.vectors_package_present()
-    monkeypatch.setattr(gnn_spec, 'CACHE', tmp_path)
-    cfg = gnn(protocol='kfold', fold=0, block_input='vec', block_vec='ours_cap0_codebert')
-    with pytest.raises(FileNotFoundError, match='ours_cap0_codebert'):
-        gnn_spec.open_block_vecs(cfg)
-
-
-def test_a_cache_without_the_files_of_the_model_is_named_in_the_error(tmp_path):
-    with pytest.raises(FileNotFoundError, match='index.csv.*GT_CACHE'):
-        train.check_requires(GnnSpec(), tmp_path)
-    (tmp_path / 'samples').mkdir()
-    for name in ('index.csv', 'vocab.json'):
-        (tmp_path / name).write_text('', encoding='utf-8')
-    train.check_requires(GnnSpec(), tmp_path)
-
-
-# ---- patience, thresholds, weights and the selection rule ------------------------------------------------------------
 
 def test_should_stop_rules():
     g = gnn(patience=3)
@@ -226,6 +174,7 @@ def test_cell_threshold_is_the_weighted_macro_f1_maximiser():
 
 # ---- the run directory ------------------------------------------------------------------------------------------------
 
+
 def fake_state(tiny, tmp_path, monkeypatch, **kw):  # noqa: F811
     cfg = gnn(protocol='kfold', fold=0, **kw)
     manifest = make_manifest(cfg, load_index(tiny.root))
@@ -259,59 +208,3 @@ def test_the_re_exported_helpers_are_the_ones_of_run_io():
     assert (train.AUC_RULES, train.evaluate, train.write_predictions, train.truncated_count) == (
         run_io.AUC_RULES, run_io.evaluate, run_io.write_predictions, run_io.truncated_count)
     assert train.write_run is run_io.write_run and registry.RunInfo is RunInfo
-
-
-# ---- a run on the tiny cache (needs CUDA) ----------------------------------------------------------------------------
-
-@pytest.fixture
-def tiny_runs(tiny, tmp_path, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(train, 'RUNS', tmp_path)
-    monkeypatch.setattr(train, 'CACHE', tiny.root)
-    return tmp_path
-
-
-@pytest.mark.gpu
-@pytest.mark.parametrize('select_on', ['overall', 'cell'])
-def test_run_records_and_applies_the_selection_rule(tiny_runs, select_on):
-    """Three epochs of a d_model 16 GNN on the 40 tiny binaries (a unit test of train.run, not a training run)."""
-    cfg = gnn(protocol='kfold', fold=0, d_model=16, fixed_epochs=3, batch_size=4, num_workers=0, select_on=select_on,
-              mask_blocks=0.15)
-    metrics = train.run(cfg)
-    out = tiny_runs / cfg.name
-    manifest = make_manifest(cfg, load_index())
-    assert cfg.name.endswith('-selcell_s0') == (select_on == 'cell')
-    assert metrics['select_on'] == select_on and metrics['selection']['auc']['rule'] == train.AUC_RULES[select_on]
-    assert json.loads((out / 'metrics.json').read_text(encoding='utf-8'))['select_on'] == select_on
-    epochs = {}
-    with (out / 'val_probs.csv').open(encoding='utf-8') as f:
-        for r in csv.DictReader(f):
-            epochs.setdefault(int(r['epoch']), {})[r['sample_id']] = float(r['prob'])
-    score = lambda probs: train.evaluate(manifest.val, list(probs), np.array(list(probs.values())), 0.5)
-    vals = {e: score(p) for e, p in epochs.items()}
-    want = max(vals, key=lambda e: (val_auc_of(cfg, vals[e]), -e))
-    assert metrics['selection']['auc']['best_epoch'] == want
-    assert metrics['selection']['auc']['val_auc'] == pytest.approx(val_auc_of(cfg, vals[want]))
-    with (out / 'predictions_auc.csv').open(encoding='utf-8') as f:
-        val_rows = [r for r in csv.DictReader(f) if r['split'] == 'val']
-    ids, probs = [r['sample_id'] for r in val_rows], np.array([float(r['prob']) for r in val_rows])
-    assert metrics['selection']['auc']['threshold_val'] == val_threshold_of(manifest.val, ids, probs, select_on)
-    with (out / 'predictions.csv').open(encoding='utf-8') as f:
-        f1_rows = [r for r in csv.DictReader(f) if r['split'] == 'val']
-    assert metrics['selection']['f1']['threshold_val'] == val_threshold_of(
-        manifest.val, [r['sample_id'] for r in f1_rows], np.array([float(r['prob']) for r in f1_rows]), 'overall')
-    assert metrics['best_epoch'] == metrics['selection']['f1']['best_epoch']
-    assert {p.name for p in out.iterdir()} == {'config.json', 'manifest.json', 'vocab.json', 'val_probs.csv', 'history.csv',
-                                               'best.pt', 'best_auc.pt', 'predictions.csv', 'predictions_auc.csv',
-                                               'metrics.json'}
-
-
-@pytest.mark.gpu
-def test_a_run_with_the_import_bag_and_an_out_name_writes_its_files_there(tiny_runs):
-    cfg = gnn(protocol='kfold', fold=1, d_model=16, fixed_epochs=2, batch_size=4, num_workers=0, imports='header')
-    metrics = train.run(cfg, 'smoke_imports')
-    out = tiny_runs / 'smoke_imports'
-    assert metrics['run'] == cfg.name == 'kfold1_x86_gnn-imph_s0' and not (tiny_runs / cfg.name).exists()
-    assert (out / 'imports_vocab.json').is_file() and RunConfig.load(out / 'config.json').cache == str(train.CACHE)
-    state = torch.load(out / 'best.pt', map_location='cpu')
-    assert 'imports.bag.weight' in state
-    assert json.loads((out / 'imports_vocab.json').read_text(encoding='utf-8'))['which'] == 'header'

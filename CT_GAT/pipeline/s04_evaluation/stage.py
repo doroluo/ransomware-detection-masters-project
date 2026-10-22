@@ -2,9 +2,8 @@
 
 A stage is data: `experiments/stages/<name>.py` defines `STAGE = Stage(...)` with the arms (label, group) it reads, the pairs
 of arms it compares (labels, second minus first), the seeds the pairs use, the rule column and the intro text. The engine
-(`gates.py`, `python -m s04_evaluation.gates --stage <name>`) loads the file and lays the stage out. `layout` names the
-layout: 'paired' (a pooled table, then the paired differences) is the generic one; 'day1', 'day1b', 'v3' and 'subgraph'
-are the four stages whose tables are not that shape, and read their extra data from `options`.
+(`gates.py`, `python -m s04_evaluation.gates --stage <name>`) loads the file and lays the stage out: a pooled table, then the paired
+differences.
 
 This module imports nothing but `common.config`, so a stage file can import it while the engine is `__main__`.
 """
@@ -27,17 +26,15 @@ class Stage:
     pairs     ((first label, second label), ...): paired differences, second minus first
     seeds     the seeds the pairs use (those complete in both arms); the pooled tables are always seed 0
     rule      None, or rule(first, second, result, info) -> the text of the extra `rule` column of the paired table
-    layout    'paired' | 'day1' | 'day1b' | 'v3' | 'subgraph' (see the module docstring)
     extra     None, or the name of a table printed after the pooled one (`gate_tables.EXTRAS`)
-    options   the data of the four bespoke layouts; for the 'paired' layout `match_rate_builds`, ((name, folder under the
-              run directory), ...): a match-rate line (`gate_tables.match_rate_lines`) per pipeline-B build, after `extra`"""
+    options   `match_rate_builds`, ((name, folder under the run directory), ...): a match-rate line
+              (`gate_tables.match_rate_lines`) per pipeline-B build, after `extra`"""
     name: str
     intro: Union[str, Callable[[int], str]] = ''
     arms: tuple = ()
     pairs: tuple = ()
     seeds: tuple = (SEED,)
     rule: Optional[Callable] = None
-    layout: str = 'paired'
     extra: Optional[str] = None
     options: Mapping = field(default_factory=dict)
 

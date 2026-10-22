@@ -1,8 +1,5 @@
 """A small synthetic CFG cache: 40 binaries (20 ransomware in 10 families, 20 goodware, five folds), the cache arrays the
-pipeline reads, an index.csv and a vocab.json, the header-import side arrays (`side/imports`, with a label-correlated signal,
-drawn from a generator of their own so that the cache arrays are the same with or without them), and a patch that points every
-module-level CACHE at it. The operand-role side arrays (`side/yanping`) of the 3-block-level-counting version come with the
-experiments that write them."""
+pipeline reads, an index.csv and a vocab.json, and a patch that points every module-level CACHE at it."""
 import csv
 import hashlib
 import json
@@ -10,12 +7,7 @@ import json
 import numpy as np
 import pytest
 
-from common.side_io import atomic_npz
-from s04_evaluation import import_side as imp
-
 N_MN, N_SIG, N_API, N_BEH = 30, 50, 24, 9
-IMPORT_POOL = [f'lib{i % 4}.dll!fn{i}' for i in range(40)]
-RANSOM_ONLY = IMPORT_POOL[:6]                        # unreferenced in most ransomware, in no goodware
 
 
 def sample_id(i):
@@ -47,21 +39,6 @@ def make_binary(rng):
     }
 
 
-def write_imports(root, sid, label, rng):
-    """The header-import side array of one binary: 8 to 19 header imports, a few unreferenced ones, and in 85% of the
-    ransomware three of RANSOM_ONLY."""
-    header = IMPORT_POOL[6:6 + int(rng.integers(8, 20))]
-    unref = list(rng.choice(IMPORT_POOL[6:], int(rng.integers(0, 6)), replace=False))
-    if label and rng.random() < 0.85:
-        unref += list(rng.choice(RANSOM_ONLY, 3, replace=False))
-    header = sorted(set(header) | set(unref))
-    unref = sorted(set(unref))
-    atomic_npz(imp.imports_path(root, sid), dict(
-        schema=np.array(imp.SCHEMA), sample_id=np.array(sid), n_entries=np.array(len(header)),
-        header_imports=np.array(header), unreferenced_imports=np.array(unref) if unref else np.zeros(0, dtype='<U1'),
-        referenced_imports=np.array(sorted(set(header) - set(unref)))))
-
-
 def build(root, seed=3):
     """Write the cache under `root`; returns {'ids', 'labels', 'rows'}."""
     rng = np.random.default_rng(seed)
@@ -84,7 +61,6 @@ def build(root, seed=3):
                   'num_instructions': np.array(n_ins), 'num_edges': np.array(len(z['cfg_edges'])),
                   'num_api': np.array(len(z['api']))}
         np.savez_compressed(root / 'samples' / f'{sid}.npz', **arrays)
-        write_imports(root, sid, label, np.random.default_rng([seed, 1, i]))
         group = family if label else sid
         fold = (i // 2) % 5 if label else (i - 20) % 5
         rows.append({'sample_id': sid, 'label': label, 'split': 'train', 'arch': 'x86', 'family': family,
@@ -102,11 +78,8 @@ def build(root, seed=3):
 def tiny(tmp_path_factory):
     """The tiny cache, with every module-level CACHE pointed at it."""
     from common import manifests
-    from s02_preprocess.tokenizer import vocab as vocab_module
-    from s04_evaluation import imports_feat
     root = tmp_path_factory.mktemp('tiny') / 'cache'
     info = build(root)
     with pytest.MonkeyPatch.context() as mp:
-        for module in (manifests, vocab_module, imports_feat):
-            mp.setattr(module, 'CACHE', root)
+        mp.setattr(manifests, 'CACHE', root)
         yield type('Tiny', (), {'root': root, **info})

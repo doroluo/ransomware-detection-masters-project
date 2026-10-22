@@ -51,10 +51,9 @@ def test_the_transformer_model_placeholder_is_gone():
 
 def test_every_module_of_the_package_imports_without_a_datasets_file(tmp_path):
     code = ('import importlib\n'
-            "for m in ('common.config', 'common.manifests', 'common.paths', 'common.side_io', 'common.reader',\n"
-            "          's02_preprocess', 's02_preprocess.subgraph', 's02_preprocess.tokenizer.vocab',\n"
-            "          's02_preprocess.tokenizer.block_tokens', 's02_preprocess.cache.build_cache',\n"
-            "          's02_preprocess.cache.check_cache', 's02_preprocess.cache.folds'):\n"
+            "for m in ('common.config', 'common.manifests', 'common.paths', 's02_preprocess',\n"
+            "          's02_preprocess.cache.build_cache', 's02_preprocess.cache.check_cache', 's02_preprocess.cache.folds',\n"
+            "          's03a_transformer', 's03b_cfg_feature', 's03c_cfg_transformer'):\n"
             '    importlib.import_module(m)\n'
             "print('ok')")
     env = {k: v for k, v in os.environ.items() if not k.startswith('GT_')}

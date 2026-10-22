@@ -8,11 +8,6 @@ run kfold1_x86_fivechannel-L512_s0 --model fivechannel --protocol kfold --arch x
 run kfold2_x86_fivechannel-L512_s0 --model fivechannel --protocol kfold --arch x86 --fold 2 --seed 0 --max-instructions 512
 run kfold3_x86_fivechannel-L512_s0 --model fivechannel --protocol kfold --arch x86 --fold 3 --seed 0 --max-instructions 512
 run kfold4_x86_fivechannel-L512_s0 --model fivechannel --protocol kfold --arch x86 --fold 4 --seed 0 --max-instructions 512
-run kfold0_x86_tokenseq-thoof_s0 --model tokenseq --protocol kfold --arch x86 --fold 0 --seed 0 --threshold-from oof
-run kfold1_x86_tokenseq-thoof_s0 --model tokenseq --protocol kfold --arch x86 --fold 1 --seed 0 --threshold-from oof
-run kfold2_x86_tokenseq-thoof_s0 --model tokenseq --protocol kfold --arch x86 --fold 2 --seed 0 --threshold-from oof
-run kfold3_x86_tokenseq-thoof_s0 --model tokenseq --protocol kfold --arch x86 --fold 3 --seed 0 --threshold-from oof
-run kfold4_x86_tokenseq-thoof_s0 --model tokenseq --protocol kfold --arch x86 --fold 4 --seed 0 --threshold-from oof
 run kfold0_x86_fivechannel_s1 --model fivechannel --protocol kfold --arch x86 --fold 0 --seed 1
 run kfold1_x86_fivechannel_s1 --model fivechannel --protocol kfold --arch x86 --fold 1 --seed 1
 run kfold2_x86_fivechannel_s1 --model fivechannel --protocol kfold --arch x86 --fold 2 --seed 1
@@ -23,11 +18,6 @@ run kfold1_x86_fivechannel-L512_s1 --model fivechannel --protocol kfold --arch x
 run kfold2_x86_fivechannel-L512_s1 --model fivechannel --protocol kfold --arch x86 --fold 2 --seed 1 --max-instructions 512
 run kfold3_x86_fivechannel-L512_s1 --model fivechannel --protocol kfold --arch x86 --fold 3 --seed 1 --max-instructions 512
 run kfold4_x86_fivechannel-L512_s1 --model fivechannel --protocol kfold --arch x86 --fold 4 --seed 1 --max-instructions 512
-run kfold0_x86_tokenseq-thoof_s1 --model tokenseq --protocol kfold --arch x86 --fold 0 --seed 1 --threshold-from oof
-run kfold1_x86_tokenseq-thoof_s1 --model tokenseq --protocol kfold --arch x86 --fold 1 --seed 1 --threshold-from oof
-run kfold2_x86_tokenseq-thoof_s1 --model tokenseq --protocol kfold --arch x86 --fold 2 --seed 1 --threshold-from oof
-run kfold3_x86_tokenseq-thoof_s1 --model tokenseq --protocol kfold --arch x86 --fold 3 --seed 1 --threshold-from oof
-run kfold4_x86_tokenseq-thoof_s1 --model tokenseq --protocol kfold --arch x86 --fold 4 --seed 1 --threshold-from oof
 run kfold0_x86_fivechannel_s2 --model fivechannel --protocol kfold --arch x86 --fold 0 --seed 2
 run kfold1_x86_fivechannel_s2 --model fivechannel --protocol kfold --arch x86 --fold 1 --seed 2
 run kfold2_x86_fivechannel_s2 --model fivechannel --protocol kfold --arch x86 --fold 2 --seed 2
@@ -38,8 +28,3 @@ run kfold1_x86_fivechannel-L512_s2 --model fivechannel --protocol kfold --arch x
 run kfold2_x86_fivechannel-L512_s2 --model fivechannel --protocol kfold --arch x86 --fold 2 --seed 2 --max-instructions 512
 run kfold3_x86_fivechannel-L512_s2 --model fivechannel --protocol kfold --arch x86 --fold 3 --seed 2 --max-instructions 512
 run kfold4_x86_fivechannel-L512_s2 --model fivechannel --protocol kfold --arch x86 --fold 4 --seed 2 --max-instructions 512
-run kfold0_x86_tokenseq-thoof_s2 --model tokenseq --protocol kfold --arch x86 --fold 0 --seed 2 --threshold-from oof
-run kfold1_x86_tokenseq-thoof_s2 --model tokenseq --protocol kfold --arch x86 --fold 1 --seed 2 --threshold-from oof
-run kfold2_x86_tokenseq-thoof_s2 --model tokenseq --protocol kfold --arch x86 --fold 2 --seed 2 --threshold-from oof
-run kfold3_x86_tokenseq-thoof_s2 --model tokenseq --protocol kfold --arch x86 --fold 3 --seed 2 --threshold-from oof
-run kfold4_x86_tokenseq-thoof_s2 --model tokenseq --protocol kfold --arch x86 --fold 4 --seed 2 --threshold-from oof

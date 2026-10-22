@@ -89,7 +89,7 @@ def fmt(values):
 def main(argv=None):
     argparse.ArgumentParser(description='Re-score the saved predictions of every run at the validation threshold; prints a markdown table.').parse_args(argv)
     if not RUNS.is_dir():
-        raise SystemExit(f'no run folder at {RUNS}: run a training or baseline command first (it writes there), or set GT_RUNS')
+        raise SystemExit(f'no run folder at {RUNS}: run a training command first (it writes there), or set GT_RUNS')
     groups = defaultdict(list)
     for run_dir in sorted(RUNS.iterdir()):
         if not (run_dir / 'config.json').exists() or not (run_dir / 'predictions.csv').exists():

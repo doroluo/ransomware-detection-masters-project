@@ -100,7 +100,6 @@ def test_every_module_imports_without_torch_geometric_psutil_or_the_worktrees(tm
             f'names = {list(MODULES)!r}\n'
             'for n in names:\n'
             '    importlib.import_module("experiments.team_pipelines." + n)\n'
-            'import experiments.side_arrays.import_reader_side\n'
             'assert "torch_geometric" not in sys.modules and "psutil" not in sys.modules\n'
             'from experiments.team_pipelines import common as tp\n'
             'try:\n'
@@ -658,10 +657,8 @@ def test_importing_one_source_never_leaves_the_other_in_sys_modules():
 
 # ---- step 18: Pipeline A / B trainers ---------------------------------------------------------------------------------------
 A_DIR, B_BUILD = train_a.GRAPH_DIR, train_b.B_DIR
-REF_VEC = DEFAULT_CACHE / 'side' / 'blockvec' / 'ours_cap0_ref' / 'fold0' / 'meta.json'
 needs_a_graphs = pytest.mark.skipif(not A_DIR.exists() or len(list(A_DIR.glob('*.pt'))) < 20,
                                     reason='needs a few build_a graphs')
-needs_ref_vecs = pytest.mark.skipif(not REF_VEC.exists(), reason='needs the reference block vectors ours_cap0_ref fold 0')
 needs_b_build = pytest.mark.skipif(not (B_BUILD / 'checkpoint.json').exists(), reason='needs the build_b output')
 
 
@@ -761,40 +758,6 @@ def test_unswapped_graph_equals_graph_full_loader(pp):
     assert torch.equal(ours.edge_index, theirs.edge_index) and ours.y == theirs.y and ours.sample_id == sample_id
 
 
-def edge_set_of(out):
-    """(local source, local target) pairs of an encode_binary_gnn item, local = index among the kept blocks."""
-    first = np.cumsum(out['seg_len']) - out['seg_len']
-    return set(zip((first[out['edge_seg']] + out['edge_src']).tolist(),
-                   (first[out['edge_seg']] + out['edge_dst']).tolist()))
-
-
-@needs_pyg
-@needs_real_data
-@needs_ref_vecs
-def test_cb500_blocks_and_edges_equal_the_matched_arm():
-    from common.manifests import load_sample
-    from reference.gnn.batching import encode_binary_gnn
-    from reference.gnn.spec import open_block_vecs
-    rows = [r for r in tp.sample_rows().values() if r['fold'] is not None]
-    by_size = sorted(rows, key=lambda r: int(r['num_blocks']))
-    picks = [by_size[100], by_size[len(by_size) // 2], by_size[-300]]
-    assert int(picks[0]['num_blocks']) < 500 < int(picks[1]['num_blocks'])
-    cfg = RunConfig(protocol='kfold', fold=0, arch='x86', model='gnn', block_input='vec', block_vec='ours_cap0_ref',
-                    subgraph='cap', budget=0)
-    object.__setattr__(cfg, 'budget', 500)  # RunConfig refuses 500 (< 1000); the matched arm's evaluation uses it
-    vecs = open_block_vecs(cfg)
-    for r in picks:
-        sample_id = r['sample_id']
-        out = encode_binary_gnn(load_sample(sample_id), None, cfg, None, sample_id, vecs)
-        graph, (n_fn, kept, total) = train_a.cache_graph(sample_id, vecs)
-        assert kept == out['n_blocks_kept'] == graph.x.shape[0] <= 500 and total == out['n_blocks_total']
-        assert n_fn == out['n_fn']
-        assert np.array_equal(graph.x.numpy(), out['blk_vec'])  # same blocks in the same order, every key found
-        pairs = set(zip(graph.edge_index[0].tolist(), graph.edge_index[1].tolist()))
-        assert pairs == edge_set_of(out) and len(pairs) > 0
-        assert graph.y.item() == r['label'] and graph.x.dtype == torch.float16
-
-
 def synthetic_graphs(ids, rng, d=4):
     from torch_geometric.data import Data
     graphs, sizes = {}, {}
@@ -873,16 +836,6 @@ def no_write_run(tmp_path, monkeypatch):
 @needs_a_graphs
 def test_train_a_gnn500_smoke_creates_no_run_dir(no_write_run):
     out = train_a.run('gnn500', 0, 0, smoke=12, device='cpu', log=lambda *_: None)
-    assert_smoke_clean(out, no_write_run)
-    shutil.rmtree(out['dir'])
-
-
-@needs_pyg
-@needs_worktrees
-@needs_real_data
-@needs_ref_vecs
-def test_train_a_cb500_smoke_creates_no_run_dir(no_write_run):
-    out = train_a.run('cb500', 0, 0, smoke=12, block_vec='ours_cap0_ref', device='cpu', log=lambda *_: None)
     assert_smoke_clean(out, no_write_run)
     shutil.rmtree(out['dir'])
 
