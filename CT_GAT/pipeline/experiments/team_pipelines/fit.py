@@ -18,6 +18,9 @@ class-weight total of the whole batch, so the optimiser step is the one the whol
 batch within the budget takes the unchanged path, so a run whose batches never exceed the budget is the run without a budget.
 Evaluation is cut the same way and the predictions come back in the order asked.
 
+Gradient clipping (hp['grad_clip']; absent or None: off, every arm but the end-to-end one). The gradient norm of all parameters is clipped
+to it (`clip_grad_norm_`) after the backward pass and before the optimiser step, on the summed gradient of a batch cut into parts.
+
 GPU cap (hp['gpu_cap_gb']). Parts of different sizes fragment the caching allocator, and on Windows (no expandable segments) its
 reserved memory grew past the card's 16 GB in a 600-binary smoke: the driver then pages the excess into system memory (the process's
 resident set grew by 7 GB per epoch, to 17 GB). With the cap `set_per_process_memory_fraction` limits what the process may reserve,
@@ -90,14 +93,17 @@ def predict(tc, model, graphs, device, batch_size, budget=None):
     return torch.cat([p for p, _ in parts]), torch.cat([y for _, y in parts])
 
 
-def train_batch(model, batch, criterion, criterion_sum, optimizer, device, budget=None):
+def train_batch(model, batch, criterion, criterion_sum, optimizer, device, budget=None, grad_clip=None):
     """One optimiser step on a collated batch; returns (loss, number of parts the batch was cut into). Within the budget (or
-    without one) it is the teammates' step; above it the parts' gradients add up to the whole batch's."""
+    without one) it is the teammates' step; above it the parts' gradients add up to the whole batch's. `grad_clip` clips the
+    gradient norm before the step."""
     optimizer.zero_grad()
     if budget is None or int(batch.num_nodes) <= budget:
         batch = batch.to(device)
         loss = criterion(model(batch), batch.y.view(-1))
         loss.backward()
+        if grad_clip is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
         return float(loss.detach()), 1
     from torch_geometric.data import Batch
@@ -110,6 +116,8 @@ def train_batch(model, batch, criterion, criterion_sum, optimizer, device, budge
         loss.backward()
         total += float(loss.detach())
         del sub, loss
+    if grad_clip is not None:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
     optimizer.step()
     return total, len(parts)
 
@@ -123,7 +131,7 @@ def predict_rows(tc, model, ids, graphs, sizes, device, batch_size, budget=None)
 
 def fit(model, train_ids, val_ids, graphs, *, hp, seed, device, log=print):
     """Train `model` on graphs[train_ids]; returns a dict with the F1 state, the AUC state, the history and the timing.
-    hp holds lr, weight_decay, batch_size, epochs, patience."""
+    hp holds lr, weight_decay, batch_size, epochs, patience (and optionally node_budget, gpu_cap_gb, grad_clip)."""
     from s03b_cfg_feature.gat import train_cfg as tc      # imported here: this module imports without torch_geometric
     rows = sample_rows()
     train = [graphs[i] for i in train_ids]
@@ -151,7 +159,7 @@ def fit(model, train_ids, val_ids, graphs, *, hp, seed, device, log=print):
         start, total_loss, seen, split = time.time(), 0.0, 0, 0
         for batch in tc._batches(train, hp['batch_size'], rng):
             n_graphs = batch.num_graphs
-            loss, parts = train_batch(model, batch, criterion, criterion_sum, optimizer, device, budget)
+            loss, parts = train_batch(model, batch, criterion, criterion_sum, optimizer, device, budget, hp.get('grad_clip'))
             split += parts > 1
             total_loss += loss * n_graphs
             seen += n_graphs
