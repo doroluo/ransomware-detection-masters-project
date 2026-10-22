@@ -131,6 +131,16 @@ assert sorted(set(folds.values())) == [0, 1, 2, 3, 4]
 
    A relative path is relative to the file. A file entry named like a catalog dataset replaces it; any other name adds a dataset
    ahead of the catalog's. `GT_DATASETS` names another file, so a second machine or a test uses its own.
+5. **A pipeline-B build.** Models 1 to 3 train on a folder of `<sample_id>.pt` files that `experiments/team_pipelines/build_b.py`
+   writes for the dataset's binaries, so a dataset that these models should train on also names where its build goes and what the
+   build is called. The protocol picks the dataset: `DATASET_OF`, `DEFAULT_ARCH` and `BUILD_ARCHES` in
+   `experiments/team_pipelines/common.py` (the catalog name, the arch a command takes without `--arch`, and the arches a build is made
+   for), `RUN_ARCHES` and `BUILD_SUFFIX` in `experiments/team_pipelines/train_b.py` (the arches a run may ask for, and the suffix of the
+   build folder: `RUNS/team/b_<family>_<suffix>`, `b_sig500_mendeley_all` and `b_sig500_combined_v3` for the two datasets there) and
+   `DATASETS` in `experiments/team_pipelines/package_build.py` (the label of the zip, `Mendeley_all_cfg_subgraphs_...`). The build is
+   `build_b --protocol <protocol> --arch <arch> --out RUNS/team/b_<family>_<suffix>`, `train_b` and `--model fivechannel` refuse a
+   build made for another dataset, and the recipes and the build table are in
+   [`experiments/team_pipelines/README.md`](../experiments/team_pipelines/README.md).
 
 ## A control or an ablation
 
@@ -204,6 +214,13 @@ Add `'mine'` to `STAGES` in `experiments/stages/__init__.py` (and the file to `e
 command line need no change. `python -m s04_evaluation.gates --stage mine` prints the markdown and the plan's `gates mine` line
 writes it to `<runs>/gates_mine.md`. `seeds=(0, 1, 2)` pairs over the seeds complete in both arms; `rule=` adds the verdict column
 (`experiments/stages/team.py` is an example).
+
+A stage reads the Mendeley x86 dataset unless its `options` say otherwise. `options={'scope': (protocol, arch)}` names the dataset,
+for example `('kfold_v3', 'matched')`: a baseline arm such as `tfidf` is then read for that dataset, the `cells` table
+(`extra='cells'`: the recall of each class x architecture cell, the cell-balanced AUC and macro-F1, and the floors of the dataset's
+test manifests) uses its manifests, and a match-rate line expects the total of a build of it. `options={'balanced': True}` prints each
+paired difference a second time with every test binary weighted by its class x architecture cell. `experiments/stages/team_v3_all.py`
+and `team_mendeley_all.py` are examples; `experiments/stages/common.py` builds their group names from `RunConfig`.
 
 ## Reading the tables
 

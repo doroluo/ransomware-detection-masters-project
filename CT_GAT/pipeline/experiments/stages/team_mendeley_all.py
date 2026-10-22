@@ -46,7 +46,7 @@ def intro(resamples):
             "holdout. On Mendeley the architecture is a label proxy: x86 has 1,134 ransomware and 676 goodware binaries, x64 "
             "has 108 and 493. The x86 rule (ransomware if and only if x86) alone scores 0.650 macro-F1 pooled over the folds, and 55% of "
             "the x64 ransomware are in fold 2, so a fold's x64 test set can be almost all goodware or hold most of the x64 "
-            "ransomware. An AUC on this dataset therefore rewards \"x64 means goodware\". Read the recall of ransomware x64 first, "
+            "ransomware. A model therefore gains AUC on this dataset by scoring x64 binaries as goodware. Read the recall of ransomware x64 first, "
             "then the cell-balanced AUC and macro-F1 (each class x architecture cell weighted equally; the x86 rule scores 0.5) "
             "and the `-ab` twin of an arm, which weights its training binaries by cell. `combined_v3` (x86-rule floor 0.690 on all "
             "architectures, 0.606 on the matched subset, 741 x64 ransomware) is the fair all-architecture test (stages "
