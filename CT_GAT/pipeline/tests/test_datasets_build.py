@@ -480,6 +480,42 @@ def test_max_instructions_excludes_the_larger_binaries_with_the_automatic_reason
             assert not left & big
 
 
+def test_max_instructions_is_recorded_only_when_given_and_a_resume_warns_when_it_differs(stand_in, tmp_path, capsys):
+    rows = tp.sample_rows('kfold_v3', 'all')
+    sizes = sorted(int(r['num_instructions']) for r in rows.values())
+    cap, lower = sizes[len(sizes) // 2], sizes[len(sizes) // 4]
+    out = tmp_path / 'capped'
+    flags = ('--protocol', 'kfold_v3')
+    run(out, *flags, '--max-instructions', str(cap))
+    assert json_of(out / 'settings.json')['max_instructions'] == cap
+    assert 'max_instructions' not in json_of(out / 'checkpoint.json')['settings']
+    assert 'max_instructions' not in json_of(out / 'build_summary.json')['settings']
+    assert 'WARNING' not in capsys.readouterr().err
+    run(out, *flags, '--max-instructions', str(cap))                                         # the same cap: silent
+    assert 'WARNING' not in capsys.readouterr().err
+    summary = run(out, *flags, '--max-instructions', str(lower))                             # lower: warns, goes on, records the new cap
+    assert f'--max-instructions {cap}' in capsys.readouterr().err and json_of(out / 'settings.json')['max_instructions'] == lower
+    assert summary['processed'] + len(summary['excluded']) == summary['total']
+    run(out, *flags)                                                                         # omitted: warns with the recorded value
+    assert f'--max-instructions {lower}, this run omits it' in capsys.readouterr().err
+    assert 'max_instructions' not in json_of(out / 'settings.json')
+    run(out, *flags)
+    assert 'WARNING' not in capsys.readouterr().err
+    plain = tmp_path / 'plain'                                                               # a build without a cap neither records nor warns
+    run(plain, *flags, '--ids', *list(rows)[:2])
+    run(plain, *flags, '--ids', *list(rows)[:2], '--max-instructions', str(cap))
+    assert 'WARNING' not in capsys.readouterr().err and json_of(plain / 'settings.json')['max_instructions'] == cap
+
+
+def test_max_instructions_of_an_extension_is_recorded_and_checked_like_any_other(stand_in, tmp_path, capsys):
+    base = base_build(tmp_path)
+    extend(base, '--max-instructions', '10000000')
+    assert json_of(base / 'settings.json')['max_instructions'] == 10000000 and 'WARNING' not in capsys.readouterr().err
+    extend(base)
+    assert '--max-instructions 10000000, this run omits it' in capsys.readouterr().err
+    assert 'max_instructions' not in json_of(base / 'settings.json')
+
+
 def test_max_instructions_adds_to_exclude_and_leaves_built_binaries_alone(stand_in, tmp_path):
     rows = tp.sample_rows('kfold_v3', 'all')
     by_size = sorted(rows, key=lambda i: int(rows[i]['num_instructions']))
@@ -554,7 +590,7 @@ def test_extend_adds_only_the_x64_ids_and_leaves_every_x86_payload_byte_identica
     assert (settings['protocol'], settings['arch']) == ('kfold', 'all') and settings['source'] == 'repo'
     assert settings['pins'] == json_of(base / 'settings.json')['pins']
     (entry,) = settings['extensions']
-    assert {k: v for k, v in entry.items() if k != 'date'} == {'arch': 'all', 'ids_added': 4, 'source': 'repo', 'pins': dict(tp.source_pins('repo')),
+    assert {k: v for k, v in entry.items() if k != 'date'} == {'arch': 'all', 'ids_added': 4, 'done_before': 6, 'source': 'repo', 'pins': dict(tp.source_pins('repo')),
                                                                'embedder_rows': 'seeded-per-id'}
     assert re.fullmatch(r'\d{4}-\d\d-\d\d', entry['date'])
     assert json_of(ext / 'checkpoint.json')['settings'] == {**json_of(base / 'checkpoint.json')['settings'], 'protocol': 'kfold', 'arch': 'all'}
@@ -600,6 +636,35 @@ def test_a_stopped_and_resumed_extension_equals_a_straight_one(stand_in, tmp_pat
     for sample_id in x86_ids() + x64_ids():
         assert torch.equal(torch.load(straight / f'{sample_id}.pt')['block_embeddings'], torch.load(resumed / f'{sample_id}.pt')['block_embeddings'])
     assert (straight / 'api_vocab.json').read_bytes() == (resumed / 'api_vocab.json').read_bytes()
+
+
+def test_ids_added_of_a_resumed_extension_counts_the_ids_of_all_its_runs(stand_in, tmp_path):
+    base = base_build(tmp_path)
+    straight, resumed = tmp_path / 'straight', tmp_path / 'resumed'
+    shutil.copytree(base, straight)
+    shutil.copytree(base, resumed)
+    extend(straight, ids=x86_ids() + x64_ids()[:3])
+    assert extend(resumed, ids=x86_ids() + x64_ids()[:1])['built_this_run'] == 1
+    (entry,) = json_of(resumed / 'settings.json')['extensions']
+    assert entry['ids_added'] == 1 and entry['done_before'] == 6
+    assert extend(resumed, ids=x86_ids() + x64_ids()[:3])['built_this_run'] == 2
+    for build in (straight, resumed):
+        assert json_of(build / 'settings.json')['extensions'][0]['ids_added'] == 3
+    drop_date = lambda doc: {**doc, 'extensions': [{k: v for k, v in e.items() if k != 'date'} for e in doc['extensions']]}      # noqa: E731
+    assert drop_date(json_of(straight / 'settings.json')) == drop_date(json_of(resumed / 'settings.json'))
+
+
+def test_ids_added_follows_the_checkpoint_when_an_extension_stops(stand_in, tmp_path):
+    _, _, rec = stand_in
+    base = base_build(tmp_path)
+    rec.fail = {x64_ids()[3]}
+    with pytest.raises(SystemExit):
+        extend(base)
+    held = len(json_of(base / 'checkpoint.json')['done']) - 6
+    assert json_of(base / 'settings.json')['extensions'][0]['ids_added'] == held < 3 + 1
+    rec.fail = set()
+    extend(base)
+    assert json_of(base / 'settings.json')['extensions'][0]['ids_added'] == 4
 
 
 def test_a_resumed_extension_must_run_the_files_it_began_with(stand_in, tmp_path, monkeypatch):

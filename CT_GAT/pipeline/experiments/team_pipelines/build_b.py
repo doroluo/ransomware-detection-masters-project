@@ -59,15 +59,20 @@ attempted again. An id the checkpoint already holds cannot be excluded.
 "num_instructions > N: load_cfg needs about 3 KB per instruction (31 GB RAM)" (`load_cfg` holds the whole CFG; a binary above
 about 4,000,000 instructions does not fit this machine). They are recorded like --exclude ids, in `settings.json` and
 `build_summary.json` `excluded`, and the trainers leave them out of every split; pass the same N on every resume (a lower N on a
-resume is how a MemoryError is answered). An id the checkpoint already holds stays built and is not excluded.
+resume is how a MemoryError is answered). An id the checkpoint already holds stays built and is not excluded. N is recorded as
+`max_instructions` in `settings.json` (only by a build that passes it, so the settings of the kfold x86 builds keep their keys, and
+not in the checkpoint's settings); a resume of a build that records a cap prints a warning naming it when the flag is omitted or
+differs, and goes on (the cap of the run is what counts, and replaces the record).
 
 --extend (the full-Mendeley builds): grow a finished kfold x86 build, copied to --out, to all 2,411 Mendeley ids with
 `--protocol kfold --arch all --source repo`, with the copy's own --sample, --num-blocks and --seed. The copy's vocabulary, embedder
 and finished ids are loaded and only the x64 ids are built, in sorted order, continuing the vocabulary (ids only grow), so every
 x86 `.pt` stays byte-identical. The comparison of the settings tolerates exactly the dataset (`arch`) and the code source: the
 build may be a `repo` or a `main-fix` build (both run the files of this repository), the pins of the files now are recorded in
-`settings.json` `extensions` ([{arch, ids_added, source, pins, embedder_rows, date}]) while the build's own `source` and pins stay
-as they were, so the trainers keep reading it as what it was. The API rows the embedder adds during the extension are drawn per
+`settings.json` `extensions` ([{arch, ids_added, done_before, source, pins, embedder_rows, date}]) while the build's own `source` and pins stay
+as they were, so the trainers keep reading it as what it was. `ids_added` is the number of ids the checkpoint holds beyond the
+`done_before` of the entry (the size of the finished set when the extension began), rewritten with every checkpoint and at the end
+of each run, so a resumed extension counts the ids of all its runs. The API rows the embedder adds during the extension are drawn per
 (--seed, API id), as --seeded-rows does (do not pass it): the extension is reproducible from the x86 build and a stopped and
 resumed extension equals a straight one; a resume passes --extend again and must run the files the extension began with. The
 checkpoint's settings gain `protocol: kfold, arch: all`, so a plain kfold x86 run on the extended folder stops. A build of the
@@ -138,6 +143,12 @@ def read_extensions(out):
     """The `extensions` list of out/settings.json: [] for a build that was never extended (or has no settings.json)."""
     path = out / 'settings.json'
     return json.loads(path.read_text(encoding='utf-8')).get('extensions', []) if path.is_file() else []
+
+
+def read_max_instructions(out):
+    """The `max_instructions` out/settings.json records, None for a build that passed no cap (or has no settings.json)."""
+    path = out / 'settings.json'
+    return json.loads(path.read_text(encoding='utf-8')).get('max_instructions') if path.is_file() else None
 
 
 def changed_files(saved, now):
@@ -242,18 +253,21 @@ def resolve_dir(path):
     return RUNS.joinpath(*path.parts[1:]) if path.parts and path.parts[0] == 'RUNS' else path
 
 
-def extension_documents(out, args, settings, excluded, n_new):
+def extension_documents(out, args, settings, excluded, done):
     """(the settings.json of an extended build, the settings its checkpoint carries). settings.json is the one of the build being
     extended with the dataset (`protocol`, `arch`), the exclusions of this run and an `extensions` entry appended on the first run
-    of the extension (a resumed extension keeps its entry); its `source` and `pins` stay the build's own. The checkpoint's settings
+    of the extension (a resumed extension keeps its entry, with `ids_added` recounted from `done`, the ids the checkpoint holds); its `source` and `pins` stay the build's own. The checkpoint's settings
     are the build's own with the dataset added."""
     path = out / 'settings.json'
     if not path.is_file():
         raise SystemExit(f'--extend needs the settings.json of the build to extend, {path} is missing')
     document = json.loads(path.read_text(encoding='utf-8'))
     extensions = document.get('extensions') or [{
-        'arch': settings['arch'], 'ids_added': n_new, 'source': args.source, 'pins': dict(source_pins(args.source)),
+        'arch': settings['arch'], 'ids_added': 0, 'done_before': len(done), 'source': args.source, 'pins': dict(source_pins(args.source)),
         'embedder_rows': SEEDED_ROWS, 'date': time.strftime('%Y-%m-%d')}]
+    first = extensions[0]
+    if 'done_before' in first:                  # an entry of an earlier version keeps the count it was written with
+        first['ids_added'] = len(done) - first['done_before']
     checkpoint = {**json.loads((out / 'checkpoint.json').read_text(encoding='utf-8'))['settings'],
                   'protocol': settings['protocol'], 'arch': settings['arch']}
     return {**document, 'protocol': settings['protocol'], 'arch': settings['arch'], 'excluded': excluded,
@@ -327,7 +341,11 @@ def main(argv=None):
     out = resolve_dir(args.out or source_for('team_b_build'))
     out.mkdir(parents=True, exist_ok=True)
     refuse_foreign_folder(out)
+    recorded_cap = read_max_instructions(out)
     vocab, embedder, done = load_state(out, pp, settings, **({'extend': True} if args.extend else {}))
+    if recorded_cap is not None and args.max_instructions != recorded_cap:
+        print(f'WARNING {out}: the build records --max-instructions {recorded_cap}, this run '
+              + ('omits it' if args.max_instructions is None else f'passes {args.max_instructions}'), file=sys.stderr, flush=True)
     built_excluded = sorted(set(excluded) & done)
     if built_excluded:
         raise SystemExit(f'the checkpoint already holds {built_excluded}: they cannot be excluded')
@@ -339,10 +357,23 @@ def main(argv=None):
     dropped = drop_unfinished(out, done)
     todo = [i for i in ids if i not in done and i not in excluded]
     if args.extend:
-        document, settings = extension_documents(out, args, settings, excluded, len(todo))
+        document, settings = extension_documents(out, args, settings, excluded, done)
     else:
         document = {**settings, 'pins': source_pins(args.source), 'excluded': excluded}
-    atomic(out / 'settings.json', lambda p: p.write_text(json.dumps(document, indent=2), encoding='utf-8'))
+    document.pop('max_instructions', None)           # the record is the cap of this run
+    if args.max_instructions is not None:
+        document['max_instructions'] = args.max_instructions
+    write_settings = lambda: atomic(out / 'settings.json', lambda p: p.write_text(json.dumps(document, indent=2), encoding='utf-8'))      # noqa: E731
+
+    def save():
+        save_state(out, pp, vocab, embedder, done, settings)
+        if args.extend:
+            first = document['extensions'][0]
+            if 'done_before' in first:
+                first['ids_added'] = len(done) - first['done_before']
+            write_settings()
+
+    write_settings()
     if args.extend:
         save_state(out, pp, vocab, embedder, done, settings)       # the checkpoint names the dataset from the first moment on
     print(f'{out}: {len(ids)} ids, {len(ids) - len(todo) - len(excluded)} done in the checkpoint, {len(excluded)} excluded, '
@@ -382,7 +413,7 @@ def main(argv=None):
             built += 1
             since_save += 1
             if since_save >= SAVE_EVERY:
-                save_state(out, pp, vocab, embedder, done, settings)
+                save()
                 since_save = 0
             if n % 10 == 0 or n == len(todo):
                 wall = time.time() - t_start
@@ -390,7 +421,7 @@ def main(argv=None):
                       f'{wall / n:.1f} s/sample, last {sample_id[:12]} {seconds:.1f} s '
                       f'({sample.sampled_blocks}/{sample.original_blocks} blocks), vocab {len(vocab.names)}',
                       flush=True)
-    save_state(out, pp, vocab, embedder, done, settings)
+    save()
     wall = time.time() - t_start
     summary = {'processed': len(done & set(ids)), 'total': len(ids), 'excluded': excluded, 'built_this_run': built,
                'wall_seconds_this_run': round(wall, 1), 'api_names': len(vocab.names), 'settings': settings}
