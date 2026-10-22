@@ -17,7 +17,7 @@ preprocessed zips derive from it; they are on the project Google Drive with a `.
 build the `mendeley_x86` cache, whose folds cover the x86 binaries (1,810) or the whole Mendeley dataset (2,411, with 601 x64). With the
 Mendeley collections, the balanced collections (MalwareBazaar ransomware and balanced goodware) build the all-architecture cache
 `combined_v3` (5,652 binaries with a fold, 4,850 of them architecture-matched). The three models train on each of these datasets with its
-preprocessed zip, a CPU build of 4 to 5 h (500 blocks) or 5.6 h (uncapped) for the x86 dataset, longer for the other two.
+preprocessed zip, which replaces a CPU build of 4 to 5 h (500 blocks) or 5.6 h (uncapped) for the x86 dataset, longer for the other two.
 
 | Zip | Size | sha256 | Unzip into | Enables |
 |---|---|---|---|---|
@@ -40,9 +40,9 @@ preprocessed zip, a CPU build of 4 to 5 h (500 blocks) or 5.6 h (uncapped) for t
 | `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the same dataset; the `callwalk500-*` arms |
 
 `CT_GAT/processed/` holds one build, and the zips have different API vocabularies: empty it before unzipping another preprocessed zip.
-`train_b` stops when the build's dataset, sampler or block count differs from the arm's. Move the contents of
-`CT_GAT/processed/cfg_subgraphs` to `CT_GAT/pipeline/runs/team/<build>`: `b_sig250_main`, `b_callwalk500_main` or `b_callwalk250_main` for
-the x86 zips, `b_<family>_mendeley_all` or `b_<family>_combined_v3` for the others (family names: pipeline README), or pass `--build DIR`.
+`train_b` stops when the build's dataset, sampler or block count differs from the arm's. Move the contents of `CT_GAT/processed/cfg_subgraphs` to
+`CT_GAT/pipeline/runs/team/<build>`: `b_sig500_v3`, `b_sig250_main`, `b_callwalk500_main`, `b_callwalk250_main` or `b_sigwhole_v3`
+for the x86 zips, `b_<family>_mendeley_all` or `b_<family>_combined_v3` for the others (family names: pipeline README), or pass `--build DIR`.
 
 From the repository root, with the zips in it, on Windows (PowerShell or cmd); the other zips unzip like the last one:
 
