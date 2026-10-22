@@ -1,3 +1,36 @@
+# Pipeline
+
+<img width="741" height="750" alt="Team pipeline diagram" src="https://github.com/user-attachments/assets/dbb96697-ee9c-457b-a7c7-5f1022c492e9" />
+
+The diagram above is the team's plan; the chart below is the code as it stands.
+
+```mermaid
+flowchart TD
+    A["IDA export: jsonl.gz CFG and asm.gz listing (s01_ida_export)"] --> P["preprocess_full builds: one .pt sample per binary (s02_preprocess)"]
+    P --> M1["Model 1: five-channel token transformer (s03a_transformer)"]
+    P --> M2["Model 2: team GAT on the 77 block features (s03b_cfg_feature)"]
+    P --> M3["Model 3: end-to-end block transformer + GAT (s03c_cfg_transformer)"]
+    A --> B["CFG cache from the jsonl.gz alone: blocks, typed edges, call edges, tokens; folds and labels (s02_preprocess/cache)"]
+    B -->|"folds and labels"| M1
+    B --> M2
+    B --> M3
+    M1 --> EV
+    M2 --> EV
+    M3 --> EV
+    EV["Evaluation (s04_evaluation): 5-fold family holdout on Mendeley x86, all of Mendeley or combined_v3; AUC, PR-AUC, accuracy, precision, recall, macro-F1, confusion matrix; paired cluster bootstrap over 3 seeds x 5 folds"]
+```
+
+| Stage | Folder | What it does |
+|---|---|---|
+| 1. IDA export | `s01_ida_export/` | writes the `.jsonl.gz` CFG export and the `.asm.gz` listing of each binary (inside IDA, on the VM) |
+| 2. Preprocessing | `s02_preprocess/` | `preprocess_full.py` selects blocks, aligns their instructions with the listing and writes one `.pt` sample per binary; `cache/` builds the CFG cache, folds and labels from the `.jsonl.gz` exports |
+| 3a. Model 1 | `s03a_transformer/` | the five-channel transformer over the instruction sequence |
+| 3b. Model 2 | `s03b_cfg_feature/` | the team GAT on the 77 block features |
+| 3c. Model 3 | `s03c_cfg_transformer/` | the block transformer trained end to end under the GAT |
+| 4. Evaluation | `s04_evaluation/` | metrics, validation thresholds, the paired bootstrap and the result tables |
+
+All folders are under `CT_GAT/pipeline/`.
+
 # Setup
 
 Python 3.12. From the repository root:
