@@ -43,7 +43,7 @@ predicts the label (the x86 rule scores 0.650 macro-F1), so read the recall of r
 `CT_GAT/processed/cfg_subgraphs`. A missing or empty folder stops the run with the two ways to fill it. The folds
 are ours: the 5-fold family holdout of `common.manifests` for the dataset of the flags (x86 by default) and the validation carve of
 the run seed, so a run sees the same train, validation and test binaries as the GNN and the teammates' arms of that seed. Per fold the API vocabulary of the build, which
-covers all 1,810 binaries, is made a training-set one again with the logic of `experiments/team_pipelines/train_b.py` (`remap_api`):
+covers all the binaries of its dataset (1,810, 2,411 or 5,652), is made a training-set one again with the logic of `experiments/team_pipelines/train_b.py` (`remap_api`):
 an API id that no training binary of the fold uses becomes `UNK_API`. The loop is the class-weighted cross entropy, AdamW, gradient
 clipping, patience on the validation AUC and the two checkpoints, with her model and collate unchanged;
 `--max-instructions` (default 128, as she wrote it) is the number of instructions per binary the model reads, and the run name

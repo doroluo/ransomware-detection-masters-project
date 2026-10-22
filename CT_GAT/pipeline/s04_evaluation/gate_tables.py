@@ -125,8 +125,8 @@ def match_rate_line(build, name, scope=DEFAULT_SCOPE, total=None):
     complete = (done.get('processed') == done.get('total') == 1810 if scope == DEFAULT_SCOPE
                 else done.get('total') == total and (done.get('processed') or 0) + len(done.get('excluded') or {}) == total)
     if not complete:
-        return (f"Match rates of `{name}`: missing (build incomplete: {done.get('processed')} of {done.get('total')} "
-                'binaries processed).')
+        return (f"Match rates of `{name}`: missing (build incomplete: its summary covers {done.get('total')} binaries "
+                f"({done.get('processed')} processed), the dataset has {total}).")
     rates = match_rates.summarize(match_rates.sample_rates(Path(build)))
     parts = [f"{name} {s['n']} binaries, mean {s['mean_match']:.3f}, below 50% {s['n_below_50']} ({100 * s['share_below_50']:.1f}%), "
              f"below 90% {s['n_below_90']} ({100 * s['share_below_90']:.1f}%), exactly 0 {100 * s['share_zero']:.1f}%"

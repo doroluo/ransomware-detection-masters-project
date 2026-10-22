@@ -190,7 +190,7 @@ equal to `total` is finished, and the trainers leave them out of every split and
 `gates.py` name them under each pair and read the pair on the binaries both arms have. Pass the same N on every resume; a resume
 that answers a `MemoryError` passes a lower one. N = 4,000,000 on the combined builds excludes 34 binaries, all goodware of
 `Balanced_Goodware` for x64 (11 are in the matched subset, 23 are not), 2.2% of the goodware x64 cell; 3,000,000 would exclude 38, and
-2,000,000 would start to take x86 ransomware. No Mendeley binary is above 1.2M instructions. The 34:
+2,000,000 would start to take x86 ransomware. The largest Mendeley binary has 1,204,876 instructions. The 34:
 
 ```
 0024c8ebf0deda45f66a000f7f0e63ab9fbe90dde7f29ba45be811df015cd8d7 0cfa774327b40e5c59a64d3ca4d64d402352a1db28885af99892ee5164c1b48f

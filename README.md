@@ -13,12 +13,11 @@ full runs of Models 2 and 3 need a CUDA GPU, and their smoke runs use `--device 
 # Data
 
 The binaries are the Mendeley ransomware dataset (https://data.mendeley.com/datasets/p3v94dft2y/3). The Mendeley collections and the
-preprocessed zips derive from it; they are on the project Google Drive with a `.sha256` file beside each zip. The two Mendeley
-collections build the `mendeley_x86` cache, whose folds cover the x86 binaries (1,810) or the whole Mendeley dataset (2,411, with 601
-x64). The balanced collections (MalwareBazaar ransomware and balanced goodware) add the all-architecture cache `combined_v3` (5,652
-binaries with a fold, 4,850 of them architecture-matched). The three models train on each of these three datasets, with the collections
-and the preprocessed zip of that dataset; a zip replaces a CPU build of 4 to 5 h (500 blocks) or 5.6 h (uncapped) for the x86 dataset,
-longer for the other two.
+preprocessed zips derive from it; they are on the project Google Drive with a `.sha256` file beside each zip. The two Mendeley collections
+build the `mendeley_x86` cache, whose folds cover the x86 binaries (1,810) or the whole Mendeley dataset (2,411, with 601 x64). With the
+Mendeley collections, the balanced collections (MalwareBazaar ransomware and balanced goodware) build the all-architecture cache
+`combined_v3` (5,652 binaries with a fold, 4,850 of them architecture-matched). The three models train on each of these datasets with its
+preprocessed zip, a CPU build of 4 to 5 h (500 blocks) or 5.6 h (uncapped) for the x86 dataset, longer for the other two.
 
 | Zip | Size | sha256 | Unzip into | Enables |
 |---|---|---|---|---|
@@ -41,8 +40,9 @@ longer for the other two.
 | `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the same dataset; the `callwalk500-*` arms |
 
 `CT_GAT/processed/` holds one build, and the zips have different API vocabularies: empty it before unzipping another preprocessed zip.
-`train_b` stops when the build's dataset, sampler or block count differs from the arm's. The plans look for each build in
-`CT_GAT/pipeline/runs/team/` (folder names in the pipeline README): move `CT_GAT/processed/cfg_subgraphs` there, or pass `--build DIR`.
+`train_b` stops when the build's dataset, sampler or block count differs from the arm's. Move the contents of
+`CT_GAT/processed/cfg_subgraphs` to `CT_GAT/pipeline/runs/team/<build>`: `b_sig250_main`, `b_callwalk500_main` or `b_callwalk250_main` for
+the x86 zips, `b_<family>_mendeley_all` or `b_<family>_combined_v3` for the others (family names: pipeline README), or pass `--build DIR`.
 
 From the repository root, with the zips in it, on Windows (PowerShell or cmd); the other zips unzip like the last one:
 
@@ -83,18 +83,18 @@ python -m s02_preprocess.cache.build_cache --cache combined_v3
 
 Model 1 is the five-channel transformer over the instruction sequence (`experiments.train --model fivechannel`). Model 2 is a graph
 attention network (GAT) on the 77 block features and the control-flow graph (`--arm sig500v3-feat`). Model 3 is the block transformer
-trained end to end under the GAT (`--arm sig500v3-e2e`); `--arm sig500v3-emb` is Model 3 with the stored 64-d block embeddings. The
-models read the build in `CT_GAT/processed/cfg_subgraphs`, or `--build DIR`. A Model 1 smoke run trains 8 binaries and scores 8
-validation and 8 test binaries, so it needs the `.pt` files of those 24; Models 2 and 3 train 8 and score every validation binary.
+trained end to end under the GAT (`--arm sig500v3-e2e`); `--arm sig500v3-emb` is Model 3 with the stored 64-d block embeddings. Models 2
+and 3 read the build in `RUNS/team/<build>` when it exists, else in `CT_GAT/processed/cfg_subgraphs`; Model 1 reads the latter unless
+`--build DIR` names another. A Model 1 smoke run trains 8 binaries and scores 8 validation and 8 test binaries, so it needs the `.pt`
+files of those 24; Models 2 and 3 train 8 and score every validation binary.
 
-The x86 folds are the default dataset. With `--protocol kfold`, `--arch all` trains on the whole Mendeley dataset; with
-`--protocol kfold_v3`, `--arch all` or `--arch matched` trains on the combined one. A run reads the build of its zip, and the other arm
-families are in the table. `--arch-balance` weights the training binaries by class and architecture. On the whole Mendeley dataset the
-architecture is a proxy for the label (x86: 1,134 ransomware and 676 goodware, x64: 108 and 493; the x86 rule alone scores 0.650
-macro-F1, and 55% of the x64 ransomware are in fold 2), so a model gains AUC there by scoring x64 binaries as goodware. Read the recall
-of ransomware x64 and the cell-balanced metrics (each class and architecture weighted equally), and take `combined_v3` (x86-rule floor
-0.690 on all, 0.606 on matched, 741 x64 ransomware) as the all-architecture test. The smoke runs on fold 0 come first, then runs on the
-other datasets; a full run omits `--smoke 8 --device cpu`:
+With `--protocol kfold`, `--arch all` trains on the whole Mendeley dataset; with `--protocol kfold_v3`, `--arch all` or `--arch matched`
+trains on the combined one. The other arm families are in the table. `--arch-balance` weights the training binaries by class and
+architecture. On the whole Mendeley dataset the architecture is a proxy for the label (x86: 1,134 ransomware and 676 goodware, x64: 108
+and 493; the x86 rule alone scores 0.650 macro-F1, and 55% of the x64 ransomware are in fold 2), so a model gains AUC there by scoring x64
+binaries as goodware. Read the recall of ransomware x64 and the cell-balanced metrics (each class and architecture weighted equally), and
+take `combined_v3` (x86-rule floor 0.690 on all, 0.606 on matched, 741 x64 ransomware) as the all-architecture test. The commands are
+smoke runs on fold 0 for the x86 dataset (a full run omits `--smoke 8 --device cpu`), then runs on the others:
 
 ```bash
 python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
@@ -111,8 +111,8 @@ A plan in `experiments/plans/` is one experiment for `experiments.queue`: `model
 `team_mendeley_all` (345 runs, whole Mendeley dataset) and `team_v3` (390 runs, combined dataset). `report` writes `RESULTS.md` in the
 run directory. `gates` prints the arms of a stage and names the missing folds and seeds; `--stage team` also compares with published
 arms, which print as missing unless the published runs are in `GT_RUNS`, and `team_mendeley_all`, `team_v3_all` and `team_v3_matched`
-add the recall of each class and architecture. GPU runs differ in the last digits, so compare models through several seeds. The block
-prints a plan's runs (`--dry`), writes the tables, checks the arms and runs the tests, with no dataset:
+add the recall of each class and architecture. GPU runs differ in the last digits (CUDA scatter is nondeterministic), so compare models
+through several seeds. The block prints a plan's runs (`--dry`), writes the tables, checks the arms and runs the tests, with no dataset:
 
 ```bash
 python -m experiments.queue --plan experiments/plans/team_b.txt --dry

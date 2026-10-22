@@ -243,7 +243,8 @@ def test_the_new_run_names_collide_with_nothing_known():
         if fixture.is_file() and fixture.suffix in ('.txt', '.json', '.csv', '.md'):
             tokens = set(re.findall(r'[\w-]*kfold[\w-]*', fixture.read_text(encoding='utf-8', errors='replace')))
             if fixture.parent.name == 'plans_dry' and fixture.stem in recordings:
-                assert not [t for t in tokens if re.match(r'kfold\d_x86_', t)] and tokens & new, fixture      # none is a run of the x86 dataset
+                assert not [t for t in tokens if re.match(r'kfold\d_x86_', t)], fixture                      # none is a run of the x86 dataset
+                assert {t for t in tokens if '_team-' in t} <= new and tokens & new, fixture             # every team run is one of the new names
                 continue
             assert not tokens & (new | groups), fixture
     if Path(RUNS).is_dir():
