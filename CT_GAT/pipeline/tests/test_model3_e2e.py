@@ -207,9 +207,10 @@ def test_the_arm_row_name_group_and_recipe():
     row = train_b.ARM_TABLE[ARM]
     assert train_b.ARMS.index(ARM) == 5 and train_b.ARM_DIR[ARM].name == 'b_sig500_v3' and row.sources == ('main-fix', 'repo')
     assert (row.sampler, row.num_blocks, row.features) == ('signal', 500, 'e2e') and not row.legacy
-    assert train_b.ARM_HP[ARM] == {**train_b.HP, 'grad_clip': 1.0, 'gpu_cap_gb': 12} == train_b.HP_E2E
-    assert train_b.HP_E2E['lr'] == 1e-3 and 'node_budget' not in train_b.HP_E2E and train_b.BLOCK_LEN == 64
+    assert train_b.ARM_HP[ARM] == {**train_b.HP, 'lr': 3e-4, 'grad_clip': 1.0, 'gpu_cap_gb': 12} == train_b.HP_E2E
+    assert train_b.ARM_TABLE[ARM].hp['lr'] == 3e-4 and train_b.HP_E2E['lr'] == 3e-4 and 'node_budget' not in train_b.HP_E2E and train_b.BLOCK_LEN == 64
     assert all('grad_clip' not in train_b.ARM_HP[a] for a in train_b.ARMS if a != ARM)
+    assert all(train_b.ARM_TABLE[a].hp['lr'] == 1e-3 for a in train_b.ARMS if a != ARM)
     cfg = tp.team_config(2, 1, ARM)
     assert cfg.name == f'kfold2_x86_gnn_s1_team-{ARM}' and cfg.group == team_group(ARM) == 'kfold_x86_gnn_team-sig500v3-e2e'
     assert dict(gates.load_stage('team').arms)[E2E] == cfg.group
@@ -278,7 +279,7 @@ def test_five_synthetic_folds_are_read_by_stats_report_and_the_team_gates(tmp_pa
     cut = metrics['truncated_blocks']
     assert cut['test_count'] == 0 and cut['test_share'] == 0.0 and cut['test_blocks'] > 0           # the synthetic blocks are short
     assert 0 < metrics['tokens_per_binary'] <= metrics['instructions_per_binary']
-    assert metrics['recipe']['grad_clip'] == 1.0 and metrics['recipe']['lr'] == 1e-3 and metrics['recipe']['arm'] == ARM
+    assert metrics['recipe']['grad_clip'] == 1.0 and metrics['recipe']['lr'] == 3e-4 and metrics['recipe']['arm'] == ARM
     assert metrics['build_source'] == 'main-fix' and metrics['build_binaries'] == 40 and 0.0 <= metrics['test']['auc'] <= 1.0
     assert (d / 'history.csv').is_file() and (d / 'best.pt').is_file() and (d / 'predictions_auc.csv').is_file()
     monkeypatch.setattr(stats, 'RUNS', runs)

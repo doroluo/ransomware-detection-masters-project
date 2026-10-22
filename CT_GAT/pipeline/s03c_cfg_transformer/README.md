@@ -21,5 +21,11 @@ learning rates are in [`../experiments/team_pipelines/README.md`](../experiments
 The `-emb` arm (`sig500v3-emb`) is the other Model 3 variant: the same GAT on the fixed 64-d block embeddings that the
 preprocessing stores, with nothing trained before the GAT.
 
+The learning rate is 3e-4, the other pipeline-B arms' 1e-3 being unsteady here. On fold 0, seed 0 (two runs each), lr 1e-3
+gave test AUC 0.9681 and 0.9892 with the validation ransomware F1 swinging by up to about 0.24 between epochs (range
+0.74-0.98); lr 3e-4 gave 0.9836 and 0.9802 (AUC spread 0.004 against 0.021) with a largest swing of 0.062 and 0.094 (range
+0.85-0.95), at the same 5.2 s per epoch. GPU runs of this arm vary from run to run (same seed, different results), so results
+are compared across seeds.
+
 The earlier frozen-encoder version of Model 3 (CodeBERT block vectors under the hierarchical GNN) is on branch
 `jsonl-reference-models`; its results are in [`../docs/history/`](../docs/history/README.md).

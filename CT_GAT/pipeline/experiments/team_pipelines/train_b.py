@@ -20,8 +20,8 @@ directory, the hyperparameters; a new arm is a new row).
                      `--block-len` (64, the only value) instructions of every block from the build's five-channel ids, and
                      Dorothy's `FullBlockGAT` (in_dim 64, edge_dim 8) combines the block vectors over the CFG; both are trained
                      together (`s03c_cfg_transformer/block_transformer.py`). The stored block embeddings and the 77 block features
-                     are not read. Recipe `HP_E2E`: the others' (AdamW lr 1e-3, weight decay 1e-4, batch 16, 40 epochs, patience 8)
-                     plus gradient clipping at 1.0 and the 12 GB GPU cap.
+                     are not read. Recipe `HP_E2E`: the others' (AdamW weight decay 1e-4, batch 16, 40 epochs, patience 8) with lr 3e-4
+                     instead of 1e-3, plus gradient clipping at 1.0 and the 12 GB GPU cap.
   sigwhole[-feat|-emb]   `RUNS/team/b_sigwhole_v3` (`build_b --sample signal --num-blocks 1000000`: every non-library block of every
                      binary, no cap), the same three inputs. They train with a node budget (`HP_WHOLE`, fit.py): a binary has up to
                      190k blocks and a batch of 16 can hold over a million nodes, which does not fit the GPU, so a batch above the
@@ -87,7 +87,7 @@ HP = {'lr': 1e-3, 'weight_decay': 1e-4, 'batch_size': 16, 'epochs': 40, 'patienc
 NODE_BUDGET = 300_000     # nodes per part of a batch: training ~28 KB per node (8.4 GB), evaluation ~15 KB (4.5 GB), under the 12 GB limit
 GPU_CAP_GB = 12          # the allocator may reserve at most this much (fit.py: beyond the card the driver pages into system RAM)
 HP_WHOLE = {**HP, 'node_budget': NODE_BUDGET, 'gpu_cap_gb': GPU_CAP_GB}
-HP_E2E = {**HP, 'grad_clip': 1.0, 'gpu_cap_gb': GPU_CAP_GB}      # post-LN transformer at lr 1e-3 without warmup: clip; 3e-4 only if fold 0 diverges
+HP_E2E = {**HP, 'lr': 3e-4, 'grad_clip': 1.0, 'gpu_cap_gb': GPU_CAP_GB}      # post-LN transformer without warmup: clip, and lr 3e-4 (1e-3 swung the validation F1 by up to 0.24 per epoch on fold 0)
 BLOCK_LEN = 64            # instructions per block the end-to-end arm reads (block_transformer.BLOCK_LEN)
 B_DIR = RUNS / 'team' / 'b_sig500'
 B_V2_DIR = RUNS / 'team' / 'b_sig500_v2'

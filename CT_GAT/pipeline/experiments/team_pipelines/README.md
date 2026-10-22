@@ -235,7 +235,7 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   | `sig500v3` | `b_sig500_v3`, 500 blocks | `all` | `main-fix`, `repo` | nothing |
   | `sig500v3-feat` (Model 2) | `b_sig500_v3` | `feat`, the 77 scaled block features | `main-fix`, `repo` | nothing |
   | `sig500v3-emb` (Model 3) | `b_sig500_v3` | `emb`, the 64-d pooled channel embedding | `main-fix`, `repo` | nothing |
-  | `sig500v3-e2e` (Model 3, trained encoder) | `b_sig500_v3` | `e2e`, the instructions of each block (below) | `main-fix`, `repo` | nothing; gradient clip 1.0 (`HP_E2E`) |
+  | `sig500v3-e2e` (Model 3, trained encoder) | `b_sig500_v3` | `e2e`, the instructions of each block (below) | `main-fix`, `repo` | nothing; lr 3e-4, gradient clip 1.0 (`HP_E2E`) |
   | `sigwhole`, `sigwhole-feat`, `sigwhole-emb` | `b_sigwhole_v3`, uncapped (`num_blocks` at least 1,000,000) | `all`, `feat`, `emb` | `main-fix`, `repo` | nothing; a node budget per batch (`HP_WHOLE`, `fit.py`) |
 
   `--features`, `--block-len` and `--source` are refused when they contradict the arm. The build's settings (`settings.json`, or
@@ -262,11 +262,14 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   rows and are kept; a block with no instruction gets one unmasked PAD row (an all-masked row gives NaN in `TransformerEncoder`) and
   a zero vector. A batch is one flat list of instructions (`BlockSeqData`: `insn_ids`, `insn_block`, the CFG) padded to
   `[blocks, longest block <= 64, 5]` per step; the encoder runs under bf16 autocast on CUDA and the GAT in fp32. Recipe: the other
-  arms' (`HP`) plus `grad_clip` 1.0 (`fit.train_batch`, applied only when the key is present) and the 12 GB cap; lr 3e-4 only if a
-  fold diverges. The encoder sees blocks only, never the order of instructions across blocks: block vectors plus CFG is the design.
+  arms' (`HP`) with lr 3e-4 instead of 1e-3, plus `grad_clip` 1.0 (`fit.train_batch`, applied only when the key is present) and the 12 GB cap.
+  The lr was chosen on fold 0, seed 0 (two runs each): at 1e-3 the test AUC was 0.9681 and 0.9892 and the validation ransomware F1 swung by up to about 0.24
+  between epochs (range 0.74-0.98); at 3e-4 the test AUC was 0.9836 and 0.9802 (spread 0.004 against 0.021) and the largest epoch-to-epoch swing was 0.062
+  and 0.094 (range 0.85-0.95), at the same 5.2 s per epoch. GPU runs of this arm vary from run to run (same seed, different results), so results are
+  compared across seeds. The encoder sees blocks only, never the order of instructions across blocks: block vectors plus CFG is the design.
   `metrics.json` adds `n_parameters` (`encoder`, `gat`, `total`, `unused_classifier`), `block_len`, `truncated_blocks` (test split:
   count, blocks, share), `tokens_per_binary` and `instructions_per_binary` (test mean, after and before the cut), `encoder` and
-  `gat` (names); `recipe` carries `grad_clip`. The queue plan is `experiments/plans/team_b.txt` (15 runs, then `report` and
+  `gat` (names); `recipe` carries `lr` (3e-4) and `grad_clip`. The queue plan is `experiments/plans/team_b.txt` (15 runs, then `report` and
   `gates team`):
 
   ```
