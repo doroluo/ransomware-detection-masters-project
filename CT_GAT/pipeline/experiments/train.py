@@ -137,7 +137,7 @@ def predict(spec, model, data, device):
     for batch in data:
         with torch.autocast('cuda', dtype=torch.bfloat16):
             logits = spec.forward(model, to_device(batch, device))
-        probs.append(torch.sigmoid(logits).cpu().numpy())
+        probs.append(torch.sigmoid(logits).float().cpu().numpy())
         ids += batch['sample_id']
         none = [None] * len(batch['sample_id'])
         sizes += zip(batch['n_segments_total'], batch.get('n_blocks_kept', none), batch.get('n_blocks_total', none))

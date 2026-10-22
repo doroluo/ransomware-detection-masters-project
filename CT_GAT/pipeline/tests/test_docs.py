@@ -87,6 +87,28 @@ def test_the_registry_example_extends_the_real_registry_by_one_line(monkeypatch)
     assert type(spec_for(SimpleNamespace(model='counts'))) is mod.CountsSpec
 
 
+@pytest.mark.gpu
+def test_the_model_example_trains_one_epoch_through_the_registry_loop(tiny, tmp_path, monkeypatch):  # noqa: F811
+    """The registry loop on CUDA (bf16 autocast) for a spec of the document: the run directory has its metrics and predictions."""
+    import json
+
+    from common import config
+    from experiments import train
+    mod = run_example('model')
+    monkeypatch.setattr(config, 'MODELS', (*config.MODELS, 'counts'))
+    plain = RunConfig.variant
+    monkeypatch.setattr(RunConfig, 'variant', property(lambda self: 'counts' if self.model == 'counts' else plain.fget(self)))
+    monkeypatch.setitem(sys.modules, 'my_stage.spec', SimpleNamespace(CountsSpec=mod.CountsSpec))
+    monkeypatch.setitem(MODELS, 'counts', 'my_stage.spec:CountsSpec')
+    monkeypatch.setattr(train, 'CACHE', tiny.root)
+    monkeypatch.setattr(train, 'RUNS', tmp_path / 'runs')
+    cfg = RunConfig(model='counts', protocol='kfold', fold=0, batch_size=4, num_workers=0, fixed_epochs=1)
+    metrics = train.run(cfg, 'counts_smoke')
+    out = tmp_path / 'runs' / 'counts_smoke'
+    assert metrics['epochs_run'] == 1 and json.loads((out / 'metrics.json').read_text(encoding='utf-8'))['run'] == cfg.name
+    assert (out / 'predictions.csv').stat().st_size > 0
+
+
 # a dataset -------------------------------------------------------------------------------------------------------------
 
 def test_the_folds_example_never_splits_a_family():

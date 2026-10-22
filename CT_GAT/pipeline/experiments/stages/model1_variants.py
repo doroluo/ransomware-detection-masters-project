@@ -49,7 +49,7 @@ def rule(first, second, result, info):
 
 
 def intro(resamples):
-    return ('kfold x86 on the v2 cache. `tokenseq` is Model 1, the token-sequence transformer over the block export; '
+    return ('kfold x86 on the v2 cache. `tokenseq` is Model 1, the token-sequence transformer over the block export (plan `model1`); '
             '`tokenseq-thoof` is the same model with the decision threshold chosen on out-of-fold predictions of the training '
             'binaries (3 refits on folds that keep a ransomware family or a goodware identity group whole, '
             '`--threshold-from oof`) instead of the validation families, which saturate; the two differ only in the threshold of the AUC '

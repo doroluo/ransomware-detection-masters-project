@@ -39,12 +39,15 @@ class CountsSpec:
         return nn.Linear(4, 1)
 
     def loader(self, cfg, rows, train):
+        batches = []                                    # a list, not a generator: the loop iterates a loader once per epoch
         for start in range(0, len(rows), cfg.batch_size):
             chunk = rows[start:start + cfg.batch_size]
             zs = [load_sample(r['sample_id']) for r in chunk]
             counts = [[len(z['blk_feat']), len(z['fn_flags']), len(z['mn']), len(z['api'])] for z in zs]
-            yield {'sample_id': [r['sample_id'] for r in chunk], 'label': torch.tensor([r['label'] for r in chunk]).float(),
-                   'x': torch.tensor(np.log1p(counts)).float(), 'n_segments_total': [1] * len(chunk)}
+            batches.append({'sample_id': [r['sample_id'] for r in chunk],
+                            'label': torch.tensor([r['label'] for r in chunk]).float(),
+                            'x': torch.tensor(np.log1p(counts)).float(), 'n_segments_total': [1] * len(chunk)})
+        return batches
 
     def forward(self, model, batch):
         return model(batch['x']).squeeze(1)
