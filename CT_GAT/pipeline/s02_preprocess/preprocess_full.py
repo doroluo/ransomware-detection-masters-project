@@ -36,6 +36,7 @@ import re
 import sys
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -153,6 +154,7 @@ class CfgInstruction:
     behavior_tags: list[str] = field(default_factory=list)
     operands: list[str] = field(default_factory=list)
     opcode: str | None = None
+    code_refs: list[int] = field(default_factory=list)
 
     @property
     def block_key(self) -> tuple[int, int]:
@@ -271,6 +273,7 @@ class SampledSubgraph:
     original_blocks: int
     original_edges: int
     original_instructions: int
+    sampling_info: dict[str, Any] = field(default_factory=dict)
 
     @property
     def sampled_blocks(self) -> int:
@@ -545,6 +548,11 @@ def load_cfg(path: Path, file_id: str | None = None) -> FullCFG:
                             f"instruction rva {rva} import id {import_index} is outside the import table"
                         )
                 is_call = bool(instruction.get("is_call")) or tok._mnemonic(mnemonic).lower() == "call"
+                code_refs = [
+                    _as_rva(target, imagebase, convert_va)
+                    for target in instruction.get("code_refs") or []
+                    if isinstance(target, int) and not isinstance(target, bool)
+                ]
                 instructions.append(
                     CfgInstruction(
                         file_id=sample_id,
@@ -562,6 +570,7 @@ def load_cfg(path: Path, file_id: str | None = None) -> FullCFG:
                             else None
                         ),
                         is_call=is_call,
+                        code_refs=code_refs,
                     )
                 )
             key = (function_id, block_id)
@@ -1060,6 +1069,159 @@ def sample_connected_subgraph(
         original_blocks=len(cfg.blocks),
         original_edges=len(cfg.edges),
         original_instructions=cfg.instruction_count,
+    )
+
+
+def _call_edge_scan(cfg: FullCFG) -> tuple[list[CfgEdge], dict[str, int]]:
+    """Block-level call edges of the whole CFG and how many call targets were looked at.
+
+    Every ``code_refs`` target of a call instruction that is the RVA of a function gives one edge from the caller's
+    block to that function's entry block, the block whose ``start_rva`` is the function RVA. A target that is a
+    function RVA but not the start of one of its blocks (IDA function chunks) gives no edge and is counted as
+    unresolved. A target that is no function RVA (a call into the middle of a function) is not counted.
+    """
+    function_rvas = set(cfg.function_rvas.values())
+    entries: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for key, block in cfg.blocks.items():
+        if block.start_rva == cfg.function_rvas.get(block.function_name):
+            entries[block.start_rva].append(key)
+    found: dict[tuple[tuple[int, int], tuple[int, int]], CfgEdge] = {}
+    targets = unresolved = 0
+    for block in cfg.blocks.values():
+        for instruction in block.instructions:
+            if not instruction.is_call:
+                continue
+            for target in instruction.code_refs:
+                if target not in function_rvas:
+                    continue
+                targets += 1
+                if target not in entries:
+                    unresolved += 1
+                    continue
+                for entry in entries[target]:
+                    found.setdefault(
+                        (block.key, entry),
+                        CfgEdge(
+                            src=block.key,
+                            dst=entry,
+                            edge_type="call",
+                            is_back_edge=False,
+                            is_back_address=target <= block.start_rva,
+                        ),
+                    )
+    edges = [found[pair] for pair in sorted(found)]
+    return edges, {"call_targets": targets, "unresolved_call_targets": unresolved, "call_edges": len(edges)}
+
+
+def call_edges_of(cfg: FullCFG) -> list[CfgEdge]:
+    """Block-level call edges of ``cfg``, caller block to callee entry block, one per pair, typed ``call``.
+
+    Calls to imports have no code target and give no edge, nor does a call whose target is not a function RVA.
+    """
+    return _call_edge_scan(cfg)[0]
+
+
+def sample_callwalk_subgraph(
+    cfg: FullCFG,
+    *,
+    seed: int,
+    num_blocks: int | None = None,
+    max_instructions: int | None = None,
+    include_library: bool = False,
+) -> SampledSubgraph:
+    """Grow a subgraph from a seeded random block, across calls, restarting when a region runs out.
+
+    callwalk mode added 2026-10-21 for request 2 (a walk that crosses calls).
+
+    The walk is ``sample_connected_subgraph``'s breadth-first loop, but a block's neighbors are its CFG neighbors
+    and, in both directions, the blocks it calls and the blocks that call it (caller block <-> callee entry block,
+    from ``call_edges_of``), so it leaves a function through its calls and climbs back to a caller. Call edges only
+    choose blocks: the saved edges are ``induced_edges(cfg.edges, chosen)``, the intra-function CFG edges among the
+    chosen blocks, as ``walk`` and ``signal`` save them.
+
+    The first start is the block ``walk`` starts from for the same seed. When the queue empties below the budget the
+    walk restarts from another seeded random allowed block not yet chosen, until the budget is met or no allowed
+    block is left. A restart block that would break ``max_instructions`` is passed over. ``num_blocks=0`` sets no
+    block budget: every allowed block is taken. Blocks of library functions are skipped as in the other modes.
+    ``sampling_info`` holds ``regions`` (the number of starts) and the call-target counts of the binary.
+    """
+    if num_blocks is None and max_instructions is None:
+        raise ValueError("set num_blocks or max_instructions")
+    if num_blocks is not None and num_blocks < 0:
+        raise ValueError("num_blocks must be >= 0")
+    if max_instructions is not None and max_instructions < 1:
+        raise ValueError("max_instructions must be >= 1")
+    if not cfg.blocks:
+        raise ValueError("CFG has no blocks")
+    block_cap = num_blocks or None  # 0 sets no block budget
+
+    keys = sorted(_sampling_keys(cfg, include_library), key=lambda key: (cfg.blocks[key].start_rva, key[0], key[1]))
+    allowed = set(keys)
+    rng = random.Random(seed)
+    neighbors = _undirected_neighbors(cfg)
+    call_edges, call_counts = _call_edge_scan(cfg)
+    call_neighbors: dict[tuple[int, int], set[tuple[int, int]]] = defaultdict(set)
+    for edge in call_edges:
+        if edge.src != edge.dst:
+            call_neighbors[edge.src].add(edge.dst)
+            call_neighbors[edge.dst].add(edge.src)
+
+    selected: list[tuple[int, int]] = []
+    chosen: set[tuple[int, int]] = set()
+    total = 0
+    regions = 0
+    pool: list[tuple[int, int]] | None = None
+    cursor = 0
+    start: tuple[int, int] | None = keys[rng.randrange(len(keys))]
+    while start is not None:
+        regions += 1
+        selected.append(start)
+        chosen.add(start)
+        total += cfg.blocks[start].instruction_count
+        queue = deque([start])
+        while queue:
+            if block_cap is not None and len(selected) >= block_cap:
+                break
+            node = queue.popleft()
+            ordered = sorted(set(neighbors[node]) | call_neighbors.get(node, set()))
+            rng.shuffle(ordered)
+            for neighbor in ordered:
+                if neighbor in chosen or neighbor not in allowed:
+                    continue
+                if block_cap is not None and len(selected) >= block_cap:
+                    break
+                extra = cfg.blocks[neighbor].instruction_count
+                if max_instructions is not None and total + extra > max_instructions:
+                    continue
+                selected.append(neighbor)
+                chosen.add(neighbor)
+                total += extra
+                queue.append(neighbor)
+                if block_cap is not None and len(selected) >= block_cap:
+                    break
+        if block_cap is not None and len(selected) >= block_cap:
+            break
+        if pool is None:
+            pool = list(keys)
+            rng.shuffle(pool)
+        start = None
+        while cursor < len(pool):
+            candidate = pool[cursor]
+            cursor += 1
+            if candidate in chosen:
+                continue
+            if max_instructions is not None and total + cfg.blocks[candidate].instruction_count > max_instructions:
+                continue
+            start = candidate
+            break
+    return SampledSubgraph(
+        seed=seed,
+        selected_keys=selected,
+        edges=induced_edges(cfg.edges, chosen),
+        original_blocks=len(cfg.blocks),
+        original_edges=len(cfg.edges),
+        original_instructions=cfg.instruction_count,
+        sampling_info={"mode": "callwalk", "regions": regions, **call_counts},
     )
 
 
@@ -1836,6 +1998,7 @@ def build_manifest(
         "sampling": {
             "sampled_blocks": sample.sampled_blocks,
             "sampled_instructions": sample.sampled_instructions(cfg),
+            **sample.sampling_info,
         },
         "original_graph_size": {
             "blocks": sample.original_blocks,
@@ -1873,8 +2036,10 @@ def process_sample(
     """Load the full CFG, sample one subgraph, align it, and build model inputs."""
     cfg = load_cfg(cfg_path, file_id=file_id)
     sampler = sample_signal_subgraph if sample_mode == "signal" else sample_connected_subgraph
-    if sample_mode not in {"walk", "signal"}:
-        raise ValueError(f"sample_mode must be 'walk' or 'signal', got {sample_mode!r}")
+    if sample_mode == "callwalk":
+        sampler = sample_callwalk_subgraph
+    if sample_mode not in {"walk", "signal", "callwalk"}:
+        raise ValueError(f"sample_mode must be 'walk', 'signal' or 'callwalk', got {sample_mode!r}")
     sample = sampler(
         cfg,
         seed=seed,
@@ -2069,9 +2234,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-instructions", type=int)
     parser.add_argument(
         "--sample",
-        choices=["walk", "signal"],
+        choices=["walk", "signal", "callwalk"],
         default="walk",
-        help="walk grows from a random block. signal keeps import-calling functions first.",
+        help="walk grows from a random block. signal keeps import-calling functions first. "
+        "callwalk is walk across calls, restarting from another random block when a region runs out.",
     )
     parser.add_argument(
         "--include-library",

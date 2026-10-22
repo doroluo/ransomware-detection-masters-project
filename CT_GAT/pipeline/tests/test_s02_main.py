@@ -240,7 +240,7 @@ def test_a_rerun_with_the_same_settings_goes_on_and_one_with_other_settings_is_r
     assert settings['sample'] == 'walk' and settings['seed'] == 0 and settings['num_blocks'] == 8
     assert settings['include_library'] is False and set(settings['source_sha256']) == {'preprocess_full.py', 'tokenize_asm_gz.py'}
     run(tmp_path, [root], '--split', 'test')                       # another split of the same settings is fine
-    for flag, value in (('--sample', 'signal'), ('--seed', '3'), ('--num-blocks', '9'), ('--max-instructions', '50')):
+    for flag, value in (('--sample', 'signal'), ('--sample', 'callwalk'), ('--seed', '3'), ('--num-blocks', '9'), ('--max-instructions', '50')):
         options = {'--num-blocks': '8', '--seed': '0', '--output': str(out_dir), '--vocab': str(tmp_path / 'vocab.json'),
                    flag: value}
         with pytest.raises(SystemExit) as stop:
@@ -248,6 +248,17 @@ def test_a_rerun_with_the_same_settings_goes_on_and_one_with_other_settings_is_r
         assert stop.value.code == 2
     with pytest.raises(SystemExit):
         run(tmp_path, [root], '--include-library')
+
+
+def test_sample_callwalk_on_the_command_line_records_itself_and_its_regions(tmp_path):
+    root = three_samples(tmp_path, 'callwalk')
+    out_dir, _ = run(tmp_path, [root], '--sample', 'callwalk')
+    assert json.loads((out_dir / 'settings.json').read_text(encoding='utf-8'))['sample'] == 'callwalk'
+    for sample_id in (sha(1), sha(2), sha(3)):
+        sampling = json.loads((out_dir / f'{sample_id}.manifest.json').read_text(encoding='utf-8'))['sampling']
+        assert sampling['mode'] == 'callwalk' and sampling['regions'] == 1 and sampling['unresolved_call_targets'] == 0
+        payload = torch.load(out_dir / f'{sample_id}.pt', weights_only=False)
+        assert payload['edge_attr'].shape[1] == 7 and payload['edge_type_names'] == list(pf.EDGE_TYPE_NAMES)
 
 
 def test_overwrite_rebuilds_with_the_new_settings(tmp_path):
@@ -378,7 +389,7 @@ def test_no_budget_at_all_is_refused_and_whole_conflicts_with_a_block_budget(tmp
     assert stop.value.code == 2
 
 
-@pytest.mark.parametrize('sample_mode', ['walk', 'signal'])
+@pytest.mark.parametrize('sample_mode', ['walk', 'signal', 'callwalk'])
 def test_whole_and_num_blocks_zero_equal_a_budget_larger_than_the_binary(tmp_path, sample_mode):
     root = three_samples(tmp_path, 'whole')
     outs = {}

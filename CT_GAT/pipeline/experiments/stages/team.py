@@ -14,7 +14,10 @@ paired against TF-IDF, R7 and our b500 typed arm, cb500 against path 2 (same vec
 rebuild with Yanping's streaming preprocess) against sig500, R7 and TF-IDF, sig500v3 against sig500v2 and sig500, R7 and our b500
 no-edges arm (v3 pairs are read on the binaries both arms have), feat against emb, e2e against emb (what training the encoder
 adds), R7 and TF-IDF, each sigwhole arm against its sig500v3 counterpart and against R7, sigwhole emb against feat, and our b500
-typed arm against R7 (what the 500-block cap costs). The
+typed arm against R7 (what the 500-block cap costs). The nine arms of the three builds of this repository's own files
+(`sig250`, `callwalk500`, `callwalk250`; each with `feat`, `emb` and `e2e`) are paired in two ways: each callwalk arm against the
+signal arm of the same budget and input (the sampler), each 250-block arm against its 500-block one (the budget); each of these
+builds has a match-rate line. The
 paired differences use the seeds 0 1 2 complete in both arms and carry the pre-registered rule of PLAN_GNN.md section 5.
 Missing arms print as missing.
 """
@@ -32,6 +35,8 @@ def team_group(arm):
     return RunConfig(**X86, tag=f'team-{arm}').group
 
 
+BUILDS = ('sig250', 'callwalk500', 'callwalk250')      # the builds of this repository's own files, besides b_sig500_v3 and b_sigwhole_v3
+INPUTS = (('feat', 'feat (Model 2)'), ('emb', 'emb (Model 3)'), ('e2e', 'e2e (Model 3, trained encoder)'))
 FIVECHANNEL_WHOLE = RunConfig(**dict(X86, model='fivechannel'), max_instructions=512, tag='whole').group    # kfold_x86_fivechannel-L512_whole
 ARMS = (('TF-IDF', 'tfidf'), ('header-imports LR', 'imports-header'),
         ('R7 typed, whole graph', x86_group(variant_of(**PATHS_X86))),
@@ -47,6 +52,7 @@ ARMS = (('TF-IDF', 'tfidf'), ('header-imports LR', 'imports-header'),
         ('team sigwhole', team_group('sigwhole')),
         ('team sigwhole feat (Model 2)', team_group('sigwhole-feat')),
         ('team sigwhole emb (Model 3)', team_group('sigwhole-emb')),
+        *((f'team {build} {name}', team_group(f'{build}-{arm}')) for build in BUILDS for arm, name in INPUTS),
         ('fivechannel-L512 whole', FIVECHANNEL_WHOLE),
         ('path 2: typed, CodeBERT vectors', x86_group(variant_of(**CB_VEC_ARMS))))
 V2 = 'team sig500v2'
@@ -54,8 +60,14 @@ V3 = ('team sig500v3', 'team sig500v3 feat (Model 2)', 'team sig500v3 emb (Model
 E2E = 'team sig500v3 e2e (Model 3, trained encoder)'
 WHOLE = ('team sigwhole', 'team sigwhole feat (Model 2)', 'team sigwhole emb (Model 3)')
 WHOLE_ROWS = WHOLE + ('fivechannel-L512 whole',)
-MATCH_RATE_BUILDS = (('b_sig500_v3', 'team/b_sig500_v3'), ('b_sigwhole_v3', 'team/b_sigwhole_v3'))   # (name, folder under the run directory)
-TEAM_OF = tuple(a for a, _ in ARMS if a.startswith('team ') and a != V2 and a not in V3 + (E2E,) + WHOLE)
+NEW = tuple(f'team {build} {name}' for build in BUILDS for _, name in INPUTS)      # sig250, callwalk500, callwalk250 x feat, emb, e2e
+SAMPLER = tuple((f'team {signal} {name}', f'team {walk} {name}')      # signal -> callwalk at the same budget and input
+                for signal, walk in (('sig500v3', 'callwalk500'), ('sig250', 'callwalk250')) for _, name in INPUTS)
+BUDGET = tuple((f'team {big} {name}', f'team {small} {name}')      # 500 blocks -> 250 blocks, same sampler and input
+               for big, small in (('sig500v3', 'sig250'), ('callwalk500', 'callwalk250')) for _, name in INPUTS)
+MATCH_RATE_BUILDS = (('b_sig500_v3', 'team/b_sig500_v3'), ('b_sigwhole_v3', 'team/b_sigwhole_v3'),
+                     *((f'b_{build}_main', f'team/b_{build}_main') for build in BUILDS))   # (name, folder under the run directory)
+TEAM_OF = tuple(a for a, _ in ARMS if a.startswith('team ') and a != V2 and a not in V3 + (E2E,) + WHOLE + NEW)
 COST = ('R7 typed, whole graph', 'ours b500 typed')
 PAIRS = (tuple(('TF-IDF', a) for a in TEAM_OF) + tuple(('R7 typed, whole graph', a) for a in TEAM_OF)
          + tuple(('ours b500 typed', a) for a in TEAM_OF)
@@ -66,7 +78,8 @@ PAIRS = (tuple(('TF-IDF', a) for a in TEAM_OF) + tuple(('R7 typed, whole graph',
          + ((V3[1], V3[2]),)
          + (('TF-IDF', E2E), ('R7 typed, whole graph', E2E), (V3[2], E2E))
          + tuple(zip(V3, WHOLE)) + tuple(('R7 typed, whole graph', a) for a in WHOLE_ROWS)
-         + ((WHOLE[1], WHOLE[2]),))
+         + ((WHOLE[1], WHOLE[2]),)
+         + SAMPLER + BUDGET)
 
 
 def rule(first, second, result, info):
@@ -98,7 +111,11 @@ def intro(resamples):
             "pooled embedding), R7 and TF-IDF. `team sigwhole`, `sigwhole feat` and `sigwhole emb` are the same three arms on the uncapped "
             "rebuild (`b_sigwhole_v3`, every non-library block of every binary, trained with a per-batch node budget), paired against "
             "their 500-block v3 counterparts and against R7; `fivechannel-L512 whole` is Janice's five-channel Model 1 (main's code, "
-            "512 instructions) on the same uncapped build. The pooled table is seed 0; "
+            "512 instructions) on the same uncapped build. `team sig250` is the signal sampler at 250 blocks per binary (its "
+            "feat, emb and e2e arms as for sig500v3), `team callwalk500` and `team callwalk250` the same trainers on subgraphs "
+            "from the callwalk sampler, a seeded walk over the CFG and call edges that spans functions, at 500 and 250 blocks; "
+            "they are paired callwalk against signal at the same budget and input (callwalk500 against sig500v3, callwalk250 "
+            "against sig250: the sampler) and 250 against 500 blocks of the same sampler (the budget). The pooled table is seed 0; "
             f"the paired differences, second minus first for the AUC checkpoint at its validation threshold, use the seeds "
             f"complete in both arms (queue seeds {list(SEEDS)}), with the 95% paired cluster bootstrap interval "
             f"({resamples} resamples). Pre-registered rule (PLAN_GNN.md section 5): a second arm beats the first when dAUC >= "

@@ -2,7 +2,7 @@
 
 python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --seed 0 [--out RUNS/team/b_sig500]
        [--source gnn-331ce0b|main-c7899f0|repo] [--limit N] [--ids <sample_id> ...] [--exclude <sample_id> ... --exclude-reason TEXT]
-       [--frozen-from <build dir>]
+       [--frozen-from <build dir>] [--seeded-rows]
        (run from CT_GAT/pipeline; a leading RUNS/ in --out is the run directory (GT_RUNS); --out defaults to the `team_b_build`
        source, `CT_GAT/processed/cfg_subgraphs`, where `--model fivechannel` reads)
 
@@ -25,6 +25,14 @@ rebuilds every other id (a sample finished after the last checkpoint used vocabu
 A sample that raises stops the build with its id; nothing is skipped. `build_log.csv`: sample_id, status,
 n_blocks_total, n_blocks_kept, seconds.
 
+--seeded-rows: every API row the embedder adds as the vocabulary grows is drawn from a generator seeded with (--seed, API id)
+(`FiveChannelEmbedder(seed=)`), so the table depends only on the vocabulary and the seed and a build stopped and resumed equals one
+run straight through. Without it the added rows come from the global torch generator, which a resume does not reproduce (the
+rows added after the resume differ and so do the block embeddings pooled from them). The build records `embedder_rows:
+seeded-per-id` in `settings.json` and in the checkpoint's settings; a build whose settings lack the key keeps the global-generator
+rows, a resume must pass the flag exactly when the build has the key, and the files of the repository (`--source repo`) are the
+only code with the seeded embedder.
+
 --frozen-from DIR (equivalence checks): start from DIR's `api_vocab.json` and `channel_embedder.pt` (read only) and call
 `process_sample(freeze_vocab=True)`, so the token and embedding ids of two sources are comparable sample by sample.
 
@@ -37,6 +45,7 @@ attempted again. An id the checkpoint already holds cannot be excluded.
 import argparse
 import csv
 import gc
+import inspect
 import json
 import logging
 import os
@@ -70,6 +79,9 @@ def save_state(out, pp, vocab, embedder, done, settings):
         json.dumps({'settings': settings, 'done': sorted(done), 'api_names': len(vocab.names)}), encoding='utf-8'))
 
 
+SEEDED_ROWS = 'seeded-per-id'      # settings['embedder_rows'] of a build whose added API rows depend only on (seed, API id)
+
+
 def load_vocab_embedder(directory, pp, vocab_path=None):
     """(vocab, embedder) from a build directory's api_vocab.json (`vocab_path` names another file, as the unzipped Drive zips
     keep it one level up) and channel_embedder.pt (the embedder is grown to the saved table first). A missing vocabulary file is an
@@ -86,23 +98,31 @@ def load_vocab_embedder(directory, pp, vocab_path=None):
 
 def load_state(out, pp, settings):
     """(vocab, embedder, done ids) from `out`, or a fresh pair seeded with settings['seed'] (or the pair of
-    settings['frozen_from']) when it has none."""
+    settings['frozen_from']) when it has none. With settings['embedder_rows'] the rows the embedder adds are seeded per API id."""
     ckpt = out / 'checkpoint.json'
+    seeded = settings.get('embedder_rows') == SEEDED_ROWS
+    row_seed = settings['seed'] if seeded else None
     if not ckpt.is_file():
         if settings.get('frozen_from'):
             vocab, embedder = load_vocab_embedder(settings['frozen_from'], pp)
             return vocab, embedder, set()
         torch.manual_seed(settings['seed'])
         vocab = pp.tok.ApiVocab()
-        return vocab, pp.FiveChannelEmbedder(pp.api_table_size(vocab)), set()
+        extra = {'seed': row_seed} if seeded else {}
+        return vocab, pp.FiveChannelEmbedder(pp.api_table_size(vocab), **extra), set()
     state = json.loads(ckpt.read_text(encoding='utf-8'))
     saved = {'source': DEFAULT_SOURCE, **state['settings']}      # a checkpoint of the first build has no source
     if saved != settings:
         pins, now = saved.get('pins', {}), settings.get('pins', {})
         changed = sorted(rel for rel in pins.keys() | now.keys() if pins.get(rel) != now.get(rel))
+        hint = ''
+        if saved.get('embedder_rows') != settings.get('embedder_rows'):
+            hint = '; pass --seeded-rows exactly when the build has embedder_rows'
         raise SystemExit(f"{out} was built with {saved}, this run asks for {settings}"
-                         + (f'; the files {changed} changed since the checkpoint' if changed else ''))
+                         + (f'; the files {changed} changed since the checkpoint' if changed else '') + hint)
     vocab, embedder = load_vocab_embedder(out, pp)
+    if seeded:
+        embedder.seed = row_seed             # the rows it adds from here on are the ones an uninterrupted build adds
     if len(vocab.names) != state['api_names']:
         raise SystemExit(f"{out}/api_vocab.json has {len(vocab.names)} names, the checkpoint says {state['api_names']}")
     return vocab, embedder, set(state['done'])
@@ -143,12 +163,14 @@ def resolve_dir(path):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--sample', choices=['signal', 'walk'], default='signal')
+    ap.add_argument('--sample', choices=['signal', 'walk', 'callwalk'], default='signal')
     ap.add_argument('--num-blocks', type=int, default=500)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--source', choices=sorted(SOURCES), default=DEFAULT_SOURCE,
                     help='pinned teammate code (default: the one the first build used; repo: the files of this repository)')
     ap.add_argument('--frozen-from', type=Path, help='start from the vocabulary and embedder of this build directory and freeze the vocabulary')
+    ap.add_argument('--seeded-rows', action='store_true', help='draw every API row the embedder adds from a generator seeded with '
+                    '(--seed, API id), so a resumed build equals a straight one; recorded as embedder_rows in settings.json')
     ap.add_argument('--out', type=Path, help='the build folder (default: the team_b_build source, CT_GAT/processed/cfg_subgraphs)')
     ap.add_argument('--limit', type=int, help='the first N ids in sorted order')
     ap.add_argument('--ids', nargs='+', help='only these sample ids')
@@ -175,6 +197,10 @@ def main(argv=None):
     settings = {'sample': args.sample, 'num_blocks': args.num_blocks, 'seed': args.seed, 'source': args.source}
     if SOURCES[args.source]['env'] is None:
         settings['pins'] = dict(source_pins(args.source))     # the files of this repository are the pin: a resume sees a change
+    if args.seeded_rows:
+        if 'seed' not in inspect.signature(pp.FiveChannelEmbedder).parameters:
+            raise SystemExit(f'--seeded-rows needs an embedder that takes a seed; the files of --source {args.source} do not')
+        settings['embedder_rows'] = SEEDED_ROWS
     if args.frozen_from:
         settings['frozen_from'] = str(resolve_dir(args.frozen_from))
     out = resolve_dir(args.out or source_for('team_b_build'))

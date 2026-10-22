@@ -131,7 +131,7 @@ def test_the_build_comes_from_the_flag_then_the_environment_then_datasets_json(t
     default = tmp_path / 'processed' / 'cfg_subgraphs'
     with pytest.raises(FileNotFoundError, match='cfg_subgraphs is not a directory') as e:
         fc.resolve_build()
-    for words in ('CT_GAT/processed/cfg_subgraphs', 'unzip Mendeley_x86_cfg_subgraphs_500blocks_v3.zip at CT_GAT/',
+    for words in ('CT_GAT/processed/cfg_subgraphs', 'unzip Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip at CT_GAT/',
                   'build_b --source repo'):
         assert words in str(e.value)                                                   # the way to fill the folder, in the message
     default.mkdir(parents=True)

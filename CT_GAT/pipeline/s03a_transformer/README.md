@@ -31,7 +31,7 @@ clipping, patience on the validation AUC and the two checkpoints, with her model
 
 The build folder, with no configuration, is `CT_GAT/processed/cfg_subgraphs`, and it is filled in one of two ways:
 
-* The fast way: unzip `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` (the Drive preprocessed set, 500 blocks) at `CT_GAT/`. It
+* The fast way: unzip `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` (the Drive preprocessed set, 500 blocks) at `CT_GAT/`. It
   fills `CT_GAT/processed/` (`cfg_subgraphs/<sample_id>.pt`, `channel_embedder.pt`, `build_info/`, and `api_vocab.json` one level up);
   the folder is gitignored. With it and the CFG cache of the zero-config setup, `--model fivechannel --protocol kfold --fold 0
   --seed 0 --device cpu --smoke 8` runs with no other flag. The zip's `api_vocab.json` is not read (it is not inside the build

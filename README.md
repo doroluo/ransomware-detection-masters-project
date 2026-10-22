@@ -1,11 +1,4 @@
-# Ransomware detection from IDA Pro control-flow graphs
-
-A master's project that classifies Windows PE binaries as goodware (label `0`) or ransomware (label `1`) from what IDA Pro
-recovers in them: the control-flow graph (CFG) of each function, its instructions and the imported APIs. The binaries are never
-executed. IDA runs on an offline VM, and every later stage reads only the files exported there. This page says how to run the
-code; the stages, the settings and the evaluation are in [`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md).
-
-## Setup
+# Setup
 
 Python 3.12. From the repository root:
 
@@ -13,115 +6,122 @@ Python 3.12. From the repository root:
 pip install -r CT_GAT/pipeline/requirements.txt
 ```
 
-This installs the CPU build of PyTorch and `torch_geometric`. For training on a GPU, install the CUDA build of torch 2.11.0 from
-https://pytorch.org first (`requirements.txt` pins that version and would replace another). Models 2 and 3 and full Model 1 runs
-want a CUDA GPU; the smoke runs below use `--device cpu`.
+This installs the CPU build of PyTorch and `torch_geometric`. For a GPU, first install the CUDA build of torch 2.11.0 from
+https://pytorch.org; `requirements.txt` pins that version and would replace another. Model 1 runs on a CPU or a GPU (`--device`); the
+full runs of Models 2 and 3 need a CUDA GPU, and their smoke runs use `--device cpu`.
 
-## Data
+# Data
 
-The binaries are the Mendeley ransomware dataset (https://data.mendeley.com/datasets/p3v94dft2y/3). The code reads files derived from
-it, which are on the team Google Drive, each with a `.sha256` file beside it. The first two are required; each preprocessed zip is
-optional and replaces a build on the CPU: about 4 h for the 500-block samples and 5.6 h for the uncapped ones.
+The binaries are the Mendeley ransomware dataset (https://data.mendeley.com/datasets/p3v94dft2y/3). The Mendeley collections and the
+preprocessed zips derive from it; they are on the project Google Drive with a `.sha256` file beside each zip. The three models need
+the two Mendeley collections and one preprocessed zip, and train on the Mendeley x86 folds (1,810 binaries). The balanced collections
+are other corpora (MalwareBazaar ransomware and balanced goodware), the input of the all-architecture cache `combined_v3`, which the
+models do not yet train on. A preprocessed zip replaces a CPU build of 4 to 5 h (500 blocks) or 5.6 h (uncapped).
 
-| File | Size | sha256 | Contents |
-|---|---|---|---|
-| `Collections/Mendeley_Ransomware.zip` | 5.0 GB | `c3785afff453792b007eee3f736f725df926f90c34638af88d4feb19772ada9c` | the IDA exports of the ransomware binaries. Unzip into `CT_GAT/data/` |
-| `Collections/Mendeley_Goodware.zip` | 1.5 GB | `33afd5dc007b1e551cd657209961a68aebbd975cecba9db266e7f6af48cf9cc1` | the same for the goodware binaries. Unzip into `CT_GAT/data/` |
-| `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` | 1.4 GB | `fe8a1c4fc93aaf0913c9992ab0f832738cd8c32095524d8cc10ee390237771b3` | the preprocessed samples of Models 1 to 3, 500 blocks per binary. Unzip at `CT_GAT/` |
-| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` | 2.6 GB | `4b51e3238398967ad891647364fbe815fcce5c8f90f5d33249fcae29c9564e8d` | the same with every non-library block of each binary. Unzip at `CT_GAT/` |
+| Zip | Size | sha256 | Unzip into | Enables |
+|---|---|---|---|---|
+| `Collections/Mendeley_Ransomware.zip` | 5.0 GB | `c3785afff453792b007eee3f736f725df926f90c34638af88d4feb19772ada9c` | `CT_GAT/data/` | the `mendeley_x86` cache: the labels and folds of Models 1 to 3, `build_b`, `preprocess_full.py` |
+| `Collections/Mendeley_Goodware.zip` | 1.5 GB | `33afd5dc007b1e551cd657209961a68aebbd975cecba9db266e7f6af48cf9cc1` | `CT_GAT/data/` | the same, for the goodware binaries |
+| `Collections/Ransomware_Balanced.zip` | 8.9 GB | `12e379ac1afbd352d58740fe8d51af124c01dfd957d857453f58dda7895a5f67` | `CT_GAT/data/` | with `Balanced_Goodware.zip` and the two Mendeley zips, the `combined_v3` cache (`build_cache --cache combined_v3`) |
+| `Collections/Balanced_Goodware.zip` | 15.7 GB | `c82042b6dd482181e6f977b184cfc09d84a94305c46fa9728322ce399857111c` | `CT_GAT/data/` | the same |
+| `Collections/VirusShare Ransomware.zip` | 14.1 GB | `0a946d1e70d81c616e8e4f744b407b878ff83a2d23178fb1779e4f7088e9794a` | none | nothing: no fold file lists it |
+| `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` | 1.41 GB (9.87 GB unpacked) | `d7b984e4cadc95d2bd143c688bfcdfb99136370da129d48fbe490e2f17cd3421` | `CT_GAT/` | Models 1 to 3 read any build; the `sig500v3-*` arms need this one |
+| `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip` | 0.81 GB (5.95 GB unpacked) | `61eb2847d8c24842477272f41ddf501f4312b15b96d05902115730a9f0487116` | `CT_GAT/` | the `sig250-*` arms |
+| `Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip` | 1.43 GB (10.11 GB unpacked) | `3f153392fb87fc67b4d968c701a8ea1c828cb654a66393eb25827951b0edae4e` | `CT_GAT/` | the `callwalk500-*` arms |
+| `Mendeley_x86_cfg_subgraphs_callwalk_250blocks_v3.zip` | 0.78 GB (5.53 GB unpacked) | `f52ac00cee289d536aa328a47617f94cd011a29ab3b8d799e66224cded7c1ccd` | `CT_GAT/` | the `callwalk250-*` arms |
+| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` | 2.59 GB (13.29 GB unpacked) | `678beede56597afd1e369248a8e520cce0666a4b6d4af936a960bf5b7d1ccb0e` | `CT_GAT/` | the `sigwhole-*` arms |
 
-The sizes and checksums are those of the files on the Drive. Unpacked, the two collection zips take about their zip size, the
-500-block zip 9.9 GB and the uncapped one 13.3 GB; the CFG cache built below takes 2.6 GB. Unzip a preprocessed zip over an empty
-`CT_GAT/processed/`: the folder holds one build at a time, and the two zips have different API vocabularies. The balanced collections
-of the all-architecture cache are in the pipeline README.
+`CT_GAT/processed/` holds one build, and the zips have different API vocabularies: empty it before unzipping another preprocessed
+zip. `train_b` stops when the build's sampler or block count differs from the arm's. For the `team_builds` plan, each build must be
+where `train_b` looks for its arm: move the contents of `CT_GAT/processed/cfg_subgraphs` to `CT_GAT/pipeline/runs/team/b_sig250_main`,
+`b_callwalk500_main` or `b_callwalk250_main`, or pass `--build DIR`.
 
-Each collection zip holds one top-level folder named like the zip, so the destination is `CT_GAT/data` itself; a preprocessed zip
-holds `processed/` and a README, so its destination is `CT_GAT`. Run these from the repository root, with `<path to>` the folder of
-the downloaded zips:
+From the repository root, with the zips in it, on Windows (PowerShell or cmd); the other zips unzip like the last one:
 
 ```bash
-# Windows, PowerShell or cmd (tar is the one that comes with Windows and reads zips)
 mkdir CT_GAT\data
-tar -xf <path to>\Mendeley_Ransomware.zip -C CT_GAT\data
-tar -xf <path to>\Mendeley_Goodware.zip -C CT_GAT\data
-tar -xf <path to>\Mendeley_x86_cfg_subgraphs_500blocks_v3.zip -C CT_GAT
-
-# macOS and Linux (on macOS, tar -xf <zip> -C CT_GAT/data also works)
-mkdir -p CT_GAT/data
-unzip <path to>/Mendeley_Ransomware.zip -d CT_GAT/data
-unzip <path to>/Mendeley_Goodware.zip -d CT_GAT/data
-unzip <path to>/Mendeley_x86_cfg_subgraphs_500blocks_v3.zip -d CT_GAT
+tar -xf Mendeley_Ransomware.zip -C CT_GAT\data
+tar -xf Mendeley_Goodware.zip -C CT_GAT\data
+tar -xf Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip -C CT_GAT
 ```
 
-The result is `CT_GAT/data/Mendeley_Ransomware/samples.csv`, `CT_GAT/data/Mendeley_Goodware/samples.csv`,
-`CT_GAT/processed/api_vocab.json` and `CT_GAT/processed/cfg_subgraphs/`. Git Bash on Windows has `unzip` but its `tar` cannot read
-zips. In Windows Explorer, "Extract All" must be given the destination above, not the folder it proposes, or the files end up one
-folder too deep. Nothing else is configured: the fold assignments are in the repository, and caches and runs go inside the clone.
+On macOS and Linux, and in Git Bash on Windows, whose `tar` cannot read zips:
 
-## Run
+```bash
+unzip Mendeley_Ransomware.zip -d CT_GAT/data
+unzip Mendeley_Goodware.zip -d CT_GAT/data
+unzip Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip -d CT_GAT
+```
 
-Every command below runs from `CT_GAT/pipeline` (`cd CT_GAT/pipeline`). Run outputs go to `CT_GAT/pipeline/runs/` (`GT_RUNS` changes it).
+A collection zip holds one folder and a preprocessed zip holds `processed/`. In Windows Explorer, set the destination of "Extract All"
+to the folder in the table; the proposed folder is one level too deep. The fold assignments are in the repository. The result, with
+`<collection>` each of the four collection names:
 
-Check the data. The command lists the collections, the cache and the fold files it finds, and exits 0:
+```
+CT_GAT/data/<collection>/samples.csv
+CT_GAT/processed/api_vocab.json
+CT_GAT/processed/cfg_subgraphs/
+```
+
+# Run
+
+Commands run from `CT_GAT/pipeline`. Run outputs go to `CT_GAT/pipeline/runs/`; `GT_RUNS` changes it.
+
+## Cache
+
+`common.catalog` lists the collections, caches and fold files it finds and exits 0. `build_cache` reads the two Mendeley collections
+(CPU, 4 workers, 244 s; a rerun skips built samples) and `check_cache` verifies the result:
 
 ```bash
 python -m common.catalog
-```
-
-Build the CFG cache from the two collections (CPU, 4 workers; 244 s on the development machine; a rerun skips built samples) and
-check it. The cache gives Models 1 to 3 their folds and labels:
-
-```bash
 python -m s02_preprocess.cache.build_cache
 python -m s02_preprocess.cache.check_cache
 ```
 
-The earlier jsonl-only models and the TF-IDF and import-table baselines are on the branch `jsonl-reference-models`; their published
-numbers are in `CT_GAT/pipeline/docs/history/`.
-
-Models 1 to 3 read `CT_GAT/processed/cfg_subgraphs`. Each has a smoke run (CPU) and the full run, here on fold 0; `--fold` picks one
-of the five folds and `--seed` the seed. A smoke run needs the `.pt` files of 24 binaries (8 each for training, validation and test),
-so unpack the 500-block zip first. The smoke runs of Models 2 and 3 leave a `team_smoke_*` folder in the system temp folder.
+The all-architecture cache (5,838 samples) needs the balanced zips and the cache above, and names the missing folder and zip otherwise:
 
 ```bash
-# Model 1, the five-channel transformer over the instruction sequence
+python -m s02_preprocess.cache.build_cache --cache combined_v3
+```
+
+## Models 1 to 3
+
+Model 1 is the five-channel transformer over the instruction sequence (`experiments.train --model fivechannel`). Model 2 is a graph
+attention network (GAT) on the 77 block features and the control-flow graph (`--arm sig500v3-feat`). Model 3 is the block
+transformer trained end to end under the GAT (`--arm sig500v3-e2e`). The models read the build in `CT_GAT/processed/cfg_subgraphs`.
+A Model 1 smoke run trains 8 binaries and scores 8 validation and 8 test binaries, so it needs the `.pt` files of those 24; a Model 2
+or 3 smoke run trains 8 and scores every validation binary, with no test set. The smoke runs, then the full runs, on fold 0:
+
+```bash
 python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0 --device cpu --smoke 8
-python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0
-
-# Model 2, the team GAT on the 77 block features and the CFG
 python -m experiments.team_pipelines.train_b --arm sig500v3-feat --fold 0 --seed 0 --smoke 8 --device cpu
-python -m experiments.team_pipelines.train_b --arm sig500v3-feat --fold 0 --seed 0
-
-# Model 3, the block transformer trained end to end under the GAT
 python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --fold 0 --seed 0 --smoke 8 --device cpu
+python -m experiments.train --model fivechannel --protocol kfold --fold 0 --seed 0
+python -m experiments.team_pipelines.train_b --arm sig500v3-feat --fold 0 --seed 0
 python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --fold 0 --seed 0
 ```
 
-`--arm sig500v3-emb` is the fixed-embedding variant of Model 3: the stored 64-d block embeddings and the CFG. On the uncapped zip the
-arms are `sigwhole-feat` and `sigwhole-emb`. `--build DIR` points a model at a build in another folder. `build_b --source repo` (about
-4 h) replaces the 500-block zip; its command is in the pipeline README.
+`--arm sig500v3-emb` is Model 3 with the stored 64-d block embeddings. The arm families are `sig500v3-*`, `sig250-*`, `callwalk500-*`
+and `callwalk250-*`, each with `-feat`, `-emb` and `-e2e`, and `sigwhole-feat` and `sigwhole-emb` on the uncapped zip. `--build DIR`
+points a model at another build folder.
 
-A plan in `experiments/plans/` is one experiment for `experiments.queue`; `--dry` prints its runs without starting them:
+## Plans and tables
+
+A plan in `experiments/plans/` is one experiment for `experiments.queue`: `model1_variants`, `team_b` and `team_builds` (the 135 runs
+on the `sig250`, `callwalk500` and `callwalk250` builds). `report` writes `RESULTS.md` in the run directory over the runs found.
+`gates` prints the arms of a stage and names the missing folds and seeds; `--stage team` also compares with published arms, which
+print as missing unless the published runs are in `GT_RUNS`. GPU runs differ in the last digits (CUDA scatter is nondeterministic),
+so compare models through several seeds and the table intervals. The block prints a plan's runs without starting them (`--dry`),
+writes the tables, checks the arms and runs the tests; none of it needs the datasets:
 
 ```bash
 python -m experiments.queue --plan experiments/plans/team_b.txt --dry
-```
-
-When the runs exist, the tables:
-
-```bash
 python -m s04_evaluation.report
 python -m s04_evaluation.gates --stage team
+python -m pytest -m "not real_data and not gpu"
 ```
 
-`report` writes `RESULTS.md` in the run directory over every run found. `gates` prints the arms of a stage that it finds and names
-the missing folds and seeds; `--stage team` also compares with published arms that a new run directory does not have, so those rows
-print as missing unless the published runs are in `GT_RUNS`. GPU runs are not repeatable to the last digit (CUDA scatter is
-nondeterministic), so compare models through several seeds and the intervals in the tables, not through one AUC.
-
-The tests need no data: `python -m pytest -m "not real_data and not gpu"`, from `CT_GAT/pipeline`.
-
-## Results
+# Results
 
 5-fold family holdout on the 1,810 Mendeley x86 binaries; area under the ROC curve (AUC), mean over 3 seeds unless marked. Sources:
 [`docs/history/`](CT_GAT/pipeline/docs/history/README.md).
@@ -129,12 +129,12 @@ The tests need no data: `python -m pytest -m "not real_data and not gpu"`, from 
 * Model 3 with fixed block embeddings on the uncapped samples (`sigwhole-emb`): 0.981. At 500 blocks per binary (`sig500v3-emb`): 0.966.
   Trained end to end (`sig500v3-e2e`) it has no 3-seed result yet; its plan is `team_b`.
 * Model 2 on the uncapped samples (`sigwhole-feat`): 0.970. At 500 blocks per binary (`sig500v3-feat`): 0.954.
-* Model 1: 0.919 to 0.926, since it reads only the first 128 or 512 instructions of each binary.
-* Published comparisons, from runs of the earlier code (see Run): a logistic regression on the PE import table 0.985 (seed 0),
-  TF-IDF over the instruction tokens 0.982 (seed 0), the typed GNN (R7) 0.979. Model 3 on the uncapped samples is level with R7
-  (+0.002, -0.005 to +0.009).
+* Model 1: 0.919 to 0.926; it reads the first 128 or 512 instructions of each binary.
+* Published comparisons, from runs of the earlier jsonl-only code on the branch `jsonl-reference-models`: a logistic regression on
+  the PE import table 0.985 (seed 0), TF-IDF over the instruction tokens 0.982 (seed 0), the typed GNN (R7) 0.979. Model 3 on the
+  uncapped samples is level with R7 (difference +0.002 AUC, 95% interval -0.005 to +0.009).
 
-## More
+# Further documentation
 
-[`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md) holds the stage folders, the on-disk layout, the overrides, the all-architecture
-cache, `preprocess_full.py` and the IDA export; the plan, the result tables and the review are in `docs/history/`.
+[`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md) describes the stage folders, the on-disk layout, the overrides,
+`build_b --source repo` (a 500-block build in 4 to 5 h), `preprocess_full.py` and the IDA export. The plan, the result tables and the review are in `docs/history/`.

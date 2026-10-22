@@ -22,8 +22,15 @@ directory, the hyperparameters; a new arm is a new row).
                      together (`s03c_cfg_transformer/block_transformer.py`). The stored block embeddings and the 77 block features
                      are not read. Recipe `HP_E2E`: the others' (AdamW weight decay 1e-4, batch 16, 40 epochs, patience 8) with lr 3e-4
                      instead of 1e-3, plus gradient clipping at 1.0 and the 12 GB GPU cap.
+  sig250[-feat|-emb|-e2e], callwalk500[-feat|-emb|-e2e], callwalk250[-feat|-emb|-e2e]
+                     `RUNS/team/b_sig250_main`, `b_callwalk500_main` and `b_callwalk250_main`: builds of this repository's own files
+                     (`build_b --source repo`) with `--sample signal --num-blocks 250`, `--sample callwalk --num-blocks 500` and
+                     `--sample callwalk --num-blocks 250` (callwalk: `s02_preprocess/README.md`, a walk across the calls). The three
+                     inputs of `sig500v3` (`-feat` Model 2, `-emb` Model 3) and the end-to-end Model 3 (`-e2e`, recipe `HP_E2E`);
+                     there is no `all` arm for them. A callwalk arm refuses a build of the other sampler, a 250 arm one of 500 blocks.
   sigwhole[-feat|-emb]   `RUNS/team/b_sigwhole_v3` (`build_b --sample signal --num-blocks 1000000`: every non-library block of every
-                     binary, no cap), the same three inputs. They train with a node budget (`HP_WHOLE`, fit.py): a binary has up to
+                     binary, no cap), the same three inputs. An uncapped callwalk build is the same set of blocks (with no budget
+                     the walk restarts until every allowed block is chosen), so this build serves both samplers. They train with a node budget (`HP_WHOLE`, fit.py): a binary has up to
                      190k blocks and a batch of 16 can hold over a million nodes, which does not fit the GPU, so a batch above the
                      budget is cut in order into parts whose gradients are summed. Because the build is 14 GB of tensors, `run`
                      reads each payload twice instead of holding them all: once for the API ids it uses (and the one-sample re-pool
@@ -92,6 +99,9 @@ BLOCK_LEN = 64            # instructions per block the end-to-end arm reads (blo
 B_DIR = RUNS / 'team' / 'b_sig500'
 B_V2_DIR = RUNS / 'team' / 'b_sig500_v2'
 B_V3_DIR = RUNS / 'team' / 'b_sig500_v3'
+B_SIG250_DIR = RUNS / 'team' / 'b_sig250_main'
+B_CALLWALK500_DIR = RUNS / 'team' / 'b_callwalk500_main'
+B_CALLWALK250_DIR = RUNS / 'team' / 'b_callwalk250_main'
 B_WHOLE_DIR = RUNS / 'team' / 'b_sigwhole_v3'
 FEATURES = ('all', 'feat', 'emb')
 E2E = 'e2e'               # the node input of the end-to-end arm: no graph features, the block's instructions (block_transformer.py)
@@ -99,6 +109,7 @@ INPUTS = FEATURES + (E2E,)
 FEATURE_MODE = {'all': 'both', 'feat': 'features', 'emb': 'embeddings'}      # graph_full_loader._node_features modes
 KIND_COLUMNS = ('api_none_count', 'api_unresolved_count', 'api_known_count')
 MAIN_FIX_LABELS = ('main-fix', 'repo')       # the builds of the fixed s02 preprocess: the pinned fix commit, or this repository's files
+REPO_LABELS = ('repo',)                      # the builds made from this repository's own files (sig250, callwalk500, callwalk250)
 
 
 class Arm(NamedTuple):
@@ -118,6 +129,15 @@ ARM_TABLE = {
     'sig500v3-feat': Arm('signal', 500, 'feat', MAIN_FIX_LABELS, B_V3_DIR, HP),
     'sig500v3-emb': Arm('signal', 500, 'emb', MAIN_FIX_LABELS, B_V3_DIR, HP),
     'sig500v3-e2e': Arm('signal', 500, E2E, MAIN_FIX_LABELS, B_V3_DIR, HP_E2E),
+    'sig250-feat': Arm('signal', 250, 'feat', REPO_LABELS, B_SIG250_DIR, HP),
+    'sig250-emb': Arm('signal', 250, 'emb', REPO_LABELS, B_SIG250_DIR, HP),
+    'sig250-e2e': Arm('signal', 250, E2E, REPO_LABELS, B_SIG250_DIR, HP_E2E),
+    'callwalk500-feat': Arm('callwalk', 500, 'feat', REPO_LABELS, B_CALLWALK500_DIR, HP),
+    'callwalk500-emb': Arm('callwalk', 500, 'emb', REPO_LABELS, B_CALLWALK500_DIR, HP),
+    'callwalk500-e2e': Arm('callwalk', 500, E2E, REPO_LABELS, B_CALLWALK500_DIR, HP_E2E),
+    'callwalk250-feat': Arm('callwalk', 250, 'feat', REPO_LABELS, B_CALLWALK250_DIR, HP),
+    'callwalk250-emb': Arm('callwalk', 250, 'emb', REPO_LABELS, B_CALLWALK250_DIR, HP),
+    'callwalk250-e2e': Arm('callwalk', 250, E2E, REPO_LABELS, B_CALLWALK250_DIR, HP_E2E),
     'sigwhole': Arm('signal', None, 'all', MAIN_FIX_LABELS, B_WHOLE_DIR, HP_WHOLE),
     'sigwhole-feat': Arm('signal', None, 'feat', MAIN_FIX_LABELS, B_WHOLE_DIR, HP_WHOLE),
     'sigwhole-emb': Arm('signal', None, 'emb', MAIN_FIX_LABELS, B_WHOLE_DIR, HP_WHOLE),
@@ -464,7 +484,7 @@ def main(argv=None):
     ap.add_argument('--arm', choices=ARMS, default='sig500')
     ap.add_argument('--features', choices=INPUTS, help="node input: all (141-d), feat (77 block features), emb (64-d "
                     "embedding), e2e (the block's instructions, encoder trained with the GAT); default and only value allowed: the arm's")
-    ap.add_argument('--block-len', type=int, help=f"instructions per block the encoder reads (arm sig500v3-e2e: {BLOCK_LEN}, the only "
+    ap.add_argument('--block-len', type=int, help=f"instructions per block the encoder reads (the -e2e arms: {BLOCK_LEN}, the only "
                     "value allowed; the other arms read no instructions)")
     ap.add_argument('--source', choices=sorted(SOURCE_CODE), help="the source label the build must have recorded (default: any "
                     "the arm accepts)")
