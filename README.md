@@ -21,9 +21,9 @@ preprocessed zip replaces a CPU build of about 4 h (500 blocks) or 5.6 h (uncapp
 |---|---|---|---|---|
 | `Collections/Mendeley_Ransomware.zip` | 5.0 GB | `c3785afff453792b007eee3f736f725df926f90c34638af88d4feb19772ada9c` | `CT_GAT/data/` | the `mendeley_x86` cache: the labels and folds of Models 1 to 3, `build_b`, `preprocess_full.py` |
 | `Collections/Mendeley_Goodware.zip` | 1.5 GB | `33afd5dc007b1e551cd657209961a68aebbd975cecba9db266e7f6af48cf9cc1` | `CT_GAT/data/` | the same, for the goodware binaries |
-| `Collections/Ransomware_Balanced.zip` | 8.9 GB | in its `.sha256` file | `CT_GAT/data/` | with the next zip and the two above, the `combined_v3` cache (`build_cache --cache combined_v3`) |
-| `Collections/Balanced_Goodware.zip` | 15.7 GB | in its `.sha256` file | `CT_GAT/data/` | the same |
-| `Collections/VirusShare Ransomware.zip` | - | - | none | nothing: no fold file lists it |
+| `Collections/Ransomware_Balanced.zip` | 8.9 GB | `12e379ac1afbd352d58740fe8d51af124c01dfd957d857453f58dda7895a5f67` | `CT_GAT/data/` | with the next zip and the two above, the `combined_v3` cache (`build_cache --cache combined_v3`) |
+| `Collections/Balanced_Goodware.zip` | 15.7 GB | `c82042b6dd482181e6f977b184cfc09d84a94305c46fa9728322ce399857111c` | `CT_GAT/data/` | the same |
+| `Collections/VirusShare Ransomware.zip` | 14.1 GB | `0a946d1e70d81c616e8e4f744b407b878ff83a2d23178fb1779e4f7088e9794a` | none | nothing: no fold file lists it |
 | `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` | 1.41 GB | `d7b984e4cadc95d2bd143c688bfcdfb99136370da129d48fbe490e2f17cd3421` | `CT_GAT/` | Model 1 and the `sig500v3-*` arms (9.9 GB unpacked) |
 | `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip` | 0.81 GB | `61eb2847d8c24842477272f41ddf501f4312b15b96d05902115730a9f0487116` | `CT_GAT/` | the `sig250-*` arms |
 | `Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip` | 1.43 GB | `3f153392fb87fc67b4d968c701a8ea1c828cb654a66393eb25827951b0edae4e` | `CT_GAT/` | the `callwalk500-*` arms |
