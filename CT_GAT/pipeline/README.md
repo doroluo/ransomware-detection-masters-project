@@ -23,7 +23,7 @@ flowchart TD
     M1 --> EV
     M2 --> EV
     M3 --> EV
-    EV["Evaluation (s04_evaluation): x86 5-fold family holdout; AUC, PR-AUC, accuracy, precision, recall, macro-F1, confusion matrix; paired cluster bootstrap over 3 seeds x 5 folds"]
+    EV["Evaluation (s04_evaluation): 5-fold family holdout on Mendeley x86, all of Mendeley or combined_v3; AUC, PR-AUC, accuracy, precision, recall, macro-F1, confusion matrix; paired cluster bootstrap over 3 seeds x 5 folds"]
 ```
 
 The main path is the three models of the team over the preprocessed `.pt` builds. The CFG cache, built from the `.jsonl.gz`
