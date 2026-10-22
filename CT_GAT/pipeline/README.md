@@ -75,7 +75,7 @@ Python 3.12 and the packages of [`requirements.txt`](requirements.txt), which ad
 pip install -r requirements.txt
 ```
 
-For training on a GPU, install the CUDA build of torch from https://pytorch.org first. `requirements.txt` also lists the optional
+For training on a GPU, install the CUDA build of torch 2.11.0 from https://pytorch.org first (`requirements.txt` pins that version and would replace another). `requirements.txt` also lists the optional
 packages (`psutil`, `transformers`) and what needs them. `torch_geometric` (pinned there) is used by the Model 2 and 3 trainer in
 `experiments/team_pipelines` and by `s03b_cfg_feature/gat`; they import it when they run, and their tests skip without it.
 
@@ -97,7 +97,7 @@ the two Mendeley collections that have a recommended split and are not UPX stubs
 corpora `ransomware_balanced` and `balanced_goodware` and starts from the `mendeley_x86` cache. A command without `--cache <name>`
 reads the cache of the first dataset whose protocols list its `--protocol`, so `--protocol kfold` reads `mendeley_x86` and
 `--protocol kfold_v3` reads `combined_v3`. `python -m common.catalog` prints, per dataset, which collection folders are present,
-whether the bundle is configured, whether the cache is built and whether the fold files are found. A new dataset is a row of
+whether the bundle is configured, whether the cache is built (the cache that `GT_CACHE` names, when it is set) and whether the fold files are found. A new dataset is a row of
 `DATASETS` in `common/catalog.py` plus its fold CSV in `s02_preprocess/folds/` ([`docs/ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md)).
 When something is set in more than one place, the order is environment variable, then the per-machine file, then the default; see Overrides.
 
@@ -111,8 +111,8 @@ Drive, and each zip has a `.sha256` file beside it and a README inside it.
 |---|---|---|
 | `Collections/Mendeley_Ransomware.zip` (5.0 GB) | required. Per binary, the IDA CFG export `<sha256>.jsonl.gz` and the IDA listing `<sha256>.asm.gz`, in `samples/<split>/<family>/`, with the collection's `samples.csv` and `summary.json`. Unzip into `CT_GAT/data/` | the CFG cache and every command that reads it, `build_b`, `preprocess_full.py` |
 | `Collections/Mendeley_Goodware.zip` (1.5 GB) | required. The same for the goodware binaries. Unzip into `CT_GAT/data/` | as above |
-| `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` (1.4 GB) | the preprocessed samples of Models 1 to 3: one `.pt` file per binary for the 1,810 x86 binaries of the folds, 500 blocks per binary. Unzip at `CT_GAT/`. It saves the 4 h build of `build_b --source repo` | Models 1, 2 and 3 |
-| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (2.6 GB) | the same with every non-library block of each binary | as above |
+| `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` (1.4 GB) | the preprocessed samples of Models 1 to 3: one `.pt` file per binary for the 1,810 x86 binaries of the folds, 500 blocks per binary. Unzip at `CT_GAT/`; it unpacks to 9.9 GB. It saves the 4 h build of `build_b --source repo` | Models 1, 2 and 3 |
+| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (2.6 GB) | the same with every non-library block of each binary; it unpacks to 13.3 GB and saves a 5.6 h build | as above |
 | `Collections/Ransomware_Balanced.zip` (8.9 GB), `Collections/Balanced_Goodware.zip` (15.7 GB) | two more collections in the same layout. Unzip into `CT_GAT/data/` | the all-architecture cache (`build_cache --cache combined_v3`) |
 | `Collections/VirusShare Ransomware.zip` | unzips to `VirusShare_Malware/`. It is in no dataset: no fold file lists it and all its rows are in `splits/unassigned.csv`, so no command of the pipeline reads it | nothing |
 | `Mendeley_GNN_v1.zip` | the Mendeley CFG exports as one bundle (`samples.csv`, `splits/`, `cfg/`), an alternative to the two Mendeley collections | the CFG cache, when the bundle is configured or unzipped into `CT_GAT/data/` |
@@ -215,7 +215,7 @@ option (`tests/test_run_names.py` holds the recorded names of the published runs
 
 Every command runs from this folder. `RUNS` in a path means the run directory (`runs/` here, or `GT_RUNS`); the queue does not
 repeat a run that already has its `metrics.json`. A run with `--smoke 8 --device cpu` checks a setup in a few minutes before a full
-run. Times are measured on the development machine; where none is given, none was measured.
+run; the `--smoke` runs of Models 2 and 3 leave a `team_smoke_*` folder in the system temp folder. Times are measured on the development machine; where none is given, none was measured.
 
 **0. Data.** Unzip `Mendeley_Ransomware.zip` and `Mendeley_Goodware.zip` into `CT_GAT/data/` (the commands are under Input data; the
 destination is `CT_GAT/data` itself, so that `CT_GAT/data/Mendeley_Ransomware/samples.csv` exists), then:
@@ -316,7 +316,7 @@ python -m s04_evaluation.gates --stage team                                     
 `stats` and `gates` need all five folds of a seed for each arm, and name the missing ones otherwise.
 
 **A whole experiment.** Each file in `experiments/plans/` is one experiment, as `train`, `train_b`, `report`, `val_threshold` and
-`gates` lines; its header names the CPU steps to run once before it:
+`gates` lines; its header names the CPU steps to run once before it, when it needs any (`team_b` names none):
 
 ```bash
 python -m experiments.queue --plan experiments/plans/team_b.txt --dry          # print what would run
@@ -415,9 +415,9 @@ pre-registered rule (dAUC >= 0.01 and dmacro-F1 >= 0.02, both intervals above ze
   0.902 to 0.918.
 * Model 3 end to end (`sig500v3-e2e`) has no 3-seed result in `docs/history/`; the plan `team_b` runs it. On fold 0, seed 0, two
   runs at learning rate 3e-4 gave test AUC 0.9836 and 0.9802 ([`s03c_cfg_transformer/README.md`](s03c_cfg_transformer/README.md)).
-* Published comparisons, from runs of the earlier code that this branch does not hold (3 seeds, x86): a logistic regression on the PE
-  import table reaches AUC 0.985, TF-IDF over the instruction tokens 0.982, the typed GNN (R7) 0.986, and a bag of blocks without edges
-  or API names (R2 noapi) 0.981; typed edges against no edges is +0.004 AUC [-0.001, +0.010] and shuffled edges are worse than none
+* Published comparisons, from runs of the earlier code that this branch does not hold (x86; 3 seeds unless marked): a logistic
+  regression on the PE import table reaches AUC 0.985 (seed 0), TF-IDF over the instruction tokens 0.982 (seed 0), the typed GNN (R7)
+  0.979, and a bag of blocks without edges or API names (R2 noapi) 0.981; typed edges against no edges is +0.004 AUC [-0.001, +0.010] and shuffled edges are worse than none
   (-0.012). Model 3 with fixed embeddings on the uncapped samples is level with R7 (+0.002 [-0.005, +0.009]).
 * The 500-block cap of the teammates' pipelines costs the published GNN 0.021 to 0.063 AUC.
 

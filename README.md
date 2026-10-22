@@ -10,18 +10,18 @@ code; the stages, the settings and the evaluation are in [`CT_GAT/pipeline/READM
 Python 3.12. From the repository root:
 
 ```bash
-cd CT_GAT/pipeline
-pip install -r requirements.txt
+pip install -r CT_GAT/pipeline/requirements.txt
 ```
 
-This installs the CPU build of PyTorch and `torch_geometric`. For training on a GPU, install the CUDA build from
-https://pytorch.org first. Models 2 and 3 and full Model 1 runs want a CUDA GPU; the smoke runs below use `--device cpu`.
+This installs the CPU build of PyTorch and `torch_geometric`. For training on a GPU, install the CUDA build of torch 2.11.0 from
+https://pytorch.org first (`requirements.txt` pins that version and would replace another). Models 2 and 3 and full Model 1 runs
+want a CUDA GPU; the smoke runs below use `--device cpu`.
 
 ## Data
 
 The binaries are the Mendeley ransomware dataset (https://data.mendeley.com/datasets/p3v94dft2y/3). The code reads files derived from
 it, which are on the team Google Drive, each with a `.sha256` file beside it. The first two are required; each preprocessed zip is
-optional and replaces a 4 h build of its samples.
+optional and replaces a build on the CPU: about 4 h for the 500-block samples and 5.6 h for the uncapped ones.
 
 | File | Size | sha256 | Contents |
 |---|---|---|---|
@@ -30,13 +30,14 @@ optional and replaces a 4 h build of its samples.
 | `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` | 1.4 GB | `fe8a1c4fc93aaf0913c9992ab0f832738cd8c32095524d8cc10ee390237771b3` | the preprocessed samples of Models 1 to 3, 500 blocks per binary. Unzip at `CT_GAT/` |
 | `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` | 2.6 GB | `4b51e3238398967ad891647364fbe815fcce5c8f90f5d33249fcae29c9564e8d` | the same with every non-library block of each binary. Unzip at `CT_GAT/` |
 
-The sizes and checksums are those of the files on the Drive. Unzip a preprocessed zip over an empty `CT_GAT/processed/`: the folder
-holds one build at a time, and the two zips have different API vocabularies. The balanced collections of the all-architecture
-cache are in the pipeline README.
+The sizes and checksums are those of the files on the Drive. Unpacked, the two collection zips take about their zip size, the
+500-block zip 9.9 GB and the uncapped one 13.3 GB; the CFG cache built below takes 2.6 GB. Unzip a preprocessed zip over an empty
+`CT_GAT/processed/`: the folder holds one build at a time, and the two zips have different API vocabularies. The balanced collections
+of the all-architecture cache are in the pipeline README.
 
 Each collection zip holds one top-level folder named like the zip, so the destination is `CT_GAT/data` itself; a preprocessed zip
-holds `processed/` and a README, so its destination is `CT_GAT`. From the repository root, with `<path to>` the folder of the
-downloaded zips:
+holds `processed/` and a README, so its destination is `CT_GAT`. Run these from the repository root, with `<path to>` the folder of
+the downloaded zips:
 
 ```bash
 # Windows, PowerShell or cmd (tar is the one that comes with Windows and reads zips)
@@ -59,7 +60,7 @@ folder too deep. Nothing else is configured: the fold assignments are in the rep
 
 ## Run
 
-Every command runs from `CT_GAT/pipeline`. Run outputs go to `CT_GAT/pipeline/runs/` (`GT_RUNS` changes it).
+Every command below runs from `CT_GAT/pipeline` (`cd CT_GAT/pipeline`). Run outputs go to `CT_GAT/pipeline/runs/` (`GT_RUNS` changes it).
 
 Check the data. The command lists the collections, the cache and the fold files it finds, and exits 0:
 
@@ -78,8 +79,9 @@ python -m s02_preprocess.cache.check_cache
 The earlier jsonl-only models and the TF-IDF and import-table baselines are on the branch `jsonl-reference-models`; their published
 numbers are in `CT_GAT/pipeline/docs/history/`.
 
-Models 1 to 3 read `CT_GAT/processed/cfg_subgraphs`. Each has a smoke run (8 training binaries, CPU) and the full run, here on fold 0;
-`--fold` picks one of the five folds and `--seed` the seed.
+Models 1 to 3 read `CT_GAT/processed/cfg_subgraphs`. Each has a smoke run (CPU) and the full run, here on fold 0; `--fold` picks one
+of the five folds and `--seed` the seed. A smoke run needs the `.pt` files of 24 binaries (8 each for training, validation and test),
+so unpack the 500-block zip first. The smoke runs of Models 2 and 3 leave a `team_smoke_*` folder in the system temp folder.
 
 ```bash
 # Model 1, the five-channel transformer over the instruction sequence
@@ -112,27 +114,25 @@ python -m s04_evaluation.report
 python -m s04_evaluation.gates --stage team
 ```
 
-`report` writes `RESULTS.md` in the run directory over every run found. `gates` prints the arms of a stage that it finds and names the
-missing folds and seeds. GPU runs are not repeatable to the last digit (CUDA scatter is nondeterministic), so compare models through
-several seeds and the intervals in the tables, not through one AUC.
+`report` writes `RESULTS.md` in the run directory over every run found. `gates` prints the arms of a stage that it finds and names
+the missing folds and seeds; `--stage team` also compares with published arms that a new run directory does not have, so those rows
+print as missing unless the published runs are in `GT_RUNS`. GPU runs are not repeatable to the last digit (CUDA scatter is
+nondeterministic), so compare models through several seeds and the intervals in the tables, not through one AUC.
 
-## Tests, no data needed
-
-```bash
-python -m pytest -m "not real_data and not gpu"
-```
+The tests need no data: `python -m pytest -m "not real_data and not gpu"`, from `CT_GAT/pipeline`.
 
 ## Results
 
-5-fold family holdout on the 1,810 Mendeley x86 binaries, means over 3 seeds; area under the ROC curve (AUC). Sources:
+5-fold family holdout on the 1,810 Mendeley x86 binaries; area under the ROC curve (AUC), mean over 3 seeds unless marked. Sources:
 [`docs/history/`](CT_GAT/pipeline/docs/history/README.md).
 
 * Model 3 with fixed block embeddings on the uncapped samples (`sigwhole-emb`): 0.981. At 500 blocks per binary (`sig500v3-emb`): 0.966.
   Trained end to end (`sig500v3-e2e`) it has no 3-seed result yet; its plan is `team_b`.
 * Model 2 on the uncapped samples (`sigwhole-feat`): 0.970. At 500 blocks per binary (`sig500v3-feat`): 0.954.
 * Model 1: 0.919 to 0.926, since it reads only the first 128 or 512 instructions of each binary.
-* Published comparisons, from runs of the earlier code (see Run): a logistic regression on the PE import table 0.985, TF-IDF over the
-  instruction tokens 0.982, the typed GNN (R7) 0.986. Model 3 on the uncapped samples is level with R7 (+0.002, -0.005 to +0.009).
+* Published comparisons, from runs of the earlier code (see Run): a logistic regression on the PE import table 0.985 (seed 0),
+  TF-IDF over the instruction tokens 0.982 (seed 0), the typed GNN (R7) 0.979. Model 3 on the uncapped samples is level with R7
+  (+0.002, -0.005 to +0.009).
 
 ## More
 
