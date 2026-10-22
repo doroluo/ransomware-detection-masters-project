@@ -1,4 +1,4 @@
-"""Build CodeBERT basic-block graphs from the IDA Pro CFG exports.
+"""Build basic-block graphs from the IDA Pro CFG exports.
 
 Reads the recommended train and test rows in:
 
@@ -6,10 +6,17 @@ Reads the recommended train and test rows in:
     data/Combined_Ransomware/splits/{train,test}.csv
 
 Each row points at a gzip JSONL export (schema ida-cfg-research/2.1).
-Basic blocks are embedded with microsoft/codebert-base and saved as
-PyTorch Geometric graphs:
+Two outputs:
 
-    processed_graphs/{train,test}/<sha256>.pt
+* CodeBERT graphs in ``processed_graphs/{train,test}/<sha256>.pt``
+* ``--gnn`` subgraphs in ``processed_graphs/gnn/{train,test}/<sha256>.pt``
+
+The GNN subgraph keeps import-referencing functions, up to a block budget,
+and stores the same directed CFG the block GAT trains on. Schema 2.1 edges
+are bare block-id pairs, so each kept edge is labeled fallthrough, cond_taken,
+jmp, indirect, extern, other, or unknown. ``edge_attr`` is that relation
+one-hot plus the DFS back-edge bit (8 columns), which ``train_cfg.py`` and
+``FullBlockGAT`` read as ``edge_dim``.
 """
 
 import argparse
@@ -56,6 +63,28 @@ STRUCTURAL_FEATURES = (
     "log1p_instructions", "log1p_calls", "log1p_import_refs",
     "external", "log1p_in_degree", "log1p_out_degree",
 )
+# Same relation order as preprocess_full.EDGE_TYPE_NAMES. The GNN appends the
+# DFS back-edge bit, so edge_attr has len(EDGE_TYPE_NAMES) + 1 columns.
+EDGE_TYPE_NAMES = (
+    "fallthrough",
+    "cond_taken",
+    "jmp",
+    "indirect",
+    "extern",
+    "other",
+    "unknown",
+)
+EDGE_TYPE_TO_ID = {name: index for index, name in enumerate(EDGE_TYPE_NAMES)}
+EDGE_TYPE_ALIASES = {
+    "conditional": "cond_taken",
+    "conditional_taken": "cond_taken",
+    "direct": "jmp",
+    "direct_jump": "jmp",
+    "indirect_jump": "indirect",
+    "external": "extern",
+}
+FCB_INDJUMP = 1
+FCB_EXTERN = 6
 
 
 def gnn_feature_names():
@@ -337,8 +366,98 @@ def _api_group(name):
     return len(API_GROUPS)
 
 
+def _as_int(value):
+    if isinstance(value, bool) or value is None:
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value.strip(), 0)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _block_edge_info(block):
+    """Fields used to label a CFG edge when the export has no edge type."""
+    instructions = block.get("instructions") or []
+    last = instructions[-1] if instructions else {}
+    mnemonic = (last.get("mnemonic") or "").lower() if isinstance(last, dict) else ""
+    raw_type = block.get("type")
+    return {
+        "start_rva": _as_int(block.get("start_rva")),
+        "end_rva": _as_int(block.get("end_rva")),
+        "type": None if raw_type is None else _as_int(raw_type),
+        "external": bool(block.get("external")),
+        "last_mnemonic": mnemonic,
+    }
+
+
+def _is_conditional_mnemonic(mnemonic):
+    parts = (mnemonic or "").lower().split()
+    opcode = parts[-1] if parts else ""
+    return (opcode.startswith("j") and opcode != "jmp") or opcode.startswith("loop")
+
+
+def _derive_edge_type(src, dst, exported_type=None):
+    """Same precedence as preprocess_full: exported type, else a heuristic."""
+    if exported_type is not None:
+        normalized = EDGE_TYPE_ALIASES.get(str(exported_type).strip().lower(), str(exported_type).strip().lower())
+        return normalized if normalized in EDGE_TYPE_TO_ID else "unknown"
+    if dst["external"] or dst["type"] == FCB_EXTERN:
+        return "extern"
+    if dst["start_rva"] == src["end_rva"]:
+        return "fallthrough"
+    opcode = (src["last_mnemonic"].split() or [""])[-1]
+    if _is_conditional_mnemonic(opcode):
+        return "cond_taken"
+    if opcode == "jmp":
+        return "indirect" if src["type"] == FCB_INDJUMP else "jmp"
+    return "other"
+
+
+def _dfs_back_edges(block_info, edges):
+    """(src_id, dst_id) pairs whose target is still on the DFS stack.
+
+    Roots follow start RVA, matching the subgraph annotator. The flag is
+    computed on the whole function, then copied onto edges the subgraph keeps.
+    """
+    adjacency = {}
+    for edge in edges:
+        if not isinstance(edge, (list, tuple)) or len(edge) < 2:
+            continue
+        src_id, dst_id = edge[0], edge[1]
+        if src_id not in block_info or dst_id not in block_info:
+            continue
+        adjacency.setdefault(src_id, []).append(dst_id)
+    state = {block_id: 0 for block_id in block_info}
+    back = set()
+    roots = sorted(block_info, key=lambda block_id: (block_info[block_id]["start_rva"], _as_int(block_id)))
+    for root in roots:
+        if state[root] != 0:
+            continue
+        state[root] = 1
+        stack = [(root, 0)]
+        while stack:
+            node, offset = stack[-1]
+            neighbors = adjacency.get(node, [])
+            if offset >= len(neighbors):
+                state[node] = 2
+                stack.pop()
+                continue
+            neighbor = neighbors[offset]
+            stack[-1] = (node, offset + 1)
+            if state.get(neighbor, 0) == 1:
+                back.add((node, neighbor))
+            elif state.get(neighbor, 0) == 0:
+                state[neighbor] = 1
+                stack.append((neighbor, 0))
+    return back
+
+
 def _function_summaries(file_path, sample_id):
-    """One streaming pass: per-function block scores and edges, no instruction text."""
+    """One streaming pass: per-function block scores, edge endpoints, and edge labels."""
     summaries = []
     num_blocks_total = 0
     num_functions = 0
@@ -362,10 +481,13 @@ def _function_summaries(file_path, sample_id):
             if record.get("thunk") and len(blocks) <= 1:
                 continue
             block_meta = []
+            block_info = {}
             score = 0
             for block in blocks:
                 block_score = _block_score(block)
-                block_meta.append((block.get("id"), order, block_score))
+                block_id = block.get("id")
+                block_meta.append((block_id, order, block_score))
+                block_info[block_id] = _block_edge_info(block)
                 score += block_score
                 order += 1
             summaries.append({
@@ -373,6 +495,7 @@ def _function_summaries(file_path, sample_id):
                 "library": bool(record.get("library")),
                 "score": score,
                 "blocks": block_meta,
+                "block_info": block_info,
                 "edges": record.get("edges") or [],
             })
     if not footer or not footer.get("complete"):
@@ -409,7 +532,12 @@ def _select_functions(summaries, max_blocks):
 
 
 def gnn_graph_from_export(row, max_blocks):
-    """Compact block features and the intra-function CFG. No language model."""
+    """Signal subgraph: compact block features and typed intra-function CFG edges.
+
+    Node features stay the opcode/API vector. Edges are the original directed
+    CFG restricted to the kept blocks, with ``edge_attr`` of shape
+    ``[num_edges, len(EDGE_TYPE_NAMES) + 1]``.
+    """
     summaries, num_blocks_total, _num_functions = _function_summaries(row["cfg_file"], row["sample_id"])
     selected = _select_functions(summaries, max_blocks)
     node_of = {}
@@ -423,11 +551,13 @@ def gnn_graph_from_export(row, max_blocks):
             node_of[(func_key, block_id)] = len(func_ids)
             func_ids.append(func_index[func_key])
 
-    sources, targets = [], []
+    sources, targets, type_ids, back_flags = [], [], [], []
     incoming = [0] * len(func_ids)
     outgoing = [0] * len(func_ids)
     for function, _blocks in selected:
         func_key = function["id"]
+        block_info = function["block_info"]
+        back = _dfs_back_edges(block_info, function["edges"])
         for edge in function["edges"]:
             if not isinstance(edge, (list, tuple)) or len(edge) < 2:
                 continue
@@ -435,8 +565,16 @@ def gnn_graph_from_export(row, max_blocks):
             dst = node_of.get((func_key, edge[1]))
             if src is None or dst is None:
                 continue
+            src_info = block_info.get(edge[0])
+            dst_info = block_info.get(edge[1])
+            if src_info is None or dst_info is None:
+                continue
+            exported = edge[2] if len(edge) > 2 else None
+            kind = _derive_edge_type(src_info, dst_info, exported)
             sources.append(src)
             targets.append(dst)
+            type_ids.append(EDGE_TYPE_TO_ID[kind])
+            back_flags.append((edge[0], edge[1]) in back)
             outgoing[src] += 1
             incoming[dst] += 1
 
@@ -464,17 +602,26 @@ def gnn_graph_from_export(row, max_blocks):
         features = [[0.0] * width]
         func_ids = [0]
     feature_tensor = torch.tensor(features, dtype=torch.float32)
+    relation_width = len(EDGE_TYPE_NAMES)
     if sources:
         edge_index = torch.tensor([sources, targets], dtype=torch.long)
+        edge_type = torch.tensor(type_ids, dtype=torch.long)
+        one_hot = torch.nn.functional.one_hot(edge_type, num_classes=relation_width).float()
+        back = torch.tensor(back_flags, dtype=torch.float32).unsqueeze(1)
+        edge_attr = torch.cat([one_hot, back], dim=1)
     else:
         edge_index = torch.zeros((2, 0), dtype=torch.long)
+        edge_type = torch.zeros((0,), dtype=torch.long)
+        edge_attr = torch.zeros((0, relation_width + 1), dtype=torch.float32)
     graph = Data(
         x=feature_tensor,
         edge_index=edge_index,
         edge_index_cfg=edge_index,
+        edge_attr=edge_attr,
         func_batch=torch.tensor(func_ids, dtype=torch.long),
         y=torch.tensor([row["label"]], dtype=torch.long),
     )
+    graph.edge_type = edge_type
     graph.sample_id = row["sample_id"]
     graph.family = row.get("family") or ""
     graph.architecture = row.get("architecture") or ""
@@ -776,7 +923,10 @@ def main():
     parser.add_argument(
         "--gnn",
         action="store_true",
-        help="Build compact opcode/API CFG graphs for train_cfg.py instead of CodeBERT embeddings.",
+        help=(
+            "Build signal CFG subgraphs for the block GAT: opcode/API node features "
+            "and typed edges (relation one-hot plus the back-edge bit)."
+        ),
     )
     args = parser.parse_args()
 
