@@ -190,8 +190,10 @@ nothing reads it. Files taken from the Drive one by one go here:
 | `README_<zip name without .zip>.md`, e.g. `README_Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.md` | stays at `CT_GAT/`, where the zip unpacks it (git ignores it; no command reads it) |
 
 The folder holds one build at a time. Each zip's `.pt` files carry API ids of its own `api_vocab.json` (12,406 names in the
-500-block build, 12,788 uncapped), so the files of two zips must not be mixed. The folder is also filled by `build_b --source repo`
-(step 2 of Running).
+500-block build, 12,788 uncapped), so the files of two zips must not be mixed: empty `CT_GAT/processed/` before unzipping another zip.
+The folder is also filled by `build_b --source repo` (step 2 of Running). For the `team_builds` plan each build must be where `train_b`
+looks for its arm, `RUNS/team/b_sig250_main`, `b_callwalk500_main` or `b_callwalk250_main`: move the contents of the zip's
+`processed/cfg_subgraphs` there, or pass `--build DIR`.
 
 ## On-disk layout
 
