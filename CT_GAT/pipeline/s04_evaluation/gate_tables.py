@@ -124,6 +124,9 @@ def match_rate_line(build, name, scope=DEFAULT_SCOPE, total=None):
     total = BUILD_TOTAL[tuple(scope)] if total is None else total
     complete = (done.get('processed') == done.get('total') == 1810 if scope == DEFAULT_SCOPE
                 else done.get('total') == total and (done.get('processed') or 0) + len(done.get('excluded') or {}) == total)
+    if not complete and scope == DEFAULT_SCOPE:                       # the wording of the kfold x86 stages is as it was
+        return (f"Match rates of `{name}`: missing (build incomplete: {done.get('processed')} of {done.get('total')} "
+                'binaries processed).')
     if not complete:
         return (f"Match rates of `{name}`: missing (build incomplete: its summary covers {done.get('total')} binaries "
                 f"({done.get('processed')} processed), the dataset has {total}).")

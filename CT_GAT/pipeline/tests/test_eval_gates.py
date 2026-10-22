@@ -427,3 +427,11 @@ def test_a_tfidf_run_without_a_validation_threshold_gives_the_same_reason_in_the
     assert gate_tables.cell_row('tfidf', ('kfold', 'all')) == reason
     assert not isinstance(gate_tables.cell_row('tfidf', ('kfold_v3', 'all')), str)           # the kfold_v3 baselines have one
     gate_tables.pooled.cache_clear()
+
+
+def test_an_incomplete_build_of_another_dataset_names_both_totals(tmp_path):
+    fake_build(tmp_path / 'b', {'r1': fake_payload([1, 1, 1, 0], 1)})
+    (tmp_path / 'b' / 'build_summary.json').write_text(json.dumps({'processed': 1810, 'total': 1810}), encoding='utf-8')
+    line = gate_tables.match_rate_line(tmp_path / 'b', 'b_test', ('kfold', 'all'))
+    assert 'its summary covers 1810 binaries (1810 processed), the dataset has 2411' in line
+    assert gate_tables.match_rate_line(tmp_path / 'b', 'b_test', DEFAULT_SCOPE).startswith('Match rates of `b_test` (share')      # x86: complete, as before
