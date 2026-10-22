@@ -7,11 +7,14 @@ What is checked, on the second synthetic dataset `tiny_v3` (tests/tiny_cache.py)
     names, manifests, excluded ids in no split), the architecture-balance weights against `cell_weights` and the loss against
     `CrossEntropyLoss(weight=)`, the API remap from the training ids only, `queue --dry` names;
   * B2, `fivechannel`: the four (protocol, arch) pairs, the `-ab` name, the build check, the cell weights and their loss;
-  * B3, `package_build`: the zip name and the README text of the three labels, and the recorded x86 README text.
+  * B3, `package_build`: the zip name and the README text of the three labels, and the recorded x86 README text;
+  * `real_data` (read only): the published builds are kfold x86 builds that only the x86 arms read, no run directory has a name of this
+    step, the real folds give the four cell weights from the training manifest.
 The tests that train need torch_geometric and skip with a reason without it; the refusals, names and weights do not.
 """
 import io
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -20,7 +23,8 @@ import torch
 import torch.nn as nn
 
 import experiments.train as experiments_train
-from common.config import RunConfig
+from common import manifests
+from common.config import COMBINED_CACHE, DEFAULT_CACHE, RUNS, RunConfig
 from common.manifests import load_index, make_manifest
 from experiments import queue as q
 from experiments.team_pipelines import common as tp, fit, package_build as pb, train_b
@@ -772,3 +776,67 @@ def test_a_packaged_build_of_another_dataset_unzips_and_the_trainers_read_it(tin
         train_b.check_build('sig500v3-emb', unzipped)
     from s03a_transformer.five_channel import train as fc_train
     fc_train.check_build_dataset(unzipped, protocol, 'all')
+
+
+# ---- real data (read only): the published builds and runs, the real folds ----------------------------------------------------
+
+real_data = pytest.mark.real_data
+needs_runs = pytest.mark.skipif(not (RUNS / 'team').is_dir(), reason='needs the run directory of this machine (GT_RUNS / datasets.json)')
+needs_v2 = pytest.mark.skipif(not (Path(DEFAULT_CACHE) / 'index.csv').exists(), reason='needs the mendeley_x86 cache')
+needs_combined = pytest.mark.skipif(not (Path(COMBINED_CACHE) / 'index.csv').exists(), reason='needs the combined cache')
+PUBLISHED = {'b_sig500_v3': 'sig500v3-feat', 'b_sig250_main': 'sig250-feat', 'b_callwalk500_main': 'callwalk500-feat',
+             'b_callwalk250_main': 'callwalk250-feat', 'b_sigwhole_v3': 'sigwhole-feat', 'b_sig500': 'sig500', 'b_sig500_v2': 'sig500v2'}
+
+
+@real_data
+@needs_runs
+@pytest.mark.parametrize('name, arm', PUBLISHED.items())
+def test_a_published_build_is_a_kfold_x86_build_that_the_x86_arm_reads_and_the_other_datasets_refuse(name, arm):
+    build = RUNS / 'team' / name
+    if not build.is_dir():
+        pytest.skip(f'{build} is not on this machine')
+    settings_on_disk = train_b.read_settings(build)
+    assert 'protocol' not in settings_on_disk and 'arch' not in settings_on_disk                 # published builds are left as they were
+    assert train_b.dataset_of(settings_on_disk) == ('kfold', 'x86')
+    assert train_b.check_build(arm, build) == train_b.check_build(arm, build, None, 'kfold', 'x86') == train_b.read_source(build)
+    assert train_b.ARM_DIR[arm] == build and train_b.default_build_dir(arm) == build == train_b.default_build_dir(arm, 'kfold', 'x86')
+    for protocol, arch in (('kfold', 'all'), ('kfold_v3', 'all'), ('kfold_v3', 'matched')):
+        with pytest.raises(SystemExit):                                                          # the legacy arms: off x86; the others: wrong build
+            train_b.check_build(arm, build, None, protocol, arch)
+
+
+@real_data
+@needs_runs
+def test_no_run_directory_has_a_name_of_this_step():
+    """Nothing on disk is named like a run of a dataset other than kfold x86, and no fivechannel run has the -ab suffix, so the only
+    naming change of this step (fivechannel under arch_balance) collides with nothing."""
+    existing = {p.name for p in RUNS.iterdir() if p.is_dir()}
+    assert not [n for n in existing if 'fivechannel' in n and re.search(r'fivechannel(-L\d+)?-ab', n)]
+    arms = [a for a in train_b.ARMS if a not in ('sig500', 'sig500v2')]
+    new = {tp.team_config(f, s, a, p, ar, ab).name for p, ar in (('kfold', 'all'), ('kfold_v3', 'all'), ('kfold_v3', 'matched'))
+           for ab in (False, True) for f in range(5) for s in range(3) for a in arms}
+    new |= {five_run(f, p, a, seed=s, max_instructions=m, arch_balance=ab, tag=t).name
+            for p, a in FIVE[1:] for ab in (False, True) for f in range(5) for s in range(3) for m in (128, 512) for t in ('', 'whole')}
+    assert new and not new & existing
+    assert not [n for n in existing if re.match(r'kfold\d_all_', n)]                              # no kfold-all run of any model yet
+
+
+@real_data
+@pytest.mark.parametrize('protocol, arch', [('kfold', 'all'), ('kfold_v3', 'all'), ('kfold_v3', 'matched')])
+def test_the_real_folds_give_four_cell_weights_from_the_training_manifest(monkeypatch, protocol, arch):
+    cache = Path(DEFAULT_CACHE if protocol == 'kfold' else COMBINED_CACHE)
+    if not (cache / 'index.csv').exists():
+        pytest.skip(f'needs the {protocol} cache')
+    monkeypatch.setattr(manifests, 'CACHE', cache)
+    for fold in (0, 2):
+        manifest = tp.fold_manifest(fold, 0, protocol, arch)
+        rows = tp.sample_rows(protocol, 'all')
+        ids = [r['sample_id'] for r in manifest.train]
+        by_id, named = fit.cell_weight_table(rows, ids)
+        assert len(named) == 4 and abs(sum(by_id.values()) / len(ids) - 1) < 1e-9
+        assert fit.cell_weight_table(rows, ids + [r['sample_id'] for r in manifest.test])[1] != named      # the test split is not in them
+        for cell, w in named.items():
+            n_cell = sum(fit.cell_name(rows[i]['label'], rows[i]['arch']) == cell for i in ids)
+            assert w == pytest.approx(len(ids) / (4 * n_cell))                                              # N / (C n_cell)
+        if arch == 'matched':
+            assert all(str(r['arch_matched']) == '1' for r in manifest.train + manifest.val + manifest.test)
