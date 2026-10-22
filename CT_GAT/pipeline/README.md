@@ -288,8 +288,8 @@ The options (sampling, library functions, caps, resuming) are in [`s02_preproces
 **3. Models 2 and 3**, the team GAT under the same folds, on the same `CT_GAT/processed/cfg_subgraphs` folder as Model 1. The arm
 sets the node input: `sig500v3-feat` is Model 2 (the 77 block features and the CFG) and `sig500v3-e2e` is Model 3 (Janice's block
 transformer trained end to end under the GAT, learning rate 3e-4). `sig500v3-emb` is the fixed-embedding variant of Model 3: the
-stored 64-d pooled embeddings and the CFG, with nothing trained before the GAT. `--smoke 8` trains 8 binaries and scores 8 validation
-and 8 test binaries. A full run wants a CUDA GPU:
+stored 64-d pooled embeddings and the CFG, with nothing trained before the GAT. `--smoke 8` trains 8 binaries for 2 epochs and scores every validation binary the build holds (no test
+binaries). A full run wants a CUDA GPU:
 
 ```bash
 python -m experiments.team_pipelines.train_b --arm sig500v3-feat --fold 0 --seed 0 --smoke 8 --device cpu
