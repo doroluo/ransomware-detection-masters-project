@@ -268,7 +268,7 @@ class Queue:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    ap.add_argument('--plan', help='a plan file, or the name of one in experiments/plans (v3, noapi, ...)')
+    ap.add_argument('--plan', help='a plan file, or the name of one in experiments/plans (model1_variants, team_b)')
     ap.add_argument('--budget-min', type=float, help='minutes of wall time the train lines may use')
     ap.add_argument('--dry', action='store_true', help='print what would run; write nothing, skip nothing')
     ap.add_argument('--dry-min', type=float, default=0, help='with --dry: minutes charged per train line (tries the budget)')

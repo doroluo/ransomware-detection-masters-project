@@ -217,6 +217,20 @@ def test_the_command_prints_every_dataset_and_exits_zero(tmp_path):
     assert 'cache CT_GAT/cache/mendeley_x86: ' in r.stdout
 
 
+def test_the_command_reports_the_cache_that_gt_cache_names(tmp_path):
+    cache = tmp_path / 'mycache'
+    cache.mkdir()
+    (cache / 'index.csv').write_text('sample_id\n', encoding='utf-8')
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GT_')}
+    env.update(GT_DATASETS=str(tmp_path / 'none.json'), GT_COLLECTIONS=str(tmp_path / 'empty'), PYTHONDONTWRITEBYTECODE='1')
+    r = subprocess.run([sys.executable, '-m', 'common.catalog'], cwd=ROOT, capture_output=True, text=True, env=env)
+    assert 'cache CT_GAT/cache/mendeley_x86: not built' in r.stdout
+    r = subprocess.run([sys.executable, '-m', 'common.catalog'], cwd=ROOT, capture_output=True, text=True, env={**env, 'GT_CACHE': str(cache)})
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.count(f"cache {cache.as_posix()}: built") == len(catalog.DATASETS)       # GT_CACHE beats every dataset's own cache
+    assert 'CT_GAT/cache/mendeley_x86' not in r.stdout
+
+
 def test_the_command_says_nested_and_unzip_it(tmp_path):
     data = tmp_path / 'data'
     write_collection(data / 'Mendeley_Goodware', 'Mendeley_Goodware')
