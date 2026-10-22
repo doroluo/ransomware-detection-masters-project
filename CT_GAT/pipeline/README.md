@@ -384,7 +384,7 @@ Each default of Setup is a fallback. A setting made in more than one place resol
 * **`GT_BUNDLE`, `GT_COLLECTIONS`, `GT_FOLDS`, `GT_FOLDS_V3`**: the raw inputs of `sources`, each overriding the file.
   `GT_BUNDLE` names the `Mendeley_GNN_v1` bundle, which then replaces the two Mendeley collections; `GT_COLLECTIONS` the folder that
   holds the collections (default `CT_GAT/data`).
-* **`GT_TEAM_B_BUILD`** (`sources` key `team_b_build`): the pipeline-B build folder of `<sample_id>.pt` files that Models 1 to 3 read (`--build` beats it).
+* **`GT_TEAM_B_BUILD`** (`sources` key `team_b_build`): the pipeline-B build folder of `<sample_id>.pt` files that Models 1 to 3 read (`--build` beats it; `train_b` uses the arm's folder under `<runs>/team` first, when it exists).
 * **`GT_PY`** the interpreter of `experiments.queue`; **`GT_TEAM_GNN_ROOT`, `GT_TEAM_MAIN_ROOT`, `GT_TEAM_ASM_DIR`** the pinned
   teammate worktrees and the listing folder of `experiments/team_pipelines` (the arms `sig500` and `sig500v2` and the older builds
   only; Models 2 and 3 on the zips need none of them).
