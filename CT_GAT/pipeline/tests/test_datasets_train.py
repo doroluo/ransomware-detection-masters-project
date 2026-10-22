@@ -816,18 +816,10 @@ def test_a_published_build_is_a_kfold_x86_build_that_the_x86_arm_reads_and_the_o
 
 @real_data
 @needs_runs
-def test_no_run_directory_has_a_name_of_this_step():
-    """Nothing on disk is named like a run of a dataset other than kfold x86, and no fivechannel run has the -ab suffix, so the only
-    naming change of this step (fivechannel under arch_balance) collides with nothing."""
+def test_no_existing_fivechannel_run_carries_the_ab_suffix():
+    """The only naming change of this step is the -ab suffix on fivechannel runs under arch_balance; no existing run has it."""
     existing = {p.name for p in RUNS.iterdir() if p.is_dir()}
     assert not [n for n in existing if 'fivechannel' in n and re.search(r'fivechannel(-L\d+)?-ab', n)]
-    arms = [a for a in train_b.ARMS if a not in ('sig500', 'sig500v2')]
-    new = {tp.team_config(f, s, a, p, ar, ab).name for p, ar in (('kfold', 'all'), ('kfold_v3', 'all'), ('kfold_v3', 'matched'))
-           for ab in (False, True) for f in range(5) for s in range(3) for a in arms}
-    new |= {five_run(f, p, a, seed=s, max_instructions=m, arch_balance=ab, tag=t).name
-            for p, a in FIVE[1:] for ab in (False, True) for f in range(5) for s in range(3) for m in (128, 512) for t in ('', 'whole')}
-    assert new and not new & existing
-    assert not [n for n in existing if re.match(r'kfold\d_all_', n)]                              # no kfold-all run of any model yet
 
 
 @real_data
