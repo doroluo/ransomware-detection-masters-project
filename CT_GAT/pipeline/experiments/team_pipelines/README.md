@@ -120,7 +120,7 @@ plus under a minute of loading and prediction. The 15 runs of an arm therefore t
 
 ```
 python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --seed 0 [--out RUNS/team/b_sig500]
-       [--source gnn-331ce0b|main-c7899f0|repo] [--limit N] [--ids <sample_id> ...] [--frozen-from <build dir>]
+       [--source gnn-331ce0b|main-c7899f0|repo] [--limit N] [--ids <sample_id> ...] [--frozen-from <build dir>] [--seeded-rows]
 ```
 
 Zero config, the exact build for Janice's model. `--out` defaults to the `team_b_build` source, `CT_GAT/processed/cfg_subgraphs`
@@ -166,8 +166,19 @@ checkpoint are saved every 50 samples and at the end.
 Resume: rerun the same command. The vocabulary and embedder are loaded and the ids in `checkpoint.json` are kept; any
 other `.pt` (finished after the last checkpoint, with API ids the saved vocabulary may lack) is deleted and rebuilt, so
 `build_log.csv` can hold a second row for such an id. Rows added to the embedder after a resume are initialised from a
-different RNG state than in an uninterrupted run. A different `--sample / --num-blocks / --seed` on an existing `<out>`
-stops. A sample that raises stops the build with its id and a traceback; nothing is skipped.
+different RNG state than in an uninterrupted run, unless the build was started with `--seeded-rows` (next paragraph). A different
+`--sample / --num-blocks / --seed` on an existing `<out>` stops. A sample that raises stops the build with its id and a traceback; nothing is skipped.
+
+`--seeded-rows` (a new build; `--source repo`, whose `FiveChannelEmbedder` takes a seed): every row the embedder adds as the
+vocabulary grows is drawn from a generator seeded with `--seed` and the API id, so the embedding table depends only on the
+vocabulary and the seed, and a build stopped and resumed has the same `channel_embedder.pt` and `block_embeddings` as one run straight
+through. Without it, the added rows come from the global torch generator, which a resume does not reproduce: measured on
+`b_sig500_v3`, which was paused at 1,500 of 1,810 samples and resumed, against `b_sig500_main` built straight through, 1,758
+samples are identical in every array, 52 differ in `block_embeddings` only, and `api_embedding.weight` differs in exactly the rows
+added after the resume (11452-12481). A build with the flag records `embedder_rows: seeded-per-id` in `settings.json` and in the
+checkpoint's settings; a build without the key (every build made before the flag) keeps the old rows and its pins stay valid. A
+resume must pass the flag exactly when the build has the key, else it stops and says so. `tests/test_seeded_rows.py` runs a
+straight and a stopped-and-resumed build on a stand-in `process_sample` and compares the table and the payloads.
 
 Exclusion: `--exclude <id> ... --exclude-reason TEXT` leaves ids out on purpose. They are not attempted, count as neither built nor
 failed, and are written with the reason to `<out>/settings.json` (the checkpoint's own settings are unchanged, so an earlier build still
@@ -393,7 +404,7 @@ is not complete, criteria 2-4 are computed on the ids it holds and marked partia
 
 ## Tests
 
-`tests/test_team_pipelines.py`, `test_team_exclusion.py`, `test_team_v2.py`, `test_team_v3.py`, `test_team_whole.py`,
+`tests/test_team_pipelines.py`, `test_team_exclusion.py`, `test_seeded_rows.py`, `test_team_v2.py`, `test_team_v3.py`, `test_team_whole.py`,
 `test_gat_port.py`, `test_model3_e2e.py`, `test_match_diagnosis.py` (CPU). They run everywhere
 on the tiny cache of `tests/tiny_cache.py` and on synthetic builds: every module imports without `torch_geometric`, `psutil`
 and the worktrees (a subprocess with fake packages that raise `ImportError`); the environment variables name the missing input;
