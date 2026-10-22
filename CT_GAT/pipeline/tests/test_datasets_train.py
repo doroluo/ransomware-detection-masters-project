@@ -6,7 +6,8 @@ What is checked, on the second synthetic dataset `tiny_v3` (tests/tiny_cache.py)
     uncapped arms, the default build directory of each (protocol, arch), the 2-epoch runs on kfold all, kfold_v3 all and matched (run
     names, manifests, excluded ids in no split), the architecture-balance weights against `cell_weights` and the loss against
     `CrossEntropyLoss(weight=)`, the API remap from the training ids only, `queue --dry` names;
-  * B2, `fivechannel`: the four (protocol, arch) pairs, the `-ab` name, the build check, the cell weights and their loss.
+  * B2, `fivechannel`: the four (protocol, arch) pairs, the `-ab` name, the build check, the cell weights and their loss;
+  * B3, `package_build`: the zip name and the README text of the three labels, and the recorded x86 README text.
 The tests that train need torch_geometric and skip with a reason without it; the refusals, names and weights do not.
 """
 import io
@@ -22,7 +23,7 @@ import experiments.train as experiments_train
 from common.config import RunConfig
 from common.manifests import load_index, make_manifest
 from experiments import queue as q
-from experiments.team_pipelines import common as tp, fit, train_b
+from experiments.team_pipelines import common as tp, fit, package_build as pb, train_b
 from s03a_transformer.five_channel import train as fc
 from s04_evaluation.metrics import cell_weights
 from test_five_channel import fivechannel, write_build
@@ -31,6 +32,7 @@ from test_team_v3 import settings, synthetic_build
 from tiny_cache import tiny_v3  # noqa: F401  (a fixture)
 
 HERE = Path(__file__).resolve().parent
+BASE = 'processed/cfg_subgraphs/'
 WHY = 'num_instructions > 4000000: load_cfg needs about 3 KB per instruction (31 GB RAM)'
 TRAINED = [('kfold', 'all'), ('kfold_v3', 'all'), ('kfold_v3', 'matched')]
 quiet = lambda *_: None                                                                   # noqa: E731
@@ -621,3 +623,152 @@ def test_the_loss_is_the_class_weighted_mean_of_today_and_with_the_flag_the_cell
         torch.manual_seed(5)
         loss = fc.train_epoch(net, torch.optim.AdamW(net.parameters(), lr=0.0), items, ids, weight, cfg, 1, torch.device('cpu'), 0)
         assert loss == pytest.approx(expected, abs=1e-6)
+
+
+# ---- B3: package_build -------------------------------------------------------------------------------------------------------
+
+DATASET_SETTINGS = {'Mendeley_x86': {}, 'Mendeley_all': {'protocol': 'kfold', 'arch': 'all'},
+                    'combined_v3': {'protocol': 'kfold_v3', 'arch': 'all'}}
+
+
+@pytest.mark.parametrize('label, sample, blocks, name', [
+    ('Mendeley_x86', 'signal', 500, 'Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip'),
+    ('Mendeley_x86', 'callwalk', 250, 'Mendeley_x86_cfg_subgraphs_callwalk_250blocks_v3.zip'),
+    ('Mendeley_x86', 'signal', train_b.UNCAPPED_BLOCKS, 'Mendeley_x86_cfg_subgraphs_uncapped_v3.zip'),
+    ('Mendeley_all', 'signal', 500, 'Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip'),
+    ('Mendeley_all', 'signal', 250, 'Mendeley_all_cfg_subgraphs_signal_250blocks_v3.zip'),
+    ('Mendeley_all', 'callwalk', 500, 'Mendeley_all_cfg_subgraphs_callwalk_500blocks_v3.zip'),
+    ('Mendeley_all', 'callwalk', 250, 'Mendeley_all_cfg_subgraphs_callwalk_250blocks_v3.zip'),
+    ('Mendeley_all', 'signal', train_b.UNCAPPED_BLOCKS, 'Mendeley_all_cfg_subgraphs_uncapped_v3.zip'),
+    ('Mendeley_all', 'callwalk', 0, 'Mendeley_all_cfg_subgraphs_uncapped_v3.zip'),
+    ('combined_v3', 'signal', 500, 'combined_v3_cfg_subgraphs_signal_500blocks_v3.zip'),
+    ('combined_v3', 'callwalk', 500, 'combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip')])
+def test_the_zip_name_carries_the_dataset(label, sample, blocks, name):
+    assert pb.zip_name({'sample': sample, 'num_blocks': blocks, **DATASET_SETTINGS[label]}) == name
+    if label == 'Mendeley_x86':        # the keys a kfold x86 build never wrote, or wrote with their default values
+        assert pb.zip_name({'sample': sample, 'num_blocks': blocks, 'protocol': 'kfold', 'arch': 'x86'}) == name
+
+
+def test_a_build_for_a_dataset_that_is_never_packaged_is_refused():
+    for protocol, arch in (('kfold_v3', 'matched'), ('kfold_v3', 'x86'), ('kfold', 'matched'), ('bundle', 'all')):
+        with pytest.raises(SystemExit, match=f'a build for {protocol} {arch} is not packaged'):
+            pb.zip_name({'sample': 'signal', 'num_blocks': 500, 'protocol': protocol, 'arch': arch})
+    with pytest.raises(SystemExit, match='only kfold x86, kfold all, kfold_v3 all'):
+        pb.readme_text({'sample': 'signal', 'num_blocks': 500, 'protocol': 'kfold_v3', 'arch': 'matched'}, {'processed': 0, 'total': 0}, [])
+
+
+def test_the_readme_text_of_an_x86_build_is_the_recorded_one():
+    """tests/fixtures/package_readme_x86.json was written by `readme_text` and `zip_name` before the dataset labels existed (c159512)
+    for three settings / summary pairs (capped with pins and seeded rows, callwalk with an excluded id, uncapped)."""
+    recorded = json.loads((HERE / 'fixtures' / 'package_readme_x86.json').read_text(encoding='utf-8'))
+    assert [c['name'] for c in recorded['cases']] == ['signal-250-pins-seeded', 'callwalk-500-no-pins-excluded', 'uncapped']
+    for case in recorded['cases']:
+        assert pb.zip_name(case['settings']) == case['zip_name'] and case['zip_name'].startswith('Mendeley_x86_cfg_subgraphs_')
+        assert pb.readme_text(case['settings'], case['summary'], recorded['rows'], case['manifests']) == case['readme'], case['name']
+        explicit = {**case['settings'], 'protocol': 'kfold', 'arch': 'x86'}
+        assert pb.readme_text(explicit, case['summary'], recorded['rows'], case['manifests']) == case['readme']
+    assert 'Per class and architecture' not in recorded['cases'][1]['readme'] and 'Excluded on purpose' not in recorded['cases'][1]['readme']
+
+
+def dataset_rows(n_x86=6, n_x64=3):
+    return [{'sample_id': f'{i:064x}', 'label': int(i % 2), 'family': f'f{i % 3}', 'arch': 'x86' if i < n_x86 else 'x64', 'fold': i % 5,
+             'n_instructions': 10 + i, 'match_rate': 0.9, 'n_blocks_total': 5, 'n_blocks_kept': 4} for i in range(n_x86 + n_x64)]
+
+
+def test_the_readme_of_a_mendeley_all_build_says_what_the_extension_added():
+    pins = {'CT_GAT/pipeline/s02_preprocess/preprocess_full.py': 'a' * 64, 'CT_GAT/pipeline/s02_preprocess/tokenize_asm_gz.py': 'b' * 64}
+    settings = {'sample': 'signal', 'num_blocks': 500, 'seed': 0, 'source': 'main-fix', 'pins': {'old.py': 'c' * 64}, 'protocol': 'kfold',
+                'arch': 'all', 'extensions': [{'arch': 'all', 'ids_added': 3, 'source': 'repo', 'pins': pins,
+                                               'embedder_rows': 'seeded-per-id', 'date': '2026-10-23'}]}
+    rows = dataset_rows()
+    text = pb.readme_text(settings, {'processed': 9, 'total': 9, 'excluded': {}}, rows, manifests=False)
+    assert text.startswith('# Mendeley all-architecture (x86 and x64) CFG subgraphs (signal, 500 blocks), pipeline B of the team pipelines')
+    assert 'the 9 Mendeley binaries (x86 and x64) of our 5-fold family-holdout set (4 ransomware,' in text
+    assert 'Per class and architecture: R x86 3, R x64 1, G x86 3, G x64 2.' in text
+    assert ('its 6 x86 samples are byte-identical to the ones in `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip`' in text
+            and 'the 3 x64 samples were added to it with `build_b --extend` (code source `repo`, files of the repository when extended:' in text)
+    assert f"`CT_GAT/pipeline/s02_preprocess/preprocess_full.py`: sha256 `{'a' * 64}`" in text and 'drawn per (seed, API id)' in text
+    assert 'for `--protocol kfold --arch all` only' in text and 'CFGs come from the Mendeley bundle' in text
+    assert 'our kfold fold,' in text and 'Excluded on purpose' not in text and "source `main-fix`" in text      # the build's own source stays
+    assert text.count(f"sha256 `{'c' * 64}`") == 1                                                            # the build's own pins stay too
+    for forbidden in ('C:\\', 'C:/', '/Users/', 'Downloads', 'AppData'):
+        assert forbidden not in text
+    plain = pb.readme_text({k: v for k, v in settings.items() if k != 'extensions'}, {'processed': 9, 'total': 9}, rows)
+    assert 'byte-identical' not in plain                                                                      # an unextended all build: no note
+
+
+def test_the_readme_of_a_combined_build_lists_the_excluded_binaries_with_their_reason():
+    settings = {'sample': 'callwalk', 'num_blocks': 500, 'seed': 0, 'source': 'repo', 'protocol': 'kfold_v3', 'arch': 'all'}
+    rows = dataset_rows(6, 6)
+    excluded = {f'{99 - i:064x}': WHY for i in range(3)}
+    text = pb.readme_text(settings, {'processed': 12, 'total': 15, 'excluded': excluded}, rows)
+    assert text.startswith('# combined_v3 (all architectures) CFG subgraphs (callwalk, 500 blocks), pipeline B of the team pipelines')
+    assert 'the 15 binaries (x86 and x64) of the combined_v3 dataset that have a fold of our 5-fold family-holdout set `kfold_v3`' in text
+    assert '3 excluded on purpose' in text and 'Per class and architecture: R x86 3, R x64 3, G x86 3, G x64 3.' in text
+    assert ('CFGs and listings come from the collections Mendeley_Ransomware, Mendeley_Goodware, Ransomware_Balanced and Balanced_Goodware'
+            in text and 'our kfold_v3 fold,' in text and 'a walk that grows' in text)
+    assert 'Excluded on purpose (3; `excluded` of build_info/build_settings.json)' in text
+    for sample_id in excluded:                                                            # every id with its reason, sorted
+        assert f'\n- `{sample_id}`: {WHY}' in text
+    assert text.index(f'`{sorted(excluded)[0]}`') < text.index(f'`{sorted(excluded)[-1]}`')
+    assert 'The `--arch matched` runs of the trainers read this archive too' in text and 'byte-identical' not in text
+    assert 'Excluded on purpose' not in pb.readme_text(settings, {'processed': 12, 'total': 12, 'excluded': {}}, rows)
+    assert 'no exclusions' in pb.readme_text(settings, {'processed': 12, 'total': 12, 'excluded': {}}, rows)
+
+
+def finished_dataset_build(root, label, extra=None, excluded=None):
+    """A synthetic finished build of a dataset other than Mendeley x86: payloads with `dataset_metadata` carrying the arch of the row
+    and the fold of the dataset's protocol, the summary of `build_b`, and the extension record of `build_b --extend` when asked."""
+    protocol, arch = ('kfold_v3', 'all') if label == 'combined_v3' else ('kfold', 'all')
+    rows = tp.sample_rows(protocol, arch)
+    left_out = dict(excluded or {})
+    ids = sorted(set(rows) - set(left_out))
+    folder = synthetic_build(root, ids, rows, source='repo', sample='signal', num_blocks=500, dataset=(protocol, arch), excluded=left_out)
+    for i in ids:
+        payload = torch.load(folder / f'{i}.pt', weights_only=False)
+        payload['dataset_metadata'] = {'sample_id': i, 'label': rows[i]['label'], 'arch': rows[i]['arch'], 'family': rows[i]['family'],
+                                       'fold': rows[i]['fold']}
+        torch.save(payload, folder / f'{i}.pt')
+        (folder / f'{i}.manifest.json').write_text(json.dumps({'sample_id': i}), encoding='utf-8')
+    (folder / 'build_summary.json').write_text(json.dumps({'processed': len(ids), 'total': len(rows), 'excluded': left_out}),
+                                              encoding='utf-8')
+    if extra:
+        body = json.loads((folder / 'settings.json').read_text(encoding='utf-8'))
+        (folder / 'settings.json').write_text(json.dumps({**body, **extra}), encoding='utf-8')
+    return folder, rows, ids
+
+
+@needs_pyg
+@pytest.mark.parametrize('label', ['Mendeley_all', 'combined_v3'])
+def test_a_packaged_build_of_another_dataset_unzips_and_the_trainers_read_it(tiny_v3, tmp_path, label):   # noqa: F811
+    import zipfile
+    protocol = 'kfold_v3' if label == 'combined_v3' else 'kfold'
+    victims = {sorted(tp.sample_rows(protocol, 'all'))[0]: WHY} if label == 'combined_v3' else None
+    extra = None
+    if label == 'Mendeley_all':
+        n_x64 = sum(r['arch'] == 'x64' for r in tp.sample_rows('kfold', 'all').values())
+        extra = {'extensions': [{'arch': 'all', 'ids_added': n_x64, 'source': 'repo', 'pins': {'p.py': 'a' * 64},
+                                 'embedder_rows': 'seeded-per-id', 'date': '2026-10-23'}]}
+    build, rows, ids = finished_dataset_build(tmp_path / 'b', label, extra, victims)
+    zpath, digest = pb.package(build, tmp_path / 'out', manifests=False)
+    assert zpath.name == f'{label}_cfg_subgraphs_signal_500blocks_v3.zip'
+    text = (tmp_path / 'out' / f'{zpath.stem}.README.md').read_text(encoding='utf-8')
+    assert (f'the {len(rows)} ' in text) and (('Excluded on purpose (1;' in text) == (victims is not None))
+    assert ('byte-identical' in text) == (extra is not None)
+    with zipfile.ZipFile(zpath) as z:
+        assert z.read(f'README_{zpath.stem}.md').decode('utf-8') == text
+        z.extractall(tmp_path / 'CT_GAT')
+        index = z.read(BASE + 'build_info/index.csv').decode('utf-8').splitlines()
+    unzipped = tmp_path / 'CT_GAT' / 'processed' / 'cfg_subgraphs'
+    assert [l.split(',')[0] for l in index[1:]] == ids
+    fold = {r['sample_id']: str(r['fold']) for r in rows.values()}                       # the fold of the build's protocol
+    assert [l.split(',')[4] for l in index[1:]] == [fold[i] for i in ids]
+    assert {l.split(',')[3] for l in index[1:]} == {'x86', 'x64'}
+    assert train_b.read_excluded(unzipped) == (victims or {})
+    arches = ('all',) if label == 'Mendeley_all' else ('all', 'matched')
+    for arch in arches:                                                                    # the settings in the zip say what it serves
+        assert train_b.check_build('sig500v3-emb', unzipped, None, protocol, arch) == 'repo'
+    with pytest.raises(SystemExit, match=f'was built for {protocol} all, this run asks for kfold x86'):
+        train_b.check_build('sig500v3-emb', unzipped)
+    from s03a_transformer.five_channel import train as fc_train
+    fc_train.check_build_dataset(unzipped, protocol, 'all')
