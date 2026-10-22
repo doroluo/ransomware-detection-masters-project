@@ -6,7 +6,9 @@ A stage is a data file, `experiments/stages/<name>.py`, that defines `STAGE` (se
 compares, the seeds, the rule column and the intro text. The stages that were run are listed in
 `experiments/stages/__init__.py`, and each file's docstring says what the stage reads. A new stage is a new file there (and
 its name in that list); this engine and `gate_tables.py` do not change. An arm that is not on disk, or has
-missing folds, is printed as missing with the folds that are present; nothing is dropped silently.
+missing folds, is printed as missing with the folds that are present; nothing is dropped silently. A stage on another dataset
+than kfold x86 sets `options['scope']` = (protocol, arch), which picks the baseline runs of its `tfidf` arms and the floors of
+its `cells` table, and `options['balanced']` for a second, cell-balanced paired table (`stage.py`).
 
 The runs are read from `common.paths.RUNS` (`GT_RUNS`), the combined cache of the kfold_v3 floors from `datasets.json`.
 """
@@ -15,6 +17,7 @@ import importlib
 
 from common.manifests import run_command
 from s04_evaluation.gate_tables import EXTRAS, match_rate_lines, paired_stage
+from s04_evaluation.stage import DEFAULT_SCOPE
 
 
 def stage_names():
@@ -33,10 +36,11 @@ def load_stage(name):
 
 def render(stage, resamples=2000):
     """The markdown lines of a stage."""
-    after = list(EXTRAS[stage.extra](stage.arms)) if stage.extra else []
-    after += match_rate_lines(stage.options.get('match_rate_builds', ()))
+    scope = tuple(stage.options.get('scope', DEFAULT_SCOPE))
+    after = list(EXTRAS[stage.extra](stage.arms, scope)) if stage.extra else []
+    after += match_rate_lines(stage.options.get('match_rate_builds', ()), scope)
     return paired_stage(stage.name, stage.intro_text(resamples), stage.arms, stage.pairs, resamples, stage.seeds,
-                        after_pooled=after, rule=stage.rule)
+                        after_pooled=after, rule=stage.rule, scope=scope, balanced=stage.options.get('balanced', False))
 
 
 def run_stage(name, resamples=2000):

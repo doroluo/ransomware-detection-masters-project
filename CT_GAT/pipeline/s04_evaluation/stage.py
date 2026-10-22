@@ -16,6 +16,7 @@ SEED = 0
 LABEL = 'seed 0 only, not the pre-registered test'
 MIN_AUC, MIN_F1 = 0.01, 0.02            # the pre-registered minimum effect (PLAN_GNN.md section 5)
 NI_AUC, NI_F1 = 0.01, 0.02              # non-inferiority margins of stage subgraph
+DEFAULT_SCOPE = ('kfold', 'x86')        # (protocol, arch) of a stage that names none: the Mendeley x86 dataset
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,11 @@ class Stage:
     rule      None, or rule(first, second, result, info) -> the text of the extra `rule` column of the paired table
     extra     None, or the name of a table printed after the pooled one (`gate_tables.EXTRAS`)
     options   `match_rate_builds`, ((name, folder under the run directory), ...): a match-rate line
-              (`gate_tables.match_rate_lines`) per pipeline-B build, after `extra`"""
+              (`gate_tables.match_rate_lines`) per pipeline-B build, after `extra`;
+              `scope`, (protocol, arch), default `DEFAULT_SCOPE`: the dataset of the stage, which picks the baseline runs a
+              baseline arm (`tfidf`) reads, the test manifests of the floors of `extra='cells'` and the total a build's match-rate
+              line expects; `balanced`, True: a second paired table with every test binary weighted by its class x architecture
+              cell (`stats.compare(balanced=True)`)"""
     name: str
     intro: Union[str, Callable[[int], str]] = ''
     arms: tuple = ()

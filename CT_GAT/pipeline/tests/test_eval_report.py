@@ -1,13 +1,16 @@
 """python -m pytest tests/test_eval_report.py: the RESULTS table writer of `s04_evaluation.report`: arm labels, the AUC table, the
 kfold_v3 floors, the cell-balanced section, and where the file is written."""
+import csv
 import json
 
+import numpy as np
 import pytest
 
-from eval_synth import (V3_MASKED, build_v3_ab_fake, build_v3_fake, cell_sample, fake_fold_rows, gnn, needs_combined,  # noqa: F401
-                        write_v3_run)
+from eval_synth import (FAKE_FLOORS, V3_MASKED, build_v3_ab_fake, build_v3_fake, cell_sample, fake_fold_rows, gnn,  # noqa: F401
+                        needs_combined, v3_rows, write_v3_run)
 from s04_evaluation import report
 from s04_evaluation.metrics import floors, scores
+from tiny_cache import tiny_v3  # noqa: F401  (a fixture)
 
 def test_report_labels():
     assert report.model_label(gnn()) == 'edge-typed GNN'
@@ -177,3 +180,64 @@ def test_the_cache_field_is_labelled_so_the_report_does_not_list_it_as_an_overri
     cfg = gnn(protocol='kfold_v3', fold=3, arch='all', cache='D:/elsewhere')
     overrides = {k for k, v in report.asdict(cfg).items() if k not in set(report.LABELLED) and v != report.DEFAULTS[k]}
     assert not overrides and report.model_label(cfg) == report.model_label(gnn(protocol='kfold_v3', fold=3, arch='all'))
+
+
+# ---- the whole Mendeley dataset (kfold, arch all) in the cell-balanced section --------------------------------------------------
+
+
+def write_kfold_all_run(root, fold, signal):
+    """write_v3_run for protocol kfold, arch all (the Mendeley dataset with its x64 binaries)."""
+    cfg = gnn(protocol='kfold', fold=fold, arch='all')
+    d = root / cfg.name
+    d.mkdir(parents=True)
+    cfg.save(d / 'config.json')
+    head = ['sample_id', 'split', 'label', 'prob', 'pred', 'arch', 'family', 'fold', 'n_segments_total']
+    for fname, thr in (('predictions.csv', 0.5), ('predictions_auc.csv', 0.4)):
+        with (d / fname).open('w', newline='') as f:
+            w = csv.writer(f)
+            w.writerow(head)
+            for sid, y, p, fam, a in v3_rows(fold, 0, signal):
+                w.writerow([sid, 'test', y, f'{p:.6f}', int(p >= thr), a, fam, fold, 5])
+    (d / 'manifest.json').write_text(json.dumps({'train': [f'tr{fold}_{i}' for i in range(10)]}))
+    (d / 'metrics.json').write_text('{}')
+
+
+def test_the_cell_table_takes_kfold_rows_of_arch_all_and_marks_their_protocol():
+    y, arch = cell_sample([60, 10, 20, 30])
+    prob = np.where(y == 1, 0.8, 0.2)
+    per_seed = {0: (scores(y, prob, (prob >= 0.5).astype(int), arch), {}, {})}
+    rows = [(('kfold', 'all', 'edge-typed GNN'), per_seed), (('kfold', 'x86', 'edge-typed GNN'), per_seed),
+            (('kfold_v3', 'all', 'edge-typed GNN'), per_seed), (('kfold_v3', 'matched', 'edge-typed GNN'), per_seed),
+            (('bundle', 'all', 'edge-typed GNN'), per_seed)]
+    lines = report.cell_table(rows)
+    assert [l.split(' | ')[1] for l in lines[2:]] == ['all (kfold)', 'all', 'matched']          # kfold x86 and the bundle have one architecture or none
+    assert all(l.endswith('| 4 | 60 | 10 | 20 | 30 |') for l in lines[2:])
+
+
+def test_kfold_floors_are_the_manifests_of_the_mendeley_cache(tiny_v3, monkeypatch):
+    monkeypatch.setattr(report, 'cache_for', lambda protocol: tiny_v3.root)
+    for cached in (report.kfold_floors, report.v3_floors):
+        cached.cache_clear()
+    every = report.scope_floors('kfold', 'all')
+    x86 = report.scope_floors('kfold', 'x86')
+    assert every[0]['x86_rule']['n'] == 48 and x86[0]['x86_rule']['n'] == 40 and len(every[1]) == len(x86[1]) == 5
+    assert x86[0]['x86_rule']['recall_R_x64'] != x86[0]['x86_rule']['recall_R_x64']           # nan: no x64 binary in the x86 dataset
+    assert every[0]['x86_rule']['n_R_x64'] + every[0]['x86_rule']['n_G_x64'] == 8 and every[0]['x86_rule']['cell_balanced']['n_cells'] >= 3
+    in_v3 = [r for r in tiny_v3.rows if r.get('fold_v3') not in (None, '')]
+    assert report.scope_floors('kfold_v3', 'all')[0]['majority']['n'] == len(in_v3)
+    for cached in (report.kfold_floors, report.v3_floors):
+        cached.cache_clear()
+
+
+def test_report_main_adds_the_kfold_all_rows_and_their_floors_to_the_cell_balanced_section(tmp_path, monkeypatch):
+    build_v3_ab_fake(tmp_path, monkeypatch)
+    for fold in range(5):
+        write_kfold_all_run(tmp_path, fold, 1.4)
+    monkeypatch.setattr(report, 'kfold_floors', lambda arch, seed=0: (FAKE_FLOORS, [FAKE_FLOORS] * 5))
+    monkeypatch.setattr(report, 'all_labels', lambda: {f'tr{fold}_{i}': i % 2 for fold in range(5) for i in range(10)})
+    report.main(['--out', str(tmp_path / 'RESULTS.md')])
+    section = (tmp_path / 'RESULTS.md').read_text(encoding='utf-8').split('## Cell-balanced (each class x arch weighted equally)')[1]
+    assert section.count('| edge-typed GNN | all (kfold) | 1 |') == 2                       # both selection rules
+    assert section.count('| floor: x86_rule | all (kfold) | 1 |') == 2 and section.count('| floor: majority | all (kfold) | 1 |') == 2
+    assert section.count('| floor: x86_rule | all | 1 |') == 2                               # the kfold_v3 floors are still there
+    assert 'kfold rows of arch all' in section
