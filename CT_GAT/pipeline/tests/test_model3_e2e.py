@@ -209,8 +209,9 @@ def test_the_arm_row_name_group_and_recipe():
     assert (row.sampler, row.num_blocks, row.features) == ('signal', 500, 'e2e') and not row.legacy
     assert train_b.ARM_HP[ARM] == {**train_b.HP, 'lr': 3e-4, 'grad_clip': 1.0, 'gpu_cap_gb': 12} == train_b.HP_E2E
     assert train_b.ARM_TABLE[ARM].hp['lr'] == 3e-4 and train_b.HP_E2E['lr'] == 3e-4 and 'node_budget' not in train_b.HP_E2E and train_b.BLOCK_LEN == 64
-    assert all('grad_clip' not in train_b.ARM_HP[a] for a in train_b.ARMS if a != ARM)
-    assert all(train_b.ARM_TABLE[a].hp['lr'] == 1e-3 for a in train_b.ARMS if a != ARM)
+    others = [a for a in train_b.ARMS if not a.endswith('-e2e')]                    # the other end-to-end arms (other builds) share HP_E2E
+    assert all('grad_clip' not in train_b.ARM_HP[a] for a in others)
+    assert all(train_b.ARM_TABLE[a].hp['lr'] == 1e-3 for a in others)
     cfg = tp.team_config(2, 1, ARM)
     assert cfg.name == f'kfold2_x86_gnn_s1_team-{ARM}' and cfg.group == team_group(ARM) == 'kfold_x86_gnn_team-sig500v3-e2e'
     assert dict(gates.load_stage('team').arms)[E2E] == cfg.group
@@ -302,4 +303,6 @@ def test_the_gates_pair_the_arm_with_emb_r7_and_tfidf_only():
     emb = 'team sig500v3 emb (Model 3)'
     assert dict(stage.arms)[E2E] == team_group(ARM)
     assert [a for a, b in stage.pairs if b == E2E] == ['TF-IDF', 'R7 typed, whole graph', emb]
-    assert not [b for a, b in stage.pairs if a == E2E] and len(stage.pairs) == len(set(stage.pairs))
+    assert [b for a, b in stage.pairs if a == E2E] == ['team callwalk500 e2e (Model 3, trained encoder)',      # only the sampler and budget
+                                                       'team sig250 e2e (Model 3, trained encoder)']      # pairs of the other builds
+    assert len(stage.pairs) == len(set(stage.pairs))
