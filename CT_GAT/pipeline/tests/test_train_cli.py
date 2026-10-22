@@ -12,7 +12,7 @@ import pytest
 
 from common.config import COMBINED_CACHE, DEFAULT_CACHE, RunConfig
 from common.manifests import make_manifest
-from experiments.train import parse_config
+from experiments.train import parse_args, parse_config
 
 ROOT = Path(__file__).resolve().parents[1]
 real_data = pytest.mark.real_data
@@ -211,3 +211,14 @@ def test_gt_cache_wins_and_other_protocols_keep_v2():
     assert int(r.stdout.split()[-1]) == 1                  # the v2 cache holds Mendeley rows only, so the test fold has one corpus
     r = probe(['--protocol', 'kfold', '--fold', '0'])
     assert r.returncode == 0 and Path(r.stdout.split()[0]) == Path(DEFAULT_CACHE), r.stderr
+
+
+def test_cli_tag_names_the_fivechannel_run_of_the_uncapped_build():
+    """`--tag` is a RunConfig field, so the flag exists for every model: Janice's five-channel Model 1 on the uncapped build
+    (Models 2 and 3 are compared with it) is `--model fivechannel --max-instructions 512 --tag whole`."""
+    cfg, out, options = parse_args(['--model', 'fivechannel', '--protocol', 'kfold', '--fold', '0', '--seed', '0', '--max-instructions', '512',
+                                    '--tag', 'whole', '--smoke', '8', '--device', 'cpu', '--build', 'RUNS/team/b_sigwhole_v3'])
+    assert cfg.name == 'kfold0_x86_fivechannel-L512_s0_whole' and cfg.tag == 'whole' and out is None
+    assert options == {'device': 'cpu', 'smoke': 8, 'build': 'RUNS/team/b_sigwhole_v3'}
+    assert parse_args(['--model', 'fivechannel', '--protocol', 'kfold', '--fold', '0', '--max-instructions', '512'])[0].name == (
+        'kfold0_x86_fivechannel-L512_s0')                                                       # without the tag: the earlier runs' names
