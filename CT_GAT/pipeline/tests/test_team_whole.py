@@ -25,7 +25,7 @@ FIVE = dict(protocol='kfold', arch='x86', model='fivechannel', max_instructions=
 
 
 def test_whole_arms_names_build_source_features_and_budget():
-    assert train_b.ARMS[-3:] == ('sigwhole', 'sigwhole-feat', 'sigwhole-emb') and len(train_b.ARMS) == 8
+    assert train_b.ARMS[-3:] == ('sigwhole', 'sigwhole-feat', 'sigwhole-emb') and len(train_b.ARMS) == 9
     for arm, features, v3 in WHOLE_ARMS:
         row = train_b.ARM_TABLE[arm]
         assert train_b.ARM_DIR[arm].name == 'b_sigwhole_v3' and row.sources == ('main-fix', 'repo')

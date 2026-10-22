@@ -1,7 +1,7 @@
 """Pipeline B trainer: the teammates' FullBlockGAT (train_full_gat recipe) on the build_b.py subgraphs, our fold manifests.
 
-python -m experiments.team_pipelines.train_b --fold 0 --seed 0 --arm <arm> [--features all|feat|emb] [--source LABEL] [--build DIR]
-       [--smoke N] [--device cuda|cpu]
+python -m experiments.team_pipelines.train_b --fold 0 --seed 0 --arm <arm> [--features all|feat|emb|e2e] [--block-len 64] [--source LABEL]
+       [--build DIR] [--smoke N] [--device cuda|cpu]
        (run from CT_GAT/pipeline; reads the build directory and never writes there)
 
 Arms (`ARM_TABLE`, one row per arm: sampler, block budget, node input, the source labels its build may record, the default build
@@ -16,6 +16,12 @@ directory, the hyperparameters; a new arm is a new row).
                      handcrafted block features), `feat` the 77 scaled block features (Model 2: block features + CFG), `emb` the
                      64-d pooled channel embedding (Model 3: block embeddings + CFG). Edges and edge attributes (edge_dim 8) are
                      the same in the three.
+  sig500v3-e2e       Model 3 trained end to end on `b_sig500_v3` (input `e2e`): Janice's `Model1TokenSequence` encodes the first
+                     `--block-len` (64, the only value) instructions of every block from the build's five-channel ids, and
+                     Dorothy's `FullBlockGAT` (in_dim 64, edge_dim 8) combines the block vectors over the CFG; both are trained
+                     together (`s03c_cfg_transformer/block_transformer.py`). The stored block embeddings and the 77 block features
+                     are not read. Recipe `HP_E2E`: the others' (AdamW lr 1e-3, weight decay 1e-4, batch 16, 40 epochs, patience 8)
+                     plus gradient clipping at 1.0 and the 12 GB GPU cap.
   sigwhole[-feat|-emb]   `RUNS/team/b_sigwhole_v3` (`build_b --sample signal --num-blocks 1000000`: every non-library block of every
                      binary, no cap), the same three inputs. They train with a node budget (`HP_WHOLE`, fit.py): a binary has up to
                      190k blocks and a batch of 16 can hold over a million nodes, which does not fit the GPU, so a batch above the
@@ -81,11 +87,15 @@ HP = {'lr': 1e-3, 'weight_decay': 1e-4, 'batch_size': 16, 'epochs': 40, 'patienc
 NODE_BUDGET = 300_000     # nodes per part of a batch: training ~28 KB per node (8.4 GB), evaluation ~15 KB (4.5 GB), under the 12 GB limit
 GPU_CAP_GB = 12          # the allocator may reserve at most this much (fit.py: beyond the card the driver pages into system RAM)
 HP_WHOLE = {**HP, 'node_budget': NODE_BUDGET, 'gpu_cap_gb': GPU_CAP_GB}
+HP_E2E = {**HP, 'grad_clip': 1.0, 'gpu_cap_gb': GPU_CAP_GB}      # post-LN transformer at lr 1e-3 without warmup: clip; 3e-4 only if fold 0 diverges
+BLOCK_LEN = 64            # instructions per block the end-to-end arm reads (block_transformer.BLOCK_LEN)
 B_DIR = RUNS / 'team' / 'b_sig500'
 B_V2_DIR = RUNS / 'team' / 'b_sig500_v2'
 B_V3_DIR = RUNS / 'team' / 'b_sig500_v3'
 B_WHOLE_DIR = RUNS / 'team' / 'b_sigwhole_v3'
 FEATURES = ('all', 'feat', 'emb')
+E2E = 'e2e'               # the node input of the end-to-end arm: no graph features, the block's instructions (block_transformer.py)
+INPUTS = FEATURES + (E2E,)
 FEATURE_MODE = {'all': 'both', 'feat': 'features', 'emb': 'embeddings'}      # graph_full_loader._node_features modes
 KIND_COLUMNS = ('api_none_count', 'api_unresolved_count', 'api_known_count')
 MAIN_FIX_LABELS = ('main-fix', 'repo')       # the builds of the fixed s02 preprocess: the pinned fix commit, or this repository's files
@@ -94,7 +104,7 @@ MAIN_FIX_LABELS = ('main-fix', 'repo')       # the builds of the fixed s02 prepr
 class Arm(NamedTuple):
     sampler: str                  # build_b --sample
     num_blocks: Optional[int]     # the block budget; None: uncapped (the build's num_blocks is at least UNCAPPED_BLOCKS)
-    features: str                 # the node input: one of FEATURES
+    features: str                 # the node input: one of INPUTS
     sources: tuple                # the labels a build's settings.json `source` may carry
     build: Path                   # the default build directory
     hp: dict
@@ -107,6 +117,7 @@ ARM_TABLE = {
     'sig500v3': Arm('signal', 500, 'all', MAIN_FIX_LABELS, B_V3_DIR, HP),
     'sig500v3-feat': Arm('signal', 500, 'feat', MAIN_FIX_LABELS, B_V3_DIR, HP),
     'sig500v3-emb': Arm('signal', 500, 'emb', MAIN_FIX_LABELS, B_V3_DIR, HP),
+    'sig500v3-e2e': Arm('signal', 500, E2E, MAIN_FIX_LABELS, B_V3_DIR, HP_E2E),
     'sigwhole': Arm('signal', None, 'all', MAIN_FIX_LABELS, B_WHOLE_DIR, HP_WHOLE),
     'sigwhole-feat': Arm('signal', None, 'feat', MAIN_FIX_LABELS, B_WHOLE_DIR, HP_WHOLE),
     'sigwhole-emb': Arm('signal', None, 'emb', MAIN_FIX_LABELS, B_WHOLE_DIR, HP_WHOLE),
@@ -346,14 +357,41 @@ def read_build_log(b_dir):
     return out
 
 
-def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, features=None, source=None):
+def check_block_len(arm, block_len):
+    """SystemExit when --block-len names a value the arm does not train with (the end-to-end arm reads BLOCK_LEN instructions per
+    block; the other arms read no instructions)."""
+    if block_len is None:
+        return
+    if ARM_FEATURES[arm] != E2E:
+        raise SystemExit(f'arm {arm} reads no instructions, --block-len {block_len} does not apply (the arm names the input)')
+    if block_len != BLOCK_LEN:
+        raise SystemExit(f'arm {arm} trains with --block-len {BLOCK_LEN}, not {block_len} (the arm names the input; another length '
+                         f'is another arm)')
+
+
+def e2e_extras(graphs, test_ids, block_len, api_rows):
+    """The metrics.json entries of the end-to-end arm: parameters, block length, the blocks cut at it and the instructions per
+    binary in the test split, and the names of the encoder and the GAT."""
+    from s03c_cfg_transformer import block_transformer as bt
+    test = [graphs[i] for i in test_ids]
+    n_blocks = sum(int(g.num_nodes) for g in test)
+    cut = sum(g.n_truncated for g in test)
+    return {'n_parameters': bt.Model3EndToEnd(api_rows, block_len).n_parameters(), 'block_len': block_len,
+            'truncated_blocks': {'test_count': cut, 'test_blocks': n_blocks, 'test_share': cut / max(n_blocks, 1)},
+            'tokens_per_binary': sum(g.n_tokens for g in test) / max(len(test), 1),
+            'instructions_per_binary': sum(g.n_instructions for g in test) / max(len(test), 1),
+            'encoder': bt.ENCODER, 'gat': bt.GAT}
+
+
+def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, features=None, source=None, block_len=None):
     if arm not in ARM_TABLE:
         raise ValueError(f'arm {arm}: one of {ARMS}')
     features = ARM_FEATURES[arm] if features is None else features
-    if features not in FEATURES:
-        raise ValueError(f'features {features}: one of {FEATURES}')
+    if features not in INPUTS:
+        raise ValueError(f'features {features}: one of {INPUTS}')
     if features != ARM_FEATURES[arm]:
         raise SystemExit(f'arm {arm} trains on --features {ARM_FEATURES[arm]}, not {features} (the arm names the input)')
+    check_block_len(arm, block_len)
     check_source_flag(arm, source)
     b_dir = default_build_dir(arm) if b_dir is None else Path(b_dir)
     label = check_build(arm, b_dir, source)
@@ -388,21 +426,33 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
     every = {a for i in want for a in api_ids[i]}
     log(f'api ids in the fold\'s training binaries: {len(seen)}; unseen in val/test binaries mapped to UNK_API: '
         f'{len(every - set(seen.tolist()))} of {len(every)} ids used')
+    e2e = features == E2E
+    if e2e:
+        from s03c_cfg_transformer import block_transformer as bt      # imported here: it needs torch_geometric
     graphs = {}                                                  # second pass: each graph from its payload, which is then dropped
     for i in want:
-        graphs[i] = make_graph(pp, gl, embedder, load_slim(b_dir, i), seen, features)
+        payload = load_slim(b_dir, i)
+        graphs[i] = bt.make_e2e_graph(pp, gl, payload, seen, BLOCK_LEN) if e2e else make_graph(pp, gl, embedder, payload, seen, features)
     log_rows = read_build_log(b_dir)
-    sizes = {i: (None, int(graphs[i].x.size(0)), log_rows[i][0]) for i in want}
-    in_dim, edge_dim = int(graphs[want[0]].x.size(1)), int(graphs[want[0]].edge_attr.size(1))
+    sizes = {i: (None, int(graphs[i].num_nodes), log_rows[i][0]) for i in want}
+    in_dim, edge_dim = (bt.D_MODEL if e2e else int(graphs[want[0]].x.size(1))), int(graphs[want[0]].edge_attr.size(1))
     log(f'{arm}: {len(graphs)} graphs built in {time.time() - t0:.0f} s, features {features}, in_dim {in_dim}, '
         f'edge_dim {edge_dim}')
+    api_rows = int(embedder.api_embedding.num_embeddings)
     extra = {'in_dim': in_dim, 'edge_dim': edge_dim, 'features': features, 'n_api_ids_train': int(len(seen)),
              'n_api_ids_unseen_mapped': len(every - set(seen.tolist())), 'build_dir': str(b_dir),
              'build_binaries': len(done), 'build_source': label, 'build_pins': build_pins(b_dir, label),
              'code_pins': dict(source_pins(code_source(label)))}
+    if e2e:
+        build_model = lambda: bt.Model3EndToEnd(api_rows, BLOCK_LEN, edge_dim)                  # noqa: E731
+        if not smoke:
+            extra.update(e2e_extras(graphs, [r['sample_id'] for r in manifest.test if r['sample_id'] not in excluded], BLOCK_LEN,
+                                    api_rows))
+    else:
+        build_model = lambda: gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim)                 # noqa: E731
     reasons = sorted(set(excluded.values()))
     return run_arm(arm=arm, fold=fold, seed=seed, graphs=graphs, sizes=sizes,
-                   build_model=lambda: gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim), hp=ARM_HP[arm], device=device,
+                   build_model=build_model, hp=ARM_HP[arm], device=device,
                    smoke=smoke, smoke_split=split, extra=extra, log=log, excluded=sorted(excluded),
                    excluded_reason='; '.join(reasons))
 
@@ -412,8 +462,10 @@ def main(argv=None):
     ap.add_argument('--fold', type=int, required=True)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--arm', choices=ARMS, default='sig500')
-    ap.add_argument('--features', choices=FEATURES, help="node input: all (141-d), feat (77 block features), emb (64-d "
-                    "embedding); default and only value allowed: the arm's")
+    ap.add_argument('--features', choices=INPUTS, help="node input: all (141-d), feat (77 block features), emb (64-d "
+                    "embedding), e2e (the block's instructions, encoder trained with the GAT); default and only value allowed: the arm's")
+    ap.add_argument('--block-len', type=int, help=f"instructions per block the encoder reads (arm sig500v3-e2e: {BLOCK_LEN}, the only "
+                    "value allowed; the other arms read no instructions)")
     ap.add_argument('--source', choices=sorted(SOURCE_CODE), help="the source label the build must have recorded (default: any "
                     "the arm accepts)")
     ap.add_argument('--build', type=Path, help="build directory: a build_b folder or an unzipped preprocessed zip (default: the "
@@ -422,7 +474,8 @@ def main(argv=None):
     ap.add_argument('--device', choices=['cuda', 'cpu'])
     args = ap.parse_args(argv)
     out = run(args.arm, args.fold, args.seed, args.smoke, args.device,
-              resolve_dir(args.build) if args.build else None, features=args.features, source=args.source)
+              resolve_dir(args.build) if args.build else None, features=args.features, source=args.source,
+              block_len=args.block_len)
     if args.smoke:
         print(f"smoke: val AUC {out['val_auc']:.4f}, peak GPU {out['peak_gpu_mb']} MB, loss "
               f"{out['history'][0]['loss']} -> {out['history'][-1]['loss']}, temp dir {out['dir']} (not under {RUNS})")
