@@ -27,16 +27,16 @@ optional and replaces a build on the CPU: about 4 h for the 500-block samples an
 |---|---|---|---|
 | `Collections/Mendeley_Ransomware.zip` | 5.0 GB | `c3785afff453792b007eee3f736f725df926f90c34638af88d4feb19772ada9c` | the IDA exports of the ransomware binaries. Unzip into `CT_GAT/data/` |
 | `Collections/Mendeley_Goodware.zip` | 1.5 GB | `33afd5dc007b1e551cd657209961a68aebbd975cecba9db266e7f6af48cf9cc1` | the same for the goodware binaries. Unzip into `CT_GAT/data/` |
-| `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` | 1.4 GB | `fe8a1c4fc93aaf0913c9992ab0f832738cd8c32095524d8cc10ee390237771b3` | the preprocessed samples of Models 1 to 3, `signal` sampler, 500 blocks per binary. Unzip at `CT_GAT/` |
+| `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` | pending | pending | the preprocessed samples of Models 1 to 3, `signal` sampler, 500 blocks per binary. Unzip at `CT_GAT/` |
 | `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip` | pending | pending | the same, `signal`, 250 blocks. Unzip at `CT_GAT/` |
 | `Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip` | pending | pending | the same, `callwalk` (a walk across calls), 500 blocks |
 | `Mendeley_x86_cfg_subgraphs_callwalk_250blocks_v3.zip` | pending | pending | the same, `callwalk`, 250 blocks |
-| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` | 2.6 GB | `4b51e3238398967ad891647364fbe815fcce5c8f90f5d33249fcae29c9564e8d` | every non-library block of each binary, which `signal` and `callwalk` both give. Unzip at `CT_GAT/` |
+| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` | pending | pending | every non-library block of each binary, which `signal` and `callwalk` both give. Unzip at `CT_GAT/` |
 
-The sizes and checksums are those of the files on the Drive; "pending" zips are packaged with `package_build.py` once their build ends.
-Unpacked, the collection zips take about their zip size, the 500-block zip 9.9 GB and the uncapped one 13.3 GB; the CFG cache below
-takes 2.6 GB. Unzip a preprocessed zip over an empty `CT_GAT/processed/`: the folder holds one build at a time, and the zips have
-different API vocabularies. The balanced collections of the all-architecture cache are in the pipeline README.
+Every preprocessed zip is named after its sampler and block count; "pending" sizes and checksums are filled in once the zip is packaged
+(`package_build.py`) and uploaded. Unpacked, the collection zips take about their zip size, the signal 500-block zip 9.9 GB and the
+uncapped one 13.3 GB; the CFG cache below takes 2.6 GB. Unzip a preprocessed zip over an empty `CT_GAT/processed/`: the folder holds one
+build at a time, and the zips have different API vocabularies. The balanced collections of the all-architecture cache are in the pipeline README.
 
 Each collection zip holds one top-level folder named like the zip, so the destination is `CT_GAT/data` itself; a preprocessed zip
 holds `processed/` and a README, so its destination is `CT_GAT`. Run these from the repository root, with `<path to>` the folder of
@@ -47,13 +47,13 @@ the downloaded zips:
 mkdir CT_GAT\data
 tar -xf <path to>\Mendeley_Ransomware.zip -C CT_GAT\data
 tar -xf <path to>\Mendeley_Goodware.zip -C CT_GAT\data
-tar -xf <path to>\Mendeley_x86_cfg_subgraphs_500blocks_v3.zip -C CT_GAT
+tar -xf <path to>\Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip -C CT_GAT
 
 # macOS and Linux (on macOS, tar -xf <zip> -C CT_GAT/data also works)
 mkdir -p CT_GAT/data
 unzip <path to>/Mendeley_Ransomware.zip -d CT_GAT/data
 unzip <path to>/Mendeley_Goodware.zip -d CT_GAT/data
-unzip <path to>/Mendeley_x86_cfg_subgraphs_500blocks_v3.zip -d CT_GAT
+unzip <path to>/Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip -d CT_GAT
 ```
 
 The result is `CT_GAT/data/Mendeley_Ransomware/samples.csv`, `CT_GAT/data/Mendeley_Goodware/samples.csv`,
@@ -80,7 +80,7 @@ numbers are in `CT_GAT/pipeline/docs/history/`.
 
 Models 1 to 3 read `CT_GAT/processed/cfg_subgraphs`. Each has a smoke run (CPU) and the full run, here on fold 0; `--fold` picks one
 of the five folds and `--seed` the seed. A smoke run needs the `.pt` files of 24 binaries (8 each for training, validation and test),
-so unpack the 500-block zip first. The smoke runs of Models 2 and 3 leave a `team_smoke_*` folder in the system temp folder.
+so unpack the signal 500-block zip first. The smoke runs of Models 2 and 3 leave a `team_smoke_*` folder in the system temp folder.
 
 ```bash
 # Model 1, the five-channel transformer over the instruction sequence
@@ -99,7 +99,7 @@ python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --fold 0 --seed 
 `--arm sig500v3-emb` is the fixed-embedding variant of Model 3: the stored 64-d block embeddings and the CFG. The arm families
 (each with `-feat`, `-emb`, `-e2e` unless noted): `sig500v3-*`, `sig250-*`, `callwalk500-*`, `callwalk250-*` and `sigwhole-*` (`-feat`,
 `-emb` only, on the uncapped zip). `--build DIR` points a model at a build in another folder. `build_b --source repo` (about 4 h)
-replaces the 500-block zip; its command is in the pipeline README.
+replaces the signal 500-block zip; its command is in the pipeline README.
 
 A plan in `experiments/plans/` is one experiment for `experiments.queue`; `--dry` prints its runs without starting them:
 

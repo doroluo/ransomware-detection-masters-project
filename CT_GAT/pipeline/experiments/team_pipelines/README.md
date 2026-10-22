@@ -54,7 +54,7 @@ python -m experiments.team_pipelines.train_b --fold F --seed S --arm sig500 --de
 ```
 
 - Models 2 and 3 on the fixed build (`sig500v3-feat`, `sig500v3-emb`; the same three inputs on the uncapped build are the `sigwhole`
-  arms) from a clone of this repository, with the Drive zip `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` unzipped at `CT_GAT/` and
+  arms) from a clone of this repository, with the Drive zip `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` unzipped at `CT_GAT/` and
   nothing else configured:
 
   ```
@@ -136,7 +136,7 @@ python -m experiments.team_pipelines.build_b --source repo --sample signal --num
 
 With no `--ids` it builds all 1,810 x86 ids in sorted order, with one vocabulary pass and seed 0: the published pipeline-B build
 (`b_sig500_v3`), about 4 h on the CPU (7.6 s per sample, measured on the development machine). It resumes from its checkpoint. The faster way is the preprocessed zip
-`Mendeley_x86_cfg_subgraphs_500blocks_v3.zip`, unzipped at `CT_GAT/`; the build does not write `CT_GAT/processed/api_vocab.json` that
+`Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip`, unzipped at `CT_GAT/`; the build does not write `CT_GAT/processed/api_vocab.json` that
 the zip carries, which only Janice's untrained demo in `model.py` reads. Without the cache `build_b` stops and names the
 `build_cache` command. A folder that holds sample `.pt` files but neither `checkpoint.json` nor `settings.json` (the unzipped zip) is
 refused, not overwritten: give `--out` an empty folder.
@@ -205,7 +205,8 @@ pinned `preprocess_full.py`, which is not edited. `train_b` then runs on the man
 test of every fold; the other 1,809 are unchanged), `common.write_run(excluded=, excluded_reason=)` records it in `metrics.json`, and
 `stats.py` / `gates.py` print "N excluded from both arms: <ids> (<reason>)" under every paired difference that involves a sig500 run.
 
-Each manifest json is 3-6 MB (about 8 GB for the full build); the `.pt` files are about 0.5 MB.
+In the 500-block builds each manifest json is 3-6 MB (about 8 GB for the full build) and each `.pt` file about 0.5 MB; in the
+uncapped build the manifests total about 102 GB.
 
 ## package_build.py (the zip of a build)
 
@@ -219,11 +220,13 @@ their manifests, `channel_embedder.pt`, `build_info/{index.csv, build_settings.j
 `train_b` reads as an unzipped Drive zip (`build_layout`) and `--model fivechannel --build CT_GAT/processed/cfg_subgraphs` reads
 directly. The name comes from the build's `settings.json`: `Mendeley_x86_cfg_subgraphs_<signal|callwalk>_<N>blocks_v3.zip`, or
 `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` when `num_blocks` is 0 or at least `train_b.UNCAPPED_BLOCKS` (1,000,000), whose README
-says it serves both samplers. `--out` (default: the current directory) receives the zip, `<zip>.sha256` and `<zip stem>.README.md`,
+says it serves both samplers. The five zips of the Drive are `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` (from
+`b_sig500_v3`), `..._signal_250blocks_v3.zip` (`b_sig250_main`), `..._callwalk_500blocks_v3.zip` (`b_callwalk500_main`),
+`..._callwalk_250blocks_v3.zip` (`b_callwalk250_main`) and `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (`b_sigwhole_v3`). `--out` (default: the current directory) receives the zip, `<zip>.sha256` and `<zip stem>.README.md`,
 the text that is also the first file of the zip. The README is generated from `settings.json`, `build_summary.json` and the samples
 (counts of ransomware and goodware, sampler and budget, the source and sha256 pins of the code, `--seeded-rows` when the build has
-it) and names no machine path. `--no-manifests` leaves out the per-sample manifest json files (3-6 MB each, read by no model; the
-README says so); `--deflate-pt` compresses the `.pt` files (level 1) instead of storing them. Only `signal` and `callwalk` builds are
+it) and names no machine path. `--no-manifests` leaves out the per-sample manifest json files (read by no model; 3-6 MB each in the
+500-block builds, about 102 GB in all in the uncapped one; the README says so and drops them from its layout block); `--deflate-pt` compresses the `.pt` files (level 1) instead of storing them. Only `signal` and `callwalk` builds are
 packaged. `tests/test_package_build.py` runs it on a synthetic build and reads the unzipped result back through `train_b`.
 
 ## build_a.py (pipeline A, opcode mode)

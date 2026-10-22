@@ -111,9 +111,9 @@ Drive, and each zip has a `.sha256` file beside it and a README inside it.
 |---|---|---|
 | `Collections/Mendeley_Ransomware.zip` (5.0 GB) | required. Per binary, the IDA CFG export `<sha256>.jsonl.gz` and the IDA listing `<sha256>.asm.gz`, in `samples/<split>/<family>/`, with the collection's `samples.csv` and `summary.json`. Unzip into `CT_GAT/data/` | the CFG cache and every command that reads it, `build_b`, `preprocess_full.py` |
 | `Collections/Mendeley_Goodware.zip` (1.5 GB) | required. The same for the goodware binaries. Unzip into `CT_GAT/data/` | as above |
-| `Mendeley_x86_cfg_subgraphs_500blocks_v3.zip` (1.4 GB) | the preprocessed samples of Models 1 to 3: one `.pt` file per binary for the 1,810 x86 binaries of the folds, 500 blocks per binary. Unzip at `CT_GAT/`; it unpacks to 9.9 GB. It saves the 4 h build of `build_b --source repo` | Models 1, 2 and 3 |
-| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (2.6 GB) | the same with every non-library block of each binary; it unpacks to 13.3 GB and saves a 5.6 h build. With no block budget the `callwalk` sampler restarts until every allowed block is chosen and the samples are saved in block order, so this one zip serves both samplers | as above |
-| `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip`, `..._callwalk_500blocks_v3.zip`, `..._callwalk_250blocks_v3.zip` | the same samples from `build_b --sample signal --num-blocks 250` and `--sample callwalk` at 500 and 250 blocks (`callwalk` grows its subgraph across calls: [`s02_preprocess/README.md`](s02_preprocess/README.md)); packaged by `experiments.team_pipelines.package_build`, which names the zip after the sampler and the block count | Models 1, 2 and 3 |
+| `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` (size pending) | the preprocessed samples of Models 1 to 3: one `.pt` file per binary for the 1,810 x86 binaries of the folds, `signal` sampler, 500 blocks per binary. Unzip at `CT_GAT/`; it unpacks to 9.9 GB. It saves the 4 h build of `build_b --source repo` | Models 1, 2 and 3 |
+| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (size pending) | the same with every non-library block of each binary; it unpacks to 13.3 GB and saves a 5.6 h build. With no block budget the `callwalk` sampler restarts until every allowed block is chosen and the samples are saved in block order, so this one zip serves both samplers | as above |
+| `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip`, `Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip`, `Mendeley_x86_cfg_subgraphs_callwalk_250blocks_v3.zip` (sizes pending) | the same samples from `build_b --sample signal --num-blocks 250` and `--sample callwalk` at 500 and 250 blocks (`callwalk` grows its subgraph across calls: [`s02_preprocess/README.md`](s02_preprocess/README.md)); packaged by `experiments.team_pipelines.package_build`, which names the zip after the sampler and the block count | Models 1, 2 and 3 |
 | `Collections/Ransomware_Balanced.zip` (8.9 GB), `Collections/Balanced_Goodware.zip` (15.7 GB) | two more collections in the same layout. Unzip into `CT_GAT/data/` | the all-architecture cache (`build_cache --cache combined_v3`) |
 | `Collections/VirusShare Ransomware.zip` | unzips to `VirusShare_Malware/`. It is in no dataset: no fold file lists it and all its rows are in `splits/unassigned.csv`, so no command of the pipeline reads it | nothing |
 | `Mendeley_GNN_v1.zip` | the Mendeley CFG exports as one bundle (`samples.csv`, `splits/`, `cfg/`), an alternative to the two Mendeley collections | the CFG cache, when the bundle is configured or unzipped into `CT_GAT/data/` |
@@ -166,13 +166,14 @@ same rule, but not the ones of the published tables (its docstring says why), so
 
 **The preprocessed zips.** Models 1, 2 and 3 train on a folder of pipeline-B `.pt` files, `CT_GAT/processed/cfg_subgraphs`. The
 `Mendeley_x86_cfg_subgraphs_*_v3.zip` files fill it. The zip has no top-level folder: it holds `processed/` and a README, so the
-destination is `CT_GAT` itself and not `CT_GAT/processed`. From the repository root:
+destination is `CT_GAT` itself and not `CT_GAT/processed`. From the repository root, for the `signal` 500-block zip (the other four
+unzip the same way under their own names):
 
 ```bash
 # Windows, PowerShell or cmd
-tar -xf <path to>\Mendeley_x86_cfg_subgraphs_500blocks_v3.zip -C CT_GAT
+tar -xf <path to>\Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip -C CT_GAT
 # macOS and Linux
-unzip <path to>/Mendeley_x86_cfg_subgraphs_500blocks_v3.zip -d CT_GAT
+unzip <path to>/Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip -d CT_GAT
 ```
 
 This creates `CT_GAT/processed/api_vocab.json`, `CT_GAT/processed/cfg_subgraphs/` and the README at `CT_GAT/`. In Windows Explorer,
@@ -184,12 +185,12 @@ nothing reads it. Files taken from the Drive one by one go here:
 | `api_vocab.json` | `CT_GAT/processed/api_vocab.json` (the API vocabulary; the five-channel demo and `preprocess_full.py` read it there) |
 | `<sha256>.pt` (one per binary) | `CT_GAT/processed/cfg_subgraphs/` |
 | `channel_embedder.pt` | `CT_GAT/processed/cfg_subgraphs/` |
-| `<sha256>.manifest.json` (500-block zip only) | `CT_GAT/processed/cfg_subgraphs/` (alignment report per binary; no model reads it) |
+| `<sha256>.manifest.json` (only in zips packaged with them; the README of a zip says if they are left out) | `CT_GAT/processed/cfg_subgraphs/` (alignment report per binary; no model reads it) |
 | `build_info/` | `CT_GAT/processed/cfg_subgraphs/build_info/` (per-binary index and build settings; no model reads it) |
-| `README_Mendeley_x86_cfg_subgraphs_<budget>_v3.md` | stays at `CT_GAT/`, where the zip unpacks it (git ignores it; no command reads it) |
+| `README_<zip name without .zip>.md`, e.g. `README_Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.md` | stays at `CT_GAT/`, where the zip unpacks it (git ignores it; no command reads it) |
 
 The folder holds one build at a time. Each zip's `.pt` files carry API ids of its own `api_vocab.json` (12,406 names in the
-500-block build, 12,788 uncapped), so the files of the two zips must not be mixed. The folder is also filled by `build_b --source repo`
+500-block build, 12,788 uncapped), so the files of two zips must not be mixed. The folder is also filled by `build_b --source repo`
 (step 2 of Running).
 
 ## On-disk layout
