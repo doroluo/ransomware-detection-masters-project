@@ -5,14 +5,16 @@ read the published runs of the earlier models and baselines (TF-IDF, the header-
 path 2 on the CodeBERT vectors) need no model code, only their run directories; the code that wrote them is on branch
 `jsonl-reference-models`. The stage reads: TF-IDF, the header-imports LR, R7 and R2 with 15% block masking, our matched cap-500 arms (typed and
 no-edges, `--subgraph cap --budget 500 --tag b500`), team gnn500, cb500, sig500, sig500v2, the three sig500v3 arms (`feat` is
-Model 2, `emb` Model 3), the three uncapped sigwhole arms and main's five-channel Model 1 on the uncapped build
+Model 2, `emb` Model 3), Model 3 trained end to end on the same build (`e2e`: Janice's transformer encodes each block's instructions
+under Dorothy's GAT, both trained together), the three uncapped sigwhole arms and main's five-channel Model 1 on the uncapped build
 (`--model fivechannel --max-instructions 512 --tag whole`), and path 2 on the CodeBERT vectors. The pooled seed-0 table adds accuracy,
 precision, recall and the confusion matrix of every arm (ransomware = positive class, AUC checkpoint at its validation threshold)
 and a line per v3 build with its match rates (`options['match_rate_builds']`: the builds and their folders); each team arm is
 paired against TF-IDF, R7 and our b500 typed arm, cb500 against path 2 (same vectors, their GAT against our GNN), sig500v2 (the
 rebuild with Yanping's streaming preprocess) against sig500, R7 and TF-IDF, sig500v3 against sig500v2 and sig500, R7 and our b500
-no-edges arm (v3 pairs are read on the binaries both arms have), feat against emb, each sigwhole arm against its sig500v3
-counterpart and against R7, sigwhole emb against feat, and our b500 typed arm against R7 (what the 500-block cap costs). The
+no-edges arm (v3 pairs are read on the binaries both arms have), feat against emb, e2e against emb (what training the encoder
+adds), R7 and TF-IDF, each sigwhole arm against its sig500v3 counterpart and against R7, sigwhole emb against feat, and our b500
+typed arm against R7 (what the 500-block cap costs). The
 paired differences use the seeds 0 1 2 complete in both arms and carry the pre-registered rule of PLAN_GNN.md section 5.
 Missing arms print as missing.
 """
@@ -41,6 +43,7 @@ ARMS = (('TF-IDF', 'tfidf'), ('header-imports LR', 'imports-header'),
         ('team sig500v3', team_group('sig500v3')),
         ('team sig500v3 feat (Model 2)', team_group('sig500v3-feat')),
         ('team sig500v3 emb (Model 3)', team_group('sig500v3-emb')),
+        ('team sig500v3 e2e (Model 3, trained encoder)', team_group('sig500v3-e2e')),
         ('team sigwhole', team_group('sigwhole')),
         ('team sigwhole feat (Model 2)', team_group('sigwhole-feat')),
         ('team sigwhole emb (Model 3)', team_group('sigwhole-emb')),
@@ -48,10 +51,11 @@ ARMS = (('TF-IDF', 'tfidf'), ('header-imports LR', 'imports-header'),
         ('path 2: typed, CodeBERT vectors', x86_group(variant_of(**CB_VEC_ARMS))))
 V2 = 'team sig500v2'
 V3 = ('team sig500v3', 'team sig500v3 feat (Model 2)', 'team sig500v3 emb (Model 3)')
+E2E = 'team sig500v3 e2e (Model 3, trained encoder)'
 WHOLE = ('team sigwhole', 'team sigwhole feat (Model 2)', 'team sigwhole emb (Model 3)')
 WHOLE_ROWS = WHOLE + ('fivechannel-L512 whole',)
 MATCH_RATE_BUILDS = (('b_sig500_v3', 'team/b_sig500_v3'), ('b_sigwhole_v3', 'team/b_sigwhole_v3'))   # (name, folder under the run directory)
-TEAM_OF = tuple(a for a, _ in ARMS if a.startswith('team ') and a != V2 and a not in V3 + WHOLE)
+TEAM_OF = tuple(a for a, _ in ARMS if a.startswith('team ') and a != V2 and a not in V3 + (E2E,) + WHOLE)
 COST = ('R7 typed, whole graph', 'ours b500 typed')
 PAIRS = (tuple(('TF-IDF', a) for a in TEAM_OF) + tuple(('R7 typed, whole graph', a) for a in TEAM_OF)
          + tuple(('ours b500 typed', a) for a in TEAM_OF)
@@ -60,6 +64,7 @@ PAIRS = (tuple(('TF-IDF', a) for a in TEAM_OF) + tuple(('R7 typed, whole graph',
          + ((V2, V3[0]), ('team sig500', V3[0]))
          + tuple(('R7 typed, whole graph', a) for a in V3) + tuple(('ours b500 no-edges', a) for a in V3)
          + ((V3[1], V3[2]),)
+         + (('TF-IDF', E2E), ('R7 typed, whole graph', E2E), (V3[2], E2E))
          + tuple(zip(V3, WHOLE)) + tuple(('R7 typed, whole graph', a) for a in WHOLE_ROWS)
          + ((WHOLE[1], WHOLE[2]),))
 
@@ -87,7 +92,10 @@ def intro(resamples):
             "library-function fixes (source main-fix, 8a971b7's s02 pins; `b_sig500_v3`), whose two ablations feed the GAT only the "
             "77 handcrafted block features (`feat`, Model 2: block features + CFG) or only the 64-d pooled channel embedding "
             "(`emb`, Model 3: block embeddings + CFG); every v3 pair is read on the binaries both arms have, all trained on "
-            "our folds and validation split. `team sigwhole`, `sigwhole feat` and `sigwhole emb` are the same three arms on the uncapped "
+            "our folds and validation split. `team sig500v3 e2e` is Model 3 with the encoder trained: on the same build, Janice's "
+            "`Model1TokenSequence` reads the first 64 instructions of every block and Dorothy's GAT combines the block vectors, "
+            "trained together (`s03c_cfg_transformer/block_transformer.py`); it is paired against `emb` (the same GAT on the frozen "
+            "pooled embedding), R7 and TF-IDF. `team sigwhole`, `sigwhole feat` and `sigwhole emb` are the same three arms on the uncapped "
             "rebuild (`b_sigwhole_v3`, every non-library block of every binary, trained with a per-batch node budget), paired against "
             "their 500-block v3 counterparts and against R7; `fivechannel-L512 whole` is Janice's five-channel Model 1 (main's code, "
             "512 instructions) on the same uncapped build. The pooled table is seed 0; "

@@ -133,7 +133,7 @@ def test_team_groups_are_the_names_the_trainers_write():
         assert [b for a, b in pairs if a == ref and b in first] == ['team gnn500', 'team cb500', 'team sig500'] + v2
     assert ('team sig500', 'team sig500v2') in pairs
     assert ('path 2: typed, CodeBERT vectors', 'team cb500') in pairs and ('R7 typed, whole graph', 'ours b500 typed') in pairs
-    assert len(pairs) == len(set(pairs)) == 31 and s.extra == 'operating_points' and s.seeds == (0, 1, 2)
+    assert len(pairs) == len(set(pairs)) == 34 and s.extra == 'operating_points' and s.seeds == (0, 1, 2)
     assert s.options['match_rate_builds'] == (('b_sig500_v3', 'team/b_sig500_v3'), ('b_sigwhole_v3', 'team/b_sigwhole_v3'))
 
 

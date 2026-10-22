@@ -14,7 +14,7 @@ argument stands for it.
 
 Everything here is optional for the rest of the pipeline: importing any module of this package works without the teammates'
 code, without `torch_geometric` and without `psutil`, and the tests of these modules skip with a reason when an input is absent.
-Models 2 and 3 (`train_b --arm sig500v3-feat|sig500v3-emb`, the `sigwhole` arms) need no `GT_TEAM_*` variable: Dorothy's graph
+Models 2 and 3 (`train_b --arm sig500v3-feat|sig500v3-emb|sig500v3-e2e`, the `sigwhole` arms) need no `GT_TEAM_*` variable: Dorothy's graph
 loader, model and training helpers are copied into [`s03b_cfg_feature/gat`](../../s03b_cfg_feature/README.md) and a build made with the
 fixed preprocess is embedded and pooled by this repository's own `s02_preprocess` files. What the commands need:
 
@@ -222,7 +222,7 @@ python -m experiments.team_pipelines.train_a --fold k --seed s --arm gnn500 [--s
 ## train_b.py (the arms of `ARM_TABLE`)
 
 ```
-python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--features all|feat|emb] [--source LABEL] [--build DIR] [--smoke N] [--device cuda|cpu]
+python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--features all|feat|emb|e2e] [--block-len 64] [--source LABEL] [--build DIR] [--smoke N] [--device cuda|cpu]
 ```
 
 - Arms. `ARM_TABLE` has one row per arm (sampler, block budget, node input, the source labels its build may record, the default
@@ -235,9 +235,10 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   | `sig500v3` | `b_sig500_v3`, 500 blocks | `all` | `main-fix`, `repo` | nothing |
   | `sig500v3-feat` (Model 2) | `b_sig500_v3` | `feat`, the 77 scaled block features | `main-fix`, `repo` | nothing |
   | `sig500v3-emb` (Model 3) | `b_sig500_v3` | `emb`, the 64-d pooled channel embedding | `main-fix`, `repo` | nothing |
+  | `sig500v3-e2e` (Model 3, trained encoder) | `b_sig500_v3` | `e2e`, the instructions of each block (below) | `main-fix`, `repo` | nothing; lr 3e-4, gradient clip 1.0 (`HP_E2E`) |
   | `sigwhole`, `sigwhole-feat`, `sigwhole-emb` | `b_sigwhole_v3`, uncapped (`num_blocks` at least 1,000,000) | `all`, `feat`, `emb` | `main-fix`, `repo` | nothing; a node budget per batch (`HP_WHOLE`, `fit.py`) |
 
-  `--features` and `--source` are refused when they contradict the arm. The build's settings (`settings.json`, or
+  `--features`, `--block-len` and `--source` are refused when they contradict the arm. The build's settings (`settings.json`, or
   `build_info/build_settings.json` of a zip) name its sampler, block budget and source label; a run refuses a build that
   contradicts the arm in any of the three and the message names the three values of the arm and of the build (the two first
   arms skip the keys their builds never wrote). The label picks the code that embeds and pools (`common.SOURCE_CODE`): the
@@ -249,6 +250,31 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   bit-identical (`torch.equal` on `x`, `edge_index`, `edge_attr`, `y`) to those of the branch's trainer in all three input modes. `metrics.json` records `features`, `build_dir`, `build_binaries`,
   `build_source` (the label), `build_pins` (the pins in the build's settings, never those of the files now in the repository)
   and `code_pins` (the sha256 of the files this run imported).
+- Model 3 trained end to end (`sig500v3-e2e`, `s03c_cfg_transformer/block_transformer.py`). `sig500v3-emb` gives the GAT block
+  vectors that were pooled from an embedder nobody trained; here the vector is learned. Per block, the first `--block-len` (64, the
+  only value; a longer block is cut, which is 0.97% of the blocks and 11% of the instructions of the published build) instructions'
+  five-channel ids go through Janice's `Model1TokenSequence` (`s03a_transformer/five_channel/model.py`, d_model 64, 4 heads, 2
+  layers, positions learned up to the block length, unchanged; her `classifier` is built and never called, 4,290 parameters
+  recorded as `unused_classifier`), her masked mean pooling, a `LayerNorm(64)`, and Dorothy's `FullBlockGAT(in_dim=64, edge_dim=8)`
+  with its defaults over the CFG. The 77 block features and the stored `block_embeddings` are not read (`emb` beat `all` on the same
+  build, and `all` would be another arm). The encoder is created fresh after `torch.manual_seed(seed)`, not from
+  `channel_embedder.pt`. The same per-fold API remap as `emb` applies to the ids. Unmatched instructions are the build's all-zero
+  rows and are kept; a block with no instruction gets one unmasked PAD row (an all-masked row gives NaN in `TransformerEncoder`) and
+  a zero vector. A batch is one flat list of instructions (`BlockSeqData`: `insn_ids`, `insn_block`, the CFG) padded to
+  `[blocks, longest block <= 64, 5]` per step; the encoder runs under bf16 autocast on CUDA and the GAT in fp32. Recipe: the other
+  arms' (`HP`) with lr 3e-4 instead of 1e-3, plus `grad_clip` 1.0 (`fit.train_batch`, applied only when the key is present) and the 12 GB cap.
+  The lr was chosen on fold 0, seed 0 (two runs each): at 1e-3 the test AUC was 0.9681 and 0.9892 and the validation ransomware F1 swung by up to about 0.24
+  between epochs (range 0.74-0.98); at 3e-4 the test AUC was 0.9836 and 0.9802 (spread 0.004 against 0.021) and the largest epoch-to-epoch swing was 0.062
+  and 0.094 (range 0.85-0.95), at the same 5.2 s per epoch. GPU runs of this arm vary from run to run (same seed, different results), so results are
+  compared across seeds. The encoder sees blocks only, never the order of instructions across blocks: block vectors plus CFG is the design.
+  `metrics.json` adds `n_parameters` (`encoder`, `gat`, `total`, `unused_classifier`), `block_len`, `truncated_blocks` (test split:
+  count, blocks, share), `tokens_per_binary` and `instructions_per_binary` (test mean, after and before the cut), `encoder` and
+  `gat` (names); `recipe` carries `lr` (3e-4) and `grad_clip`. The queue plan is `experiments/plans/team_b.txt` (15 runs, then `report` and
+  `gates team`):
+
+  ```
+  python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --fold F --seed S
+  ```
 - Build layouts (`train_b.build_layout`). A `build_b` folder (`settings.json`, `build_log.csv`, `checkpoint.json`,
   `api_vocab.json`), or an unzipped Drive zip: `build_info/build_settings.json`, `build_info/build_log.csv`, `checkpoint.json` if the
   zip has one, else the ids are the `<sha256>.pt` stems; `api_vocab.json` in the folder or one level up, else the embedder is sized
@@ -368,7 +394,7 @@ is not complete, criteria 2-4 are computed on the ids it holds and marked partia
 ## Tests
 
 `tests/test_team_pipelines.py`, `test_team_exclusion.py`, `test_team_v2.py`, `test_team_v3.py`, `test_team_whole.py`,
-`test_gat_port.py`, `test_match_diagnosis.py` (CPU). They run everywhere
+`test_gat_port.py`, `test_model3_e2e.py`, `test_match_diagnosis.py` (CPU). They run everywhere
 on the tiny cache of `tests/tiny_cache.py` and on synthetic builds: every module imports without `torch_geometric`, `psutil`
 and the worktrees (a subprocess with fake packages that raise `ImportError`); the environment variables name the missing input;
 the pin check and `import_team` on a toy source; `paths_for` and `team_row` on a synthetic collection root (neither the bundle nor
@@ -382,7 +408,9 @@ and by the `team` stage of the gates, and its directory name equals `RunConfig.n
 `test_team_v3.py` and `test_team_whole.py` train the v3 and uncapped arms on synthetic builds in both layouts (a build
 folder and an unzipped Drive zip) and check the settings refusals, the provenance keys of `metrics.json`, the node budget and the v3
 rows of the gates; `test_gat_port.py` checks the attribution of Dorothy's copies and, with `GT_TEAM_GNN_ROOT`, that every copied
-definition equals the original's source text.
+definition equals the original's source text. `test_model3_e2e.py` checks the end-to-end arm: the padding of the flat instruction list
+against a Python loop, the block-index offset of a batch, the block encoder against Janice's `forward`, empty and long blocks, the
+gradient clip, a smoke run and five synthetic folds read by `stats`, `report` and the `team` gates, and the refusals.
 
 They skip with a reason without their input: both pin sets pass on the worktrees and a tampered copy of either raises, importing
 one source never leaves the other's modules in `sys.modules` (`GT_TEAM_GNN_ROOT`, `GT_TEAM_MAIN_ROOT`); the trainers on a
