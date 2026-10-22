@@ -17,8 +17,9 @@ restarts until every allowed block is chosen and the payloads are saved in canon
 samplers. Beside the zip go `<zip>.sha256` and `<zip stem>.README.md`, the text that is also the zip's first file; it is generated
 from settings.json and build_summary.json, so it names no machine path.
 
---no-manifests leaves the per-sample manifest json files out (3-6 MB each of alignment diagnostics that no model reads; the README
-says so). --deflate-pt compresses the `.pt` files too (level 1); by default they are stored, since tensors barely compress.
+--no-manifests leaves the per-sample manifest json files out (alignment diagnostics that no model reads: 3-6 MB each in the
+500-block builds, far more in the uncapped one, about 102 GB in all; the README says so).
+--deflate-pt compresses the `.pt` files too (level 1); by default they are stored, since tensors barely compress.
 A build that is not finished (`processed` plus the excluded ids below `total`, or a missing sample) is refused.
 """
 import argparse
@@ -109,6 +110,7 @@ def readme_text(settings, summary, rows, manifests=True):
     rows_note = (' The API rows the embedder added were drawn per (seed, API id) (`--seeded-rows`), so the table does not depend on '
                  'a pause and resume of the build.' if settings.get('embedder_rows') == 'seeded-per-id' else '')
     excluded = summary.get('excluded') or {}
+    manifest_line = 'CT_GAT/processed/cfg_subgraphs/<sha256>.manifest.json   per-sample alignment report\n' if manifests else ''
     left_out = ('' if manifests else '\n(the per-sample manifest json files, alignment diagnostics that the models do not read, are '
                                       'left out of this archive; available on request)\n')
     return f"""# Mendeley x86 CFG subgraphs ({'uncapped' if uncapped else f'{sampler}, {blocks} blocks'}), pipeline B of the team pipelines
@@ -120,8 +122,7 @@ default, so the loaders and Janice's model (`s03a_transformer/five_channel`,
 ```
 CT_GAT/processed/api_vocab.json              API vocabulary (ids >= FIRST_API_ID)
 CT_GAT/processed/cfg_subgraphs/<sha256>.pt   one sample per binary ({summary['processed']})
-CT_GAT/processed/cfg_subgraphs/<sha256>.manifest.json   per-sample alignment report
-CT_GAT/processed/cfg_subgraphs/channel_embedder.pt      the seeded five-channel embedder
+{manifest_line}CT_GAT/processed/cfg_subgraphs/channel_embedder.pt      the seeded five-channel embedder
 CT_GAT/processed/cfg_subgraphs/build_info/   index.csv, build_settings.json, build_summary.json, build_log.csv (not read by the code)
 ```
 {left_out}
@@ -185,8 +186,8 @@ def package(build, out, manifests=True, deflate_pt=False):
                 z.write(p.with_suffix('.manifest.json'), BASE + p.stem + '.manifest.json', compress_type=deflated)
     os.replace(part, zpath)
     digest = sha256_of(zpath)
-    (out / f'{name}.sha256').write_text(f'{digest}  {name}\n', encoding='utf-8')
-    (out / f'{zpath.stem}.README.md').write_text(readme, encoding='utf-8')
+    (out / f'{name}.sha256').write_bytes(f'{digest}  {name}\n'.encode('utf-8'))   # bytes, not write_text: on Windows that writes CRLF
+    (out / f'{zpath.stem}.README.md').write_bytes(readme.encode('utf-8'))         # and `sha256sum -c` on macOS and Linux fails on it
     return zpath, digest
 
 

@@ -4,6 +4,7 @@ The zip name from the build's sampler and block budget, the layout that unzips a
 its settings check), the README generated from the build's settings, the .sha256, the options and the refusals."""
 import hashlib
 import json
+import re
 import zipfile
 
 import pytest
@@ -58,7 +59,7 @@ def test_the_layout_unzips_at_ct_gat_and_train_b_reads_it(tiny, tmp_path):   # n
     zpath, digest = pb.package(build, tmp_path / 'out')
     assert zpath.name == 'Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip'
     assert {p.name: p.read_bytes() for p in build.iterdir()} == before                                   # the build is read only
-    assert (tmp_path / 'out' / f'{zpath.name}.sha256').read_text(encoding='utf-8') == f'{digest}  {zpath.name}\n'
+    assert (tmp_path / 'out' / f'{zpath.name}.sha256').read_bytes() == f'{digest}  {zpath.name}\n'.encode('ascii')
     assert digest == hashlib.sha256(zpath.read_bytes()).hexdigest()
     ids = sorted(rows)
     with zipfile.ZipFile(zpath) as z:
@@ -113,6 +114,36 @@ def test_the_uncapped_zip_says_it_serves_both_samplers(tiny, tmp_path):   # noqa
         assert 'uncapped build of both `--sample signal` and `--sample callwalk`' in text and 'no block budget' in text
 
 
+def gnu_sha256sum_check(directory, sha_file):
+    """`sha256sum -c <sha_file>` as GNU coreutils reads it: every line is `<64 lowercase hex>`, two spaces (text mode), then the name
+    up to the newline. A CR belongs to the name, so a CRLF file names a file that does not exist and fails."""
+    raw = sha_file.read_bytes()
+    assert raw.endswith(b'\n')
+    results = []
+    for line in raw.split(b'\n')[:-1]:
+        m = re.fullmatch(rb'([0-9a-f]{64})  (.+)', line)
+        assert m, line
+        target = directory / m.group(2).decode('utf-8')
+        results.append(target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest() == m.group(1).decode('ascii'))
+    return results
+
+
+def test_the_sha256_and_readme_files_have_unix_line_ends_and_check_like_sha256sum(tiny, tmp_path):   # noqa: F811
+    rows = tp.sample_rows()
+    build = finished_build(tmp_path / 'b', rows)
+    zpath, digest = pb.package(build, tmp_path / 'out')
+    sha = tmp_path / 'out' / f'{zpath.name}.sha256'
+    assert b'\r' not in sha.read_bytes() and sha.read_bytes() == f'{digest}  {zpath.name}\n'.encode('ascii')
+    assert gnu_sha256sum_check(tmp_path / 'out', sha) == [True]
+    readme = (tmp_path / 'out' / f'{zpath.stem}.README.md').read_bytes()
+    assert b'\r' not in readme
+    with zipfile.ZipFile(zpath) as z:
+        assert z.read(f'README_{zpath.stem}.md') == readme and b'\r' not in z.read(BASE + 'build_info/index.csv')
+    crlf = tmp_path / 'crlf.sha256'                                                                     # what write_text wrote on Windows
+    crlf.write_bytes(sha.read_bytes().replace(b'\n', b'\r\n'))
+    assert gnu_sha256sum_check(tmp_path / 'out', crlf) == [False]
+
+
 def test_the_options_no_manifests_deflate_pt_and_out(tiny, tmp_path):   # noqa: F811
     rows = tp.sample_rows()
     build = finished_build(tmp_path / 'b', rows)
@@ -123,11 +154,13 @@ def test_the_options_no_manifests_deflate_pt_and_out(tiny, tmp_path):   # noqa: 
         assert not [n for n in z.namelist() if n.endswith('.manifest.json')]
         pts = [i for i in z.infolist() if i.filename.endswith('.pt') and 'channel_embedder' not in i.filename]
         assert len(pts) == len(rows) and {i.compress_type for i in pts} == {zipfile.ZIP_DEFLATED}
-        assert 'left out of this archive' in z.read(f'README_{zpath.stem}.md').decode('utf-8')
+        readme = z.read(f'README_{zpath.stem}.md').decode('utf-8')
+        assert 'left out of this archive' in readme and '.manifest.json' not in readme.split('```')[1]   # nor in the layout block
     default = pb.package(build, tmp_path / 'default')[0]
     with zipfile.ZipFile(default) as z:
         assert len([n for n in z.namelist() if n.endswith('.manifest.json')]) == len(rows)
-        assert 'left out of this archive' not in z.read(f'README_{default.stem}.md').decode('utf-8')
+        readme = z.read(f'README_{default.stem}.md').decode('utf-8')
+        assert 'left out of this archive' not in readme and '<sha256>.manifest.json' in readme.split('```')[1]
 
 
 def test_a_seeded_rows_build_says_so_in_its_readme(tiny, tmp_path):   # noqa: F811
