@@ -333,9 +333,11 @@ python -m experiments.queue --stop                                             #
 ```
 
 The queue skips a finished run and retries a failed line once. The plans are `model1_variants` (Model 1 at 128 and 512 instructions,
-30 runs), `team_b` (Model 3 end to end, `train_b --arm sig500v3-e2e`, 3 seeds x 5 folds = 15 runs) and `team_builds` (the nine arms
+30 runs), `team_b` (Model 3 end to end, `train_b --arm sig500v3-e2e`, 3 seeds x 5 folds = 15 runs), `team_builds` (the nine arms
 `sig250-*`, `callwalk500-*` and `callwalk250-*`, 135 runs, then `report` and `gates team`, which pairs each callwalk arm with its signal
-arm and each 250-block arm with its 500-block arm).
+arm and each 250-block arm with its 500-block arm), `team_mendeley_all` (Models 1 to 3 on the whole Mendeley dataset, 345 runs, then
+`gates team_mendeley_all`) and `team_v3` (the combined dataset, `--arch all` and `matched`, 390 runs, then `gates team_v3_all` and
+`gates team_v3_matched`).
 [`docs/ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md) shows how to add a model, a dataset, a control, a plan and a gates
 stage, and how to read the tables.
 

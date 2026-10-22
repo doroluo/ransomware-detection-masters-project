@@ -1,0 +1,390 @@
+run v3kfold0_all_gnn_s0_team-sig500v3-feat train_b --fold 0 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s0_team-sig500v3-feat train_b --fold 1 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s0_team-sig500v3-feat train_b --fold 2 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s0_team-sig500v3-feat train_b --fold 3 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s0_team-sig500v3-feat train_b --fold 4 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s1_team-sig500v3-feat train_b --fold 0 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s1_team-sig500v3-feat train_b --fold 1 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s1_team-sig500v3-feat train_b --fold 2 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s1_team-sig500v3-feat train_b --fold 3 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s1_team-sig500v3-feat train_b --fold 4 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s2_team-sig500v3-feat train_b --fold 0 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s2_team-sig500v3-feat train_b --fold 1 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s2_team-sig500v3-feat train_b --fold 2 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s2_team-sig500v3-feat train_b --fold 3 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s2_team-sig500v3-feat train_b --fold 4 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s0_team-sig500v3-emb train_b --fold 0 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s0_team-sig500v3-emb train_b --fold 1 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s0_team-sig500v3-emb train_b --fold 2 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s0_team-sig500v3-emb train_b --fold 3 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s0_team-sig500v3-emb train_b --fold 4 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s1_team-sig500v3-emb train_b --fold 0 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s1_team-sig500v3-emb train_b --fold 1 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s1_team-sig500v3-emb train_b --fold 2 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s1_team-sig500v3-emb train_b --fold 3 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s1_team-sig500v3-emb train_b --fold 4 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s2_team-sig500v3-emb train_b --fold 0 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s2_team-sig500v3-emb train_b --fold 1 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s2_team-sig500v3-emb train_b --fold 2 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s2_team-sig500v3-emb train_b --fold 3 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s2_team-sig500v3-emb train_b --fold 4 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s0_team-sig500v3-e2e train_b --fold 0 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s0_team-sig500v3-e2e train_b --fold 1 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s0_team-sig500v3-e2e train_b --fold 2 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s0_team-sig500v3-e2e train_b --fold 3 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s0_team-sig500v3-e2e train_b --fold 4 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s1_team-sig500v3-e2e train_b --fold 0 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s1_team-sig500v3-e2e train_b --fold 1 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s1_team-sig500v3-e2e train_b --fold 2 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s1_team-sig500v3-e2e train_b --fold 3 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s1_team-sig500v3-e2e train_b --fold 4 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s2_team-sig500v3-e2e train_b --fold 0 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s2_team-sig500v3-e2e train_b --fold 1 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s2_team-sig500v3-e2e train_b --fold 2 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s2_team-sig500v3-e2e train_b --fold 3 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s2_team-sig500v3-e2e train_b --fold 4 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch all
+run v3kfold0_all_fivechannel_s0 --model fivechannel --protocol kfold_v3 --arch all --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel_s0 --model fivechannel --protocol kfold_v3 --arch all --fold 1 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel_s0 --model fivechannel --protocol kfold_v3 --arch all --fold 2 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel_s0 --model fivechannel --protocol kfold_v3 --arch all --fold 3 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel_s0 --model fivechannel --protocol kfold_v3 --arch all --fold 4 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_fivechannel_s1 --model fivechannel --protocol kfold_v3 --arch all --fold 0 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel_s1 --model fivechannel --protocol kfold_v3 --arch all --fold 1 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel_s1 --model fivechannel --protocol kfold_v3 --arch all --fold 2 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel_s1 --model fivechannel --protocol kfold_v3 --arch all --fold 3 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel_s1 --model fivechannel --protocol kfold_v3 --arch all --fold 4 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_fivechannel_s2 --model fivechannel --protocol kfold_v3 --arch all --fold 0 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel_s2 --model fivechannel --protocol kfold_v3 --arch all --fold 1 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel_s2 --model fivechannel --protocol kfold_v3 --arch all --fold 2 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel_s2 --model fivechannel --protocol kfold_v3 --arch all --fold 3 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel_s2 --model fivechannel --protocol kfold_v3 --arch all --fold 4 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_fivechannel-L512_s0 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel-L512_s0 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 1 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel-L512_s0 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 2 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel-L512_s0 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 3 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel-L512_s0 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 4 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_fivechannel-L512_s1 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 0 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel-L512_s1 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 1 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel-L512_s1 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 2 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel-L512_s1 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 3 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel-L512_s1 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 4 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_fivechannel-L512_s2 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 0 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel-L512_s2 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 1 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel-L512_s2 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 2 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel-L512_s2 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 3 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel-L512_s2 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --fold 4 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_gnn_s0_team-callwalk500-feat train_b --fold 0 --seed 0 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s0_team-callwalk500-feat train_b --fold 1 --seed 0 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s0_team-callwalk500-feat train_b --fold 2 --seed 0 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s0_team-callwalk500-feat train_b --fold 3 --seed 0 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s0_team-callwalk500-feat train_b --fold 4 --seed 0 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s1_team-callwalk500-feat train_b --fold 0 --seed 1 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s1_team-callwalk500-feat train_b --fold 1 --seed 1 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s1_team-callwalk500-feat train_b --fold 2 --seed 1 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s1_team-callwalk500-feat train_b --fold 3 --seed 1 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s1_team-callwalk500-feat train_b --fold 4 --seed 1 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s2_team-callwalk500-feat train_b --fold 0 --seed 2 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s2_team-callwalk500-feat train_b --fold 1 --seed 2 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s2_team-callwalk500-feat train_b --fold 2 --seed 2 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s2_team-callwalk500-feat train_b --fold 3 --seed 2 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s2_team-callwalk500-feat train_b --fold 4 --seed 2 --arm callwalk500-feat --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s0_team-callwalk500-emb train_b --fold 0 --seed 0 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s0_team-callwalk500-emb train_b --fold 1 --seed 0 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s0_team-callwalk500-emb train_b --fold 2 --seed 0 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s0_team-callwalk500-emb train_b --fold 3 --seed 0 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s0_team-callwalk500-emb train_b --fold 4 --seed 0 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s1_team-callwalk500-emb train_b --fold 0 --seed 1 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s1_team-callwalk500-emb train_b --fold 1 --seed 1 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s1_team-callwalk500-emb train_b --fold 2 --seed 1 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s1_team-callwalk500-emb train_b --fold 3 --seed 1 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s1_team-callwalk500-emb train_b --fold 4 --seed 1 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s2_team-callwalk500-emb train_b --fold 0 --seed 2 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s2_team-callwalk500-emb train_b --fold 1 --seed 2 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s2_team-callwalk500-emb train_b --fold 2 --seed 2 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s2_team-callwalk500-emb train_b --fold 3 --seed 2 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s2_team-callwalk500-emb train_b --fold 4 --seed 2 --arm callwalk500-emb --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s0_team-callwalk500-e2e train_b --fold 0 --seed 0 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s0_team-callwalk500-e2e train_b --fold 1 --seed 0 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s0_team-callwalk500-e2e train_b --fold 2 --seed 0 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s0_team-callwalk500-e2e train_b --fold 3 --seed 0 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s0_team-callwalk500-e2e train_b --fold 4 --seed 0 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s1_team-callwalk500-e2e train_b --fold 0 --seed 1 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s1_team-callwalk500-e2e train_b --fold 1 --seed 1 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s1_team-callwalk500-e2e train_b --fold 2 --seed 1 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s1_team-callwalk500-e2e train_b --fold 3 --seed 1 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s1_team-callwalk500-e2e train_b --fold 4 --seed 1 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn_s2_team-callwalk500-e2e train_b --fold 0 --seed 2 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold1_all_gnn_s2_team-callwalk500-e2e train_b --fold 1 --seed 2 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold2_all_gnn_s2_team-callwalk500-e2e train_b --fold 2 --seed 2 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold3_all_gnn_s2_team-callwalk500-e2e train_b --fold 3 --seed 2 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold4_all_gnn_s2_team-callwalk500-e2e train_b --fold 4 --seed 2 --arm callwalk500-e2e --protocol kfold_v3 --arch all
+run v3kfold0_all_gnn-ab_s0_team-sig500v3-feat train_b --fold 0 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold1_all_gnn-ab_s0_team-sig500v3-feat train_b --fold 1 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold2_all_gnn-ab_s0_team-sig500v3-feat train_b --fold 2 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold3_all_gnn-ab_s0_team-sig500v3-feat train_b --fold 3 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold4_all_gnn-ab_s0_team-sig500v3-feat train_b --fold 4 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold0_all_gnn-ab_s1_team-sig500v3-feat train_b --fold 0 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold1_all_gnn-ab_s1_team-sig500v3-feat train_b --fold 1 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold2_all_gnn-ab_s1_team-sig500v3-feat train_b --fold 2 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold3_all_gnn-ab_s1_team-sig500v3-feat train_b --fold 3 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold4_all_gnn-ab_s1_team-sig500v3-feat train_b --fold 4 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold0_all_gnn-ab_s2_team-sig500v3-feat train_b --fold 0 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold1_all_gnn-ab_s2_team-sig500v3-feat train_b --fold 1 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold2_all_gnn-ab_s2_team-sig500v3-feat train_b --fold 2 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold3_all_gnn-ab_s2_team-sig500v3-feat train_b --fold 3 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold4_all_gnn-ab_s2_team-sig500v3-feat train_b --fold 4 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch all --arch-balance
+run v3kfold0_all_gnn-ab_s0_team-sig500v3-emb train_b --fold 0 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold1_all_gnn-ab_s0_team-sig500v3-emb train_b --fold 1 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold2_all_gnn-ab_s0_team-sig500v3-emb train_b --fold 2 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold3_all_gnn-ab_s0_team-sig500v3-emb train_b --fold 3 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold4_all_gnn-ab_s0_team-sig500v3-emb train_b --fold 4 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold0_all_gnn-ab_s1_team-sig500v3-emb train_b --fold 0 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold1_all_gnn-ab_s1_team-sig500v3-emb train_b --fold 1 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold2_all_gnn-ab_s1_team-sig500v3-emb train_b --fold 2 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold3_all_gnn-ab_s1_team-sig500v3-emb train_b --fold 3 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold4_all_gnn-ab_s1_team-sig500v3-emb train_b --fold 4 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold0_all_gnn-ab_s2_team-sig500v3-emb train_b --fold 0 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold1_all_gnn-ab_s2_team-sig500v3-emb train_b --fold 1 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold2_all_gnn-ab_s2_team-sig500v3-emb train_b --fold 2 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold3_all_gnn-ab_s2_team-sig500v3-emb train_b --fold 3 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold4_all_gnn-ab_s2_team-sig500v3-emb train_b --fold 4 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch all --arch-balance
+run v3kfold0_all_gnn-ab_s0_team-sig500v3-e2e train_b --fold 0 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold1_all_gnn-ab_s0_team-sig500v3-e2e train_b --fold 1 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold2_all_gnn-ab_s0_team-sig500v3-e2e train_b --fold 2 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold3_all_gnn-ab_s0_team-sig500v3-e2e train_b --fold 3 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold4_all_gnn-ab_s0_team-sig500v3-e2e train_b --fold 4 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold0_all_gnn-ab_s1_team-sig500v3-e2e train_b --fold 0 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold1_all_gnn-ab_s1_team-sig500v3-e2e train_b --fold 1 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold2_all_gnn-ab_s1_team-sig500v3-e2e train_b --fold 2 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold3_all_gnn-ab_s1_team-sig500v3-e2e train_b --fold 3 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold4_all_gnn-ab_s1_team-sig500v3-e2e train_b --fold 4 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold0_all_gnn-ab_s2_team-sig500v3-e2e train_b --fold 0 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold1_all_gnn-ab_s2_team-sig500v3-e2e train_b --fold 1 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold2_all_gnn-ab_s2_team-sig500v3-e2e train_b --fold 2 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold3_all_gnn-ab_s2_team-sig500v3-e2e train_b --fold 3 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold4_all_gnn-ab_s2_team-sig500v3-e2e train_b --fold 4 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch all --arch-balance
+run v3kfold0_all_fivechannel-ab_s0 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel-ab_s0 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 1 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel-ab_s0 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 2 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel-ab_s0 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 3 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel-ab_s0 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 4 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_fivechannel-ab_s1 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 0 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel-ab_s1 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 1 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel-ab_s1 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 2 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel-ab_s1 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 3 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel-ab_s1 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 4 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_fivechannel-ab_s2 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 0 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel-ab_s2 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 1 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel-ab_s2 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 2 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel-ab_s2 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 3 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel-ab_s2 --model fivechannel --protocol kfold_v3 --arch all --arch-balance --fold 4 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_fivechannel-L512-ab_s0 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel-L512-ab_s0 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 1 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel-L512-ab_s0 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 2 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel-L512-ab_s0 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 3 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel-L512-ab_s0 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 4 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_fivechannel-L512-ab_s1 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 0 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel-L512-ab_s1 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 1 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel-L512-ab_s1 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 2 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel-L512-ab_s1 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 3 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel-L512-ab_s1 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 4 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_all_fivechannel-L512-ab_s2 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 0 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_all_fivechannel-L512-ab_s2 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 1 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_all_fivechannel-L512-ab_s2 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 2 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_all_fivechannel-L512-ab_s2 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 3 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_all_fivechannel-L512-ab_s2 --model fivechannel --protocol kfold_v3 --arch all --max-instructions 512 --arch-balance --fold 4 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_gnn_s0_team-sig500v3-feat train_b --fold 0 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s0_team-sig500v3-feat train_b --fold 1 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s0_team-sig500v3-feat train_b --fold 2 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s0_team-sig500v3-feat train_b --fold 3 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s0_team-sig500v3-feat train_b --fold 4 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s1_team-sig500v3-feat train_b --fold 0 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s1_team-sig500v3-feat train_b --fold 1 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s1_team-sig500v3-feat train_b --fold 2 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s1_team-sig500v3-feat train_b --fold 3 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s1_team-sig500v3-feat train_b --fold 4 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s2_team-sig500v3-feat train_b --fold 0 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s2_team-sig500v3-feat train_b --fold 1 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s2_team-sig500v3-feat train_b --fold 2 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s2_team-sig500v3-feat train_b --fold 3 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s2_team-sig500v3-feat train_b --fold 4 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s0_team-sig500v3-emb train_b --fold 0 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s0_team-sig500v3-emb train_b --fold 1 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s0_team-sig500v3-emb train_b --fold 2 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s0_team-sig500v3-emb train_b --fold 3 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s0_team-sig500v3-emb train_b --fold 4 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s1_team-sig500v3-emb train_b --fold 0 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s1_team-sig500v3-emb train_b --fold 1 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s1_team-sig500v3-emb train_b --fold 2 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s1_team-sig500v3-emb train_b --fold 3 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s1_team-sig500v3-emb train_b --fold 4 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s2_team-sig500v3-emb train_b --fold 0 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s2_team-sig500v3-emb train_b --fold 1 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s2_team-sig500v3-emb train_b --fold 2 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s2_team-sig500v3-emb train_b --fold 3 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s2_team-sig500v3-emb train_b --fold 4 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s0_team-sig500v3-e2e train_b --fold 0 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s0_team-sig500v3-e2e train_b --fold 1 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s0_team-sig500v3-e2e train_b --fold 2 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s0_team-sig500v3-e2e train_b --fold 3 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s0_team-sig500v3-e2e train_b --fold 4 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s1_team-sig500v3-e2e train_b --fold 0 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s1_team-sig500v3-e2e train_b --fold 1 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s1_team-sig500v3-e2e train_b --fold 2 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s1_team-sig500v3-e2e train_b --fold 3 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s1_team-sig500v3-e2e train_b --fold 4 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s2_team-sig500v3-e2e train_b --fold 0 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s2_team-sig500v3-e2e train_b --fold 1 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s2_team-sig500v3-e2e train_b --fold 2 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s2_team-sig500v3-e2e train_b --fold 3 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s2_team-sig500v3-e2e train_b --fold 4 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch matched
+run v3kfold0_matched_fivechannel_s0 --model fivechannel --protocol kfold_v3 --arch matched --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel_s0 --model fivechannel --protocol kfold_v3 --arch matched --fold 1 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel_s0 --model fivechannel --protocol kfold_v3 --arch matched --fold 2 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel_s0 --model fivechannel --protocol kfold_v3 --arch matched --fold 3 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel_s0 --model fivechannel --protocol kfold_v3 --arch matched --fold 4 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_fivechannel_s1 --model fivechannel --protocol kfold_v3 --arch matched --fold 0 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel_s1 --model fivechannel --protocol kfold_v3 --arch matched --fold 1 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel_s1 --model fivechannel --protocol kfold_v3 --arch matched --fold 2 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel_s1 --model fivechannel --protocol kfold_v3 --arch matched --fold 3 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel_s1 --model fivechannel --protocol kfold_v3 --arch matched --fold 4 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_fivechannel_s2 --model fivechannel --protocol kfold_v3 --arch matched --fold 0 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel_s2 --model fivechannel --protocol kfold_v3 --arch matched --fold 1 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel_s2 --model fivechannel --protocol kfold_v3 --arch matched --fold 2 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel_s2 --model fivechannel --protocol kfold_v3 --arch matched --fold 3 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel_s2 --model fivechannel --protocol kfold_v3 --arch matched --fold 4 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_fivechannel-L512_s0 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel-L512_s0 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 1 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel-L512_s0 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 2 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel-L512_s0 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 3 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel-L512_s0 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 4 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_fivechannel-L512_s1 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 0 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel-L512_s1 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 1 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel-L512_s1 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 2 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel-L512_s1 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 3 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel-L512_s1 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 4 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_fivechannel-L512_s2 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 0 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel-L512_s2 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 1 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel-L512_s2 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 2 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel-L512_s2 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 3 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel-L512_s2 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --fold 4 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_gnn_s0_team-callwalk500-feat train_b --fold 0 --seed 0 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s0_team-callwalk500-feat train_b --fold 1 --seed 0 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s0_team-callwalk500-feat train_b --fold 2 --seed 0 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s0_team-callwalk500-feat train_b --fold 3 --seed 0 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s0_team-callwalk500-feat train_b --fold 4 --seed 0 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s1_team-callwalk500-feat train_b --fold 0 --seed 1 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s1_team-callwalk500-feat train_b --fold 1 --seed 1 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s1_team-callwalk500-feat train_b --fold 2 --seed 1 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s1_team-callwalk500-feat train_b --fold 3 --seed 1 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s1_team-callwalk500-feat train_b --fold 4 --seed 1 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s2_team-callwalk500-feat train_b --fold 0 --seed 2 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s2_team-callwalk500-feat train_b --fold 1 --seed 2 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s2_team-callwalk500-feat train_b --fold 2 --seed 2 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s2_team-callwalk500-feat train_b --fold 3 --seed 2 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s2_team-callwalk500-feat train_b --fold 4 --seed 2 --arm callwalk500-feat --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s0_team-callwalk500-emb train_b --fold 0 --seed 0 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s0_team-callwalk500-emb train_b --fold 1 --seed 0 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s0_team-callwalk500-emb train_b --fold 2 --seed 0 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s0_team-callwalk500-emb train_b --fold 3 --seed 0 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s0_team-callwalk500-emb train_b --fold 4 --seed 0 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s1_team-callwalk500-emb train_b --fold 0 --seed 1 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s1_team-callwalk500-emb train_b --fold 1 --seed 1 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s1_team-callwalk500-emb train_b --fold 2 --seed 1 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s1_team-callwalk500-emb train_b --fold 3 --seed 1 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s1_team-callwalk500-emb train_b --fold 4 --seed 1 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s2_team-callwalk500-emb train_b --fold 0 --seed 2 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s2_team-callwalk500-emb train_b --fold 1 --seed 2 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s2_team-callwalk500-emb train_b --fold 2 --seed 2 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s2_team-callwalk500-emb train_b --fold 3 --seed 2 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s2_team-callwalk500-emb train_b --fold 4 --seed 2 --arm callwalk500-emb --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s0_team-callwalk500-e2e train_b --fold 0 --seed 0 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s0_team-callwalk500-e2e train_b --fold 1 --seed 0 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s0_team-callwalk500-e2e train_b --fold 2 --seed 0 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s0_team-callwalk500-e2e train_b --fold 3 --seed 0 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s0_team-callwalk500-e2e train_b --fold 4 --seed 0 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s1_team-callwalk500-e2e train_b --fold 0 --seed 1 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s1_team-callwalk500-e2e train_b --fold 1 --seed 1 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s1_team-callwalk500-e2e train_b --fold 2 --seed 1 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s1_team-callwalk500-e2e train_b --fold 3 --seed 1 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s1_team-callwalk500-e2e train_b --fold 4 --seed 1 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn_s2_team-callwalk500-e2e train_b --fold 0 --seed 2 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold1_matched_gnn_s2_team-callwalk500-e2e train_b --fold 1 --seed 2 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold2_matched_gnn_s2_team-callwalk500-e2e train_b --fold 2 --seed 2 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold3_matched_gnn_s2_team-callwalk500-e2e train_b --fold 3 --seed 2 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold4_matched_gnn_s2_team-callwalk500-e2e train_b --fold 4 --seed 2 --arm callwalk500-e2e --protocol kfold_v3 --arch matched
+run v3kfold0_matched_gnn-ab_s0_team-sig500v3-feat train_b --fold 0 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold1_matched_gnn-ab_s0_team-sig500v3-feat train_b --fold 1 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold2_matched_gnn-ab_s0_team-sig500v3-feat train_b --fold 2 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold3_matched_gnn-ab_s0_team-sig500v3-feat train_b --fold 3 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold4_matched_gnn-ab_s0_team-sig500v3-feat train_b --fold 4 --seed 0 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold0_matched_gnn-ab_s1_team-sig500v3-feat train_b --fold 0 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold1_matched_gnn-ab_s1_team-sig500v3-feat train_b --fold 1 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold2_matched_gnn-ab_s1_team-sig500v3-feat train_b --fold 2 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold3_matched_gnn-ab_s1_team-sig500v3-feat train_b --fold 3 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold4_matched_gnn-ab_s1_team-sig500v3-feat train_b --fold 4 --seed 1 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold0_matched_gnn-ab_s2_team-sig500v3-feat train_b --fold 0 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold1_matched_gnn-ab_s2_team-sig500v3-feat train_b --fold 1 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold2_matched_gnn-ab_s2_team-sig500v3-feat train_b --fold 2 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold3_matched_gnn-ab_s2_team-sig500v3-feat train_b --fold 3 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold4_matched_gnn-ab_s2_team-sig500v3-feat train_b --fold 4 --seed 2 --arm sig500v3-feat --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold0_matched_gnn-ab_s0_team-sig500v3-emb train_b --fold 0 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold1_matched_gnn-ab_s0_team-sig500v3-emb train_b --fold 1 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold2_matched_gnn-ab_s0_team-sig500v3-emb train_b --fold 2 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold3_matched_gnn-ab_s0_team-sig500v3-emb train_b --fold 3 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold4_matched_gnn-ab_s0_team-sig500v3-emb train_b --fold 4 --seed 0 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold0_matched_gnn-ab_s1_team-sig500v3-emb train_b --fold 0 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold1_matched_gnn-ab_s1_team-sig500v3-emb train_b --fold 1 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold2_matched_gnn-ab_s1_team-sig500v3-emb train_b --fold 2 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold3_matched_gnn-ab_s1_team-sig500v3-emb train_b --fold 3 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold4_matched_gnn-ab_s1_team-sig500v3-emb train_b --fold 4 --seed 1 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold0_matched_gnn-ab_s2_team-sig500v3-emb train_b --fold 0 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold1_matched_gnn-ab_s2_team-sig500v3-emb train_b --fold 1 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold2_matched_gnn-ab_s2_team-sig500v3-emb train_b --fold 2 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold3_matched_gnn-ab_s2_team-sig500v3-emb train_b --fold 3 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold4_matched_gnn-ab_s2_team-sig500v3-emb train_b --fold 4 --seed 2 --arm sig500v3-emb --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold0_matched_gnn-ab_s0_team-sig500v3-e2e train_b --fold 0 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold1_matched_gnn-ab_s0_team-sig500v3-e2e train_b --fold 1 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold2_matched_gnn-ab_s0_team-sig500v3-e2e train_b --fold 2 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold3_matched_gnn-ab_s0_team-sig500v3-e2e train_b --fold 3 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold4_matched_gnn-ab_s0_team-sig500v3-e2e train_b --fold 4 --seed 0 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold0_matched_gnn-ab_s1_team-sig500v3-e2e train_b --fold 0 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold1_matched_gnn-ab_s1_team-sig500v3-e2e train_b --fold 1 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold2_matched_gnn-ab_s1_team-sig500v3-e2e train_b --fold 2 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold3_matched_gnn-ab_s1_team-sig500v3-e2e train_b --fold 3 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold4_matched_gnn-ab_s1_team-sig500v3-e2e train_b --fold 4 --seed 1 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold0_matched_gnn-ab_s2_team-sig500v3-e2e train_b --fold 0 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold1_matched_gnn-ab_s2_team-sig500v3-e2e train_b --fold 1 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold2_matched_gnn-ab_s2_team-sig500v3-e2e train_b --fold 2 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold3_matched_gnn-ab_s2_team-sig500v3-e2e train_b --fold 3 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold4_matched_gnn-ab_s2_team-sig500v3-e2e train_b --fold 4 --seed 2 --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance
+run v3kfold0_matched_fivechannel-ab_s0 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel-ab_s0 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 1 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel-ab_s0 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 2 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel-ab_s0 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 3 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel-ab_s0 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 4 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_fivechannel-ab_s1 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 0 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel-ab_s1 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 1 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel-ab_s1 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 2 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel-ab_s1 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 3 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel-ab_s1 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 4 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_fivechannel-ab_s2 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 0 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel-ab_s2 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 1 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel-ab_s2 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 2 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel-ab_s2 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 3 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel-ab_s2 --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 4 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_fivechannel-L512-ab_s0 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel-L512-ab_s0 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 1 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel-L512-ab_s0 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 2 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel-L512-ab_s0 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 3 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel-L512-ab_s0 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 4 --seed 0 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_fivechannel-L512-ab_s1 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 0 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel-L512-ab_s1 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 1 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel-L512-ab_s1 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 2 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel-L512-ab_s1 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 3 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel-L512-ab_s1 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 4 --seed 1 --build RUNS/team/b_sig500_combined_v3
+run v3kfold0_matched_fivechannel-L512-ab_s2 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 0 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold1_matched_fivechannel-L512-ab_s2 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 1 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold2_matched_fivechannel-L512-ab_s2 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 2 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold3_matched_fivechannel-L512-ab_s2 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 3 --seed 2 --build RUNS/team/b_sig500_combined_v3
+run v3kfold4_matched_fivechannel-L512-ab_s2 --model fivechannel --protocol kfold_v3 --arch matched --max-instructions 512 --arch-balance --fold 4 --seed 2 --build RUNS/team/b_sig500_combined_v3

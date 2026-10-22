@@ -3,7 +3,8 @@
 Three parts:
   * the plan files of `experiments/plans` against `fixtures/plans_dry/<plan>.txt`, the `run` lines that `--dry` printed when the
     plan was written (model1_variants: the fivechannel lines of the plan of that name; team_b: the 15 sig500v3-e2e runs; team_builds: the 135 runs of the arms
-    of the sig250, callwalk500 and callwalk250 builds). The
+    of the sig250, callwalk500 and callwalk250 builds; team_mendeley_all: the 345 runs of Models 1 to 3 on the whole Mendeley dataset;
+    team_v3: the 390 runs on the combined dataset, arch all and matched). The
     queue's `--dry` has to print the same run names with the same arguments, in the same order;
   * the plan grammar;
   * the queue loop, through the real subprocess launch with `queue_stub.py` in the place of the interpreter: skip, STOP, budget,
@@ -27,7 +28,7 @@ HERE = Path(__file__).resolve().parent
 PLAN_FILES = sorted(q.PLANS.glob('*.txt'))
 FIXTURES = HERE / 'fixtures' / 'plans_dry'
 STUB = HERE / 'queue_stub.py'
-PLANS = ['model1_variants', 'team_b', 'team_builds']
+PLANS = ['model1_variants', 'team_b', 'team_builds', 'team_mendeley_all', 'team_v3']
 FIVECHANNEL = 'train --protocol kfold --fold {} --arch x86 --seed 0 --model fivechannel'
 
 
@@ -54,7 +55,7 @@ def test_dry_run_prints_the_runs_of_the_recording(plan):
 
 def test_the_recordings_have_the_run_counts_of_the_experiments():
     counts = {p: sum(l.startswith('run ') for l in recorded(p)) for p in PLANS}
-    assert counts == {'model1_variants': 30, 'team_b': 15, 'team_builds': 135}
+    assert counts == {'model1_variants': 30, 'team_b': 15, 'team_builds': 135, 'team_mendeley_all': 345, 'team_v3': 390}
 
 
 @pytest.mark.parametrize('plan', PLANS)
@@ -69,6 +70,12 @@ def test_run_names_are_the_run_config_names(plan):
 def test_a_plan_ends_in_the_summaries_of_its_stage():
     assert [s.verb for s in q.load_plan('model1_variants')][-2:] == ['report', 'gates']
     assert [s.stdout for s in q.load_plan('model1_variants') if s.verb == 'gates'] == ['gates_model1_variants.md']
+
+
+def test_the_dataset_plans_end_in_the_summaries_of_their_stages():
+    assert [(s.verb, s.args) for s in q.load_plan('team_mendeley_all')][-2:] == [('report', ()), ('gates', ('team_mendeley_all',))]
+    assert [(s.verb, s.args) for s in q.load_plan('team_v3')][-3:] == [('report', ()), ('gates', ('team_v3_all',)),
+                                                                      ('gates', ('team_v3_matched',))]
 
 
 def test_plans_name_no_machine_path():
