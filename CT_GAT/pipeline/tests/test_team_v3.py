@@ -36,14 +36,17 @@ def settings(path, **kw):
 
 
 def synthetic_build(root, ids, rows, layout='build', source='main-fix', num_blocks=500, sample='signal', seed=0, excluded=None,
-                    pins=None):
+                    pins=None, dataset=None, kinds_of=None):
     """A pipeline-B build of synthetic payloads for `ids` (rows: sample_rows()) in `root`, and the folder to pass as `--build`.
 
     layout 'build': settings.json, checkpoint.json, api_vocab.json, build_log.csv, channel_embedder.pt and the samples in `root`.
     layout 'zip': what the Drive zip unpacks to under `root`: processed/api_vocab.json, processed/cfg_subgraphs/ with the samples,
     channel_embedder.pt and build_info/{build_settings.json, build_log.csv, build_summary.json, index.csv}; no checkpoint.json.
     The block embeddings are pooled from the instruction ids with the saved embedder and the api-kind columns of the block features
-    are the counts of those ids, so `train_b.check_repool` holds."""
+    are the counts of those ids, so `train_b.check_repool` holds.
+
+    `dataset` = (protocol, arch) writes the keys `build_b` records for a build other than kfold x86 (settings.json, the checkpoint's
+    settings, build_settings.json). `kinds_of(sample_id)` gives the api ids a sample draws from (default: all of them)."""
     pp = tp.import_team('preprocess_full', source='repo')
     torch.manual_seed(seed)
     embedder = pp.FiveChannelEmbedder(pp.tok.FIRST_API_ID + N_API).eval()
@@ -56,10 +59,11 @@ def synthetic_build(root, ids, rows, layout='build', source='main-fix', num_bloc
     kinds = [pp.tok.NO_API, pp.tok.UNK_API] + list(range(pp.tok.FIRST_API_ID, pp.tok.FIRST_API_ID + N_API))
     log = ['sample_id,status,n_blocks_total,n_blocks_kept,seconds']
     for sample_id in ids:
+        sample_kinds = kinds if kinds_of is None else kinds_of(sample_id)
         n_blocks, n_insn = int(rng.integers(2, 6)), int(rng.integers(8, 20))
         insn_to_block = torch.tensor(np.sort(np.concatenate([np.arange(n_blocks), rng.integers(0, n_blocks, n_insn - n_blocks)])))
         instruction_ids = torch.stack([torch.tensor(rng.integers(1, 50, n_insn)), torch.tensor(rng.integers(0, 30, n_insn)),
-                                       torch.tensor(rng.integers(0, 30, n_insn)), torch.tensor(rng.choice(kinds, n_insn)),
+                                       torch.tensor(rng.integers(0, 30, n_insn)), torch.tensor(rng.choice(sample_kinds, n_insn)),
                                        torch.tensor(rng.integers(0, pp.tok.BEHAVIOR_VOCAB_SIZE, n_insn))], 1).long()
         matched = torch.tensor(rng.random(n_insn) > 0.2)
         features = torch.tensor(rng.random((n_blocks, 77)) * 5, dtype=torch.float32)
@@ -76,6 +80,8 @@ def synthetic_build(root, ids, rows, layout='build', source='main-fix', num_bloc
     torch.save(embedder.state_dict(), folder / 'channel_embedder.pt')
     body = {'sample': sample, 'num_blocks': num_blocks, 'seed': seed, 'source': source, 'pins': pins or dict(FIX_PINS),
             'excluded': excluded or {}}
+    if dataset is not None:
+        body.update(protocol=dataset[0], arch=dataset[1])
     if layout == 'zip':
         info = folder / 'build_info'
         info.mkdir()

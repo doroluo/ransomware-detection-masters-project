@@ -11,11 +11,17 @@ by default, which `train_b` (`build_layout`: an unzipped Drive zip), `--model fi
     processed/cfg_subgraphs/<sha256>.pt, <sha256>.manifest.json, channel_embedder.pt
     processed/cfg_subgraphs/build_info/   index.csv, build_settings.json, build_summary.json, build_log.csv
 
-The name is `Mendeley_x86_cfg_subgraphs_<signal|callwalk>_<N>blocks_v3.zip` from the build's settings (sampler and block budget), or
-`Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` when the budget is 0 or at least `train_b.UNCAPPED_BLOCKS`: with no budget the callwalk
+The name is `<dataset>_cfg_subgraphs_<signal|callwalk>_<N>blocks_v3.zip` from the build's settings (sampler and block budget), or
+`<dataset>_cfg_subgraphs_uncapped_v3.zip` when the budget is 0 or at least `train_b.UNCAPPED_BLOCKS`: with no budget the callwalk
 restarts until every allowed block is chosen and the payloads are saved in canonical block order, so one uncapped build serves both
-samplers. Beside the zip go `<zip>.sha256` and `<zip stem>.README.md`, the text that is also the zip's first file; it is generated
-from settings.json and build_summary.json, so it names no machine path.
+samplers. `<dataset>` is the label of the build's `protocol` and `arch` (a build without the keys is a kfold x86 build): `Mendeley_x86`
+(kfold x86, the 1,810 x86 binaries), `Mendeley_all` (kfold all, the 2,411 Mendeley binaries: the x86 build extended with the x64
+ones, `build_b --extend`) or `combined_v3` (kfold_v3 all, the 5,652 binaries with a v3 fold; the `matched` runs of the trainers read
+it too). Vocabulary clash: the `v3` of `combined_v3` is the fold protocol `kfold_v3`, the `_v3.zip` the preprocessing version of the
+zips. Beside the zip go `<zip>.sha256` and `<zip stem>.README.md`, the text that is also the zip's first file; it is generated
+from settings.json and build_summary.json, so it names no machine path. The README of a dataset other than Mendeley x86 also gives the
+count per class and architecture, says what the extension added (`extensions` of settings.json) and lists the excluded binaries with
+their reason (`build_b --max-instructions` or `--exclude`); the text of an x86 build is the one it always was.
 
 --no-manifests leaves the per-sample manifest json files out (alignment diagnostics that no model reads: 3-6 MB each in the
 500-block builds, far more in the uncapped one, about 102 GB in all; the README says so).
@@ -30,11 +36,15 @@ import json
 import os
 import sys
 import zipfile
+from collections import Counter
 from pathlib import Path
 
 import torch
 
-from experiments.team_pipelines.build_b import resolve_dir
+from common.catalog import COLLECTIONS, V3_FILES
+from common.manifests import load_index
+from common.paths import cache_for
+from experiments.team_pipelines.build_b import dataset_of, resolve_dir
 from experiments.team_pipelines.train_b import UNCAPPED_BLOCKS
 
 VERSION = 'v3'
@@ -46,20 +56,48 @@ SAMPLER_TEXT = {
                 'restarts when the reachable region is smaller than the budget; the saved edges are the CFG edges among the chosen '
                 'blocks',
 }
+MENDELEY_ORIGIN = 'CFGs come from the Mendeley bundle, listings from the Mendeley IDA export.'
+# What the README says of each dataset (kfold/x86 is the text of the first zips, word for word): the zip name label, the title, what
+# the binaries are, where CFGs and listings come from and which fold the `fold` column is.
+DATASETS = {
+    ('kfold', 'x86'): {'label': 'Mendeley_x86', 'title': 'Mendeley x86',
+                       'what': 'Mendeley x86 binaries of our 5-fold family-holdout set', 'origin': MENDELEY_ORIGIN,
+                       'fold': 'our kfold fold'},
+    ('kfold', 'all'): {'label': 'Mendeley_all', 'title': 'Mendeley all-architecture (x86 and x64)',
+                       'what': 'Mendeley binaries (x86 and x64) of our 5-fold family-holdout set `kfold` (`folds_mendeley.csv`)',
+                       'origin': MENDELEY_ORIGIN,
+                       'fold': 'our kfold fold'},
+    ('kfold_v3', 'all'): {'label': 'combined_v3', 'title': 'combined_v3 (all architectures)',
+                          'what': f'binaries (x86 and x64) of the combined_v3 dataset that have a fold of our 5-fold family-holdout '
+                                  f'set `kfold_v3` (`{V3_FILES[0]}`)',
+                          'origin': f"CFGs and listings come from the collections {', '.join(COLLECTIONS[:-1])} and {COLLECTIONS[-1]} "
+                                    f"(the Mendeley IDA export and the balanced IDA collections), each binary from the collection of its corpus.",
+                          'fold': 'our kfold_v3 fold'},
+}
 INDEX_FIELDS = ('sample_id', 'label', 'family', 'arch', 'fold', 'n_instructions', 'match_rate', 'n_blocks_total', 'n_blocks_kept')
 BASE = 'processed/cfg_subgraphs/'
 
 
+def dataset_text(settings):
+    """The `DATASETS` entry of the build's (protocol, arch); SystemExit for a pair that is never packaged."""
+    protocol, arch = dataset_of(settings)
+    if (protocol, arch) not in DATASETS:
+        raise SystemExit(f'a build for {protocol} {arch} is not packaged: only {", ".join(f"{p} {a}" for p, a in DATASETS)}')
+    return DATASETS[protocol, arch]
+
+
 def zip_name(settings):
-    """`Mendeley_x86_cfg_subgraphs_<signal|callwalk>_<N>blocks_v3.zip`, or the uncapped name when the budget is 0 or >= UNCAPPED_BLOCKS."""
+    """`<label>_cfg_subgraphs_<signal|callwalk>_<N>blocks_v3.zip` (label: Mendeley_x86, Mendeley_all or combined_v3 from the settings'
+    protocol and arch; Mendeley_x86 without them), or the uncapped name when the budget is 0 or >= UNCAPPED_BLOCKS."""
+    label = dataset_text(settings)['label']
     sampler, blocks = settings.get('sample'), settings.get('num_blocks')
     if sampler not in SAMPLERS:
         raise SystemExit(f'the build\'s sampler is {sampler}: only {" and ".join(SAMPLERS)} builds are packaged')
     if not isinstance(blocks, int) or blocks < 0:
         raise SystemExit(f'the build\'s num_blocks is {blocks}')
     if blocks == 0 or blocks >= UNCAPPED_BLOCKS:
-        return f'Mendeley_x86_cfg_subgraphs_uncapped_{VERSION}.zip'
-    return f'Mendeley_x86_cfg_subgraphs_{sampler}_{blocks}blocks_{VERSION}.zip'
+        return f'{label}_cfg_subgraphs_uncapped_{VERSION}.zip'
+    return f'{label}_cfg_subgraphs_{sampler}_{blocks}blocks_{VERSION}.zip'
 
 
 def read_build(build):
@@ -97,8 +135,63 @@ def index_rows(build, paths):
     return rows
 
 
-def readme_text(settings, summary, rows, manifests=True):
-    """The README of the zip, from the build's settings.json and build_summary.json and the index rows."""
+def extension_text(settings, rows):
+    """The paragraph on the x64 binaries added to a Mendeley x86 build (`build_b --extend`: `extensions` of settings.json), or ''."""
+    extensions = settings.get('extensions') or []
+    if not extensions:
+        return ''
+    added = sum(e.get('ids_added', 0) for e in extensions)
+    last = extensions[-1]
+    x86_name = zip_name({**settings, 'protocol': 'kfold', 'arch': 'x86'})
+    pins = ''.join(f'\n- `{name}`: sha256 `{digest}`' for name, digest in sorted((last.get('pins') or {}).items()))
+    seeded = ' Their embedder rows were drawn per (seed, API id), so the extension does not depend on a pause and resume.' \
+        if last.get('embedder_rows') == 'seeded-per-id' else ''
+    return (f"\nThis build extends the Mendeley x86 build: its {sum(r['arch'] == 'x86' for r in rows)} x86 samples are byte-identical to "
+            f"the ones in `{x86_name}` (same vocabulary ids, same embedder rows), and the {added} x64 samples were added to it with "
+            f"`build_b --extend` (code source `{last.get('source', 'unknown')}`{', files of the repository when extended:' if pins else ''}"
+            f"{pins}).{seeded} A trainer reads this archive for `--protocol kfold --arch all` only: the x86 runs read the x86 archive.\n")
+
+
+def excluded_text(excluded):
+    """The binaries a build left out on purpose, one line each with its reason; '' when there are none."""
+    if not excluded:
+        return ''
+    lines = ''.join(f'\n- `{sample_id}`: {reason}' for sample_id, reason in sorted(excluded.items()))
+    return (f'\nExcluded on purpose ({len(excluded)}; `excluded` of build_info/build_settings.json): the trainers leave these binaries out '
+            f'of training, validation and test and record them in metrics.json.{lines}\n')
+
+
+def cell_text(rows):
+    """'R x86 n, R x64 n, G x86 n, G x64 n': the binaries of the archive per class and architecture."""
+    count = lambda label, arch: sum(r['label'] == label and r['arch'] == arch for r in rows)      # noqa: E731
+    return ', '.join(f'{name} {arch} {count(label, arch)}' for name, label in (('R', 1), ('G', 0)) for arch in ('x86', 'x64'))
+
+
+def corpus_text(rows, corpora):
+    """'mendeley n, ransomware_balanced n, ...': the binaries of the archive per corpus (`corpora`: {sample_id: corpus}, from the
+    cache index: the payloads do not record it); '' when there is no map."""
+    if not corpora:
+        return ''
+    counts = Counter(corpora.get(r['sample_id'], 'unknown') for r in rows)
+    return f"\nPer corpus: {', '.join(f'{c} {n}' for c, n in sorted(counts.items()))}.\n"
+
+
+def corpora_of(settings):
+    """{sample_id: corpus} of the cache index of the build's dataset (`common.paths.cache_for` of its protocol: GT_CACHE, else the
+    registry), or {} when that cache is not built on this machine."""
+    protocol, _ = dataset_of(settings)
+    try:
+        return {r['sample_id']: r['corpus'] for r in load_index(cache_for(protocol), protocol)}
+    except FileNotFoundError:
+        return {}
+
+
+def readme_text(settings, summary, rows, manifests=True, corpora=None):
+    """The README of the zip, from the build's settings.json and build_summary.json and the index rows. The text of a Mendeley x86
+    build is the one of the first zips; any other dataset (`DATASETS`) says what it holds, per class and architecture, where its CFGs
+    come from, what an extension added and which binaries were excluded; `corpora` ({sample_id: corpus}) adds the count per corpus."""
+    dataset = dataset_text(settings)
+    x86 = dataset is DATASETS['kfold', 'x86']
     sampler, blocks, uncapped = settings['sample'], settings['num_blocks'], zip_name(settings).endswith(f'uncapped_{VERSION}.zip')
     ransomware = sum(r['label'] == 1 for r in rows)
     budget = ('no block budget: every non-library block of every binary, in canonical block order. With no budget the callwalk '
@@ -113,7 +206,12 @@ def readme_text(settings, summary, rows, manifests=True):
     manifest_line = 'CT_GAT/processed/cfg_subgraphs/<sha256>.manifest.json   per-sample alignment report\n' if manifests else ''
     left_out = ('' if manifests else '\n(the per-sample manifest json files, alignment diagnostics that the models do not read, are '
                                       'left out of this archive; available on request)\n')
-    return f"""# Mendeley x86 CFG subgraphs ({'uncapped' if uncapped else f'{sampler}, {blocks} blocks'}), pipeline B of the team pipelines
+    cells = '' if x86 else f"\nPer class and architecture: {cell_text(rows)}.\n{corpus_text(rows, corpora)}"
+    extension = '' if x86 else extension_text(settings, rows)
+    left_out_ids = '' if x86 else excluded_text(excluded)
+    matched = '' if x86 or dataset['label'] != 'combined_v3' else (
+        '\nThe `--arch matched` runs of the trainers read this archive too: the binaries of `arch_matched.csv` are a filter of it.\n')
+    return f"""# {dataset['title']} CFG subgraphs ({'uncapped' if uncapped else f'{sampler}, {blocks} blocks'}), pipeline B of the team pipelines
 
 Unzip this archive at `CT_GAT/` of the repository. It creates exactly what `python -m s02_preprocess.preprocess_full` writes by
 default, so the loaders and Janice's model (`s03a_transformer/five_channel`,
@@ -130,16 +228,16 @@ What is in a sample: `instruction_ids [N,5]` (opcode, operand 1, operand 2, API 
 `instruction_matched`, `block_features [n,77]`, `block_embeddings [n,64]`, `edge_index`, `edge_type`, `edge_attr`, `edge_back`,
 `block_keys`, `label`, `dataset_metadata` (sample_id, label, arch, family, fold), and the rest of the keys `save_sample` writes.
 
-How it was built: the {summary['total']} Mendeley x86 binaries of our 5-fold family-holdout set ({ransomware} ransomware,
+How it was built: the {summary['total']} {dataset['what']} ({ransomware} ransomware,
 {len(rows) - ransomware} goodware in this archive{f', {len(excluded)} excluded on purpose' if excluded else ', no exclusions'}), {budget}, seed {settings.get('seed', 0)}.
-{sampling}Library functions are used only when a binary has no other code (they are collapsed in the IDA listing and cannot be matched).
-CFGs come from the Mendeley bundle, listings from the Mendeley IDA export. Code: source `{settings.get('source', 'unknown')}`{', files of the repository when built:' if pins else ''}{pinned}
+{cells}{sampling}Library functions are used only when a binary has no other code (they are collapsed in the IDA listing and cannot be matched).
+{dataset['origin']} Code: source `{settings.get('source', 'unknown')}`{', files of the repository when built:' if pins else ''}{pinned}
 
 Before training: `api_vocab.json` was grown over all binaries in one pass.{rows_note} Map API ids that do not occur in your training
 binaries to `UNK_API` per fold (`--model fivechannel` and our team trainers do this), or rebuild the vocabulary from your training
 split (`--split train`, then the other splits frozen).
-
-`build_info/index.csv` lists, per binary: label, family, arch, our kfold fold, number of instructions, match rate (share of selected
+{extension}{left_out_ids}{matched}
+`build_info/index.csv` lists, per binary: label, family, arch, {dataset['fold']}, number of instructions, match rate (share of selected
 instructions paired with a listing line), blocks in the binary and blocks kept.
 """
 
@@ -166,7 +264,10 @@ def package(build, out, manifests=True, deflate_pt=False):
     settings, summary, paths = read_build(build)
     name = zip_name(settings)
     rows = index_rows(build, paths)
-    readme = readme_text(settings, summary, rows, manifests)
+    corpora = {} if dataset_text(settings) is DATASETS['kfold', 'x86'] else corpora_of(settings)
+    if not corpora and dataset_text(settings) is not DATASETS['kfold', 'x86']:
+        print('no cache index for this dataset on this machine: the README gives no count per corpus', file=sys.stderr)
+    readme = readme_text(settings, summary, rows, manifests, corpora)
     out.mkdir(parents=True, exist_ok=True)
     zpath = out / name
     part = zpath.with_name(zpath.name + '.part')

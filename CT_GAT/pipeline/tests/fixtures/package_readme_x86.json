@@ -1,0 +1,167 @@
+{
+ "rows": [
+  {
+   "sample_id": "0000000000000000000000000000000000000000000000000000000000000000",
+   "label": 1,
+   "family": "f0",
+   "arch": "x86",
+   "fold": 0,
+   "n_instructions": 100,
+   "match_rate": 0.9,
+   "n_blocks_total": 10,
+   "n_blocks_kept": 8
+  },
+  {
+   "sample_id": "0000000000000000000000000000000000000000000000000000000000000001",
+   "label": 0,
+   "family": "f1",
+   "arch": "x86",
+   "fold": 1,
+   "n_instructions": 101,
+   "match_rate": 0.9,
+   "n_blocks_total": 10,
+   "n_blocks_kept": 8
+  },
+  {
+   "sample_id": "0000000000000000000000000000000000000000000000000000000000000002",
+   "label": 0,
+   "family": "f2",
+   "arch": "x86",
+   "fold": 2,
+   "n_instructions": 102,
+   "match_rate": 0.9,
+   "n_blocks_total": 10,
+   "n_blocks_kept": 8
+  },
+  {
+   "sample_id": "0000000000000000000000000000000000000000000000000000000000000003",
+   "label": 1,
+   "family": "f3",
+   "arch": "x86",
+   "fold": 3,
+   "n_instructions": 103,
+   "match_rate": 0.9,
+   "n_blocks_total": 10,
+   "n_blocks_kept": 8
+  },
+  {
+   "sample_id": "0000000000000000000000000000000000000000000000000000000000000004",
+   "label": 0,
+   "family": "f0",
+   "arch": "x86",
+   "fold": 4,
+   "n_instructions": 104,
+   "match_rate": 0.9,
+   "n_blocks_total": 10,
+   "n_blocks_kept": 8
+  },
+  {
+   "sample_id": "0000000000000000000000000000000000000000000000000000000000000005",
+   "label": 0,
+   "family": "f1",
+   "arch": "x86",
+   "fold": 0,
+   "n_instructions": 105,
+   "match_rate": 0.9,
+   "n_blocks_total": 10,
+   "n_blocks_kept": 8
+  },
+  {
+   "sample_id": "0000000000000000000000000000000000000000000000000000000000000006",
+   "label": 1,
+   "family": "f2",
+   "arch": "x86",
+   "fold": 1,
+   "n_instructions": 106,
+   "match_rate": 0.9,
+   "n_blocks_total": 10,
+   "n_blocks_kept": 8
+  },
+  {
+   "sample_id": "0000000000000000000000000000000000000000000000000000000000000007",
+   "label": 0,
+   "family": "f3",
+   "arch": "x86",
+   "fold": 2,
+   "n_instructions": 107,
+   "match_rate": 0.9,
+   "n_blocks_total": 10,
+   "n_blocks_kept": 8
+  },
+  {
+   "sample_id": "0000000000000000000000000000000000000000000000000000000000000008",
+   "label": 0,
+   "family": "f0",
+   "arch": "x86",
+   "fold": 3,
+   "n_instructions": 108,
+   "match_rate": 0.9,
+   "n_blocks_total": 10,
+   "n_blocks_kept": 8
+  }
+ ],
+ "cases": [
+  {
+   "name": "signal-250-pins-seeded",
+   "settings": {
+    "sample": "signal",
+    "num_blocks": 250,
+    "seed": 0,
+    "source": "repo",
+    "pins": {
+     "CT_GAT/pipeline/s02_preprocess/preprocess_full.py": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "CT_GAT/pipeline/s02_preprocess/tokenize_asm_gz.py": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "embedder_rows": "seeded-per-id"
+   },
+   "summary": {
+    "processed": 9,
+    "total": 9,
+    "excluded": {}
+   },
+   "manifests": true,
+   "zip_name": "Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip",
+   "readme": "# Mendeley x86 CFG subgraphs (signal, 250 blocks), pipeline B of the team pipelines\n\nUnzip this archive at `CT_GAT/` of the repository. It creates exactly what `python -m s02_preprocess.preprocess_full` writes by\ndefault, so the loaders and Janice's model (`s03a_transformer/five_channel`,\n`python -m experiments.train --model fivechannel --build CT_GAT/processed/cfg_subgraphs`) read it unchanged:\n\n```\nCT_GAT/processed/api_vocab.json              API vocabulary (ids >= FIRST_API_ID)\nCT_GAT/processed/cfg_subgraphs/<sha256>.pt   one sample per binary (9)\nCT_GAT/processed/cfg_subgraphs/<sha256>.manifest.json   per-sample alignment report\nCT_GAT/processed/cfg_subgraphs/channel_embedder.pt      the seeded five-channel embedder\nCT_GAT/processed/cfg_subgraphs/build_info/   index.csv, build_settings.json, build_summary.json, build_log.csv (not read by the code)\n```\n\nWhat is in a sample: `instruction_ids [N,5]` (opcode, operand 1, operand 2, API id, behaviour), `insn_to_block`,\n`instruction_matched`, `block_features [n,77]`, `block_embeddings [n,64]`, `edge_index`, `edge_type`, `edge_attr`, `edge_back`,\n`block_keys`, `label`, `dataset_metadata` (sample_id, label, arch, family, fold), and the rest of the keys `save_sample` writes.\n\nHow it was built: the 9 Mendeley x86 binaries of our 5-fold family-holdout set (3 ransomware,\n6 goodware in this archive, no exclusions), `--sample signal`, budget 250 blocks, seed 0.\n\n`signal` is the blocks of whole functions that call imports, highest signal first, up to the budget (several functions, so the result is not one connected subgraph).\nLibrary functions are used only when a binary has no other code (they are collapsed in the IDA listing and cannot be matched).\nCFGs come from the Mendeley bundle, listings from the Mendeley IDA export. Code: source `repo`, files of the repository when built:\n- `CT_GAT/pipeline/s02_preprocess/preprocess_full.py`: sha256 `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`\n- `CT_GAT/pipeline/s02_preprocess/tokenize_asm_gz.py`: sha256 `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`\n\nBefore training: `api_vocab.json` was grown over all binaries in one pass. The API rows the embedder added were drawn per (seed, API id) (`--seeded-rows`), so the table does not depend on a pause and resume of the build. Map API ids that do not occur in your training\nbinaries to `UNK_API` per fold (`--model fivechannel` and our team trainers do this), or rebuild the vocabulary from your training\nsplit (`--split train`, then the other splits frozen).\n\n`build_info/index.csv` lists, per binary: label, family, arch, our kfold fold, number of instructions, match rate (share of selected\ninstructions paired with a listing line), blocks in the binary and blocks kept.\n"
+  },
+  {
+   "name": "callwalk-500-no-pins-excluded",
+   "settings": {
+    "sample": "callwalk",
+    "num_blocks": 500,
+    "seed": 3,
+    "source": "main-fix"
+   },
+   "summary": {
+    "processed": 9,
+    "total": 10,
+    "excluded": {
+     "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "too big"
+    }
+   },
+   "manifests": false,
+   "zip_name": "Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip",
+   "readme": "# Mendeley x86 CFG subgraphs (callwalk, 500 blocks), pipeline B of the team pipelines\n\nUnzip this archive at `CT_GAT/` of the repository. It creates exactly what `python -m s02_preprocess.preprocess_full` writes by\ndefault, so the loaders and Janice's model (`s03a_transformer/five_channel`,\n`python -m experiments.train --model fivechannel --build CT_GAT/processed/cfg_subgraphs`) read it unchanged:\n\n```\nCT_GAT/processed/api_vocab.json              API vocabulary (ids >= FIRST_API_ID)\nCT_GAT/processed/cfg_subgraphs/<sha256>.pt   one sample per binary (9)\nCT_GAT/processed/cfg_subgraphs/channel_embedder.pt      the seeded five-channel embedder\nCT_GAT/processed/cfg_subgraphs/build_info/   index.csv, build_settings.json, build_summary.json, build_log.csv (not read by the code)\n```\n\n(the per-sample manifest json files, alignment diagnostics that the models do not read, are left out of this archive; available on request)\n\nWhat is in a sample: `instruction_ids [N,5]` (opcode, operand 1, operand 2, API id, behaviour), `insn_to_block`,\n`instruction_matched`, `block_features [n,77]`, `block_embeddings [n,64]`, `edge_index`, `edge_type`, `edge_attr`, `edge_back`,\n`block_keys`, `label`, `dataset_metadata` (sample_id, label, arch, family, fold), and the rest of the keys `save_sample` writes.\n\nHow it was built: the 10 Mendeley x86 binaries of our 5-fold family-holdout set (3 ransomware,\n6 goodware in this archive, 1 excluded on purpose), `--sample callwalk`, budget 500 blocks, seed 3.\n\n`callwalk` is a walk that grows from a seeded random block over the CFG edges and the call edges in both directions, with seeded restarts when the reachable region is smaller than the budget; the saved edges are the CFG edges among the chosen blocks.\nLibrary functions are used only when a binary has no other code (they are collapsed in the IDA listing and cannot be matched).\nCFGs come from the Mendeley bundle, listings from the Mendeley IDA export. Code: source `main-fix`\n\nBefore training: `api_vocab.json` was grown over all binaries in one pass. Map API ids that do not occur in your training\nbinaries to `UNK_API` per fold (`--model fivechannel` and our team trainers do this), or rebuild the vocabulary from your training\nsplit (`--split train`, then the other splits frozen).\n\n`build_info/index.csv` lists, per binary: label, family, arch, our kfold fold, number of instructions, match rate (share of selected\ninstructions paired with a listing line), blocks in the binary and blocks kept.\n"
+  },
+  {
+   "name": "uncapped",
+   "settings": {
+    "sample": "signal",
+    "num_blocks": 1000000,
+    "seed": 0,
+    "source": "repo",
+    "pins": {
+     "CT_GAT/pipeline/s02_preprocess/preprocess_full.py": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "CT_GAT/pipeline/s02_preprocess/tokenize_asm_gz.py": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+   },
+   "summary": {
+    "processed": 9,
+    "total": 9,
+    "excluded": {}
+   },
+   "manifests": true,
+   "zip_name": "Mendeley_x86_cfg_subgraphs_uncapped_v3.zip",
+   "readme": "# Mendeley x86 CFG subgraphs (uncapped), pipeline B of the team pipelines\n\nUnzip this archive at `CT_GAT/` of the repository. It creates exactly what `python -m s02_preprocess.preprocess_full` writes by\ndefault, so the loaders and Janice's model (`s03a_transformer/five_channel`,\n`python -m experiments.train --model fivechannel --build CT_GAT/processed/cfg_subgraphs`) read it unchanged:\n\n```\nCT_GAT/processed/api_vocab.json              API vocabulary (ids >= FIRST_API_ID)\nCT_GAT/processed/cfg_subgraphs/<sha256>.pt   one sample per binary (9)\nCT_GAT/processed/cfg_subgraphs/<sha256>.manifest.json   per-sample alignment report\nCT_GAT/processed/cfg_subgraphs/channel_embedder.pt      the seeded five-channel embedder\nCT_GAT/processed/cfg_subgraphs/build_info/   index.csv, build_settings.json, build_summary.json, build_log.csv (not read by the code)\n```\n\nWhat is in a sample: `instruction_ids [N,5]` (opcode, operand 1, operand 2, API id, behaviour), `insn_to_block`,\n`instruction_matched`, `block_features [n,77]`, `block_embeddings [n,64]`, `edge_index`, `edge_type`, `edge_attr`, `edge_back`,\n`block_keys`, `label`, `dataset_metadata` (sample_id, label, arch, family, fold), and the rest of the keys `save_sample` writes.\n\nHow it was built: the 9 Mendeley x86 binaries of our 5-fold family-holdout set (3 ransomware,\n6 goodware in this archive, no exclusions), no block budget: every non-library block of every binary, in canonical block order. With no budget the callwalk restarts until every allowed block is chosen, so this one archive is the uncapped build of both `--sample signal` and `--sample callwalk`, seed 0.\nLibrary functions are used only when a binary has no other code (they are collapsed in the IDA listing and cannot be matched).\nCFGs come from the Mendeley bundle, listings from the Mendeley IDA export. Code: source `repo`, files of the repository when built:\n- `CT_GAT/pipeline/s02_preprocess/preprocess_full.py`: sha256 `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`\n- `CT_GAT/pipeline/s02_preprocess/tokenize_asm_gz.py`: sha256 `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`\n\nBefore training: `api_vocab.json` was grown over all binaries in one pass. Map API ids that do not occur in your training\nbinaries to `UNK_API` per fold (`--model fivechannel` and our team trainers do this), or rebuild the vocabulary from your training\nsplit (`--split train`, then the other splits frozen).\n\n`build_info/index.csv` lists, per binary: label, family, arch, our kfold fold, number of instructions, match rate (share of selected\ninstructions paired with a listing line), blocks in the binary and blocks kept.\n"
+  }
+ ]
+}

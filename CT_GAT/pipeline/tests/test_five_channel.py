@@ -91,7 +91,8 @@ def test_fivechannel_names_carry_the_non_defaults_only():
 
 
 @pytest.mark.parametrize('kw', [dict(seq_len=256), dict(max_windows=8), dict(mask_blocks=0.1), dict(control='no_edges'),
-                                dict(val_seed=3), dict(protocol='kfold_v3'), dict(arch='all'), dict(max_instructions=0)])
+                                dict(val_seed=3), dict(protocol='kfold_v3'), dict(arch='matched'), dict(arch_balance=True),
+                                dict(max_instructions=0)])
 def test_fivechannel_refuses_what_does_not_apply(kw):
     with pytest.raises(ValueError):
         fivechannel(**kw)

@@ -1,7 +1,7 @@
-"""Train Janice Park's five-channel Model 1 on one fold of our x86 kfold protocol.
+"""Train Janice Park's five-channel Model 1 on one fold of a dataset of the team pipelines (default: our x86 kfold protocol).
 
 python -m experiments.train --model fivechannel --protocol kfold --arch x86 --fold 0 --seed 0 [--max-instructions 512]
-[--build DIR] [--device cuda|cpu] [--smoke N] [--epochs 40 --patience 8]
+[--arch-balance] [--build DIR] [--device cuda|cpu] [--smoke N] [--epochs 40 --patience 8]
 python -m s03a_transformer.five_channel.train ...          the same run, with the options of this model only
 
 Run from CT_GAT/pipeline. `common/registry.py` serves this loop as the model `fivechannel` (`five_channel/spec.py`), so
@@ -10,6 +10,18 @@ Run from CT_GAT/pipeline. `common/registry.py` serves this loop as the model `fi
 macro-F1 at 0.5), best_auc.pt (best validation AUC), predictions.csv, predictions_auc.csv and metrics.json, the files of every
 other model, so s04_evaluation/report.py, stats.py and gates.py read it.
 
+The dataset is a flag, as for the teammates' arms (`experiments/team_pipelines/train_b.py`): `--protocol kfold --arch x86` (the
+default; 1,810 binaries), `--protocol kfold --arch all` (the 2,411 Mendeley binaries, x86 and x64) and `--protocol kfold_v3 --arch all|matched`
+(the combined dataset, 5,652 binaries with a v3 fold; `matched`, 4,850, trains on the `all` build). The flag is the literal
+`--protocol`, so that the cache is resolved from it. Run names: `kfold<f>_all_fivechannel[-L<n>][-ab]_s<seed>`,
+`v3kfold<f>_matched_fivechannel..._s<seed>`. A run refuses a build made for another dataset, in both directions (the build's
+settings.json names `protocol` and `arch`; a kfold x86 build records neither): `all` serves an `all` or `matched` run, `x86` an `x86`
+one (`train_b.check_build_dataset`). `--arch-balance` (needs --arch all or matched; run name suffix -ab) weights each training
+binary's loss by N / (C n_cell) over the non-empty (class, architecture) cells of the training manifest instead of N / (2 n_class)
+of its class, and averages them as a weighted mean, sum(l_i w_i) / sum(w_i); metrics.json records `arch_balance` and the cell weights.
+Vocabulary clash: `sig500v3` is the s02-fix *build* version, `kfold_v3` the fold *protocol*, `_v3.zip` the preprocessing version of
+the zips.
+
 Data: the folder of `<sample_id>.pt` files that `experiments/team_pipelines/build_b.py` writes (Yanping's stage-2 output; `--build`,
 else the `team_b_build` source: GT_TEAM_B_BUILD, datasets.json, else `CT_GAT/processed/cfg_subgraphs`, where unzipping the
 preprocessed zip at `CT_GAT/` or `build_b --source repo` puts it), read through `Model1Dataset`. The folds are ours
@@ -17,14 +29,14 @@ preprocessed zip at `CT_GAT/` or `build_b --source repo` puts it), read through 
 the same train / val / test ids as the GNN and the teammates' arms of that seed); a binary the build left out on purpose
 (`settings.json` `excluded`) is out of all three splits and recorded in metrics.json, as for the teammates' arms.
 
-The API vocabulary of the build covers all 1,810 binaries. Per fold it is made a training-set one again, with the logic of
+The API vocabulary of the build covers all the binaries of its dataset. Per fold it is made a training-set one again, with the logic of
 `experiments/team_pipelines/train_b.py`: every API id (>= FIRST_API_ID) that no training binary of the fold uses becomes UNK_API
 (`remap_api`, applied to the instructions the model reads).
 
 Model: her `Model1TokenSequence` (d_model 64, 4 heads, 2 layers, `max_seq_len` = `--max-instructions`, 128 as she wrote it) on the
 first `max_instructions` instructions of a binary, batched by her `model1_collate_fn`; a binary without an instruction is one
 all-PAD tuple (an all-masked row would give NaN). Loss: cross entropy with the class weight N / (2 n_class) of the training
-labels. AdamW (RunConfig lr, weight_decay), gradient clip RunConfig.grad_clip, batches of BATCH_SIZE binaries, bf16 autocast on CUDA.
+labels (cell weights under --arch-balance). AdamW (RunConfig lr, weight_decay), gradient clip RunConfig.grad_clip, batches of BATCH_SIZE binaries, bf16 autocast on CUDA.
 Each epoch records the validation AUC and the macro-F1 at 0.5; the F1 checkpoint is the epoch of the best macro-F1, the AUC
 checkpoint that of the best AUC, and training stops when the AUC has not improved for `patience` epochs. The AUC checkpoint's
 threshold is the GRID maximiser of the validation macro-F1 (`val_threshold_of`), or with --threshold-from oof the maximiser of the
@@ -53,8 +65,11 @@ from common.manifests import Manifest, load_index, make_manifest, run_command
 from common.paths import MissingSource, source_for
 from common.run_io import evaluate, write_run
 from experiments.team_pipelines.build_b import resolve_dir
-from experiments.team_pipelines.train_b import read_excluded, remap_api
+from experiments.team_pipelines.common import DATASET_OF, DEFAULT_ARCH
+from experiments.team_pipelines.fit import cell_name
+from experiments.team_pipelines.train_b import check_build_dataset, read_excluded, remap_api
 from experiments.train import choose_thresholds
+from s04_evaluation.metrics import cell_weights
 
 from .model import Model1Dataset, Model1TokenSequence, model1_collate_fn, tok
 
@@ -78,20 +93,34 @@ def say(*args):
 
 FILL_BUILD = ('fill CT_GAT/processed/cfg_subgraphs: unzip Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip at CT_GAT/, or build it '
               '(about 4 h on CPU) with python -m experiments.team_pipelines.build_b --source repo')
+FILL_BUILD_OF = {
+    ('kfold', 'x86'): FILL_BUILD,
+    ('kfold', 'all'): ('fill CT_GAT/processed/cfg_subgraphs: unzip Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip at CT_GAT/, or '
+                       'extend a copy of the x86 build (about 0.5 h on CPU) with python -m experiments.team_pipelines.build_b --source '
+                       'repo --protocol kfold --arch all --extend --out <the copy>'),
+    ('kfold_v3', 'all'): ('fill CT_GAT/processed/cfg_subgraphs: unzip combined_v3_cfg_subgraphs_signal_500blocks_v3.zip at CT_GAT/, or '
+                          'build it (about 15 h on CPU) with python -m experiments.team_pipelines.build_b --source repo --protocol '
+                          'kfold_v3 --arch all --max-instructions 4000000 --seeded-rows'),
+}
 
 
-def resolve_build(build=None) -> Path:
+def fill_build(protocol='kfold', arch='x86'):
+    """How to fill the default build folder of a dataset (`matched` reads the all build)."""
+    return FILL_BUILD_OF[protocol, 'all' if arch == 'matched' else arch]
+
+
+def resolve_build(build=None, protocol='kfold', arch='x86') -> Path:
     """`build` (a leading RUNS/ is the run directory), else the `team_b_build` source: GT_TEAM_B_BUILD, datasets.json, else
     `CT_GAT/processed/cfg_subgraphs`. A folder that is missing or holds no `<sample_id>.pt` is an error; for the default folder
-    it says how to fill it."""
+    it says how to fill it for the dataset (`protocol`, `arch`; `fill_build`)."""
     if build is None:
         try:
             path = source_for('team_b_build')
         except MissingSource as e:
-            raise FileNotFoundError(f'--build was not given and {e}; or {FILL_BUILD}') from e
+            raise FileNotFoundError(f'--build was not given and {e}; or {fill_build(protocol, arch)}') from e
     else:
         path = resolve_dir(Path(build))
-    hint = f': {FILL_BUILD}' if build is None else ''
+    hint = f': {fill_build(protocol, arch)}' if build is None else ''
     if not path.is_dir():
         raise FileNotFoundError(f'the pipeline-B build {path} is not a directory{hint}')
     if not any(p.name != 'channel_embedder.pt' for p in path.glob('*.pt')):
@@ -174,7 +203,9 @@ def forward(net, batch):
 
 
 def train_epoch(net, opt, items, ids, class_weight, cfg, epoch, device, seed):
-    """One pass over the binaries `ids` in a random order (seed, epoch); returns the mean batch loss."""
+    """One pass over the binaries `ids` in a random order (seed, epoch); returns the mean batch loss. `class_weight` is the tensor
+    of `class_weights` (the loss of a batch is the mean of the weighted losses) or, under --arch-balance, the {sample_id: weight} of
+    `loss_weights` (the loss is the weighted mean sum(l_i w_i) / sum(w_i))."""
     net.train()
     order = np.random.default_rng((seed, epoch, 7919)).permutation(len(ids))
     losses = []
@@ -182,7 +213,12 @@ def train_epoch(net, opt, items, ids, class_weight, cfg, epoch, device, seed):
         batch = to_device(collate(items, [ids[i] for i in order[start:start + BATCH_SIZE]], cfg.max_instructions), device)
         with autocast(device):
             logits = forward(net, batch)
-        loss = (F.cross_entropy(logits.float(), batch['label'], reduction='none') * class_weight[batch['label']]).mean()
+        per_binary = F.cross_entropy(logits.float(), batch['label'], reduction='none')
+        if isinstance(class_weight, dict):
+            weight = torch.tensor([class_weight[i] for i in batch['sample_ids']], dtype=torch.float32, device=device)
+            loss = (per_binary * weight).sum() / weight.sum()
+        else:
+            loss = (per_binary * class_weight[batch['label']]).mean()
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(net.parameters(), cfg.grad_clip)
@@ -210,6 +246,15 @@ def class_weights(labels, device):
     return torch.tensor([len(labels) / (2 * max(1, (labels == c).sum())) for c in (0, 1)], device=device)
 
 
+def loss_weights(cfg, rows, device):
+    """The weights of the loss from the rows of the training manifest only: the class weights of `class_weights` (a tensor), or
+    under cfg.arch_balance the weight N / (C n_cell) of every binary's (class, architecture) cell, {sample_id: weight}
+    (`s04_evaluation.metrics.cell_weights`, as `experiments.train.loss_weight_fn`)."""
+    if cfg.arch_balance:
+        return dict(zip((r['sample_id'] for r in rows), cell_weights([r['label'] for r in rows], [r['arch'] for r in rows]).tolist()))
+    return class_weights([r['label'] for r in rows], device)
+
+
 def new_net(cfg, n_api, device):
     return Model1TokenSequence(api_vocab_size=n_api, d_model=D_MODEL, max_seq_len=cfg.max_instructions, num_classes=2).to(device)
 
@@ -225,7 +270,7 @@ def refit_predict(binaries, cfg, n_api, device):
         torch.manual_seed(seed)
         net = new_net(cfg, n_api, device)
         opt = torch.optim.AdamW(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-        weight = class_weights([binaries[i].label for i in train_ids], device)
+        weight = loss_weights(cfg, train_rows, device)
         out = {}
         for epoch in range(1, max(epochs) + 1):
             train_epoch(net, opt, items, train_ids, weight, cfg, epoch, device, seed)
@@ -257,7 +302,8 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
     device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
     if smoke is not None:
         cfg = replace(cfg, epochs=SMOKE_EPOCHS)
-    build = resolve_build(build)
+    build = resolve_build(build, cfg.protocol, cfg.arch)
+    check_build_dataset(build, cfg.protocol, cfg.arch)
     out = out_root / cfg.name
     out.mkdir(parents=True, exist_ok=True)
 
@@ -286,7 +332,7 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
     n_api = api_vocab_size(build, binaries)
     net = new_net(cfg, n_api, device)
     n_params = sum(p.numel() for p in net.parameters())
-    weight = class_weights([labels[i] for i in ids['train']], device)
+    weight = loss_weights(cfg, splits['train'], device)
     opt = torch.optim.AdamW(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     cfg.save(out / 'config.json')
     log(f'{cfg.name}: train {len(ids["train"])} val {len(ids["val"])} test {len(ids["test"])} binaries, {len(excluded)} excluded, '
@@ -336,6 +382,9 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
         'n_api_ids_unseen_mapped': len(every - set(seen.tolist())), 'device': device.type, 'smoke': smoke,
         'truncated_instructions': {s: sum(binaries[i].n_instructions > cfg.max_instructions for i in ids[s]) for s in splits},
         'model': {'d_model': D_MODEL, 'max_seq_len': cfg.max_instructions, 'num_layers': 2, 'batch_size': BATCH_SIZE}}
+    if cfg.arch_balance:
+        extra['arch_balance'] = True
+        extra['cell_weights'] = {cell_name(r['label'], r['arch']): weight[r['sample_id']] for r in splits['train']}
     if threshold_rule is not None:
         extra['threshold_rule'] = threshold_rule
     reasons = '; '.join(sorted(set(excluded.values())))
@@ -353,6 +402,12 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
 def parse_config(argv=None):
     """(RunConfig, options) from a command line; options: build, device, smoke."""
     ap = argparse.ArgumentParser(description="Train Janice Park's five-channel Model 1 on one fold of a pipeline-B build")
+    ap.add_argument('--protocol', choices=sorted(DATASET_OF), default='kfold', help='the fold protocol, which picks the dataset: kfold '
+                    '(Mendeley, mendeley_x86 cache) or kfold_v3 (combined_v3 cache); the literal flag also picks the cache')
+    ap.add_argument('--arch', choices=['x86', 'all', 'matched'], default=None, help='the binaries to train on (default: x86 under '
+                    'kfold, all under kfold_v3); matched (kfold_v3 only) trains on the all build')
+    ap.add_argument('--arch-balance', action='store_true', help='weight the training binaries by (class, architecture) cell instead '
+                    'of by class (needs --arch all or matched; run name suffix -ab)')
     ap.add_argument('--fold', type=int, required=True)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--max-instructions', type=int, default=128)
@@ -365,9 +420,9 @@ def parse_config(argv=None):
     ap.add_argument('--smoke', type=int, default=None, help='N train binaries, 2 epochs, temporary directory, no RUNS')
     args = ap.parse_args(argv)
     try:
-        cfg = RunConfig(protocol='kfold', fold=args.fold, arch='x86', seed=args.seed, model='fivechannel',
-                        max_instructions=args.max_instructions, epochs=args.epochs, patience=args.patience,
-                        threshold_from=args.threshold_from)
+        cfg = RunConfig(protocol=args.protocol, fold=args.fold, arch=args.arch or DEFAULT_ARCH[args.protocol], seed=args.seed,
+                        model='fivechannel', max_instructions=args.max_instructions, epochs=args.epochs, patience=args.patience,
+                        threshold_from=args.threshold_from, arch_balance=args.arch_balance)
     except ValueError as e:
         ap.error(str(e))
     if args.smoke is not None and args.smoke < 2:

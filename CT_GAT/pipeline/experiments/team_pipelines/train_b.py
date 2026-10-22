@@ -1,7 +1,7 @@
 """Pipeline B trainer: the teammates' FullBlockGAT (train_full_gat recipe) on the build_b.py subgraphs, our fold manifests.
 
 python -m experiments.team_pipelines.train_b --fold 0 --seed 0 --arm <arm> [--features all|feat|emb|e2e] [--block-len 64] [--source LABEL]
-       [--build DIR] [--smoke N] [--device cuda|cpu]
+       [--protocol kfold|kfold_v3 --arch x86|all|matched] [--arch-balance] [--build DIR] [--smoke N] [--device cuda|cpu]
        (run from CT_GAT/pipeline; reads the build directory and never writes there)
 
 Arms (`ARM_TABLE`, one row per arm: sampler, block budget, node input, the source labels its build may record, the default build
@@ -36,8 +36,24 @@ directory, the hyperparameters; a new arm is a new row).
                      reads each payload twice instead of holding them all: once for the API ids it uses (and the one-sample re-pool
                      check), once to build its graph, which is all it keeps.
 
+The dataset is a flag, not an arm. `--protocol kfold --arch x86` (the defaults) is the 1,810 Mendeley x86 binaries and everything above;
+`--protocol kfold --arch all` the 2,411 Mendeley binaries (x86 and x64) and `--protocol kfold_v3 --arch all|matched` the combined
+dataset (5,652 binaries with a v3 fold; `matched`: the 4,850 of them in `arch_matched.csv`, trained on the `all` build). The flag is the
+literal `--protocol`, so that the cache is resolved from it as in every command (`common/paths.py`). The folds, the validation carve, the
+run name and the build all follow: `kfold{f}_all_gnn_s{seed}_team-<arm>`, `v3kfold{f}_matched_gnn_s{seed}_team-<arm>`, ... Vocabulary
+clash: `sig500v3` is the s02-fix *build* version, `kfold_v3` the fold *protocol*, `_v3.zip` the preprocessing version of the zips.
+The legacy arms (`sig500`, `sig500v2`) read the x86 builds of the pinned worktrees and run on kfold x86 only; the uncapped arms
+(`sigwhole*`) on kfold only. A run refuses a build made for another dataset, in both directions (`check_build`): the build's
+`settings.json` names `protocol` and `arch` (a kfold x86 build records neither), `all` serves an `all` or `matched` run, and an
+`x86` run needs an x86 build, because a build that grew over more binaries has another API vocabulary and embedder.
+--arch-balance (needs --arch all or matched) weights every training binary by its (class, architecture) cell, N / (C n_cell) over the
+non-empty cells of the fold's training manifest, instead of the class weight (fit.py); the run is named `...gnn-ab_s...`, its
+metrics.json `recipe` has `arch_balance` and the four cell weights. Selection stays the teammates' (ransomware F1 at 0.5).
+
 --build DIR overrides the directory. Without it the arm's default directory is used when it exists, else the `team_b_build` source
-(`CT_GAT/processed/cfg_subgraphs`, where the preprocessed zips unpack). The build is read in either of its two layouts
+(`CT_GAT/processed/cfg_subgraphs`, where the preprocessed zips unpack). The default directory is `RUNS/team/b_<family>` for kfold
+x86 (`ARM_TABLE`), `RUNS/team/b_<family>_mendeley_all` for kfold all and `RUNS/team/b_<family>_combined_v3` for kfold_v3
+(`default_build_dir`; <family> is the arm without `-feat|-emb|-e2e` and without the `v3` of `sig500v3`). The build is read in either of its two layouts
 (`build_layout`): a `build_b` folder, or an unzipped Drive zip (`build_info/build_settings.json`, `build_info/build_log.csv`,
 `checkpoint.json` when the zip has one, else the ids are the `<sha256>.pt` stems, `api_vocab.json` in the folder or one level up,
 else the embedder is sized from `channel_embedder.pt`).
@@ -53,7 +69,7 @@ the build's settings.json, never those of the files now in the repository) and `
 imported).
 
 The graph loader, the model and the training recipe are Dorothy's, copied into `s03b_cfg_feature/gat` (no GT_TEAM_* variable).
-Run names: `kfold{f}_x86_gnn_s{seed}_team-<arm>`.
+Run names: `kfold{f}_x86_gnn_s{seed}_team-<arm>` (kfold x86; `common.team_config` names the others).
 
 The build fixed one API vocabulary over all 1,810 binaries and pooled the block embeddings with the embedder it saved
 (`channel_embedder.pt`). Per fold this script makes the vocabulary a training-set one again: every API id (>= FIRST_API_ID)
@@ -74,6 +90,7 @@ metrics.json (`excluded`, `excluded_reason`). --smoke N: N available training id
 import argparse
 import csv
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -84,9 +101,9 @@ import torch
 from common.config import RUNS
 from common.manifests import run_command
 from common.paths import MissingSource, source_for
-from experiments.team_pipelines.build_b import load_vocab_embedder, resolve_dir
-from experiments.team_pipelines.common import (DEFAULT_SOURCE, SOURCE_CODE, code_source, fold_manifest, import_team, sample_rows,
-                                               source_label_ok, source_pins)
+from experiments.team_pipelines.build_b import dataset_of, load_vocab_embedder, resolve_dir
+from experiments.team_pipelines.common import (DATASET_OF, DEFAULT_ARCH, DEFAULT_SOURCE, SOURCE_CODE, code_source, fold_manifest,
+                                               import_team, sample_rows, source_label_ok, source_pins)
 from experiments.team_pipelines.fit import run_arm, smoke_ids
 
 UNCAPPED_BLOCKS = 1_000_000     # build_b --num-blocks of the uncapped build (every non-library block)
@@ -96,6 +113,7 @@ GPU_CAP_GB = 12          # the allocator may reserve at most this much (fit.py: 
 HP_WHOLE = {**HP, 'node_budget': NODE_BUDGET, 'gpu_cap_gb': GPU_CAP_GB}
 HP_E2E = {**HP, 'lr': 3e-4, 'grad_clip': 1.0, 'gpu_cap_gb': GPU_CAP_GB}      # post-LN transformer without warmup: clip, and lr 3e-4 (1e-3 swung the validation F1 by up to 0.24 per epoch on fold 0)
 BLOCK_LEN = 64            # instructions per block the end-to-end arm reads (block_transformer.BLOCK_LEN)
+TEAM_RUNS = RUNS / 'team'
 B_DIR = RUNS / 'team' / 'b_sig500'
 B_V2_DIR = RUNS / 'team' / 'b_sig500_v2'
 B_V3_DIR = RUNS / 'team' / 'b_sig500_v3'
@@ -110,6 +128,8 @@ FEATURE_MODE = {'all': 'both', 'feat': 'features', 'emb': 'embeddings'}      # g
 KIND_COLUMNS = ('api_none_count', 'api_unresolved_count', 'api_known_count')
 MAIN_FIX_LABELS = ('main-fix', 'repo')       # the builds of the fixed s02 preprocess: the pinned fix commit, or this repository's files
 REPO_LABELS = ('repo',)                      # the builds made from this repository's own files (sig250, callwalk500, callwalk250)
+RUN_ARCHES = {'kfold': ('x86', 'all'), 'kfold_v3': ('all', 'matched')}      # what a run can ask for: a build's arch (BUILD_ARCHES) and `matched`, a filter of the all build
+BUILD_SUFFIX = {'kfold': 'mendeley_all', 'kfold_v3': 'combined_v3'}      # RUNS/team/b_<family>_<suffix>: the default build directory of a dataset other than kfold x86
 
 
 class Arm(NamedTuple):
@@ -175,10 +195,48 @@ def build_layout(b_dir):
                   vocab if vocab.is_file() else None)
 
 
-def default_build_dir(arm):
+def dataset_error(protocol, arch):
+    """None when (protocol, arch) is a dataset the team trainers run on (`RUN_ARCHES`), else the reason."""
+    if protocol not in RUN_ARCHES:
+        return f'protocol {protocol!r}: one of {", ".join(RUN_ARCHES)}'
+    if arch not in RUN_ARCHES[protocol]:
+        return f'--protocol {protocol} runs on --arch {" or ".join(RUN_ARCHES[protocol])}, not {arch!r}'
+    return None
+
+
+def build_arch(arch):
+    """The `arch` of the build_b folder that a run of `arch` reads: `matched` is a training-time filter of the all build."""
+    return 'all' if arch == 'matched' else arch
+
+
+def check_arm_dataset(arm, protocol='kfold', arch='x86', arch_balance=False):
+    """SystemExit when `arm` cannot run on the dataset (protocol, arch): a legacy arm reads the x86 build of the pinned worktrees,
+    an uncapped arm has no build on the combined dataset, --arch-balance needs both architectures."""
+    error = dataset_error(protocol, arch)
+    if error:
+        raise SystemExit(error)
+    row = ARM_TABLE[arm]
+    if row.legacy and (protocol, arch) != ('kfold', 'x86'):
+        raise SystemExit(f'arm {arm} reads the x86 build {row.build.name}; use sig500v3-* on another dataset')
+    if row.num_blocks is None and protocol != 'kfold':
+        raise SystemExit(f'arm {arm} reads an uncapped build, which is made for kfold only (a binary of the combined dataset has up to '
+                         f'8M blocks: no GPU holds it)')
+    if arch_balance and arch == 'x86':
+        raise SystemExit('--arch-balance weights the (class, architecture) cells: it needs --arch all or matched')
+
+
+def build_family(arm):
+    """The family of an arm in the name of its build directory: the arm without `-feat|-emb|-e2e` and without the `v3` of
+    `sig500v3` (the s02-fix version is implied by the `repo` source): sig500v3-emb -> sig500, callwalk250-e2e -> callwalk250."""
+    return re.sub(r'-(feat|emb|e2e)$', '', arm).replace('sig500v3', 'sig500')
+
+
+def default_build_dir(arm, protocol='kfold', arch='x86'):
     """The arm's default directory when it exists, else the `team_b_build` source (`CT_GAT/processed/cfg_subgraphs`, where the
-    preprocessed zips unpack); a message naming both when neither is a directory."""
-    default = ARM_DIR[arm]
+    preprocessed zips unpack); a message naming both when neither is a directory. The arm's directory is `ARM_DIR[arm]` for kfold
+    x86 and `RUNS/team/b_<family>_mendeley_all` / `b_<family>_combined_v3` for the other datasets (an `all` build also serves
+    `matched`)."""
+    default = ARM_DIR[arm] if (protocol, arch) == ('kfold', 'x86') else TEAM_RUNS / f'b_{build_family(arm)}_{BUILD_SUFFIX[protocol]}'
     if default.is_dir():
         return default
     try:
@@ -235,12 +293,25 @@ def check_source_flag(arm, source):
         raise SystemExit(f'arm {arm} reads builds of {" or ".join(ARM_TABLE[arm].sources)}, not --source {source}')
 
 
-def check_build(arm, b_dir, source=None):
+def check_build_dataset(b_dir, protocol='kfold', arch='x86'):
+    """SystemExit unless `b_dir` was built for the dataset of the run: its settings name `protocol` and `arch` (a build without the
+    keys is a kfold x86 build, `build_b.dataset_of`), the protocol must be the run's and the arch the one the run reads (`x86` for
+    x86, `all` for all and matched). Refused in both directions: an x86 run on an all build trains on another vocabulary."""
+    have = dataset_of(read_settings(b_dir))
+    if have != (protocol, build_arch(arch)):
+        hint = ' (matched is a training-time filter of the all build: build_b does not make it)' if have[1] == 'matched' else \
+            f' (a {protocol} {arch} run reads the {protocol} {build_arch(arch)} build)' if arch == 'matched' else ''
+        raise SystemExit(f'{b_dir} was built for {have[0]} {have[1]}, this run asks for {protocol} {arch}{hint}')
+
+
+def check_build(arm, b_dir, source=None, protocol='kfold', arch='x86'):
     """The source label of `b_dir` when its settings agree with `arm` in sampler, block budget and source label; SystemExit
     with the three values of both sides otherwise. `source` (the --source flag) must be a label the arm accepts and the one the
-    build recorded."""
+    build recorded. The build must also be one of the run's dataset (`check_build_dataset`)."""
     row = ARM_TABLE[arm]
+    check_arm_dataset(arm, protocol, arch)
     check_source_flag(arm, source)
+    check_build_dataset(b_dir, protocol, arch)
     settings = read_settings(b_dir)
     label = read_source(b_dir)
     sampler, blocks = settings.get('sample'), settings.get('num_blocks')
@@ -322,9 +393,11 @@ def slim(payload):
     return {k: payload[k] for k in keep}
 
 
-def load_slim(b_dir, sample_id):
+def load_slim(b_dir, sample_id, protocol='kfold', arch='x86'):
+    """The slim payload of one sample of a build; its label is checked against the cache index of the build's dataset (a matched
+    run reads the all build)."""
     payload = torch.load(Path(b_dir) / f'{sample_id}.pt', map_location='cpu', weights_only=False)
-    if payload['file_id'] != sample_id or int(payload['label']) != sample_rows()[sample_id]['label']:
+    if payload['file_id'] != sample_id or int(payload['label']) != sample_rows(protocol, build_arch(arch))[sample_id]['label']:
         raise ValueError(f'{sample_id}.pt holds sample {payload["file_id"]} / label {payload["label"]}')
     return slim(payload)
 
@@ -403,9 +476,11 @@ def e2e_extras(graphs, test_ids, block_len, api_rows):
             'encoder': bt.ENCODER, 'gat': bt.GAT}
 
 
-def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, features=None, source=None, block_len=None):
+def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, features=None, source=None, block_len=None,
+        protocol='kfold', arch='x86', arch_balance=False):
     if arm not in ARM_TABLE:
         raise ValueError(f'arm {arm}: one of {ARMS}')
+    check_arm_dataset(arm, protocol, arch, arch_balance)
     features = ARM_FEATURES[arm] if features is None else features
     if features not in INPUTS:
         raise ValueError(f'features {features}: one of {INPUTS}')
@@ -413,12 +488,12 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
         raise SystemExit(f'arm {arm} trains on --features {ARM_FEATURES[arm]}, not {features} (the arm names the input)')
     check_block_len(arm, block_len)
     check_source_flag(arm, source)
-    b_dir = default_build_dir(arm) if b_dir is None else Path(b_dir)
-    label = check_build(arm, b_dir, source)
+    b_dir = default_build_dir(arm, protocol, arch) if b_dir is None else Path(b_dir)
+    label = check_build(arm, b_dir, source, protocol, arch)
     device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
     from s03b_cfg_feature.gat import gat_full_model as gm, graph_full_loader as gl      # imported here: no torch_geometric at import
     pp, embedder, done = build_state(b_dir)
-    manifest = fold_manifest(fold, seed)
+    manifest = fold_manifest(fold, seed, protocol, arch)
     excluded = read_excluded(b_dir)
     want = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test if r['sample_id'] not in excluded]
     t0 = time.time()
@@ -436,7 +511,7 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
     first = train_ids[0]
     api_ids, err = {}, None                                      # first pass: the API ids of every payload, one payload in memory
     for i in want:
-        payload = load_slim(b_dir, i)
+        payload = load_slim(b_dir, i, protocol, arch)
         api_ids[i] = payload_api_ids(pp.tok, payload).tolist()
         if i == first:
             err = check_repool(pp, embedder, payload)
@@ -451,7 +526,7 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
         from s03c_cfg_transformer import block_transformer as bt      # imported here: it needs torch_geometric
     graphs = {}                                                  # second pass: each graph from its payload, which is then dropped
     for i in want:
-        payload = load_slim(b_dir, i)
+        payload = load_slim(b_dir, i, protocol, arch)
         graphs[i] = bt.make_e2e_graph(pp, gl, payload, seen, BLOCK_LEN) if e2e else make_graph(pp, gl, embedder, payload, seen, features)
     log_rows = read_build_log(b_dir)
     sizes = {i: (None, int(graphs[i].num_nodes), log_rows[i][0]) for i in want}
@@ -474,7 +549,7 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
     return run_arm(arm=arm, fold=fold, seed=seed, graphs=graphs, sizes=sizes,
                    build_model=build_model, hp=ARM_HP[arm], device=device,
                    smoke=smoke, smoke_split=split, extra=extra, log=log, excluded=sorted(excluded),
-                   excluded_reason='; '.join(reasons))
+                   excluded_reason='; '.join(reasons), protocol=protocol, arch=arch, arch_balance=arch_balance)
 
 
 def main(argv=None):
@@ -486,6 +561,12 @@ def main(argv=None):
                     "embedding), e2e (the block's instructions, encoder trained with the GAT); default and only value allowed: the arm's")
     ap.add_argument('--block-len', type=int, help=f"instructions per block the encoder reads (the -e2e arms: {BLOCK_LEN}, the only "
                     "value allowed; the other arms read no instructions)")
+    ap.add_argument('--protocol', choices=sorted(DATASET_OF), default='kfold', help="the fold protocol, which picks the dataset: kfold "
+                    "(Mendeley, mendeley_x86 cache) or kfold_v3 (combined_v3 cache); the literal flag also picks the cache")
+    ap.add_argument('--arch', choices=['x86', 'all', 'matched'], help="the binaries to train on (default: x86 under kfold, all under "
+                    "kfold_v3); matched (kfold_v3 only) trains on the all build")
+    ap.add_argument('--arch-balance', action='store_true', help="weight the training binaries by (class, architecture) cell instead "
+                    "of by class (needs --arch all or matched; run name gnn-ab)")
     ap.add_argument('--source', choices=sorted(SOURCE_CODE), help="the source label the build must have recorded (default: any "
                     "the arm accepts)")
     ap.add_argument('--build', type=Path, help="build directory: a build_b folder or an unzipped preprocessed zip (default: the "
@@ -493,9 +574,10 @@ def main(argv=None):
     ap.add_argument('--smoke', type=int, help='train on N available training ids for 2 epochs into a temp directory')
     ap.add_argument('--device', choices=['cuda', 'cpu'])
     args = ap.parse_args(argv)
+    arch = args.arch or DEFAULT_ARCH[args.protocol]
     out = run(args.arm, args.fold, args.seed, args.smoke, args.device,
               resolve_dir(args.build) if args.build else None, features=args.features, source=args.source,
-              block_len=args.block_len)
+              block_len=args.block_len, protocol=args.protocol, arch=arch, arch_balance=args.arch_balance)
     if args.smoke:
         print(f"smoke: val AUC {out['val_auc']:.4f}, peak GPU {out['peak_gpu_mb']} MB, loss "
               f"{out['history'][0]['loss']} -> {out['history'][-1]['loss']}, temp dir {out['dir']} (not under {RUNS})")

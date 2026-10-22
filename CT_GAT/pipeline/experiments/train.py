@@ -35,9 +35,11 @@ metrics.json records the rule (`threshold_rule`, `selection.auc.rule`); the run 
 `--threshold-from val`, is the rule above and changes no name or result.
 
 --model fivechannel trains Janice Park's five-channel Model 1 (s03a_transformer/five_channel) on the .pt files of a pipeline-B
-build (experiments/team_pipelines/build_b.py) under our folds (`--protocol kfold --fold <k>`, x86). It takes --build <dir>
-(default: the `team_b_build` source of datasets.json, or GT_TEAM_B_BUILD), --device and --smoke N, and --max-instructions N
-(default 128, as she wrote it; 512 gives the run name suffix -L512). See that package's README.
+build (experiments/team_pipelines/build_b.py) under our folds (`--protocol kfold --fold <k>`, x86 by default; `--arch all` for the
+2,411 Mendeley binaries, `--protocol kfold_v3 --arch all|matched` for the combined dataset: the build must be one of that dataset).
+It takes --build <dir> (default: the `team_b_build` source of datasets.json, or GT_TEAM_B_BUILD), --device and --smoke N, and
+--max-instructions N (default 128, as she wrote it; 512 gives the run name suffix -L512). --arch-balance (arch all or matched)
+gives the run name suffix -ab and the weighted-mean loss of the cell weights. See that package's README.
 """
 import argparse
 import csv
