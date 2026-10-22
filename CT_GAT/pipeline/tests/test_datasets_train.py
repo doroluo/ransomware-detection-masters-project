@@ -5,7 +5,8 @@ What is checked, on the second synthetic dataset `tiny_v3` (tests/tiny_cache.py)
   * B1, `train_b` / `fit.py` / the queue verb: the refusals of a build of another dataset in both directions, of the legacy and the
     uncapped arms, the default build directory of each (protocol, arch), the 2-epoch runs on kfold all, kfold_v3 all and matched (run
     names, manifests, excluded ids in no split), the architecture-balance weights against `cell_weights` and the loss against
-    `CrossEntropyLoss(weight=)`, the API remap from the training ids only, `queue --dry` names.
+    `CrossEntropyLoss(weight=)`, the API remap from the training ids only, `queue --dry` names;
+  * B2, `fivechannel`: the four (protocol, arch) pairs, the `-ab` name, the build check, the cell weights and their loss.
 The tests that train need torch_geometric and skip with a reason without it; the refusals, names and weights do not.
 """
 import io
@@ -17,13 +18,19 @@ import pytest
 import torch
 import torch.nn as nn
 
+import experiments.train as experiments_train
+from common.config import RunConfig
+from common.manifests import load_index, make_manifest
 from experiments import queue as q
 from experiments.team_pipelines import common as tp, fit, train_b
+from s03a_transformer.five_channel import train as fc
 from s04_evaluation.metrics import cell_weights
+from test_five_channel import fivechannel, write_build
 from test_team_pipelines import fresh_team_caches, needs_pyg, pinned_team_modules  # noqa: F401
 from test_team_v3 import settings, synthetic_build
 from tiny_cache import tiny_v3  # noqa: F401  (a fixture)
 
+HERE = Path(__file__).resolve().parent
 WHY = 'num_instructions > 4000000: load_cfg needs about 3 KB per instruction (31 GB RAM)'
 TRAINED = [('kfold', 'all'), ('kfold_v3', 'all'), ('kfold_v3', 'matched')]
 quiet = lambda *_: None                                                                   # noqa: E731
@@ -422,3 +429,195 @@ def test_the_api_remap_and_its_unseen_set_come_from_the_training_ids_only(tiny_v
     for i in used:
         remapped = train_b.remap_api(pp.tok, train_b.load_slim(folder, i, protocol, arch)['instruction_ids'], seen)[:, 3]
         assert not set(remapped[remapped >= first].tolist()) & only_later and set(remapped[remapped >= first].tolist()) <= from_train
+
+
+# ---- B2: fivechannel on a dataset --------------------------------------------------------------------------------------------
+
+FIVE = [('kfold', 'x86'), ('kfold', 'all'), ('kfold_v3', 'all'), ('kfold_v3', 'matched')]
+
+
+def five_run(fold=0, protocol='kfold', arch='x86', **kw):
+    return fivechannel(fold, protocol=protocol, arch=arch, **kw)
+
+
+def test_fivechannel_names_carry_the_dataset_and_the_ab_twin():
+    assert [five_run(0, p, a).name for p, a in FIVE] == [
+        'kfold0_x86_fivechannel_s0', 'kfold0_all_fivechannel_s0', 'v3kfold0_all_fivechannel_s0', 'v3kfold0_matched_fivechannel_s0']
+    assert [five_run(3, p, a, seed=2, max_instructions=512).name for p, a in FIVE] == [
+        'kfold3_x86_fivechannel-L512_s2', 'kfold3_all_fivechannel-L512_s2', 'v3kfold3_all_fivechannel-L512_s2',
+        'v3kfold3_matched_fivechannel-L512_s2']
+    ab = [five_run(1, p, a, arch_balance=True) for p, a in FIVE[1:]]
+    assert [c.name for c in ab] == ['kfold1_all_fivechannel-ab_s0', 'v3kfold1_all_fivechannel-ab_s0', 'v3kfold1_matched_fivechannel-ab_s0']
+    assert [c.group for c in ab] == ['kfold_all_fivechannel-ab', 'kfold_v3_all_fivechannel-ab', 'kfold_v3_matched_fivechannel-ab']
+    assert five_run(1, 'kfold', 'all', arch_balance=True, max_instructions=512, threshold_from='oof').name == \
+        'kfold1_all_fivechannel-L512-ab-thoof_s0'
+    names = {five_run(f, p, a, seed=s, max_instructions=m, arch_balance=b, tag=t).name
+             for p, a in FIVE for f in range(5) for s in range(3) for m in (128, 512) for b in (False, True) for t in ('', 'whole')
+             if not (b and a == 'x86')}
+    assert len(names) == 3 * 5 * 3 * 2 * 2 * 2 + 5 * 3 * 2 * 2          # distinct: the dataset, L512, ab and the tag all show
+    recorded = {r['name'] for r in json.loads((HERE / 'fixtures' / 'run_names.json').read_text(encoding='utf-8'))}
+    recorded |= {r['name'] for r in json.loads((HERE / 'fixtures' / 'run_names_grid.json').read_text(encoding='utf-8'))}
+    assert not names & recorded                                              # no recorded name is a name of this step
+    # the plain x86 name is today's; the gnn arms get no new letters from the fivechannel branch
+    assert five_run().name == 'kfold0_x86_fivechannel_s0' and RunConfig(protocol='kfold', fold=0, arch_balance=True).name == 'kfold0_x86_gnn-ab_s0'
+
+
+@pytest.mark.parametrize('kw', [dict(protocol='kfold_v3', arch='x86'), dict(protocol='kfold', arch='matched'), dict(arch_balance=True),
+                                dict(protocol='kfold_v3', arch='all', val_seed=1), dict(protocol='kfold', arch='all', control='chain'),
+                                dict(protocol='kfold', arch='all', select_on='cell'), dict(protocol='kfold_v3', arch='matched', mask_blocks=0.1)])
+def test_fivechannel_refuses_a_dataset_without_a_build_and_the_options_that_stay_refused(kw):
+    with pytest.raises(ValueError):
+        fivechannel(0, **kw)
+
+
+def test_arch_balance_stays_refused_by_the_other_sequence_model_and_the_name_of_the_gnn_is_unchanged():
+    with pytest.raises(ValueError, match='arch_balance'):
+        RunConfig(protocol='kfold', fold=0, arch='all', model='tokenseq', arch_balance=True)
+    for p, a in FIVE[1:]:
+        assert RunConfig(protocol=p, fold=0, arch=a, model='gnn', arch_balance=True).variant == 'gnn-ab'
+
+
+def test_the_command_lines_take_the_dataset_flags():
+    cfg, out, options = experiments_train.parse_args(['--model', 'fivechannel', '--protocol', 'kfold_v3', '--arch', 'matched', '--fold', '4',
+                                                      '--arch-balance', '--build', 'b', '--device', 'cpu', '--smoke', '8'])
+    assert cfg.name == 'v3kfold4_matched_fivechannel-ab_s0' and options == {'build': 'b', 'device': 'cpu', 'smoke': 8}
+    assert experiments_train.parse_args(['--model', 'fivechannel', '--protocol', 'kfold', '--arch', 'all', '--fold', '1'])[0].name == \
+        'kfold1_all_fivechannel_s0'
+    for argv in (['--protocol', 'kfold_v3', '--fold', '0'], ['--protocol', 'kfold', '--fold', '0', '--arch-balance'],
+                 ['--protocol', 'kfold', '--fold', '0', '--arch', 'matched']):          # arch x86 by default, or a pair with no build
+        with pytest.raises(SystemExit):
+            experiments_train.parse_args(['--model', 'fivechannel', *argv])
+    cfg, opts = fc.parse_config(['--fold', '3', '--max-instructions', '512', '--build', 'b', '--smoke', '4'])        # today's command line
+    assert cfg.name == 'kfold3_x86_fivechannel-L512_s0' and opts == {'build': 'b', 'device': None, 'smoke': 4}
+    assert fc.parse_config(['--fold', '2', '--protocol', 'kfold_v3'])[0].name == 'v3kfold2_all_fivechannel_s0'      # arch: all by default
+    assert fc.parse_config(['--fold', '2', '--protocol', 'kfold_v3', '--arch', 'matched', '--arch-balance'])[0].name == \
+        'v3kfold2_matched_fivechannel-ab_s0'
+    assert fc.parse_config(['--fold', '2', '--protocol', 'kfold', '--arch', 'all'])[0].name == 'kfold2_all_fivechannel_s0'
+    for argv in (['--protocol', 'kfold', '--arch', 'matched'], ['--arch-balance'], ['--protocol', 'kfold_v3', '--arch', 'x86']):
+        with pytest.raises(SystemExit):
+            fc.parse_config(['--fold', '2', *argv])
+
+
+def test_the_default_build_hint_names_the_dataset(tmp_path, monkeypatch):
+    monkeypatch.delenv('GT_TEAM_B_BUILD', raising=False)
+    monkeypatch.setattr(fc, 'source_for', lambda name: (_ for _ in ()).throw(fc.MissingSource('none')))
+    for (protocol, arch), words in {('kfold', 'x86'): 'unzip Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip at CT_GAT/',
+                                    ('kfold', 'all'): 'unzip Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip at CT_GAT/',
+                                    ('kfold_v3', 'all'): 'unzip combined_v3_cfg_subgraphs_signal_500blocks_v3.zip at CT_GAT/',
+                                    ('kfold_v3', 'matched'): 'unzip combined_v3_cfg_subgraphs_signal_500blocks_v3.zip at CT_GAT/'}.items():
+        with pytest.raises(FileNotFoundError, match=words):
+            fc.resolve_build(None, protocol, arch)
+    assert fc.fill_build() == fc.FILL_BUILD
+    here = tmp_path / 'there'
+    here.mkdir()
+    monkeypatch.setattr(fc, 'source_for', lambda name: here)
+    with pytest.raises(FileNotFoundError, match='combined_v3_cfg_subgraphs_signal_500blocks_v3.zip'):
+        fc.resolve_build(None, 'kfold_v3', 'all')                      # an empty folder: the hint of the dataset
+
+
+def five_build(root, rows, dataset=None, excluded=None, skip=()):
+    """A `write_build` folder of the rows with the settings.json a build_b folder of `dataset` has."""
+    write_build(root, rows, skip=skip)
+    body = {'excluded': excluded or {}}
+    if dataset is not None:
+        body.update(protocol=dataset[0], arch=dataset[1])
+    (root / 'settings.json').write_text(json.dumps(body), encoding='utf-8')
+    return root
+
+
+def test_a_run_refuses_a_build_of_another_dataset_in_both_directions(tiny_v3, tmp_path):
+    rows = tiny_v3.rows
+    builds = {None: five_build(tmp_path / 'x86', rows), ('kfold', 'all'): five_build(tmp_path / 'ma', rows, ('kfold', 'all')),
+              ('kfold_v3', 'all'): five_build(tmp_path / 'c', rows, ('kfold_v3', 'all'))}
+    ok = {None: [('kfold', 'x86')], ('kfold', 'all'): [('kfold', 'all')], ('kfold_v3', 'all'): [('kfold_v3', 'all'), ('kfold_v3', 'matched')]}
+    for key, folder in builds.items():
+        for protocol, arch in FIVE:
+            cfg = five_run(0, protocol, arch, max_instructions=16)
+            if (protocol, arch) in ok[key]:
+                continue
+            have = ('kfold', 'x86') if key is None else key
+            with pytest.raises(SystemExit, match=f'was built for {have[0]} {have[1]}, this run asks for {protocol} {arch}'):
+                fc.run(cfg, folder, 'cpu', 6, log=quiet)
+    # a refused run creates no run directory
+    with pytest.raises(SystemExit):
+        fc.run(five_run(0, 'kfold_v3', 'all'), builds[None], 'cpu', None, tmp_path / 'runs', log=quiet)
+    assert not (tmp_path / 'runs').exists()
+    bare = write_build(tmp_path / 'bare', rows)                                  # a folder of .pt files with no settings: kfold x86
+    with pytest.raises(SystemExit, match='was built for kfold x86, this run asks for kfold all'):
+        fc.run(five_run(0, 'kfold', 'all'), bare, 'cpu', 6, log=quiet)
+
+
+@pytest.mark.parametrize('arch_balance', [False, True])
+@pytest.mark.parametrize('protocol, arch', FIVE[1:])
+def test_a_two_epoch_run_on_each_dataset(tiny_v3, tmp_path, protocol, arch, arch_balance):
+    rows = tiny_v3.rows
+    cfg = five_run(2, protocol, arch, seed=1, max_instructions=16, arch_balance=arch_balance, epochs=2)
+    manifest = make_manifest(cfg, load_index())
+    victim = manifest.test[0]['sample_id']
+    left_in_train = manifest.train[0]['sample_id']
+    build = five_build(tmp_path / 'b', rows, (protocol, 'all'), {victim: 'listing too large', left_in_train: 'listing too large'},
+                       skip={victim, left_in_train})
+    runs = tmp_path / 'runs'
+    metrics = fc.run(cfg, build, 'cpu', None, runs, log=quiet)
+    d = runs / cfg.name
+    assert cfg.name == {(False, 'kfold', 'all'): 'kfold2_all_fivechannel-L16_s1', (True, 'kfold', 'all'): 'kfold2_all_fivechannel-L16-ab_s1',
+                        (False, 'kfold_v3', 'all'): 'v3kfold2_all_fivechannel-L16_s1',
+                        (True, 'kfold_v3', 'all'): 'v3kfold2_all_fivechannel-L16-ab_s1',
+                        (False, 'kfold_v3', 'matched'): 'v3kfold2_matched_fivechannel-L16_s1',
+                        (True, 'kfold_v3', 'matched'): 'v3kfold2_matched_fivechannel-L16-ab_s1'}[arch_balance, protocol, arch]
+    assert RunConfig.load(d / 'config.json') == cfg and metrics['run'] == d.name and metrics['epochs_run'] == 2
+    saved = json.loads((d / 'manifest.json').read_text(encoding='utf-8'))
+    assert saved['train'] == [r['sample_id'] for r in manifest.train] and saved['test'] == [r['sample_id'] for r in manifest.test]
+    assert metrics['excluded'] == sorted([victim, left_in_train])               # excluded ids are in no split of the run
+    for name in ('predictions.csv', 'predictions_auc.csv'):
+        text = (d / name).read_text(encoding='utf-8')
+        assert victim not in text and left_in_train not in text
+    if arch == 'matched':
+        index = {r['sample_id']: r for r in load_index()}
+        assert all(str(index[i]['arch_matched']) == '1' for s in ('train', 'val', 'test') for i in saved[s])
+        assert len({i for s in ('train', 'val', 'test') for i in saved[s]}) < len(rows)
+    train_rows = [r for r in manifest.train if r['sample_id'] not in {victim, left_in_train}]
+    if arch_balance:
+        expect = cell_weights([r['label'] for r in train_rows], [r['arch'] for r in train_rows])
+        named = {fit.cell_name(r['label'], r['arch']): w for r, w in zip(train_rows, expect)}
+        assert metrics['arch_balance'] is True and set(metrics['cell_weights']) == set(named)
+        for cell, w in named.items():
+            assert metrics['cell_weights'][cell] == pytest.approx(w)             # the cell weights of the training manifest only
+    else:
+        assert 'arch_balance' not in metrics and 'cell_weights' not in metrics
+    assert metrics['build_dir'] == str(build)
+
+
+def test_the_loss_is_the_class_weighted_mean_of_today_and_with_the_flag_the_cell_weighted_mean(tiny_v3, tmp_path):
+    rows = tiny_v3.rows
+    build = five_build(tmp_path / 'b', rows, ('kfold_v3', 'all'))
+    for flag in (False, True):
+        cfg = five_run(2, 'kfold_v3', 'all', max_instructions=16, arch_balance=flag)
+        manifest = make_manifest(cfg, load_index())
+        train_rows = manifest.train[:20]                                       # one batch of 20 (< BATCH_SIZE)
+        ids = [r['sample_id'] for r in train_rows]
+        binaries = fc.load_binaries(build, {r['sample_id']: r['label'] for r in train_rows}, 16)
+        items = fc.make_items(binaries, ids, fc.seen_api_ids(binaries, ids))
+        weight = fc.loss_weights(cfg, train_rows, torch.device('cpu'))
+        assert isinstance(weight, dict) == flag
+        if flag:
+            expect = cell_weights([r['label'] for r in train_rows], [r['arch'] for r in train_rows])
+            assert [weight[i] for i in ids] == pytest.approx(expect.tolist())
+        else:
+            assert torch.equal(weight, fc.class_weights([r['label'] for r in train_rows], torch.device('cpu')))
+        net = fc.new_net(cfg, fc.api_vocab_size(build, binaries), torch.device('cpu'))
+        reference = fc.new_net(cfg, fc.api_vocab_size(build, binaries), torch.device('cpu'))
+        reference.load_state_dict(net.state_dict())
+        order = np.random.default_rng((0, 1, 7919)).permutation(len(ids))
+        batch = fc.to_device(fc.collate(items, [ids[i] for i in order], 16), torch.device('cpu'))
+        reference.train()
+        torch.manual_seed(5)
+        per_binary = torch.nn.functional.cross_entropy(fc.forward(reference, batch).float().detach(), batch['label'], reduction='none')
+        if flag:
+            w = torch.tensor([weight[i] for i in batch['sample_ids']], dtype=torch.float32)
+            expected = float((per_binary * w).sum() / w.sum())
+        else:
+            expected = float((per_binary * weight[batch['label']]).mean())            # today's loss
+        torch.manual_seed(5)
+        loss = fc.train_epoch(net, torch.optim.AdamW(net.parameters(), lr=0.0), items, ids, weight, cfg, 1, torch.device('cpu'), 0)
+        assert loss == pytest.approx(expected, abs=1e-6)

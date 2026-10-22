@@ -25,6 +25,7 @@ REMOVED = {'model': ('transformer',), 'subgraph': ('lcc',), 'imports': ('unrefer
 SEQ_LEN, MAX_WINDOWS = 512, 64      # Model 1 window length and training windows per binary (defaults: no name suffix)
 TOKENSEQ_VAL_SEED = 0                # the block export carves its validation split with seed 0
 MAX_INSTRUCTIONS = 128               # Model 1 over five-channel tuples (fivechannel): instructions per binary, as Janice wrote it
+FIVECHANNEL_DATASETS = (('kfold', 'x86'), ('kfold', 'all'), ('kfold_v3', 'all'), ('kfold_v3', 'matched'))     # the (protocol, arch) pairs of a pipeline-B build
 
 
 class RemovedOption(ValueError):
@@ -179,14 +180,19 @@ class RunConfig:
             raise ValueError(f"{', '.join(used)} do not apply to model='tokenseq'")
 
     def check_fivechannel(self):
-        """Model 1 over the five-channel tuples of a pipeline-B build (Janice Park's model): one fold of our x86 kfold protocol,
-        the validation carve follows the run seed (as for the GNN arms and the teammates' arms), and none of the GNN, graph or
-        weighting options exists for it."""
-        if self.protocol != 'kfold' or self.arch != 'x86':
-            raise ValueError("model 'fivechannel' reads the pipeline-B build of the 1,810 x86 binaries: protocol 'kfold', arch 'x86'")
+        """Model 1 over the five-channel tuples of a pipeline-B build (Janice Park's model): one fold of a dataset of the team
+        pipelines (`FIVECHANNEL_DATASETS`: kfold x86, the default, kfold all, kfold_v3 all and matched), the validation carve
+        follows the run seed (as for the GNN arms and the teammates' arms), and none of the GNN or graph options exists for
+        it. `arch_balance` is the exception: it weights the loss by (class, architecture) cell and adds `-ab` to the name, on a
+        dataset with both architectures."""
+        if (self.protocol, self.arch) not in FIVECHANNEL_DATASETS:
+            raise ValueError("model 'fivechannel' reads a pipeline-B build: protocol 'kfold' with arch 'x86' or 'all', or protocol "
+                             "'kfold_v3' with arch 'all' or 'matched'")
         if self.val_seed is not None:
             raise ValueError("model 'fivechannel' carves its validation split with the run seed (val_seed stays unset)")
-        used = self._graph_options_used()
+        if self.arch_balance and self.arch == 'x86':
+            raise ValueError("arch_balance weights the (class, architecture) cells: model 'fivechannel' needs arch 'all' or 'matched' for it")
+        used = [u for u in self._graph_options_used() if u != 'arch_balance']
         if used:
             raise ValueError(f"{', '.join(used)} do not apply to model='fivechannel'")
 
@@ -222,7 +228,7 @@ class RunConfig:
                                             if n != default] + thoof)
         if self.model == 'fivechannel':
             return '-'.join(['fivechannel'] + ([f'L{self.max_instructions}'] if self.max_instructions != MAX_INSTRUCTIONS else [])
-                            + thoof)
+                            + ab + thoof)
         parts = ['gnn']
         if self.control:
             parts.append(CONTROLS[self.control])
