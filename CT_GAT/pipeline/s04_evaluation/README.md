@@ -19,9 +19,9 @@ python -m s04_evaluation.gates --stage team                                     
 |---|---|
 | `metrics.py` | accuracy, precision, recall, F1, macro-F1, AUC, PR-AUC, the class x architecture "cell" weights, the majority and x86-rule floors |
 | `val_threshold.py` | the threshold grid and the validation macro-F1 maximiser every AUC-checkpoint result is scored at; `oof_rule`, the out-of-fold threshold of `--threshold-from oof` |
-| `report.py` | `RESULTS.md`: one row per configuration, mean +- sd over seeds of the pooled out-of-fold test metrics |
+| `report.py` | `RESULTS.md`: one row per configuration, mean +- sd over seeds of the pooled out-of-fold test metrics; a cell-balanced section for the datasets with both architectures (kfold_v3, and kfold with `--arch all`) |
 | `stats.py` | the paired cluster bootstrap between two arms (clusters are ransomware families and single goodware binaries) |
-| `stage.py`, `gates.py`, `gate_tables.py` | a gate stage is data (`experiments/stages/<name>.py`: arms, pairs, seeds, rule, intro); the engine lays out the pooled table and the paired differences |
+| `stage.py`, `gates.py`, `gate_tables.py` | a gate stage is data (`experiments/stages/<name>.py`: arms, pairs, seeds, rule, intro); the engine lays out the pooled table and the paired differences; the stage options `scope` (protocol, arch) and `balanced` read another dataset than kfold x86, with a table of the recall of each class x architecture cell and a second, cell-balanced, paired table |
 
 The TF-IDF and import-table baselines are on branch `jsonl-reference-models`; their published numbers are in `docs/history/`. `report.py`, `stats.py` and the
 gate stages read their published runs from `<runs>/baselines/<dir>/` (`metrics.json` and `predictions.csv`), which they need no

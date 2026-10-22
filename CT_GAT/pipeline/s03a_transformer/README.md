@@ -16,14 +16,34 @@ Every command runs from `CT_GAT/pipeline`, which is the package root (there is n
 python -m experiments.train --model fivechannel --protocol kfold --arch x86 --fold 0 --seed 0 --build <build folder>   # L128
 python -m experiments.train --model fivechannel --protocol kfold --arch x86 --fold 0 --seed 0 --max-instructions 512   # -L512
 python -m experiments.train --model fivechannel --protocol kfold --fold 0 --smoke 8 --device cpu                       # 2 epochs
+python -m experiments.train --model fivechannel --protocol kfold --arch all --fold 0 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+python -m experiments.train --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
 python -m experiments.queue --plan experiments/plans/model1_variants.txt                                                # the variants
 ```
 
+The flags that pick the data are `--protocol`, `--arch`, `--arch-balance` and `--build`:
+
+| flags | binaries | build | run name |
+|---|---|---|---|
+| `--protocol kfold --arch x86` (the defaults) | 1,810 Mendeley x86 | `Mendeley_x86_...` zip, `CT_GAT/processed/cfg_subgraphs` | `kfold<f>_x86_fivechannel[-L<n>]_s<seed>` |
+| `--protocol kfold --arch all` | 2,411 Mendeley, x86 and x64 | `Mendeley_all_...` zip, `RUNS/team/b_sig500_mendeley_all` | `kfold<f>_all_fivechannel[-L<n>][-ab]_s<seed>` |
+| `--protocol kfold_v3 --arch all` | 5,652 combined, with a v3 fold | `combined_v3_...` zip, `RUNS/team/b_sig500_combined_v3` | `v3kfold<f>_all_fivechannel[-L<n>][-ab]_s<seed>` |
+| `--protocol kfold_v3 --arch matched` | 4,850 of those in `arch_matched.csv` | the same build | `v3kfold<f>_matched_fivechannel[-L<n>][-ab]_s<seed>` |
+
+The flag must be the literal `--protocol`: the CFG cache is resolved from it. A run refuses a build made for another dataset (an
+`all` build serves `all` and `matched` runs, an x86 build serves x86 runs only), and a build that left binaries out on purpose
+(`--max-instructions` of `build_b`) has them in no split. `--arch-balance` (needs `--arch all` or `matched`; run name suffix `-ab`)
+weights each training binary's loss by `N / (C n_cell)` over the non-empty (class, architecture) cells of the training manifest in place
+of `N / (2 n_class)`, and averages the losses as a weighted mean; `metrics.json` records the cell weights. `--max-instructions`,
+`--tag` (`whole` for the uncapped build) and `--threshold-from` are as for kfold x86. On the whole Mendeley dataset the architecture
+predicts the label (the x86 rule scores 0.650 macro-F1), so read the recall of ransomware x64 and the cell-balanced metrics of
+`gates --stage team_mendeley_all`; the pipeline README gives the numbers.
+
 `--build <dir>` is the build folder; without it the `team_b_build` source is used: `GT_TEAM_B_BUILD`, else `datasets.json`, else
 `CT_GAT/processed/cfg_subgraphs`. A missing or empty folder stops the run with the two ways to fill it. The folds
-are ours: the 5-fold x86 family holdout of `common.manifests` and the validation carve of the run seed, so a run sees the same
-train, validation and test binaries as the GNN and the teammates' arms of that seed. Per fold the API vocabulary of the build, which
-covers all 1,810 binaries, is made a training-set one again with the logic of `experiments/team_pipelines/train_b.py` (`remap_api`):
+are ours: the 5-fold family holdout of `common.manifests` for the dataset of the flags (x86 by default) and the validation carve of
+the run seed, so a run sees the same train, validation and test binaries as the GNN and the teammates' arms of that seed. Per fold the API vocabulary of the build, which
+covers all the binaries of its dataset (1,810, 2,411 or 5,652), is made a training-set one again with the logic of `experiments/team_pipelines/train_b.py` (`remap_api`):
 an API id that no training binary of the fold uses becomes `UNK_API`. The loop is the class-weighted cross entropy, AdamW, gradient
 clipping, patience on the validation AUC and the two checkpoints, with her model and collate unchanged;
 `--max-instructions` (default 128, as she wrote it) is the number of instructions per binary the model reads, and the run name

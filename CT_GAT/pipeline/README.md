@@ -114,7 +114,9 @@ Drive, and each zip has a `.sha256` file beside it and a README inside it.
 | `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` (1.41 GB) | the preprocessed samples of Models 1 to 3: one `.pt` file per binary for the 1,810 x86 binaries of the folds, `signal` sampler, 500 blocks per binary. Unzip at `CT_GAT/`; it unpacks to 9.9 GB. It saves the 4 h build of `build_b --source repo` | Models 1, 2 and 3 |
 | `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (2.59 GB) | the same with every non-library block of each binary; it unpacks to 13.3 GB and saves a 5.6 h build. With no block budget the `callwalk` sampler restarts until every allowed block is chosen and the samples are saved in block order, so this one zip serves both samplers | as above |
 | `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip`, `Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip`, `Mendeley_x86_cfg_subgraphs_callwalk_250blocks_v3.zip` (0.81, 1.43 and 0.78 GB; checksums in the root README) | the same samples from `build_b --sample signal --num-blocks 250` and `--sample callwalk` at 500 and 250 blocks (`callwalk` grows its subgraph across calls: [`s02_preprocess/README.md`](s02_preprocess/README.md)); packaged by `experiments.team_pipelines.package_build`, which names the zip after the sampler and the block count | Models 1, 2 and 3 |
+| `Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip`, `..._signal_250blocks_v3.zip`, `..._callwalk_500blocks_v3.zip`, `..._callwalk_250blocks_v3.zip`, `Mendeley_all_cfg_subgraphs_uncapped_v3.zip` (1.28, 0.72, 1.29, 0.69 and 3.44 GB; checksums in the root README) | the same samples for the whole Mendeley dataset, 2,411 binaries: the build of the same name in the `Mendeley_x86_...` zip extended with the 601 x64 binaries (`build_b --extend`; its 1,810 x86 payloads are unchanged). Unzip at `CT_GAT/` | Models 1, 2 and 3 with `--protocol kfold --arch all`; the x86 arms refuse these zips |
 | `Collections/Ransomware_Balanced.zip` (8.9 GB), `Collections/Balanced_Goodware.zip` (15.7 GB) | two more collections in the same layout. Unzip into `CT_GAT/data/` | the all-architecture cache (`build_cache --cache combined_v3`) |
+| `combined_v3_cfg_subgraphs_signal_500blocks_v3.zip`, `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` (sizes and checksums pending) | the preprocessed samples of the combined dataset, 5,652 binaries with a v3 fold, 500 blocks per binary, `signal` and `callwalk` samplers; the 34 goodware binaries above 4,000,000 instructions are left out (`build_b --max-instructions`, listed in the zip's README and in the team pipelines README). Unzip at `CT_GAT/` | Models 1, 2 and 3 with `--protocol kfold_v3 --arch all` and `--arch matched` (a matched run reads the same zip) |
 | `Collections/VirusShare Ransomware.zip` | unzips to `VirusShare_Malware/`. It is in no dataset: no fold file lists it and all its rows are in `splits/unassigned.csv`, so no command of the pipeline reads it | nothing |
 | `Mendeley_GNN_v1.zip` | the Mendeley CFG exports as one bundle (`samples.csv`, `splits/`, `cfg/`), an alternative to the two Mendeley collections | the CFG cache, when the bundle is configured or unzipped into `CT_GAT/data/` |
 
@@ -193,7 +195,9 @@ The folder holds one build at a time. Each zip's `.pt` files carry API ids of it
 500-block build, 12,788 uncapped), so the files of two zips must not be mixed: empty `CT_GAT/processed/` before unzipping another zip.
 The folder is also filled by `build_b --source repo` (step 2 of Running). For the `team_builds` plan each build must be where `train_b`
 looks for its arm, `RUNS/team/b_sig250_main`, `b_callwalk500_main` or `b_callwalk250_main`: move the contents of the zip's
-`processed/cfg_subgraphs` there, or pass `--build DIR`.
+`processed/cfg_subgraphs` there, or pass `--build DIR`. The builds of the other datasets are looked for in
+`RUNS/team/b_<family>_mendeley_all` (`<family>` is `sig500`, `sig250`, `callwalk500`, `callwalk250` or `sigwhole`) and
+`RUNS/team/b_<family>_combined_v3` (`sig500`, `callwalk500`), and a run refuses a build made for another dataset.
 
 ## On-disk layout
 
@@ -311,6 +315,32 @@ builds and the older team arms (`sig500`, `sig500v2`, which need the pinned team
 [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md); Model 3 is described in
 [`s03c_cfg_transformer/README.md`](s03c_cfg_transformer/README.md).
 
+**3a. Models 1 to 3 on the whole Mendeley dataset and on the combined dataset.** The dataset is a flag: `--protocol kfold --arch x86`
+(the default, 1,810 binaries), `--protocol kfold --arch all` (the 2,411 Mendeley binaries, x86 and x64) and `--protocol kfold_v3
+--arch all` or `--arch matched` (the combined dataset, 5,652 binaries with a v3 fold, or the 4,850 of them in `arch_matched.csv`).
+The flag has to be the literal `--protocol`, since the cache is chosen from it. Each dataset reads a build made for it, from the
+matching `Mendeley_all_...` or `combined_v3_...` zip or from `build_b` (recipes, build table and the `--max-instructions` rule:
+[`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md)); `--arch-balance` weights the training binaries by
+class x architecture cell and adds `-ab` to the run name:
+
+```bash
+python -m experiments.train --model fivechannel --protocol kfold --arch all --fold 0 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+python -m experiments.team_pipelines.train_b --arm sig500v3-feat --protocol kfold --arch all --fold 0 --seed 0
+python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --protocol kfold_v3 --arch all --fold 0 --seed 0
+python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --protocol kfold_v3 --arch matched --arch-balance --fold 0 --seed 0
+python -m experiments.train --model fivechannel --protocol kfold_v3 --arch matched --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
+```
+
+The runs are named `kfold<f>_all_gnn_s<seed>_team-<arm>`, `v3kfold<f>_matched_gnn-ab_s<seed>_team-<arm>` and
+`kfold<f>_all_fivechannel[-L512][-ab]_s<seed>`; the x86 names are as before. On the whole Mendeley dataset the architecture is a label
+proxy: x86 holds 1,134 ransomware and 676 goodware binaries, x64 holds 108 and 493, the x86 rule (ransomware if and only if x86) alone
+scores 0.650 macro-F1 pooled over the folds, and 55% of the x64 ransomware are in fold 2, so a fold's x64 test set can be nearly all
+goodware or hold most of the x64 ransomware. A model therefore gains AUC on `--protocol kfold --arch all` by scoring x64 binaries as
+goodware. Read the recall of ransomware x64, then the cell-balanced AUC and macro-F1 (each class x architecture cell weighted equally,
+under which the x86 rule scores 0.5), and compare an arm with its `-ab` twin. `combined_v3` is the all-architecture test with the
+smaller confound: the x86 rule scores 0.690 macro-F1 on all and 0.606 on matched, with 741 x64 ransomware. The whole Mendeley dataset is
+reported because the team asked for it, with the floor in the same table.
+
 **4. Evaluation.** Each run writes `RUNS/<name>/metrics.json` and its predictions; these read them:
 
 ```bash
@@ -319,9 +349,14 @@ python -m s04_evaluation.val_threshold                                          
 python -m s04_evaluation.stats --a kfold_x86_fivechannel --b kfold_x86_fivechannel-L512 --selection auc     # one paired comparison
 python -m s04_evaluation.gates --stage model1_variants                                # Model 1 at 128 and 512 instructions
 python -m s04_evaluation.gates --stage team                                           # Models 1 to 3 and the teammates' pipelines
+python -m s04_evaluation.gates --stage team_mendeley_all                              # the same on the whole Mendeley dataset
+python -m s04_evaluation.gates --stage team_v3_all                                    # on the combined dataset (team_v3_matched: matched)
 ```
 
-`stats` and `gates` need all five folds of a seed for each arm, and name the missing ones otherwise.
+`stats` and `gates` need all five folds of a seed for each arm, and name the missing ones otherwise. A stage on the whole Mendeley
+dataset or the combined dataset also prints the recall of each class x architecture cell with the cell-balanced metrics and the floors
+(majority class, x86 rule), and each paired difference a second time cell-balanced; `stats --protocol kfold --arch all --balanced`
+gives one such pair, and `report` prints the kfold rows of arch all in its cell-balanced section.
 
 **A whole experiment.** Each file in `experiments/plans/` is one experiment, as `train`, `train_b`, `report`, `val_threshold` and
 `gates` lines; its header names the CPU steps to run once before it, when it needs any (`team_b` and `team_builds` name none):
@@ -333,9 +368,11 @@ python -m experiments.queue --stop                                             #
 ```
 
 The queue skips a finished run and retries a failed line once. The plans are `model1_variants` (Model 1 at 128 and 512 instructions,
-30 runs), `team_b` (Model 3 end to end, `train_b --arm sig500v3-e2e`, 3 seeds x 5 folds = 15 runs) and `team_builds` (the nine arms
+30 runs), `team_b` (Model 3 end to end, `train_b --arm sig500v3-e2e`, 3 seeds x 5 folds = 15 runs), `team_builds` (the nine arms
 `sig250-*`, `callwalk500-*` and `callwalk250-*`, 135 runs, then `report` and `gates team`, which pairs each callwalk arm with its signal
-arm and each 250-block arm with its 500-block arm).
+arm and each 250-block arm with its 500-block arm), `team_mendeley_all` (Models 1 to 3 on the whole Mendeley dataset, 345 runs, then
+`gates team_mendeley_all`) and `team_v3` (the combined dataset, `--arch all` and `matched`, 390 runs, then `gates team_v3_all` and
+`gates team_v3_matched`).
 [`docs/ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md) shows how to add a model, a dataset, a control, a plan and a gates
 stage, and how to read the tables.
 

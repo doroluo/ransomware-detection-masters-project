@@ -32,7 +32,7 @@ FILES = ('config.json', 'metrics.json', 'predictions.csv', 'predictions_auc.csv'
 FOLDS = range(5)
 needs_baselines = pytest.mark.skipif(not (RUNS / 'baselines' / 'kfold0_x86_s0' / 'predictions.csv').exists(),
                                      reason='needs the tfidf kfold baselines')
-NEW_STAGES = ('model1_variants',)          # written after the source branch: it never printed them, there is nothing to compare with
+NEW_STAGES = ('model1_variants', 'team_mendeley_all', 'team_v3_all', 'team_v3_matched')          # written after the source branch: it never printed them, there is nothing to compare with
 RECORDED_STAGES = tuple(s for s in gates.stage_names() if s not in NEW_STAGES)
 PAIRS = {'stats_r7_r2': ('kfold_x86_gnn-noedges', 'kfold_x86_gnn'),
          'stats_tfidf_r7': ('tfidf', 'kfold_x86_gnn-mblk15'),
@@ -68,10 +68,10 @@ def recorded(name):
 
 @pytest.fixture(autouse=True)
 def fresh_caches():
-    for cache in (gate_tables.pooled, report.v3_floors):
+    for cache in (gate_tables.pooled, report.v3_floors, report.kfold_floors):
         cache.cache_clear()
     yield
-    for cache in (gate_tables.pooled, report.v3_floors):
+    for cache in (gate_tables.pooled, report.v3_floors, report.kfold_floors):
         cache.cache_clear()
 
 

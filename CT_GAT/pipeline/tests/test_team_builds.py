@@ -47,10 +47,11 @@ def test_the_new_run_names_collide_with_nothing_known():
     assert len(names) == 135 and all(re.fullmatch(r'kfold\d_x86_gnn_s\d_team-(sig250|callwalk500|callwalk250)-(feat|emb|e2e)', n) for n in names)
     groups = {team_group(a) for a in NEW_ARMS} | {team_group(a) for a in train_b.ARMS if a not in NEW_ARMS}
     assert len(groups) == len(train_b.ARMS)                                                # no group shared with an older arm
-    for fixture in (HERE / 'fixtures').rglob('*'):
+    x86_name = re.compile(r'kfold\d_x86_gnn_s\d_team-(sig250|callwalk500|callwalk250)-(feat|emb|e2e)\b')    # the full run name of the x86 arms, not a substring:
+    for fixture in (HERE / 'fixtures').rglob('*'):               # the plans on other datasets (kfold{f}_all_gnn_..., v3kfold{f}_...) name the same arms
         if fixture.is_file() and fixture.name != 'team_builds.txt' and fixture.suffix in ('.txt', '.json', '.csv', '.md'):
             text = fixture.read_text(encoding='utf-8', errors='replace')
-            assert not [n for n in ('team-sig250', 'team-callwalk') if n in text], fixture
+            assert not x86_name.search(text), fixture
     runs = stats.RUNS
     if Path(runs).is_dir():
         assert not names & {p.name for p in Path(runs).iterdir()}

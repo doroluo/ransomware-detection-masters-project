@@ -2,7 +2,8 @@
 
 Adapters that run the teammates' GAT pipelines (A: construct_blocks + train_cfg; B: preprocess_full + graph_full_loader +
 gat_full_model) under our 5-fold x86 family holdout, so their results sit in the same tables as ours
-(`s04_evaluation/stats.py`, `report.py`, `gates.py`). The review of the two pipelines and the numbers are in
+(`s04_evaluation/stats.py`, `report.py`, `gates.py`). Pipeline B also runs on the whole Mendeley dataset and on the combined
+dataset (`--protocol`, `--arch`; "Other datasets" below). The review of the two pipelines and the numbers are in
 [TEAM_PIPELINES_REVIEW.md](../../docs/history/TEAM_PIPELINES_REVIEW.md).
 
 Run every script as a module from `CT_GAT/pipeline` (`python -m experiments.team_pipelines.<name>`), not as a file: as a file
@@ -92,6 +93,153 @@ graph (57-d features), sig500 about 8 ms (141-d features, edge
 attributes). A fold has about 1,200 training and 230 validation binaries, so an epoch takes roughly 8 s (gnn500) and
 11 s (sig500); the recipes stop after at most 20 (A) and 40 (B) epochs, which bounds a fold at about 3 and 7 minutes of training
 plus under a minute of loading and prediction. The 15 runs of an arm therefore take at most about 1 h (A) and 2 h (B).
+
+## Other datasets: the whole Mendeley dataset and the combined dataset
+
+The dataset is a flag, not an arm. `--protocol` and `--arch` pick it in `build_b`, `train_b` and `experiments.train`; the folds, the
+validation carve, the run name and the build folder follow:
+
+| dataset | flags | binaries | build folder under `<runs>/team` | run of `train_b` |
+|---|---|---|---|---|
+| Mendeley x86 (the default) | `--protocol kfold --arch x86` | 1,810 | `b_<family>` (above) | `kfold{F}_x86_gnn_s{S}_team-<arm>` |
+| whole Mendeley | `--protocol kfold --arch all` | 2,411 (1,810 x86, 601 x64) | `b_<family>_mendeley_all` | `kfold{F}_all_gnn_s{S}_team-<arm>` |
+| combined | `--protocol kfold_v3 --arch all` | 5,652 | `b_<family>_combined_v3` | `v3kfold{F}_all_gnn_s{S}_team-<arm>` |
+| combined, matched | `--protocol kfold_v3 --arch matched` | 4,850 | the `all` build | `v3kfold{F}_matched_gnn_s{S}_team-<arm>` |
+
+`<family>` is the arm without `-feat|-emb|-e2e` and without the `v3` of `sig500v3`: `sig500`, `sig250`, `callwalk500`, `callwalk250`,
+`sigwhole`. The flag has to be the literal `--protocol`, because the CFG cache is resolved from it before any code runs
+(`common/paths.py`; `GT_CACHE` overrides it): `kfold` reads `mendeley_x86`, `kfold_v3` reads `combined_v3`, which `build_cache
+--cache combined_v3` makes from the four collections. `combined` is the dataset of 5,652 binaries with a v3 fold; the 4,850 of
+`matched` are those in `s02_preprocess/folds/v3/arch_matched.csv`, and a matched run reads the `all` build. The vocabulary clash:
+`sig500v3` is the s02-fix build version, `kfold_v3` the fold protocol, `_v3.zip` the preprocessing version of the zips.
+
+- Arms. Every arm of `ARM_TABLE` runs on the three datasets except `sig500` and `sig500v2`, which read the x86 builds of the pinned
+  worktrees, and `sigwhole`, `sigwhole-feat` and `sigwhole-emb`, which exist for `--protocol kfold` only: a binary of the combined
+  dataset has up to 8M blocks, and an uncapped build of it is not made. `--arch-balance` (with `--arch all` or `matched`) weights each
+  training binary by `N / (C n_cell)` over the non-empty (class, architecture) cells of the fold's training manifest, in place of the
+  class weight; the loss stays a weighted mean, and without the flag a step equals the teammates'. The run name gains `-ab`
+  (`kfold{F}_all_gnn-ab_s{S}_team-<arm>`), `metrics.json` records the four cell weights, and the checkpoint rules stay the teammates'.
+- Model 1 reads the same build: `python -m experiments.train --model fivechannel --protocol kfold --arch all --fold F --seed S
+  --build RUNS/team/b_sig500_mendeley_all`, with `--max-instructions 512` and `--arch-balance` as for the arms; the run is
+  `kfold{F}_all_fivechannel[-L512][-ab]_s{S}`.
+- A run refuses a build made for another dataset, in both directions (`check_build`). A build of a dataset other than kfold x86
+  records `protocol` and `arch` in `settings.json` and in its checkpoint (an x86 build records neither, so its settings and its
+  resumes are as before); an `all` build serves an `all` or a `matched` run, and an `x86` run needs an x86 build. A build that
+  covers more binaries has another API vocabulary and embedder, and `-e2e` and Model 1 size their embedding tables from it, so an
+  x86 run on an extended build would train another model and write the name of a published run.
+- The CFG and listing of a binary come from its own collection: a Mendeley binary (x86 or x64) as always (`paths_for`), a binary of
+  `Ransomware_Balanced` or `Balanced_Goodware` from `CT_GAT/data/<collection>` (`build_cache.corpus_samples`), so those two
+  collections have to be unzipped for the combined build.
+
+Builds. `--out` is required for a dataset other than kfold x86. The combined builds are made from scratch, one at a time, because
+two would reach the same large binary together and each needs about 13 GB for it:
+
+```
+python -m experiments.team_pipelines.build_b --source repo --protocol kfold_v3 --arch all --sample signal --num-blocks 500 --seed 0 --seeded-rows --max-instructions 4000000 --out RUNS/team/b_sig500_combined_v3
+python -m experiments.team_pipelines.build_b --source repo --protocol kfold_v3 --arch all --sample callwalk --num-blocks 500 --seed 0 --seeded-rows --max-instructions 4000000 --out RUNS/team/b_callwalk500_combined_v3
+```
+
+The extension recipe makes a whole-Mendeley build from the x86 build of the same sampler and budget, which stays untouched: copy
+its folder, then build only the 601 x64 binaries into the copy, continuing its vocabulary:
+
+```
+robocopy RUNS\team\b_sig500_v3 RUNS\team\b_sig500_mendeley_all /E
+python -m experiments.team_pipelines.build_b --source repo --protocol kfold --arch all --extend --sample signal --num-blocks 500 --seed 0 --out RUNS/team/b_sig500_mendeley_all
+```
+
+(`cp -r` on macOS and Linux.) The 1,810 x86 `.pt` files are byte-identical to the source build. Rows that the embedder adds for the
+new API names are drawn per (seed, API id), as `--seeded-rows` does, so a stopped and resumed extension equals a straight one; do
+not pass `--seeded-rows`. `settings.json` gains `arch: all` and an `extensions` entry (`ids_added`, the code pins now, the date),
+while the build's own `source` and pins stay, so the trainers read it as what it was. `--extend` refuses a `gnn-331ce0b` or
+`main-c7899f0` build, and anything but kfold all.
+
+| build | dataset | made by | CPU time (estimate) | zip |
+|---|---|---|---|---|
+| `b_sig500_mendeley_all` | whole Mendeley | extends `b_sig500_v3` | 0.5 h | `Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip` |
+| `b_sig250_mendeley_all` | whole Mendeley | extends `b_sig250_main` (`--num-blocks 250`) | 0.5 h | `Mendeley_all_cfg_subgraphs_signal_250blocks_v3.zip` |
+| `b_callwalk500_mendeley_all` | whole Mendeley | extends `b_callwalk500_main` (`--sample callwalk`) | 0.8 h | `Mendeley_all_cfg_subgraphs_callwalk_500blocks_v3.zip` |
+| `b_callwalk250_mendeley_all` | whole Mendeley | extends `b_callwalk250_main` | 0.8 h | `Mendeley_all_cfg_subgraphs_callwalk_250blocks_v3.zip` |
+| `b_sigwhole_mendeley_all` | whole Mendeley | extends `b_sigwhole_v3` (`--num-blocks 1000000`) | 1.2 h | `Mendeley_all_cfg_subgraphs_uncapped_v3.zip` |
+| `b_sig500_combined_v3` | combined | from scratch, `--seeded-rows --max-instructions 4000000` | 15 h | `combined_v3_cfg_subgraphs_signal_500blocks_v3.zip` |
+| `b_callwalk500_combined_v3` | combined | the same with `--sample callwalk` | 18 h | `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` |
+
+The times are fitted from the build logs of the x86 builds (seconds per sample = a + b x listing MB + c x million instructions,
+R^2 0.99) and applied to the listings of the datasets; they are not measurements of these builds. The 250-block and 500-block builds
+cost the same, since the cost is `load_cfg` and the listing pass. The zips are made with `package_build RUNS/team/<build> --no-manifests
+--out DIR`; the dataset label of the name comes from the build's `protocol` and `arch` (`Mendeley_x86`, `Mendeley_all`,
+`combined_v3`), and the README of a zip gives the count per class and architecture, the extension and the excluded binaries.
+
+| zip | size | sha256 | unzip into | serves |
+|---|---|---|---|---|
+| `Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip` | 1.28 GB | `996649f872beaafc8a651ca3a0a98ba4207c0c90ced703759f1f40a618f8c3c7` | `CT_GAT/` | `--protocol kfold --arch all`, arms `sig500v3-*`, Model 1 |
+| `Mendeley_all_cfg_subgraphs_signal_250blocks_v3.zip` | 0.72 GB | `71e0b3b26f4b346ff66381c0681d252aebaf8b45a1b92b801ad219b9d0fe7602` | `CT_GAT/` | the same, arms `sig250-*` |
+| `Mendeley_all_cfg_subgraphs_callwalk_500blocks_v3.zip` | 1.29 GB | `55336eb6247f5b3a1f70d23f1e05a727583f94cd6624f24e6205cd20ef12f511` | `CT_GAT/` | the same, arms `callwalk500-*` |
+| `Mendeley_all_cfg_subgraphs_callwalk_250blocks_v3.zip` | 0.69 GB | `75cbc91378e134fbae62b823945b3b549ede3f00bf5348f91fb557470f6ab8f2` | `CT_GAT/` | the same, arms `callwalk250-*` |
+| `Mendeley_all_cfg_subgraphs_uncapped_v3.zip` | 3.44 GB (18.2 GB unpacked) | `6423d217a8f096ea2a9ce458d7a0699a7d668e7af196bc786965228382aeae27` | `CT_GAT/` | the same, arms `sigwhole-*` |
+| `combined_v3_cfg_subgraphs_signal_500blocks_v3.zip` | pending | pending | `CT_GAT/` | `--protocol kfold_v3 --arch all` and `matched`, arms `sig500v3-*`, Model 1 |
+| `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the same, arms `callwalk500-*` |
+
+The five `Mendeley_x86_...` zips keep their names, sizes and checksums, and serve the x86 arms only. A `Mendeley_all_...` zip holds
+the x86 payloads too, but the x86 arms refuse it (above).
+
+`--max-instructions N` excludes the binaries of the id set whose index `num_instructions` exceeds N, with the reason
+`num_instructions > N: load_cfg needs about 3 KB per instruction (31 GB RAM)`: `load_cfg` holds the whole CFG, about 2.4 KB per
+instruction resident and 3.2 KB at the peak, so a binary above 4,000,000 instructions does not fit a 31 GB machine (the largest has
+45.2M). They are written to `settings.json` and `build_summary.json` as `excluded`, a build with `processed` plus the excluded ids
+equal to `total` is finished, and the trainers leave them out of every split and record them in `metrics.json`; `stats.py` and
+`gates.py` name them under each pair and read the pair on the binaries both arms have. Pass the same N on every resume; a resume
+that answers a `MemoryError` passes a lower one. N = 4,000,000 on the combined builds excludes 34 binaries, all goodware of
+`Balanced_Goodware` for x64 (11 are in the matched subset, 23 are not), 2.2% of the goodware x64 cell; 3,000,000 would exclude 38, and
+2,000,000 would start to take x86 ransomware. The largest Mendeley binary has 1,204,876 instructions. The 34:
+
+```
+0024c8ebf0deda45f66a000f7f0e63ab9fbe90dde7f29ba45be811df015cd8d7 0cfa774327b40e5c59a64d3ca4d64d402352a1db28885af99892ee5164c1b48f
+115d0d897439d54e7a18578890b143fe19ad75510582de6d67c7bbd138709810 1af0212e0482a18547bda9f976c18b0ceb6df8fa222fe7060ab929c9616990f1
+1bfcabe2756657587c5f879041b55265c2a954c2ba8125ada842d2a33b371695 433b96ceb2a9c58882342ac866ff9edaa928d11d031dfe41dfdeada5552f8ca1
+56bd92e0aa76783d1fb2f4c3d57dcaab87c695faf216b8a91129edd79ce51984 5cba0ea928508c65ddadefc0681d2fb6d95f1f3beea4428f04397631140ee8e5
+64ef45eb9cbc17b51baec8c96507457b863f9c8a4054a9da00266cf2966baee3 68b927614f282205c5b633d4f8e91e449fc255673d824f2b1781f79d6beaac68
+72de1900946337aba56616b14713a2efa293ecdf54b945a9d7d0f6676c3b9ecd 811d2a9e553dac91c7afa6d01fa6a621b19ffa2b80168cfda49ec69dc996c126
+870e2d0a9a921c48bc481fe1acac6bbf4094ecc5eae79421f3e4833b21f97efd 8a7331cbc2e74affaa83554fc2286f75ef093f409f6a3721f19d82902399eb2c
+8be30f02266a6eaad9d481941ef287b9744bb7140034b097ad862a2ccff3e24c 8d3bd71754d3d76621b1e0f04014214b047222d236a61420921ea53c555d5cdd
+8ef634ecd7c6447606fd1b08a561196720d98a482b6d47ae9ed48e1c085a4f94 91eb3cbb68ca5e50663126705127703d9c94ae0fc0d267e6602d38bcfcb74524
+958aac5115c00a7e2fe560c1296d5d49d51c62e80b36f660d2b4ebb46a153179 96c0946314b50dcc7c5ae9d3ec7e3763e742fcebf7d5cbebdaac3ceee5fb3bd7
+986af49c2d1eefeac324f724ff54597753d1053927fa5d58a37a457f578e1cf8 a1a05c00ab7075547d430fd1c21fd9258b48a01f3731ace91fe4c12ca3a34947
+ae1a50511be58e987483fdbc12125407443926d2d394669ade2352776e920dd3 af59e55f073beb7ec159628f399cac6f4f139eba76c88437231f2ba740c6d498
+ccb2ee85b5310fa78dbbd01c138620c4111d85ed53aedee46f10079a54ee0467 cd6dff1047a96f808997eef79bec92c585e3455eae9be807bb7d3a3e3dadb39b
+d4bf61059ef4f075d226109344af96b317d168bc4562405fe2bf997663827052 d81b73be95a54d5bd8337e6757a91b97e1afd214b4562c86ea1d6fe07b2e6a9f
+f4205eebaa398e7e20313fcf0d93ee1bde73d973d548067063a6bdb5972358c1 f4ae445c6bcc659ff30e0375d6825171e3128eba9c667fc003d56003e7b5f682
+f98cac3d941c48ee7ae1b7fff1134e101929b51695f41eaa987ec1851e705094 fcf4f6744944ff55178d722350b1cfc514b74a6d8ff450c5f4f7938d6f595bbe
+fde737c7749075f6b54e14772a4e6b33a5fa0201075d03640aca358074ea4554 ff0f89850bc30b8e6ed2e5b29b35dd80f10b1d77876537dd4a993fe0e1763e86
+```
+
+The architecture confound on the whole Mendeley dataset. Architecture predicts the label there: x86 holds 1,134 ransomware and 676
+goodware binaries, x64 holds 108 and 493. The x86 rule (ransomware if and only if x86) alone scores 0.650 macro-F1 pooled over the
+kfold folds, and 55% of the x64 ransomware (59 of 108) are in fold 2, so the x64 test set of a fold can be nearly all goodware or hold
+most of the x64 ransomware. A model therefore gains AUC on `--protocol kfold --arch all` by scoring x64 binaries as goodware. Read the recall of
+ransomware x64 first, then the cell-balanced AUC and macro-F1 (each class x architecture cell weighted equally, under which the x86
+rule scores 0.5), and compare an arm with its `--arch-balance` twin. `combined_v3` is the all-architecture test with a smaller
+confound: the x86 rule scores 0.690 macro-F1 on all and 0.606 on matched, and there are 741 x64 ransomware. The whole Mendeley
+dataset is reported because the team asked for it, with the floor in the same table.
+
+Tables and plans. `gates --stage team_mendeley_all`, `team_v3_all` and `team_v3_matched` print the pooled seed-0 table, a table of
+the recall of each class x architecture cell with the cell-balanced metrics and the two floors, and the paired differences twice,
+ordinary and cell-balanced (`s04_evaluation/stage.py`: the stage options `scope` and `balanced`). The v3 stages read the published
+GNN arms R7, R2, R4 `ab` and TF-IDF of `docs/history/gates_v3.md` next to the team arms. The published GNN arms select their AUC
+checkpoint by the validation cell-balanced AUC (`selcell`) and the team arms by the teammates' rule, so a difference mixes the model
+with the rule. `report.py` prints the kfold rows of arch all in its cell-balanced section. The TF-IDF runs of the whole Mendeley dataset on disk
+(`kfold{k}_all_s0`) were made before the baselines recorded a validation threshold, so the TF-IDF row of `team_mendeley_all` and its
+pairs print as missing until they are re-run. The plans, 3 seeds x 5 folds per group:
+
+```
+python -m experiments.queue --plan experiments/plans/team_mendeley_all.txt --budget-min 1800
+python -m experiments.queue --plan experiments/plans/team_v3.txt --budget-min 2400
+```
+
+`team_mendeley_all` is 23 groups (the three inputs of the four capped builds, the three `sigwhole` arms, Model 1 at 128 and 512
+instructions on the signal-500 build and at 512 on the uncapped one, and the `-ab` twins of `sig500v3-*` and of the two Model 1
+groups on the signal build), 345 runs. `team_v3` is 13 groups per architecture (`sig500v3-*`, Model 1 at 128 and 512, `callwalk500-*`
+and the `-ab` twins of the signal groups), 390 runs. A line whose build is missing fails on its first run and is started again
+once the build is done.
 
 ## What is here
 
@@ -222,7 +370,8 @@ directly. The name comes from the build's `settings.json`: `Mendeley_x86_cfg_sub
 `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` when `num_blocks` is 0 or at least `train_b.UNCAPPED_BLOCKS` (1,000,000), whose README
 says it serves both samplers. The five zips of the Drive are `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` (from
 `b_sig500_v3`), `..._signal_250blocks_v3.zip` (`b_sig250_main`), `..._callwalk_500blocks_v3.zip` (`b_callwalk500_main`),
-`..._callwalk_250blocks_v3.zip` (`b_callwalk250_main`) and `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (`b_sigwhole_v3`). `--out` (default: the current directory) receives the zip, `<zip>.sha256` and `<zip stem>.README.md`,
+`..._callwalk_250blocks_v3.zip` (`b_callwalk250_main`) and `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (`b_sigwhole_v3`); the
+builds of the other datasets are named `Mendeley_all_...` and `combined_v3_...` (the table under "Other datasets"). `--out` (default: the current directory) receives the zip, `<zip>.sha256` and `<zip stem>.README.md`,
 the text that is also the first file of the zip. The README is generated from `settings.json`, `build_summary.json` and the samples
 (counts of ransomware and goodware, sampler and budget, the source and sha256 pins of the code, `--seeded-rows` when the build has
 it) and names no machine path. `--no-manifests` leaves out the per-sample manifest json files (read by no model; 3-6 MB each in the
@@ -289,7 +438,8 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   | `callwalk250-feat`, `-emb`, `-e2e` | `b_callwalk250_main`, `callwalk`, 250 blocks | `feat`, `emb`, `e2e` | `repo` | nothing; `-e2e` as `sig500v3-e2e` |
   | `sigwhole`, `sigwhole-feat`, `sigwhole-emb` | `b_sigwhole_v3`, uncapped (`num_blocks` at least 1,000,000) | `all`, `feat`, `emb` | `main-fix`, `repo` | nothing; a node budget per batch (`HP_WHOLE`, `fit.py`) |
 
-  `--features`, `--block-len` and `--source` are refused when they contradict the arm. The build's settings (`settings.json`, or
+  The table is for `--protocol kfold --arch x86`; on the other datasets the build folder is `b_<family>_mendeley_all` or
+  `b_<family>_combined_v3` (see "Other datasets"). `--features`, `--block-len` and `--source` are refused when they contradict the arm. The build's settings (`settings.json`, or
   `build_info/build_settings.json` of a zip) name its sampler, block budget and source label; a run refuses a build that
   contradicts the arm in any of the three and the message names the three values of the arm and of the build (the two first
   arms skip the keys their builds never wrote). The label picks the code that embeds and pools (`common.SOURCE_CODE`): the
@@ -460,7 +610,9 @@ is not complete, criteria 2-4 are computed on the ids it holds and marked partia
 ## Tests
 
 `tests/test_team_pipelines.py`, `test_team_exclusion.py`, `test_seeded_rows.py`, `test_team_v2.py`, `test_team_v3.py`, `test_team_whole.py`,
-`test_team_builds.py` (the nine new arms, their refusals, the rows and pairs of `gates team`, the plan), `test_package_build.py`,
+`test_team_builds.py` (the nine new arms, their refusals, the rows and pairs of `gates team`, the plan), `test_datasets_build.py` and
+`test_datasets_train.py` (the dataset flags of `build_b`, `train_b` and Model 1), `test_eval_gates.py` (the stages
+`team_mendeley_all`, `team_v3_all` and `team_v3_matched`, their plans), `test_package_build.py`,
 `test_gat_port.py`, `test_model3_e2e.py`, `test_match_diagnosis.py` (CPU). They run everywhere
 on the tiny cache of `tests/tiny_cache.py` and on synthetic builds: every module imports without `torch_geometric`, `psutil`
 and the worktrees (a subprocess with fake packages that raise `ImportError`); the environment variables name the missing input;
