@@ -113,8 +113,8 @@ Drive, and each zip has a `.sha256` file beside it and a README inside it.
 | `Collections/Mendeley_Goodware.zip` (1.5 GB) | required. The same for the goodware binaries. Unzip into `CT_GAT/data/` | as above |
 | `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` (1.41 GB) | the preprocessed samples of Models 1 to 3: one `.pt` file per binary for the 1,810 x86 binaries of the folds, `signal` sampler, 500 blocks per binary. Unzip at `CT_GAT/`; it unpacks to 9.9 GB. It saves the 4 h build of `build_b --source repo` | Models 1, 2 and 3 |
 | `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` (2.59 GB) | the same with every non-library block of each binary; it unpacks to 13.3 GB and saves a 5.6 h build. With no block budget the `callwalk` sampler restarts until every allowed block is chosen and the samples are saved in block order, so this one zip serves both samplers | as above |
-| `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip`, `Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip`, `Mendeley_x86_cfg_subgraphs_callwalk_250blocks_v3.zip` (0.81, 1.43 and 0.78 GB; checksums in the root README) | the same samples from `build_b --sample signal --num-blocks 250` and `--sample callwalk` at 500 and 250 blocks (`callwalk` grows its subgraph across calls: [`s02_preprocess/README.md`](s02_preprocess/README.md)); packaged by `experiments.team_pipelines.package_build`, which names the zip after the sampler and the block count | Models 1, 2 and 3 |
-| `Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip`, `..._signal_250blocks_v3.zip`, `..._callwalk_500blocks_v3.zip`, `..._callwalk_250blocks_v3.zip`, `Mendeley_all_cfg_subgraphs_uncapped_v3.zip` (1.28, 0.72, 1.29, 0.69 and 3.44 GB; checksums in the root README) | the same samples for the whole Mendeley dataset, 2,411 binaries: the build of the same name in the `Mendeley_x86_...` zip extended with the 601 x64 binaries (`build_b --extend`; its 1,810 x86 payloads are unchanged). Unzip at `CT_GAT/` | Models 1, 2 and 3 with `--protocol kfold --arch all`; the x86 arms refuse these zips |
+| `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip`, `Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip`, `Mendeley_x86_cfg_subgraphs_callwalk_250blocks_v3.zip` (0.81, 1.43 and 0.78 GB; checksums below) | the same samples from `build_b --sample signal --num-blocks 250` and `--sample callwalk` at 500 and 250 blocks (`callwalk` grows its subgraph across calls: [`s02_preprocess/README.md`](s02_preprocess/README.md)); packaged by `experiments.team_pipelines.package_build`, which names the zip after the sampler and the block count | Models 1, 2 and 3 |
+| `Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip`, `..._signal_250blocks_v3.zip`, `..._callwalk_500blocks_v3.zip`, `..._callwalk_250blocks_v3.zip`, `Mendeley_all_cfg_subgraphs_uncapped_v3.zip` (1.28, 0.72, 1.29, 0.69 and 3.44 GB; checksums below) | the same samples for the whole Mendeley dataset, 2,411 binaries: the build of the same name in the `Mendeley_x86_...` zip extended with the 601 x64 binaries (`build_b --extend`; its 1,810 x86 payloads are unchanged). Unzip at `CT_GAT/` | Models 1, 2 and 3 with `--protocol kfold --arch all`; the x86 arms refuse these zips |
 | `Collections/Ransomware_Balanced.zip` (8.9 GB), `Collections/Balanced_Goodware.zip` (15.7 GB) | two more collections in the same layout. Unzip into `CT_GAT/data/` | the all-architecture cache (`build_cache --cache combined_v3`) |
 | `combined_v3_cfg_subgraphs_signal_500blocks_v3.zip`, `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` (sizes and checksums pending) | the preprocessed samples of the combined dataset, 5,652 binaries with a v3 fold, 500 blocks per binary, `signal` and `callwalk` samplers; the 34 goodware binaries above 4,000,000 instructions are left out (`build_b --max-instructions`, listed in the zip's README and in the team pipelines README). Unzip at `CT_GAT/` | Models 1, 2 and 3 with `--protocol kfold_v3 --arch all` and `--arch matched` (a matched run reads the same zip) |
 | `Collections/VirusShare Ransomware.zip` | unzips to `VirusShare_Malware/`. It is in no dataset: no fold file lists it and all its rows are in `splits/unassigned.csv`, so no command of the pipeline reads it | nothing |
@@ -122,6 +122,28 @@ Drive, and each zip has a `.sha256` file beside it and a README inside it.
 
 The fold assignments of every published result are in the repository, in `s02_preprocess/folds/`, so `family_holdout_folds.zip` on the
 Drive, which holds the same files, is not needed.
+
+The size and sha256 of each zip (the `.sha256` file beside it on the Drive holds the same checksum):
+
+| Zip | Size | sha256 |
+|---|---|---|
+| `Collections/Mendeley_Ransomware.zip` | 5.0 GB | `c3785afff453792b007eee3f736f725df926f90c34638af88d4feb19772ada9c` |
+| `Collections/Mendeley_Goodware.zip` | 1.5 GB | `33afd5dc007b1e551cd657209961a68aebbd975cecba9db266e7f6af48cf9cc1` |
+| `Collections/Ransomware_Balanced.zip` | 8.9 GB | `12e379ac1afbd352d58740fe8d51af124c01dfd957d857453f58dda7895a5f67` |
+| `Collections/Balanced_Goodware.zip` | 15.7 GB | `c82042b6dd482181e6f977b184cfc09d84a94305c46fa9728322ce399857111c` |
+| `Collections/VirusShare Ransomware.zip` | 14.1 GB | `0a946d1e70d81c616e8e4f744b407b878ff83a2d23178fb1779e4f7088e9794a` |
+| `Mendeley_x86_cfg_subgraphs_signal_500blocks_v3.zip` | 1.41 GB (9.87 GB unpacked) | `d7b984e4cadc95d2bd143c688bfcdfb99136370da129d48fbe490e2f17cd3421` |
+| `Mendeley_x86_cfg_subgraphs_signal_250blocks_v3.zip` | 0.81 GB (5.95 GB unpacked) | `61eb2847d8c24842477272f41ddf501f4312b15b96d05902115730a9f0487116` |
+| `Mendeley_x86_cfg_subgraphs_callwalk_500blocks_v3.zip` | 1.43 GB (10.11 GB unpacked) | `3f153392fb87fc67b4d968c701a8ea1c828cb654a66393eb25827951b0edae4e` |
+| `Mendeley_x86_cfg_subgraphs_callwalk_250blocks_v3.zip` | 0.78 GB (5.53 GB unpacked) | `f52ac00cee289d536aa328a47617f94cd011a29ab3b8d799e66224cded7c1ccd` |
+| `Mendeley_x86_cfg_subgraphs_uncapped_v3.zip` | 2.59 GB (13.29 GB unpacked) | `678beede56597afd1e369248a8e520cce0666a4b6d4af936a960bf5b7d1ccb0e` |
+| `Mendeley_all_cfg_subgraphs_signal_500blocks_v3.zip` | 1.28 GB | `996649f872beaafc8a651ca3a0a98ba4207c0c90ced703759f1f40a618f8c3c7` |
+| `Mendeley_all_cfg_subgraphs_signal_250blocks_v3.zip` | 0.72 GB | `71e0b3b26f4b346ff66381c0681d252aebaf8b45a1b92b801ad219b9d0fe7602` |
+| `Mendeley_all_cfg_subgraphs_callwalk_500blocks_v3.zip` | 1.29 GB | `55336eb6247f5b3a1f70d23f1e05a727583f94cd6624f24e6205cd20ef12f511` |
+| `Mendeley_all_cfg_subgraphs_callwalk_250blocks_v3.zip` | 0.69 GB | `75cbc91378e134fbae62b823945b3b549ede3f00bf5348f91fb557470f6ab8f2` |
+| `Mendeley_all_cfg_subgraphs_uncapped_v3.zip` | 3.44 GB (18.2 GB unpacked) | `6423d217a8f096ea2a9ce458d7a0699a7d668e7af196bc786965228382aeae27` |
+| `combined_v3_cfg_subgraphs_signal_500blocks_v3.zip` | pending | pending |
+| `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` | pending | pending |
 
 **Unzip the collections.** Each collection zip holds one top-level folder named like the zip, so the destination is `CT_GAT/data`
 itself. The repository does not ship `CT_GAT/data/` (it is gitignored), so create it first. From the repository root, with
