@@ -149,7 +149,8 @@ def main():
         bundle = None
     registry = paths.registry()
     folds = {name: {key: paths.source_for(key, dataset=name) for key in ds.folds} for name, ds in DATASETS.items()}
-    print(render(status(data, bundle=bundle, caches={name: registry[name]['cache'] for name in DATASETS}, folds=folds), data))
+    caches = {name: paths.cache_for(None, registry=registry, name=name) for name in DATASETS}   # GT_CACHE first, as the trainers do
+    print(render(status(data, bundle=bundle, caches=caches, folds=folds), data))
 
 
 if __name__ == '__main__':

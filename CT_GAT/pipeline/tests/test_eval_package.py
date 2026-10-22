@@ -45,6 +45,16 @@ def test_the_commands_run_as_modules_from_the_package_root(module, tmp_path):
     assert r.returncode == 0 and 'usage' in r.stdout.lower(), r.stderr
 
 
+def test_report_names_the_run_directory_it_read(tmp_path):
+    runs = tmp_path / 'my_runs'
+    runs.mkdir()
+    r = subprocess.run([sys.executable, '-m', 's04_evaluation.report'], cwd=ROOT, capture_output=True, text=True,
+                       env=clean_env(tmp_path, GT_RUNS=str(runs)))
+    assert r.returncode == 0, r.stderr
+    text = (runs / 'RESULTS.md').read_text(encoding='utf-8')
+    assert f'under `{runs.as_posix()}`' in text and 'graph_transformer_runs' not in text
+
+
 def test_val_threshold_needs_the_run_folder_only_to_run(tmp_path):
     missing = tmp_path / 'no_runs'
     env = clean_env(tmp_path, GT_RUNS=str(missing))
