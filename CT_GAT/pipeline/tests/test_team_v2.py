@@ -79,7 +79,7 @@ def test_build_b_frozen_from_keeps_the_vocabulary_and_embedder(tmp_path):
 @needs_worktrees
 @needs_real_data
 def test_train_b_arms_read_the_build_of_their_source(tmp_path):
-    assert train_b.ARMS == ('sig500', 'sig500v2')
+    assert train_b.ARMS[:2] == ('sig500', 'sig500v2')
     assert train_b.ARM_DIR['sig500'].name == 'b_sig500' and train_b.ARM_DIR['sig500v2'].name == 'b_sig500_v2'
     assert tp.team_config(2, 1, 'sig500v2').name == 'kfold2_x86_gnn_s1_team-sig500v2'
     assert tp.team_config(2, 1, 'sig500v2').group == team_group('sig500v2') == 'kfold_x86_gnn_team-sig500v2'
@@ -97,7 +97,7 @@ def test_train_b_arms_read_the_build_of_their_source(tmp_path):
     with pytest.raises(SystemExit, match='unknown source'):
         train_b.read_source(v2)
     with pytest.raises(ValueError):
-        train_b.run('sig500v3', 0, 0)
+        train_b.run('sig500v9', 0, 0)                                       # not an arm
 
 
 def fake_payload(matched, label, api=None, n_blocks=2):
@@ -173,3 +173,47 @@ def test_measure_rss_reports_peak_and_returncode(tmp_path):
     assert result['returncode'] == 0 and result['wall_seconds'] >= 1.4 and result['peak_rss_bytes'] > 250 * 2 ** 20
     assert result['peak_rss_gb'] == round(result['peak_rss_bytes'] / 2 ** 30, 3) and result['polls'] > 3
     assert measure_rss.main(['--out', str(out), '--', sys.executable, '-c', 'raise SystemExit(3)']) == 3
+
+
+def state_build(path, payloads, names, embedder):
+    fake_build(path, payloads)
+    (path / 'api_vocab.json').write_text(json.dumps(names), encoding='utf-8')
+    torch.save(embedder, path / 'channel_embedder.pt')
+
+
+def test_compare_builds_state_compares_embeddings_vocabulary_and_embedder_exactly(tmp_path, capsys):
+    payload = fake_payload([1, 1, 0, 1], 1)
+    payload['block_embeddings'] = torch.tensor([[0.25, 0.5], [1.0, -1.0]])
+    near = dict(payload, block_embeddings=payload['block_embeddings'] + torch.tensor([[0.0, 0.0], [0.0, 1e-6]]))
+    weights = {'api_embedding.weight': torch.arange(6.0).reshape(3, 2), 'opcode_embedding.weight': torch.ones(4, 2)}
+    names = ['SetEvent', 'CloseHandle', 'ExitProcess']
+    state_build(tmp_path / 'a', {'x': payload}, names, weights)
+    state_build(tmp_path / 'same', {'x': dict(payload)}, list(names), {k: v.clone() for k, v in weights.items()})
+    same = compare_builds.compare(tmp_path / 'a', tmp_path / 'same', ['x'], state=True)
+    assert same['identical'] == 1 and same['max_block_embedding_diff'] == 0.0 and same['state']['identical']
+    assert same['samples']['x']['arrays']['block_embeddings'] == {'equal': True, 'max_abs': 0.0}
+    assert set(compare_builds.compare(tmp_path / 'a', tmp_path / 'same', ['x'])['samples']['x']['arrays']) == {
+        'block_keys', 'instruction_matched', 'ids_opcode_operands_behaviour', 'ids_api', 'block_features', 'edge_index',
+        'edge_attr'}                                                                            # without --state: the arrays of before
+    other = {'api_embedding.weight': weights['api_embedding.weight'] + torch.tensor([0, 0, 0, 0, 0, 0.5]).reshape(3, 2),
+             'opcode_embedding.weight': weights['opcode_embedding.weight'].clone()}
+    state_build(tmp_path / 'b', {'x': near}, ['SetEvent', 'ExitProcess', 'CloseHandle'], other)
+    out = compare_builds.compare(tmp_path / 'a', tmp_path / 'b', ['x'], state=True)
+    assert out['identical'] == 0 and out['differing_arrays'] == {'block_embeddings': 1}
+    assert out['max_block_embedding_diff'] == pytest.approx(1e-6, rel=0.1) and not out['samples']['x']['arrays']['block_embeddings']['equal']
+    vocab, tensors = out['state']['api_vocab'], out['state']['channel_embedder']
+    assert vocab['equal'] is False and vocab['first_difference'] == 1 and vocab['same_names_other_order'] is True
+    assert tensors['api_embedding.weight'] == {'equal': False, 'max_abs': 0.5} and tensors['opcode_embedding.weight']['equal']
+    assert not out['state']['identical']
+    json_path = tmp_path / 'c.json'
+    assert compare_builds.main(['compare', '--a', str(tmp_path / 'a'), '--b', str(tmp_path / 'b'), '--state', '--json', str(json_path)]) == 0
+    printed = capsys.readouterr().out
+    assert 'state: block_embeddings largest |difference|' in printed and 'api_vocab DIFFERS (3 / 3 names)' in printed
+    assert 'channel_embedder 1 of 2 tensors equal' in printed
+    assert json.loads(json_path.read_text(encoding='utf-8'))['state']['api_vocab']['first_difference'] == 1
+    state_build(tmp_path / 'longer', {'x': payload}, names + ['Extra'], {'api_embedding.weight': torch.zeros(4, 2)})
+    longer = compare_builds.compare_state(tmp_path / 'a', tmp_path / 'longer')
+    assert longer['api_vocab']['first_difference'] == 3 and longer['channel_embedder']['api_embedding.weight']['equal'] is False
+    assert longer['channel_embedder']['opcode_embedding.weight'] == {'equal': False, 'missing': 'b'}
+    assert compare_builds.compare_state(tmp_path / 'a', tmp_path / 'nothing')['channel_embedder'] == {
+        'channel_embedder.pt': {'equal': False, 'missing': 'b'}}
