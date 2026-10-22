@@ -15,7 +15,7 @@ import importlib
 
 from common.manifests import run_command
 from s04_evaluation.gate_layouts import LAYOUTS
-from s04_evaluation.gate_tables import EXTRAS, paired_stage
+from s04_evaluation.gate_tables import EXTRAS, match_rate_lines, paired_stage
 
 
 def stage_names():
@@ -36,7 +36,8 @@ def render(stage, resamples=2000):
     """The markdown lines of a stage."""
     if stage.layout != 'paired':
         return LAYOUTS[stage.layout](stage, resamples)
-    after = EXTRAS[stage.extra](stage.arms) if stage.extra else ()
+    after = list(EXTRAS[stage.extra](stage.arms)) if stage.extra else []
+    after += match_rate_lines(stage.options.get('match_rate_builds', ()))
     return paired_stage(stage.name, stage.intro_text(resamples), stage.arms, stage.pairs, resamples, stage.seeds,
                         after_pooled=after, rule=stage.rule)
 

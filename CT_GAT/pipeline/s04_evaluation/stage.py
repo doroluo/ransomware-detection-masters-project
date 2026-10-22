@@ -29,7 +29,8 @@ class Stage:
     rule      None, or rule(first, second, result, info) -> the text of the extra `rule` column of the paired table
     layout    'paired' | 'day1' | 'day1b' | 'v3' | 'subgraph' (see the module docstring)
     extra     None, or the name of a table printed after the pooled one (`gate_tables.EXTRAS`)
-    options   the data of the four bespoke layouts"""
+    options   the data of the four bespoke layouts; for the 'paired' layout `match_rate_builds`, ((name, folder under the
+              run directory), ...): a match-rate line (`gate_tables.match_rate_lines`) per pipeline-B build, after `extra`"""
     name: str
     intro: Union[str, Callable[[int], str]] = ''
     arms: tuple = ()
