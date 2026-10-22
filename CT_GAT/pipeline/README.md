@@ -207,7 +207,7 @@ python -m experiments.queue --plan experiments/plans/model1_variants.txt --budge
 python -m experiments.queue --stop                                           # stop between lines
 ```
 
-The queue skips a finished run and retries a failed line once. The plan is `model1_variants`.
+The queue skips a finished run and retries a failed line once. The plans are `model1_variants` and `team_b`.
 [`docs/ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md) shows how to add a model, a dataset, a control, a plan and a gates
 stage, and how to read the tables.
 

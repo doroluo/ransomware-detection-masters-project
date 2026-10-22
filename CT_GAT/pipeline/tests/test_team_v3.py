@@ -371,6 +371,7 @@ def test_team_gates_from_synthetic_v3_runs(tiny, tmp_path, monkeypatch):        
     fake_group(runs, lambda f, s: tp.team_config(f, s, 'sig500v3'), 1.2)
     fake_group(runs, lambda f, s: tp.team_config(f, s, 'sig500v3-feat'), 0.8)
     fake_group(runs, lambda f, s: tp.team_config(f, s, 'sig500v3-emb'), 1.0, seeds=(0, 1))
+    fake_group(runs, lambda f, s: tp.team_config(f, s, 'sig500v3-e2e'), 1.1)
     monkeypatch.setattr(stats, 'RUNS', runs)
     gate_tables.pooled.cache_clear()
     text = '\n'.join(gates.run_stage('team', 40))
@@ -386,3 +387,5 @@ def test_team_gates_from_synthetic_v3_runs(tiny, tmp_path, monkeypatch):        
     assert 'seeds [0, 1] only' in pair[('team sig500', v3)] and pair[('team sig500v2', v3)] in ('beats', 'does not beat')
     assert 'seeds [0, 1] only' in pair[(feat, emb)] and 'seeds [0, 1] only' in pair[('R7 typed, whole graph', emb)]
     assert pair[('R7 typed, whole graph', v3)] == 'beats'
+    e2e = 'team sig500v3 e2e (Model 3, trained encoder)'
+    assert 'seeds [0, 1] only' in pair[(emb, e2e)] and pair[('R7 typed, whole graph', e2e)] in ('beats', 'does not beat')

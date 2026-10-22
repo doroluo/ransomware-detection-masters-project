@@ -1,0 +1,23 @@
+# Model 3 trained end to end (Janice's block transformer under Dorothy's GAT, `train_b --arm sig500v3-e2e`) on the 500-block v3
+# build `b_sig500_v3`, kfold x86, seeds 0 1 2, folds 0-4 (15 runs, seed by seed). The arms of the same build that already ran
+# (`sig500v3`, `-feat`, `-emb`) are not repeated. `gates team` pairs the new arm against `sig500v3-emb`, R7 and TF-IDF.
+#     python -m experiments.queue --plan experiments/plans/team_b.txt --budget-min 600
+
+train_b --fold 0 --seed 0 --arm sig500v3-e2e
+train_b --fold 1 --seed 0 --arm sig500v3-e2e
+train_b --fold 2 --seed 0 --arm sig500v3-e2e
+train_b --fold 3 --seed 0 --arm sig500v3-e2e
+train_b --fold 4 --seed 0 --arm sig500v3-e2e
+train_b --fold 0 --seed 1 --arm sig500v3-e2e
+train_b --fold 1 --seed 1 --arm sig500v3-e2e
+train_b --fold 2 --seed 1 --arm sig500v3-e2e
+train_b --fold 3 --seed 1 --arm sig500v3-e2e
+train_b --fold 4 --seed 1 --arm sig500v3-e2e
+train_b --fold 0 --seed 2 --arm sig500v3-e2e
+train_b --fold 1 --seed 2 --arm sig500v3-e2e
+train_b --fold 2 --seed 2 --arm sig500v3-e2e
+train_b --fold 3 --seed 2 --arm sig500v3-e2e
+train_b --fold 4 --seed 2 --arm sig500v3-e2e
+
+report
+gates team

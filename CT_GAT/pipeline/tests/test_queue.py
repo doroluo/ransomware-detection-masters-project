@@ -2,8 +2,8 @@
 
 Three parts:
   * the plan files of `experiments/plans` against `fixtures/plans_dry/<plan>.txt`, the `run` lines that `--dry` printed when the
-    plan was written (model1_variants: the fivechannel lines of the plan of that name). The queue's `--dry` has to print the same
-    run names with the same arguments, in the same order;
+    plan was written (model1_variants: the fivechannel lines of the plan of that name; team_b: the 15 sig500v3-e2e runs). The
+    queue's `--dry` has to print the same run names with the same arguments, in the same order;
   * the plan grammar;
   * the queue loop, through the real subprocess launch with `queue_stub.py` in the place of the interpreter: skip, STOP, budget,
     retry, logs, exit codes.
@@ -26,7 +26,7 @@ HERE = Path(__file__).resolve().parent
 PLAN_FILES = sorted(q.PLANS.glob('*.txt'))
 FIXTURES = HERE / 'fixtures' / 'plans_dry'
 STUB = HERE / 'queue_stub.py'
-PLANS = ['model1_variants']
+PLANS = ['model1_variants', 'team_b']
 FIVECHANNEL = 'train --protocol kfold --fold {} --arch x86 --seed 0 --model fivechannel'
 
 
@@ -53,7 +53,7 @@ def test_dry_run_prints_the_runs_of_the_recording(plan):
 
 def test_the_recordings_have_the_run_counts_of_the_experiments():
     counts = {p: sum(l.startswith('run ') for l in recorded(p)) for p in PLANS}
-    assert counts == {'model1_variants': 30}
+    assert counts == {'model1_variants': 30, 'team_b': 15}
 
 
 @pytest.mark.parametrize('plan', PLANS)
