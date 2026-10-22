@@ -1,4 +1,4 @@
-"""Binary-classification metrics shared by train.py, baselines.py and report.py (ransomware = 1 is positive)."""
+"""Binary-classification metrics shared by train.py and report.py (ransomware = 1 is positive)."""
 import numpy as np
 from sklearn.metrics import (accuracy_score, average_precision_score, f1_score, precision_score, recall_score,
                              roc_auc_score)

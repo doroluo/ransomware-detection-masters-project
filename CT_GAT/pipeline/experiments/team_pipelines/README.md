@@ -50,7 +50,6 @@ python -m experiments.team_pipelines.build_b --sample signal --num-blocks 500 --
 
 # for each seed S in 0 1 2 and fold F in 0 1 2 3 4: the run <runs>/kfold{F}_x86_gnn_s{S}_team-<arm>
 python -m experiments.team_pipelines.train_a --fold F --seed S --arm gnn500 --device cpu
-python -m experiments.team_pipelines.train_a --fold F --seed S --arm cb500 --block-vec ours_cap0_codebert --device cpu
 python -m experiments.team_pipelines.train_b --fold F --seed S --arm sig500 --device cpu
 ```
 
@@ -70,30 +69,27 @@ python -m experiments.team_pipelines.train_b --fold F --seed S --arm sig500 --de
   `train` line. Main's five-channel Model 1 on the uncapped build is the harness command `python -m experiments.train --model
   fivechannel --protocol kfold --fold F --seed S --max-instructions 512 --tag whole --build <uncapped build>`
   (`--tag` is a field of `RunConfig`, so the flag exists for every model; the run is `kfold{F}_x86_fivechannel-L512_s{S}_whole`).
-- `gnn500` and `cb500` (`train_a`) need no build but `gnn500`'s (`build_a`); `cb500` reads the CodeBERT block vectors
-  `ours_cap0_codebert` of the cache (`reference/cfg_transformer/precompute_blockvec.py`). 15 runs per arm (3 seeds x 5 folds), names
-  `kfold{F}_x86_gnn_s{S}_team-gnn500` and `..._team-cb500`.
+- `gnn500` (`train_a`) needs the build of `build_a`. 15 runs (3 seeds x 5 folds), names `kfold{F}_x86_gnn_s{S}_team-gnn500`.
 - `sig500` (`train_b`) starts when `<runs>/team/b_sig500/build_summary.json` accounts for all 1810 binaries: `total` is 1810 and
   `processed` plus the number of ids in `excluded` is 1810 (the ids `build_b --exclude` left out on purpose count; `train_b`
   leaves them out of every split). A summary that says less means the build stopped early; do not train on it.
 - `sig500v2` is the same trainer on the rebuild with Yanping's streaming preprocess: `build_b --source main-c7899f0 --out
   RUNS/team/b_sig500_v2` (below), then `train_b --fold F --seed S --arm sig500v2 --device cpu`, 15 runs
   `kfold{F}_x86_gnn_s{S}_team-sig500v2`. Its build must report all 1810 processed and none excluded.
-- Our own matched arms (`--subgraph cap --budget 500 --tag b500`, typed and `--control no_edges`, seeds 0 1 2, folds 0-4: 30 runs)
-  are the plan `experiments/plans/team.txt`, run with `python -m experiments.queue --plan experiments/plans/team.txt`; the
-  CodeBERT arms of path 2 are `experiments/plans/paths_codebert.txt`.
-- The table: `python -m s04_evaluation.gates --stage team` reads whatever is on disk: TF-IDF, the header-imports LR, R7, R2, our
-  b500 arms, the team arms and path 2 on CodeBERT vectors; AUC, PR-AUC, macro-F1, accuracy, precision, recall and the confusion
-  matrix per arm (seed 0 pooled), the paired differences of each team arm against TF-IDF, R7 and our b500 typed arm (and cb500
-  against path 2, the b500 typed arm against R7), with the pre-registered rule text. A missing arm prints as missing.
+- The table: `python -m s04_evaluation.gates --stage team` reads whatever is on disk: the team arms and main's five-channel Model 1
+  from the trainers here, and, as comparison rows, the published runs of TF-IDF, the header-imports LR, R7, R2, our b500 arms, cb500
+  and path 2 on CodeBERT vectors (the earlier models and baselines, whose code is on branch `jsonl-reference-models`; the stage
+  needs none of it, only the run directories); AUC, PR-AUC, macro-F1, accuracy, precision, recall and the confusion
+  matrix per arm (seed 0 pooled), the paired differences of each team arm against those rows, with the pre-registered rule text. A
+  missing arm prints as missing.
 
 `RunConfig` accepts `--budget` from 100 blocks (0 is the binary cap). Below 1000 the variant suffix spells the budget out
 (`sg-cap500`, `sg-cap128`), so two budgets cannot share a directory name; the matched arms still pass `--tag b500`. Every
 existing run name is unchanged (`tests/test_run_names.py`).
 
 CPU time per epoch (3 threads, Ryzen 7 9800X3D shared with the GPU queue and the build, fold 0): gnn500 about 6 ms per training
-graph (57-d features), cb500 about 6 ms (768-d float16 vectors cast per batch), sig500 about 8 ms (141-d features, edge
-attributes). A fold has about 1,200 training and 230 validation binaries, so an epoch takes roughly 8 s (gnn500, cb500) and
+graph (57-d features), sig500 about 8 ms (141-d features, edge
+attributes). A fold has about 1,200 training and 230 validation binaries, so an epoch takes roughly 8 s (gnn500) and
 11 s (sig500); the recipes stop after at most 20 (A) and 40 (B) epochs, which bounds a fold at about 3 and 7 minutes of training
 plus under a minute of loading and prediction. The 15 runs of an arm therefore take at most about 1 h (A) and 2 h (B).
 
@@ -197,40 +193,31 @@ For each of the 1,810 ids (sorted) the row `construct_blocks` expects (the bundl
 `settings.json` (mode, budget; a different request on an existing dir stops), `build_log.csv` (`sample_id, status,
 n_blocks_total, n_blocks_kept, seconds`) and `build_summary.json`. Resumable (ids with a `.pt` are skipped). A sample that
 raises stops the build with its id; nothing is skipped. `--workers W` parses W exports at a time (spawned processes).
-`--mode codebert` does not exist: the CodeBERT variant is train_a's `cb500` arm.
+`--mode codebert` does not exist.
 
-## train_a.py (arms gnn500, cb500)
+## train_a.py (arm gnn500)
 
 ```
-python -m experiments.team_pipelines.train_a --fold k --seed s --arm gnn500|cb500 [--block-vec ours_cap0_codebert] [--smoke N] [--device cuda|cpu]
+python -m experiments.team_pipelines.train_a --fold k --seed s --arm gnn500 [--smoke N] [--device cuda|cpu]
 ```
 
-- Inputs. `gnn500`: `RUNS/team/a_gnn500/<id>.pt` of build_a (57 opcode / API-group / structure features per block; the
-  teammates' ranking keeps 500 blocks of whole functions). `cb500`: no raw export is read. The graph of a binary comes from
-  our cache: its blocks are `select_subgraph(z, 'cap', 500, rng=None)` (the blocks the matched `--subgraph cap --budget 500`
-  arm evaluates), its edges the cache's directed CFG edges with both ends kept and in one function, its node features the
-  block vectors of `transformer_paths.precompute_blockvec` (`BlockVecSource`: kept cache block -> export `block_key` ->
-  vector; every key must exist and the vectors must belong to this protocol, arch and export). Default
-  `--block-vec ours_cap0_codebert` (768 d); `ours_cap0_ref` (64 d, fold 0 only) for smoke runs. The graphs are built in memory
-  per fold (x held as float16 and cast per batch).
-- What is fitted where. Nothing before training: build_a's features are fixed tables and the cb500 vectors come from a frozen
-  encoder (the vectors of fold k come from the encoder checkpoint of fold k). `BlockGAT(hidden 128, heads 4, dropout 0.2)` is
+- Inputs. `RUNS/team/a_gnn500/<id>.pt` of build_a (57 opcode / API-group / structure features per block; the teammates' ranking
+  keeps 500 blocks of whole functions).
+- What is fitted where. Nothing before training: build_a's features are fixed tables. `BlockGAT(hidden 128, heads 4, dropout 0.2)` is
   trained per fold and seed on our train ids after `torch.manual_seed(seed)`.
 - Recipe (train_cfg): AdamW lr 1e-3, weight decay 1e-4, cross-entropy weighted N / n_class of the training graphs, batch 8
   (`_batches`, `random.Random(seed)`), at most 20 epochs, stop when the validation ransomware F1 at 0.5 (`metrics_at`, their
   rule) has not improved for 5 epochs. Our `fold_manifest(fold, seed)` replaces their `stratified_holdout`.
 - Two states are kept: best validation F1 (theirs; `predictions.csv` at 0.5) and best validation AUC (`predictions_auc.csv` at
   our `val_threshold_of`). Stopping follows the F1 rule only, so the AUC state is the best AUC among the epochs the F1 rule
-  trained (the harness's own gnn stops on the later of the two bests).
-- Output. `RUNS/kfold{f}_x86_gnn_s{s}_team-gnn500|cb500/` from `common.write_run`, plus `history.csv` (epoch, loss, seconds,
+  trained.
+- Output. `RUNS/kfold{f}_x86_gnn_s{s}_team-gnn500/` from `common.write_run`, plus `history.csv` (epoch, loss, seconds,
   val F1 / macro-F1 / AUC, peak GPU MB), `best.pt`, `best_auc.pt`. `metrics.json` also holds `n_blocks_kept` and
-  `n_blocks_total` (test sum / mean / max), `in_dim`, `peak_gpu_mb`, `epoch_secs_mean`, `device` and `torch_threads`, the recipe and, for cb500, the vectors
-  used. In `predictions*.csv` `n_blocks_kept` and `n_blocks_total` are exact; `n_segments_total` is the number of kept
+  `n_blocks_total` (test sum / mean / max), `in_dim`, `peak_gpu_mb`, `epoch_secs_mean`, `device` and `torch_threads`, and the
+  recipe. In `predictions*.csv` `n_blocks_kept` and `n_blocks_total` are exact; `n_segments_total` is the number of kept
   functions (their export parser discards the total).
 - `--smoke N`: N available training ids (both classes), the available validation ids (else a few training ids), 2 epochs,
   written only to a `tempfile.mkdtemp` directory; it never calls `write_run` and creates nothing under `RUNS`.
-
-The matched `--subgraph cap --budget 500` arm starts with `python -m experiments.train ... --tag b500` (`RunConfig` accepts budgets from 100 blocks).
 
 ## train_b.py (the arms of `ARM_TABLE`)
 
@@ -305,9 +292,7 @@ of the requested source stays loaded. Main's `preprocess_full` imports only `tok
 sizes are literals), and main has no graph loader or model: `graph_full_loader` and `gat_full_model` are the copies in `s03b_cfg_feature/gat`.
 Never modify, format or write into either worktree; the import switches bytecode caching off.
 
-The runs reported in the review used torch 2.11 (CUDA 12.8 wheels), torch_geometric 2.8.1 and transformers 5.20.2. CodeBERT
-(`microsoft/codebert-base`) is loaded from `HF_HOME` for anything that embeds with it. `build_b.py` needs neither transformers
-nor a GPU.
+The runs reported in the review used torch 2.11 (CUDA 12.8 wheels) and torch_geometric 2.8.1. `build_b.py` needs no GPU.
 
 ## Yanping's streaming preprocess (step 21, main c7899f0)
 
@@ -402,5 +387,5 @@ definition equals the original's source text.
 They skip with a reason without their input: both pin sets pass on the worktrees and a tampered copy of either raises, importing
 one source never leaves the other's modules in `sys.modules` (`GT_TEAM_GNN_ROOT`, `GT_TEAM_MAIN_ROOT`); the trainers on a
 synthetic `run_arm` and the arms trained on synthetic builds (`torch_geometric`, which `requirements.txt` pins and CI installs); `measure_rss` (`psutil`); the checks over all 1,810 binaries, `paths_for` on every id, the
-builds, re-pooling, the UNK swap, `cb500` against `encode_binary_gnn` of the matched arm and the three `--smoke` paths (marked
+builds, re-pooling, the UNK swap and the `--smoke` paths (marked
 `real_data`: the cache, `GT_BUNDLE`, `GT_TEAM_ASM_DIR`, and the build or vector directories where they read them).

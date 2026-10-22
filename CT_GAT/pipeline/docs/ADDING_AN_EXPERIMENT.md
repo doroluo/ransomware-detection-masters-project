@@ -17,89 +17,58 @@ synthetic cache of `tests/tiny_cache.py`, so they work as written.
 A model is one `ModelSpec` (`common/registry.py` documents the members) and one line in `MODELS`. The training loop owns the class
 weights, the optimiser, patience, the two checkpoints, the validation thresholds and the run directory; the spec owns what is fitted
 on the training manifest (`build`), how a list of binaries becomes batches (`loader`) and the logits of a batch (`forward`).
-`GnnSpec` (`reference/gnn/spec.py`) is the full example; the smallest useful model reuses its data path and changes the network:
+The smallest useful model is a logistic regression on four counts of each binary, read from the cache arrays:
 
 ```python example=model
-from dataclasses import replace
+import numpy as np
+import torch
+from torch import nn
 
-from reference.gnn.spec import GnnSpec
+from common.manifests import load_sample
 
 
-class ShallowSpec(GnnSpec):
-    """The GNN with one message-passing layer per level: the same data path, the same loop, a smaller network."""
-    name = 'shallow'
+class CountsSpec:
+    """Logistic regression on log counts of blocks, functions, instructions and API references of a binary."""
+    name = 'counts'
+    requires = ('index.csv', 'samples')
+
+    def check(self, cfg):
+        pass
 
     def build(self, cfg, info):
-        return super().build(replace(cfg, gnn_fn_layers=1, gnn_bin_layers=1), info)
+        return nn.Linear(4, 1)
+
+    def loader(self, cfg, rows, train):
+        for start in range(0, len(rows), cfg.batch_size):
+            chunk = rows[start:start + cfg.batch_size]
+            zs = [load_sample(r['sample_id']) for r in chunk]
+            counts = [[len(z['blk_feat']), len(z['fn_flags']), len(z['mn']), len(z['api'])] for z in zs]
+            yield {'sample_id': [r['sample_id'] for r in chunk], 'label': torch.tensor([r['label'] for r in chunk]).float(),
+                   'x': torch.tensor(np.log1p(counts)).float(), 'n_segments_total': [1] * len(chunk)}
+
+    def forward(self, model, batch):
+        return model(batch['x']).squeeze(1)
 
     def variant_tokens(self, cfg):
-        return ('shallow',) + tuple(cfg.variant.split('-')[1:])
+        return ('counts',)
 ```
 
-The registry lines (the first three are the real ones; the module path is where the class can be imported from):
+The registry lines (the first is the real one; the module path is where the class can be imported from):
 
 ```python example=registry
 MODELS = {
-    'gnn': 'reference.gnn.spec:GnnSpec',
-    'tokenseq': 'reference.token_sequence.spec:TokenSeqSpec',
     'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec',
-    'shallow': 'my_stage.spec:ShallowSpec',
+    'counts': 'my_stage.spec:CountsSpec',
 }
 ```
 
-Then `RunConfig` has to know the name, because it fixes the run name: add `'shallow'` to `MODELS` and to the `model: Literal[...]` field of
-`common/config.py`, and make `RunConfig.variant` return a variant that starts with the model word (see its `tokenseq` branch). A
+Then `RunConfig` has to know the name, because it fixes the run name: add `'counts'` to `MODELS` and to the `model: Literal[...]` field of
+`common/config.py`, and make `RunConfig.variant` return a variant that starts with the model word (see its `fivechannel` branch). A
 model that needs its own loop (Model 1 does) gives its spec a `run(cfg, out_name, **options)` and the registry hands the run over.
 `requires` lists the paths under the cache that every run reads; a missing one is named before anything is written.
 The model-specific flags that `RunConfig` has no field for are the `MODEL_OPTIONS` of `experiments/train.py`.
 
 Training needs CUDA. To check a spec without a GPU, build it and run one batch, as `tests/test_docs.py` does with the example.
-
-## An encoder (Model 3)
-
-A frozen per-block encoder is any `torch.nn.Module` that maps the token ids of one block to a vector and depends on nothing else.
-The contract is `reference/cfg_transformer/encoder_contract.BlockEncoder` (the rules are in `reference/cfg_transformer/TRANSFORMER_CONTRACT.md`):
-attributes `d_out` and `max_len`, and `forward(tokens [B, L] long, mask [B, L] bool) -> [B, d_out]`; the class must be importable by name.
-You train it on `FoldView(store, k, 'train')` of a block export, select on `'val'`, never read `'test'`, and save a checkpoint per fold:
-
-```python example=encoder
-import torch
-from torch import nn
-
-from reference.cfg_transformer.encoder_contract import save_checkpoint
-
-
-class BagEncoder(nn.Module):
-    """Mean of token embeddings: the smallest encoder that satisfies the contract (the reference encoder has random weights)."""
-
-    def __init__(self, n_ids, d_out=16, max_len=192):
-        super().__init__()
-        self.d_out, self.max_len = d_out, max_len
-        self.embed = nn.Embedding(n_ids, d_out, padding_idx=0)
-
-    def forward(self, tokens, mask):
-        weight = mask.to(self.embed.weight.dtype)[..., None]
-        return (self.embed(tokens) * weight).sum(1) / weight.sum(1).clamp(min=1)
-
-
-def write_checkpoint(store, export_root, out_path, fold):
-    manifest = store.fold(fold)['manifest']
-    ids = lambda split: [store.binaries[i]['sample_id'] for i in manifest[split]]
-    init = {'n_ids': store.fold(fold)['vocab']['n_ids']}
-    save_checkpoint(out_path, BagEncoder(**init), init, export_root, fold, ids('train'), ids('val'))
-```
-
-`out_path` is `<runs>/encoders/<name>/fold<k>/best.pt`. Check it, compute the vectors once per distinct block, and train the GNN on them:
-
-```bash
-python -m reference.cfg_transformer.block_export --protocol kfold --arch x86 --out RUNS/export/ours_cap0
-python -m reference.cfg_transformer.encoder_contract --ckpt <runs>/encoders/bag/fold0/best.pt --export <runs>/export/ours_cap0 --fold 0
-python -m reference.cfg_transformer.precompute_blockvec --encoder-name bag --export ours_cap0 --folds 0 1 2 3 4
-python -m experiments.train --protocol kfold --fold 0 --model gnn --mask-blocks 0.15 --block-input vec --block-vec ours_cap0_bag
-```
-
-The vectors land in `<cache>/side/blockvec/ours_cap0_bag/fold<k>/`; `--control no_edges` with the last command is path 1 (no edges).
-`experiments/plans/paths_codebert.txt` is this for CodeBERT, three seeds.
 
 ## A dataset
 
@@ -168,38 +137,36 @@ default is a token of the run name. The run name is what a gates stage finds the
 ```python example=control
 from common.config import RunConfig
 
-typed = RunConfig(model='gnn', protocol='kfold', fold=0, mask_blocks=0.15)
-no_edges = RunConfig(model='gnn', protocol='kfold', fold=0, mask_blocks=0.15, control='no_edges')
-assert typed.name == 'kfold0_x86_gnn-mblk15_s0'
-assert no_edges.name == 'kfold0_x86_gnn-noedges-mblk15_s0'
-assert typed.group == 'kfold_x86_gnn-mblk15'                       # what a gates stage names: the runs of all folds and seeds
-assert RunConfig(model='gnn', protocol='kfold', fold=0, mask_blocks=0.15, tag='mine').name == 'kfold0_x86_gnn-mblk15_s0_mine'
+base = RunConfig(model='fivechannel', protocol='kfold', fold=0)
+long = RunConfig(model='fivechannel', protocol='kfold', fold=0, max_instructions=512)
+assert base.name == 'kfold0_x86_fivechannel_s0'
+assert long.name == 'kfold0_x86_fivechannel-L512_s0'
+assert long.group == 'kfold_x86_fivechannel-L512'                  # what a gates stage names: the runs of all folds and seeds
+assert RunConfig(model='fivechannel', protocol='kfold', fold=0, tag='mine').name == 'kfold0_x86_fivechannel_s0_mine'
 ```
 
-`--tag <word>` labels a run without changing what it does, which is how the 500-block arms and the teammates' arms are told
-apart. The controls of the edge structure are `no_edges`, `chain`, `shuffle` (degree-preserving shuffled edges) and `permute_types`
-(`--control`); the others are `--untyped`, `--no-call-mp`, `--direction`, `--drop-edges`, `--flip-edges`, `--mask-tokens`,
-`--mask-blocks`, `--drop-functions`, `--train-fraction`, `--vocab`, `--imports` and `--encoder`. The sequence models (`tokenseq`,
-`fivechannel`) take one more, `--threshold-from oof`, which chooses the decision threshold on out-of-fold predictions of the training
-binaries instead of the validation families (run name suffix `-thoof`; `experiments.train.choose_thresholds` is where a new model asks for it).
+`--tag <word>` labels a run without changing what it does, which is how the uncapped arms and the teammates' arms are told apart.
+`--max-instructions` (instructions per binary, `-L512`) and `--threshold-from oof` (the decision threshold chosen on out-of-fold
+predictions of the training binaries instead of the validation families, run name suffix `-thoof`;
+`experiments.train.choose_thresholds` is where a new model asks for it) are the options of `fivechannel`.
 
-A new option is a `RunConfig` field with its default (so that no existing name changes), its token in `RunConfig.variant`, the code
-that reads it, and a case in `tests/test_run_names.py`, which fails if any recorded name changes. A new structural control is also a branch of `control_edges` in
-`reference/gnn/s06_gnn_block_cfg/edges.py` and a key of `CONTROLS` in `common/config.py`.
+`RunConfig` also keeps the fields of the earlier jsonl-only models (the hierarchical GNN, the token-sequence transformer), because the
+run directories they wrote are read by name; `tests/test_run_names.py` fails if any recorded name changes. A new option is a
+`RunConfig` field with its default (so that no existing name changes), its token in `RunConfig.variant`, the code that reads it, and a
+case in that test.
 
 ## A plan file
 
-A plan is one command per line (`#` starts a comment): `train <experiments.train arguments>`, `baselines <arguments>`, `report`,
+A plan is one command per line (`#` starts a comment): `train <experiments.train arguments>`, `train_b <arguments>`, `report`,
 `val_threshold`, `gates <stage> [--out NAME]`.
 
 ```text example=plan
-# R7 typed against R2 no edges, folds 0-4, one seed
-baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0
-train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15
-train --protocol kfold --fold 0 --arch x86 --seed 0 --model gnn --mask-blocks 0.15 --control no_edges
+# five-channel Model 1 at 128 and 512 instructions, fold 0, one seed
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model fivechannel
+train --protocol kfold --fold 0 --arch x86 --seed 0 --model fivechannel --max-instructions 512
 
 report
-gates day1
+gates model1_variants
 ```
 
 ```bash
@@ -208,61 +175,63 @@ python -m experiments.queue --plan experiments/plans/mine.txt --budget-min 300  
 python -m experiments.queue --stop                                                     # stop before the next train line
 ```
 
-The queue skips a `train` line whose run directory has a `metrics.json` and a `baselines` line whose directories hold a validation
-threshold, so a plan can be run again after a crash or extended; a failed line is retried once (the first log is kept as
-`<runs>/logs/<name>.log.try1`); `report`, `val_threshold` and `gates` still run after a stop or an exhausted budget. The output of
-`gates` goes to `<runs>/gates_<stage>.md`. CPU steps the plan depends on (a block export, encoder vectors) are not plan lines: put the
-commands in the plan's leading comment, as `experiments/plans/paths.txt` does. The whole plan is checked before anything starts, so a
-misspelt flag is an error with its line number. See the docstring of `experiments/queue.py` for the log lines and the exit codes.
+The queue skips a `train` line whose run directory has a `metrics.json`, so a plan can be run again after a crash or extended; a
+failed line is retried once (the first log is kept as `<runs>/logs/<name>.log.try1`); `report`, `val_threshold` and `gates` still run
+after a stop or an exhausted budget. The output of `gates` goes to `<runs>/gates_<stage>.md`. CPU steps the plan depends on (a
+pipeline-B build) are not plan lines: put the commands in the plan's leading comment, as `experiments/plans/model1_variants.txt`
+does. The whole plan is checked before anything starts, so a misspelt flag is an error with its line number. See the docstring of `experiments/queue.py` for the log lines and the exit codes.
 
 ## A gates stage
 
 A stage is data. `experiments/stages/<name>.py` defines `STAGE`: the arms `(label, group)` and the pairs `(first, second)` of labels to
-compare. Build the group names from `variant_of` so they cannot drift from the run names:
+compare. Build the group names from `RunConfig.group` so they cannot drift from the run names:
 
 ```python example=stage
-from s04_evaluation.stage import Stage, variant_of, x86_group
+from common.config import RunConfig
+from s04_evaluation.stage import Stage
 
-ARMS = (('R2 no edges', x86_group(variant_of(control='no_edges', mask_blocks=0.15))),
-        ('R7 typed', x86_group(variant_of(mask_blocks=0.15))))
-PAIRS = (('R2 no edges', 'R7 typed'),)
-STAGE = Stage('mine', intro='R7 against R2, kfold x86.', arms=ARMS, pairs=PAIRS)
+KFOLD = dict(protocol='kfold', fold=0, arch='x86', model='fivechannel')
+ARMS = (('five-channel L128', RunConfig(**KFOLD).group),
+        ('five-channel L512', RunConfig(**KFOLD, max_instructions=512).group))
+PAIRS = (('five-channel L128', 'five-channel L512'),)
+STAGE = Stage('mine', intro='L512 against L128, kfold x86.', arms=ARMS, pairs=PAIRS)
 ```
 
 Add `'mine'` to `STAGES` in `experiments/stages/__init__.py` (and the file to `experiments/stages/`); the engine, the tables and the
 command line need no change. `python -m s04_evaluation.gates --stage mine` prints the markdown and the plan's `gates mine` line
 writes it to `<runs>/gates_mine.md`. `seeds=(0, 1, 2)` pairs over the seeds complete in both arms; `rule=` adds the verdict column
-(`experiments/stages/noapi.py` and `team.py` are examples).
+(`experiments/stages/team.py` is an example).
 
 ## Reading the tables
 
 A gate summary starts with the pooled table of seed 0: one row per arm, the metrics of the five folds' test predictions pooled, with
 the AUC checkpoint scored at its validation threshold. A missing arm, or one with missing folds, says so in its row.
 
-```text excerpt=gates_noapi
+```text excerpt=gates_team
 ## Pooled, AUC checkpoint
 
 | arm | group | AUC | PR-AUC | macro-F1 |
 |---|---|---|---|---|
-| TF-IDF | tfidf | 0.982 | 0.990 | 0.935 |
-| R7 typed | kfold_x86_gnn-mblk15 | 0.986 | 0.990 | 0.935 |
+| team sig500v3 emb (Model 3) | kfold_x86_gnn_team-sig500v3-emb | 0.971 | 0.985 | 0.935 |
+| fivechannel-L512 whole | kfold_x86_fivechannel-L512_whole | 0.910 | 0.948 | 0.846 |
 ```
 
 The second table is the comparison: "second minus first" with the 95% interval of a paired bootstrap that resamples *clusters* (a
 ransomware family, or a single goodware binary), so that a family of near-identical samples counts once:
 
-```text excerpt=gates_noapi
+```text excerpt=gates_team
 ## Paired differences, second minus first
 
 | first | second | dAUC [95% CI] | dmacro-F1 [95% CI] | rule |
 |---|---|---|---|---|
-| R7 typed | R7 noapi | -0.017 [-0.044, -0.001] | -0.025 [-0.048, -0.007] | api loss shown |
+| team sig500v3 feat (Model 2) | team sig500v3 emb (Model 3) | +0.012 [+0.000, +0.025] | +0.031 [+0.002, +0.069] | beats |
 ```
 
-Three rules of thumb. The pooled table is one seed and the paired table uses the seeds complete in both arms, so the two can disagree
-(R7 is 0.986 in the first and 0.979, the mean of three seeds, in the second); a row marked "seed 0 only" is a direction, not the test.
-The pre-registered rule (`s04_evaluation/stage.py`): a second arm beats the first only when dAUC >= 0.01 and dmacro-F1 >= 0.02 and both
-intervals exclude zero. And a result is read with its baselines: TF-IDF and the header-imports logistic regression are in every
-table, because a model that does not beat them has not shown that it needs the code at all. `python -m s04_evaluation.stats --a <group>
---b <group>` prints one comparison, and `python -m s04_evaluation.report` writes `RESULTS.md`, one row per configuration. The tables of
-the experiments that were run, and the verdicts drawn from them, are in [`history/`](history/README.md).
+Three rules of thumb. The pooled table is one seed and the paired table uses the seeds complete in both arms, so the two can
+disagree; a row marked "seed 0 only" is a direction, not the test. The pre-registered rule (`s04_evaluation/stage.py`): a second arm
+beats the first only when dAUC >= 0.01 and dmacro-F1 >= 0.02 and both intervals exclude zero. And a result is read with its
+baselines: the TF-IDF and header-imports logistic regressions are rows of the `team` table that read their published runs (their code
+is on branch `jsonl-reference-models`), because a model that does not beat them has not shown that it needs the code at all.
+`python -m s04_evaluation.stats --a <group> --b <group>` prints one comparison, and `python -m s04_evaluation.report` writes
+`RESULTS.md`, one row per configuration. The tables of the experiments that were run, and the verdicts drawn from them, are in
+[`history/`](history/README.md).

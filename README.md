@@ -39,12 +39,13 @@ The code is in `CT_GAT/pipeline`, one folder per stage of the diagram:
 | 3a. Model 1 | `s03a_transformer/` | Janice's five-channel transformer over the instruction sequence (on the `.pt` samples) |
 | 3b. Model 2 | `s03b_cfg_feature/` | the team GAT on the 77 block features |
 | 3c. Model 3 | `s03c_cfg_transformer/` | the end-to-end block transformer and GAT |
-| 4. Evaluation | `s04_evaluation/` | baselines, metrics, validation thresholds, paired bootstrap comparisons and result tables |
+| 4. Evaluation | `s04_evaluation/` | metrics, validation thresholds, paired bootstrap comparisons and result tables |
 
 `experiments/` holds the one training command (`experiments.train`), the experiment plans and their runner
-(`experiments.queue`), and adapters that train the teammates' GAT pipelines on the same folds. Reference models: the jsonl-only
-models of the first plan (the hierarchical GNN and its R-ladder, the token-sequence transformer, the frozen-encoder path to
-Model 3) are kept in `reference/`; see [`CT_GAT/pipeline/reference/README.md`](CT_GAT/pipeline/reference/README.md). Labels are binary; the
+(`experiments.queue`), and adapters that train the teammates' GAT pipelines on the same folds. The earlier jsonl-only models (the
+hierarchical GNN, the token-sequence transformer and the CodeBERT block-vector path) and their commands are on branch
+`jsonl-reference-models`; their results are in `CT_GAT/pipeline/docs/history/`. The TF-IDF and import-table baselines are on that branch too, and their
+published numbers are in the same place. Labels are binary; the
 behaviour tags of the five-channel tokens (encrypt, file read, ...) describe what an instruction does, and models can use
 them to point at suspicious regions.
 
@@ -60,7 +61,6 @@ CT_GAT/
     processed/                    the preprocessed .pt samples: the unzipped zips, or the output of preprocess_full.py or build_b (gitignored)
     pipeline/                     all the code; see CT_GAT/pipeline/README.md
         s01_ida_export/  s02_preprocess/  s03a_transformer/  s03b_cfg_feature/  s03c_cfg_transformer/  s04_evaluation/
-        reference/                the jsonl-only models, frozen (GNN and R-ladder, token-sequence, frozen-encoder Model 3)
         s02_preprocess/folds/     the committed fold assignments of every published result
         common/  experiments/  docs/  tests/
         requirements.txt  datasets.json.example
@@ -76,7 +76,7 @@ pip install -r requirements.txt
 ```
 
 This installs the CPU build of PyTorch. To train on a GPU, install the CUDA build from https://pytorch.org first.
-`requirements.txt` lists the optional packages (CodeBERT, the teammates' GAT pipelines) and what needs them.
+`requirements.txt` lists the optional packages and what needs them.
 
 ## Running
 
@@ -148,24 +148,9 @@ summary in which `ok` is 2411 and `vocab_sha` starts with `4ded77e0`; 236 binari
 are left out. On the development machine `index.csv`, `vocab.json` and all 2,411 `samples/*.npz` are byte-identical to the cache
 the published runs read. A rerun skips the samples already built. `check_cache` checks every invariant of every sample.
 
-Baselines, including the header-imports baseline. The import arrays come from the CFG exports, so the team's reader output
-(`GT_READER_ROOT`, not on the Drive) is not needed:
-
-```bash
-python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --arch x86 --seed 0
-python -m s04_evaluation.import_side --from-cfg
-python -m s04_evaluation.baselines --protocol kfold --fold 0 1 2 3 4 --imports
-```
-
-`import_side --from-cfg` reads the header record of each `.jsonl.gz` and writes `CT_GAT/cache/mendeley_x86/side/imports/`. The
-header-imports baseline on these arrays reproduces the published predictions on all five folds (fold 0 AUC 0.9962).
-
 Model 1, Janice's five-channel model (`--model fivechannel`), reads the pipeline-B samples in `CT_GAT/processed/cfg_subgraphs`;
 its commands are in the next section, after the zip or the build that fills that folder. The teammates' GAT pipelines are in
 [`CT_GAT/pipeline/README.md`](CT_GAT/pipeline/README.md).
-
-Reference models: the earlier jsonl-only models (the GNN and its R-ladder, the token-sequence transformer, the frozen-encoder
-path to Model 3) run from the CFG cache; see [`CT_GAT/pipeline/reference/README.md`](CT_GAT/pipeline/reference/README.md).
 
 When the runs you want exist, the tables:
 
@@ -173,20 +158,18 @@ When the runs you want exist, the tables:
 python -m s04_evaluation.report
 python -m s04_evaluation.val_threshold
 python -m s04_evaluation.gates --stage model1_variants
-python -m s04_evaluation.gates --stage day1
+python -m s04_evaluation.gates --stage team
 ```
 
 `report` writes `RUNS/RESULTS.md` over every run found. `val_threshold` re-scores the saved predictions of the runs found, and with no run folder stops and says so. `gates`
-prints the arms of a stage that it finds and names the missing folds and seeds. `--stage v3` needs the all-architecture runs below.
+prints the arms of a stage that it finds and names the missing folds and seeds.
 
 Time and hardware per command, measured on the development machine:
 
 | Command | Hardware | Time |
 |---|---|---|
 | `build_cache` | CPU, 4 workers | 200 s of building for 2,411 samples (244 s in all, from `build_summary.json`) |
-| `baselines` | CPU | minutes |
 | `check_cache` | CPU | not measured here |
-| `import_side --from-cfg` | CPU | 33 s for 2,411 samples |
 | `build_cache --cache combined_v3` | CPU, 4 workers | 1,307 s of building for 5,838 samples (1,494 s in all) |
 | `build_b --source repo` | CPU | 7.6 s per sample, about 4 h for 1,810 binaries at 500 blocks (a measured rate; the zip replaces it) |
 | `experiments.train --model fivechannel` | CPU or GPU (`--device`) | not measured here |
@@ -298,18 +281,11 @@ from the vocabulary and the samples of the `mendeley_x86` cache, which must be b
 ```bash
 python -m s02_preprocess.cache.build_cache --cache combined_v3
 python -m s02_preprocess.cache.check_cache --cache combined_v3
-python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --seed 0
-python -m s04_evaluation.import_side --from-cfg --cache ../cache/combined_v3
-python -m s04_evaluation.baselines --protocol kfold_v3 --fold 0 1 2 3 4 --arch all --imports
-python -m experiments.queue --plan experiments/plans/v3.txt --budget-min 600
-python -m s04_evaluation.gates --stage v3
 ```
 
 The combined cache holds 5,838 samples; one CIL binary fails to build, as in the published cache. A `kfold_v3` run reads
-`CT_GAT/cache/combined_v3/` by default. `import_side --from-cfg` writes the import arrays the `--imports` baseline reads, and
-`baselines` takes `--arch x86` unless told otherwise, so the v3 baselines pass `--arch all`. `--arch matched` keeps the
-architecture-matched subset (the rows with `arch_matched` 1 in `index.csv`), and `--arch-balance` weighs each class and
-architecture cell equally in place of the class weights. The queue runs the baselines and the GNN arms of the v3 plan (GPU).
+`CT_GAT/cache/combined_v3/` by default; its folds are the family-holdout folds over all architectures, and `--arch matched` keeps the
+architecture-matched subset (the rows with `arch_matched` 1 in `index.csv`).
 
 ### Overrides
 
@@ -317,7 +293,7 @@ Every default above is a fallback. The order is environment variable, then `data
 `CT_GAT/pipeline/common/catalog.py`. To keep data or caches elsewhere, copy `CT_GAT/pipeline/datasets.json.example` to
 `datasets.json` (gitignored) and edit the paths, or set a variable: `GT_COLLECTIONS` (the folder that holds the unzipped
 collections), `GT_CACHE` (a cache folder), `GT_RUNS` (the run directories), `GT_FOLDS` and `GT_FOLDS_V3` (other fold files),
-`GT_TEAM_B_BUILD` (the build folder of `--model fivechannel`) and `GT_READER_ROOT` (the team's reader output).
+and `GT_TEAM_B_BUILD` (the build folder of `--model fivechannel`).
 
 The bundle `Mendeley_GNN_v1.zip` replaces the two Mendeley collections as the source of the Mendeley CFG exports. Unzip it
 into `CT_GAT/data/` (the folder `Mendeley_GNN_v1/` with its `summary.json` is found there), or anywhere and set `GT_BUNDLE`
@@ -340,12 +316,12 @@ in `combined_v3`); a cache built with `--limit` fails some of them.
 
 5-fold family holdout on the 1,810 Mendeley x86 binaries, 3 seeds; area under the ROC curve (AUC):
 
-* Our edge-typed GNN over the whole CFG (R7, a reference model) reaches 0.979. A logistic regression on the PE import table (0.985), TF-IDF over
+* Our edge-typed GNN over the whole CFG (R7, now on branch `jsonl-reference-models`) reaches 0.979. A logistic regression on the PE import table (0.985), TF-IDF over
   the instruction tokens (0.982) and the same GNN with no edges and no API names (0.981) are level with it, so the CFG
   structure adds nothing measurable over the tokens and imports.
 * Pipeline B (`preprocess_full.py`) with the uncapped samples: Model 3 (block embeddings and CFG) 0.981, level with R7;
   Model 2 (block features and CFG) 0.970. At 500 blocks per binary both are lower (0.966 and 0.954).
-* Model 1: the token-sequence transformer (a reference model) 0.970; Janice's five-channel model 0.919 to 0.926, since it reads only the first
+* Model 1: the token-sequence transformer (now on branch `jsonl-reference-models`) 0.970; Janice's five-channel model 0.919 to 0.926, since it reads only the first
   128 or 512 instructions of each binary.
 
 These are means over 3 seeds. Runs on a GPU are not repeatable to the last digit (CUDA scatter is nondeterministic), so a rerun

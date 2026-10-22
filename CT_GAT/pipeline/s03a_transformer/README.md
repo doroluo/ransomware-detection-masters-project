@@ -3,12 +3,9 @@
 `five_channel/` is Janice Park's Model 1 (model `fivechannel`, registered in `common/registry.py`, so that the one training command
 `python -m experiments.train --model fivechannel` runs it): her `FiveChannelEmbedder`, `Model1TokenSequence`, `Model1Dataset` and
 `model1_collate_fn` in `five_channel/model.py` (the file she wrote as `token_sequence.py` in this folder; it moved with `git mv`
-when the package of `tokenseq` took the name `token_sequence`, and only its imports changed), trained by `five_channel/train.py` on
+and only its imports changed), trained by `five_channel/train.py` on
 our folds. Its input is the folder of `<sample_id>.pt` files of a pipeline-B build (Yanping's stage-2 output,
 `experiments/team_pipelines/build_b.py`), five token ids per instruction: opcode, two operands, API and behaviour tag.
-
-The earlier token-sequence transformer, which reads a block export of the CFG cache (model `tokenseq`), is a reference model:
-[`../reference/token_sequence/README.md`](../reference/token_sequence/README.md).
 
 Every command runs from `CT_GAT/pipeline`, which is the package root (there is no `pipeline` package above it: the files import
 `common`, `s02_preprocess`, ... directly, as the tests do).
@@ -28,7 +25,7 @@ are ours: the 5-fold x86 family holdout of `common.manifests` and the validation
 train, validation and test binaries as the GNN and the teammates' arms of that seed. Per fold the API vocabulary of the build, which
 covers all 1,810 binaries, is made a training-set one again with the logic of `experiments/team_pipelines/train_b.py` (`remap_api`):
 an API id that no training binary of the fold uses becomes `UNK_API`. The loop is the class-weighted cross entropy, AdamW, gradient
-clipping, patience on the validation AUC and the two checkpoints of the reference `tokenseq`, with her model and collate unchanged;
+clipping, patience on the validation AUC and the two checkpoints, with her model and collate unchanged;
 `--max-instructions` (default 128, as she wrote it) is the number of instructions per binary the model reads, and the run name
 `kfold<f>_x86_fivechannel_s<seed>` gains `-L<n>` when it is not 128. The run directory is read by `s04_evaluation` like any other.
 
@@ -55,7 +52,7 @@ Tests: `python -m pytest tests/test_five_channel.py`. The model is Janice Park's
 
 ## The decision threshold: `--threshold-from`
 
-Both Model 1 trainers (`fivechannel` and the reference `tokenseq`) pick the threshold of the AUC checkpoint (the one `predictions_auc.csv` and the gates use) on the validation families. They
+The Model 1 trainer picks the threshold of the AUC checkpoint (the one `predictions_auc.csv` and the gates use) on the validation families. They
 saturate: the validation AUC is near 1.0 within a few epochs, every threshold of a wide band has the same validation macro-F1, the
 first of the band is taken, and the test macro-F1 swings between folds (0.77 to 0.93). `--threshold-from oof` (run name suffix
 `-thoof`; the default `val` changes no name and no result) chooses it on predictions the model did not train on:
@@ -63,12 +60,12 @@ first of the band is taken, and the test macro-F1 swings between folds (0.77 to 
 1. the training binaries are split in 3 folds that keep a ransomware family or a goodware identity group whole
    (`common.manifests.grouped_folds`);
 2. a new model is fitted on 2 folds for the epoch count of each checkpoint (`best_epoch` for the F1 checkpoint, `auc_best_epoch` for
-   the AUC checkpoint; one refit serves both, with no early stopping) and predicts the held-out fold with every window or instruction
-   it reads; for `fivechannel` the API vocabulary of a refit is that of its own training binaries;
+   the AUC checkpoint; one refit serves both, with no early stopping) and predicts the held-out fold with every instruction
+   it reads; the API vocabulary of a refit is that of its own training binaries;
 3. the GRID threshold (`s04_evaluation/val_threshold.py`) with the highest macro-F1 on the pooled held-out predictions is the threshold.
 
 The cost is three more fits of two thirds of the training binaries per run. `metrics.json` keeps the rule (`threshold_rule`: k, the
 epochs, the thresholds, their out-of-fold macro-F1 and the validation thresholds the default would have used, and the text of
-`selection.auc.rule`). The `tokenseq` refits keep the fold's token vocabulary, which was fitted on all the training binaries. The rule is
+`selection.auc.rule`). The rule is
 `experiments.train.choose_thresholds`; a model that gives it a `fit_predict` can use it.
 

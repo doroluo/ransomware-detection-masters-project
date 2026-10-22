@@ -1,7 +1,7 @@
 """Stage model1_variants.
 
 Stage model1_variants reads the variants of Model 1 (plan `model1_variants`) against the references and against each other, kfold x86:
-TF-IDF, the header-imports LR, R7 typed `gnn-mblk15`, R2 no-edges `gnn-noedges-mblk15`, Model 1 `tokenseq` (the plan `model1`), and
+TF-IDF, the header-imports LR, R7 typed `gnn-mblk15`, R2 no-edges `gnn-noedges-mblk15`, Model 1 `tokenseq`, and
 
   * `tokenseq-thoof`: Model 1 with the decision threshold chosen on out-of-fold predictions of the training binaries
     (`--threshold-from oof`) instead of the validation families, which saturate;
@@ -12,7 +12,9 @@ TF-IDF, the header-imports LR, R7 typed `gnn-mblk15`, R2 no-edges `gnn-noedges-m
 Each variant is paired with `tokenseq` and with TF-IDF (second minus first, AUC checkpoint at its validation threshold) over the seeds
 0 1 2 complete in both arms; the rule column applies the pre-registered rule (dAUC >= 0.01 and dmacro-F1 >= 0.02, both 95% intervals
 excluding zero) in the direction "the variant beats the reference". TF-IDF has seed 0 only, so its pairs are a direction. The pooled table
-is seed 0. Missing arms print as missing.
+is seed 0. Missing arms print as missing. The rows of TF-IDF, the header-imports LR, R7, R2 and `tokenseq` (and
+`tokenseq-thoof`) read published runs from the run directory and need no model code; the code that wrote them is on branch
+`jsonl-reference-models`.
 """
 from common.config import RunConfig
 from experiments.stages.common import PATHS_X86
@@ -47,7 +49,7 @@ def rule(first, second, result, info):
 
 
 def intro(resamples):
-    return ('kfold x86 on the v2 cache. `tokenseq` is Model 1, the token-sequence transformer over the block export (plan `model1`); '
+    return ('kfold x86 on the v2 cache. `tokenseq` is Model 1, the token-sequence transformer over the block export; '
             '`tokenseq-thoof` is the same model with the decision threshold chosen on out-of-fold predictions of the training '
             'binaries (3 refits on folds that keep a ransomware family or a goodware identity group whole, '
             '`--threshold-from oof`) instead of the validation families, which saturate; the two differ only in the threshold of the AUC '

@@ -186,16 +186,10 @@ def make_manifest(cfg: RunConfig, index):
     return Manifest(train, val, test, val_families)
 
 
-def load_sample(sample_id, ytok=False):
-    """The cache arrays of one binary; with `ytok` also the reader's per-instruction triplet (side/yanping), aligned with
-    `mn`. A binary without it raises (FileNotFoundError naming the sample)."""
+def load_sample(sample_id):
+    """The cache arrays of one binary."""
     with np.load(CACHE / 'samples' / f'{sample_id}.npz') as z:
         out = {k: z[k] for k in ('mn', 'sig', 'beh', 'api', 'blk_insn_ptr', 'blk_api_ptr', 'blk_feat',
                                  'fn_blk_ptr', 'fn_flags', 'cfg_edges', 'call_edges', 'edge_kind', 'edge_back')
                if k in z.files}
-    if ytok:
-        from experiments.side_arrays.import_reader_side import load_ytok
-        out['ytok'] = load_ytok(CACHE, sample_id)
-        if len(out['ytok']) != len(out['mn']):
-            raise ValueError(f'{sample_id}: {len(out["ytok"])} reader instructions, {len(out["mn"])} in the cache')
     return out

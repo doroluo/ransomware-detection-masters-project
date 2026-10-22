@@ -11,8 +11,8 @@ import experiments.stages as stages_package
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ('common.run_io', 's04_evaluation', 's04_evaluation.metrics', 's04_evaluation.val_threshold', 's04_evaluation.stats',
-           's04_evaluation.report', 's04_evaluation.baselines', 's04_evaluation.stage', 's04_evaluation.gate_tables',
-           's04_evaluation.gate_layouts', 's04_evaluation.gates', 'experiments', 'experiments.stages',
+           's04_evaluation.report', 's04_evaluation.stage', 's04_evaluation.gate_tables',
+           's04_evaluation.gates', 'experiments', 'experiments.stages',
            'experiments.stages.common', *(f'experiments.stages.{name}' for name in stages_package.STAGES))
 
 
@@ -32,15 +32,14 @@ def test_every_module_of_stage_4_imports_without_a_datasets_file(tmp_path):
     assert r.returncode == 0 and r.stdout.strip() == 'ok', r.stderr
 
 
-def test_importing_the_baselines_reads_no_module_of_a_later_step(tmp_path):
-    code = ('import sys\nimport s04_evaluation.baselines, s04_evaluation.gates\n'
-            'late = sorted(m for m in sys.modules if m.startswith(("reference", "experiments.side_arrays",'
-            ' "experiments.train", "torch")))\nprint(late)')
+def test_importing_the_gates_reads_no_module_of_a_later_step(tmp_path):
+    code = ('import sys\nimport s04_evaluation.report, s04_evaluation.gates\n'
+            'late = sorted(m for m in sys.modules if m.startswith(("reference", "experiments.train", "torch")))\nprint(late)')
     r = run(['-c', code], tmp_path)
     assert r.returncode == 0 and r.stdout.strip() == '[]', (r.stdout, r.stderr)
 
 
-@pytest.mark.parametrize('module', ['baselines', 'stats', 'report', 'gates'])
+@pytest.mark.parametrize('module', ['stats', 'report', 'gates'])
 def test_the_commands_run_as_modules_from_the_package_root(module, tmp_path):
     r = run(['-m', f's04_evaluation.{module}', '--help'], tmp_path)
     assert r.returncode == 0 and 'usage' in r.stdout.lower(), r.stderr
@@ -53,7 +52,7 @@ def test_val_threshold_needs_the_run_folder_only_to_run(tmp_path):
     assert r.returncode == 0 and 'usage' in r.stdout.lower(), r.stderr
     r = subprocess.run([sys.executable, '-m', 's04_evaluation.val_threshold'], cwd=ROOT, capture_output=True, text=True, env=env)
     assert r.returncode != 0 and 'Traceback' not in r.stderr, r.stderr
-    assert str(missing) in r.stderr and 'training or baseline command' in r.stderr
+    assert str(missing) in r.stderr and 'training command' in r.stderr
     missing.mkdir()
     r = subprocess.run([sys.executable, '-m', 's04_evaluation.val_threshold'], cwd=ROOT, capture_output=True, text=True, env=env)
     assert r.returncode == 0 and r.stdout.startswith('| config |'), r.stderr
@@ -63,7 +62,7 @@ def test_the_stage_modules_do_not_import_the_engine():
     """Stage files are data: they may import stage.py and common.py only, so that the engine can run as __main__."""
     for name in stages_package.STAGES:
         text = (Path(stages_package.__file__).parent / f'{name}.py').read_text(encoding='utf-8')
-        assert 's04_evaluation.gates' not in text and 'gate_layouts' not in text and 'gate_tables' not in text, name
+        assert 's04_evaluation.gates' not in text and 'gate_tables' not in text, name
 
 
 def test_report_has_no_path_of_its_own(tmp_path):

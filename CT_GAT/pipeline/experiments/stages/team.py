@@ -1,7 +1,9 @@
 """Stage team.
 
-Stage team reads the teammates' GAT pipelines run under our folds (experiments/team_pipelines, and the queue plans
-`team` and `paths_codebert`): TF-IDF, the header-imports LR, R7 and R2 with 15% block masking, our matched cap-500 arms (typed and
+Stage team reads the teammates' GAT pipelines run under our folds (experiments/team_pipelines). The rows that
+read the published runs of the earlier models and baselines (TF-IDF, the header-imports LR, R7, R2, our b500 arms, team cb500 and
+path 2 on the CodeBERT vectors) need no model code, only their run directories; the code that wrote them is on branch
+`jsonl-reference-models`. The stage reads: TF-IDF, the header-imports LR, R7 and R2 with 15% block masking, our matched cap-500 arms (typed and
 no-edges, `--subgraph cap --budget 500 --tag b500`), team gnn500, cb500, sig500, sig500v2, the three sig500v3 arms (`feat` is
 Model 2, `emb` Model 3), the three uncapped sigwhole arms and main's five-channel Model 1 on the uncapped build
 (`--model fivechannel --max-instructions 512 --tag whole`), and path 2 on the CodeBERT vectors. The pooled seed-0 table adds accuracy,
@@ -15,8 +17,7 @@ paired differences use the seeds 0 1 2 complete in both arms and carry the pre-r
 Missing arms print as missing.
 """
 from common.config import RunConfig
-from experiments.stages import paths_codebert
-from experiments.stages.common import CB_VEC, PATHS_X86
+from experiments.stages.common import CB_VEC, CB_VEC_ARMS, PATHS_X86
 from s04_evaluation.stage import MIN_AUC, MIN_F1, NI_AUC, NI_F1, Stage, beats, non_inferior, variant_of, x86_group
 
 X86 = dict(protocol='kfold', arch='x86', fold=0, model='gnn')
@@ -44,7 +45,7 @@ ARMS = (('TF-IDF', 'tfidf'), ('header-imports LR', 'imports-header'),
         ('team sigwhole feat (Model 2)', team_group('sigwhole-feat')),
         ('team sigwhole emb (Model 3)', team_group('sigwhole-emb')),
         ('fivechannel-L512 whole', FIVECHANNEL_WHOLE),
-        ('path 2: typed, CodeBERT vectors', dict(paths_codebert.ARMS)['path 2: typed, CodeBERT vectors']))
+        ('path 2: typed, CodeBERT vectors', x86_group(variant_of(**CB_VEC_ARMS))))
 V2 = 'team sig500v2'
 V3 = ('team sig500v3', 'team sig500v3 feat (Model 2)', 'team sig500v3 emb (Model 3)')
 WHOLE = ('team sigwhole', 'team sigwhole feat (Model 2)', 'team sigwhole emb (Model 3)')

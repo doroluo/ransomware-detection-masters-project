@@ -1,13 +1,12 @@
 """Resumable experiment queue, from CT_GAT/pipeline:
 
-    python -m experiments.queue --plan experiments/plans/v3.txt [--budget-min N] [--dry] [--stop-file PATH]
+    python -m experiments.queue --plan experiments/plans/model1_variants.txt [--budget-min N] [--dry] [--stop-file PATH]
 
 A plan is a text file with one command per line; blank lines and lines that start with `#` are ignored.
 
     train <experiments.train arguments>      python -m experiments.train <arguments>
     train_b --fold F --seed S --arm ARM [--build DIR]
                                              python -m experiments.team_pipelines.train_b <arguments>   (a team pipeline-B arm)
-    baselines <s04_evaluation.baselines arguments>
     report                                   python -m s04_evaluation.report
     val_threshold                            python -m s04_evaluation.val_threshold      > <runs>/val_threshold.md
     gates <stage> [--out NAME]               python -m s04_evaluation.gates --stage <stage>  > <runs>/gates_<NAME or stage>.md
@@ -17,9 +16,8 @@ The whole plan is parsed first (a bad line, an unknown gates stage, an unknown t
 
 Semantics, from the shell queues the experiments were run with:
   * a `train` line is skipped (`skip <name>`) when `<runs>/<name>/metrics.json` exists, <name> being `RunConfig.name` of its
-    arguments (or `--out`; a `train_b` line: `team_config(F, S, ARM).name`, `kfold{F}_x86_gnn_s{S}_team-{ARM}`); a `baselines` line is skipped when every directory it would write already holds a metrics.json with
-    a validation threshold (`stack_logits.csv` with --stack-logits);
-  * when the STOP file (`<runs>/STOP`, or `--stop-file`) exists before a `train`, `train_b` or `baselines` line, the line is logged as
+    arguments (or `--out`; a `train_b` line: `team_config(F, S, ARM).name`, `kfold{F}_x86_gnn_s{S}_team-{ARM}`);
+  * when the STOP file (`<runs>/STOP`, or `--stop-file`) exists before a `train` or `train_b` line, the line is logged as
     `stopped before <name>` and skipped; `report`, `val_threshold` and `gates` still run, so the tables of what finished are
     written. A STOP file left from an earlier session is removed at the start and logged. `--stop` creates it;
   * `--budget-min N` caps the wall time spent in `train` and `train_b` lines (retries included): once N minutes are used, the
@@ -37,7 +35,6 @@ Python only: the same plan runs on Windows and Linux.
 """
 import argparse
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -48,9 +45,8 @@ from pathlib import Path
 
 PIPELINE_ROOT = Path(__file__).resolve().parents[1]
 PLANS = PIPELINE_ROOT / 'experiments' / 'plans'
-VERBS = ('train', 'train_b', 'baselines', 'report', 'val_threshold', 'gates')
-TRAIN = ('train', 'train_b')                      # the lines that use the GPU: the budget counts them
-WORK = ('train', 'train_b', 'baselines')          # the lines that the STOP file and the budget hold back
+VERBS = ('train', 'train_b', 'report', 'val_threshold', 'gates')
+TRAIN = ('train', 'train_b')                      # the lines that use the GPU: the STOP file and the budget hold them back
 
 
 class PlanError(ValueError):
@@ -67,7 +63,6 @@ class Step:
     module_args: tuple
     stdout: str = ''                               # a file name under <runs> that receives stdout, '' = the log
     done_files: tuple = ()                         # a work line is finished when all of these exist (relative to <runs>)
-    done_needs: str = ''                           # ... and, when set, the first of them contains this text
 
     @property
     def text(self):
@@ -107,25 +102,6 @@ def _train_b_step(args, where):
     return Step('train_b', tuple(args), name, 'experiments.team_pipelines.train_b', tuple(args), done_files=(f'{name}/metrics.json',))
 
 
-def _baselines_step(args, where):
-    from s04_evaluation import baselines
-    try:
-        parsed = baselines.parse_args(list(args))
-    except SystemExit as e:
-        raise PlanError(f'{where}: `baselines {" ".join(args)}` is not accepted by s04_evaluation.baselines') from e
-    names = [baselines.baseline_name(cfg) if parsed.stack_logits else baselines.output_name(cfg, parsed.vocab, parsed.imports)
-             for cfg in baselines.configs(parsed)]
-    if parsed.out_root:
-        base = Path(os.path.abspath(PIPELINE_ROOT / parsed.out_root))
-    else:
-        base = Path('baselines')
-    marker = 'stack_logits.csv' if parsed.stack_logits else 'metrics.json'
-    files = tuple((base / n / marker).as_posix() for n in names)
-    label = 'baselines_' + re.sub(r'(kfold)\d+', lambda m: m.group(1), names[0], count=1)
-    return Step('baselines', tuple(args), label, 's04_evaluation.baselines', tuple(args), done_files=files,
-                done_needs='' if parsed.stack_logits else 'threshold_val')
-
-
 def parse_line(line, where='plan'):
     tokens = shlex.split(line, posix=os.name != 'nt')
     verb, args = tokens[0], tokens[1:]
@@ -135,8 +111,6 @@ def parse_line(line, where='plan'):
         return _train_step(args, where)
     if verb == 'train_b':
         return _train_b_step(args, where)
-    if verb == 'baselines':
-        return _baselines_step(args, where)
     if verb == 'report':
         if args:
             raise PlanError(f'{where}: `report` takes no arguments')
@@ -211,12 +185,7 @@ class Queue:
 
     def finished(self, step):
         """True when a work line already has its results on disk."""
-        if not step.done_files:
-            return False
-        paths = [self.runs / f for f in step.done_files]
-        if not all(p.is_file() for p in paths):
-            return False
-        return not step.done_needs or all(step.done_needs in p.read_text(encoding='utf-8', errors='replace') for p in paths)
+        return bool(step.done_files) and all((self.runs / f).is_file() for f in step.done_files)
 
     def env(self):
         return {**os.environ, 'PYTORCH_CUDA_ALLOC_CONF': 'expandable_segments:True', 'PYTHONUNBUFFERED': '1',
@@ -272,7 +241,7 @@ class Queue:
                 self.stop.unlink()
                 self.say(f'cleared stale {self.stop}')
         for step in self.steps:
-            work = step.verb in WORK
+            work = step.verb in TRAIN
             if not self.dry and work and self.finished(step):
                 self.say(f'skip {step.label}')
             elif work and self.stop.exists():

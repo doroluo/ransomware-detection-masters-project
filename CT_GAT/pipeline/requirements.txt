@@ -14,4 +14,3 @@ torch_geometric==2.8.1
 
 # Optional, not installed by CI (the tests that need them skip with a reason):
 #   psutil           experiments/team_pipelines/measure_rss.py
-#   transformers, safetensors   the CodeBERT block encoder (reference/cfg_transformer/encoders/codebert.py), with HF_HOME set

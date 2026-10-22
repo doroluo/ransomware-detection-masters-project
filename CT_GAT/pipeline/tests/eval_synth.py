@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from common.config import RunConfig
-from s04_evaluation import baselines, gate_layouts, gate_tables, report, stats
+from s04_evaluation import gate_tables, report, stats
 from s04_evaluation.val_threshold import GRID, macro_f1
 from tiny_cache import tiny  # noqa: F401  (a fixture)
 
@@ -22,18 +22,17 @@ def val_threshold_of(rows, ids, probs):
 
 @pytest.fixture(scope='module')
 def evaltiny(tiny):  # noqa: F811
-    """The tiny cache with the baselines' CACHE and the runs directory of stats / report pointed at it (`evaltiny.runs`)."""
+    """The tiny cache with the runs directory of stats / report pointed at it (`evaltiny.runs`)."""
     runs = tiny.root.parent / 'runs'
     (runs / 'baselines').mkdir(parents=True, exist_ok=True)
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(baselines, 'CACHE', tiny.root)
         mp.setattr(stats, 'RUNS', runs)
         mp.setattr(report, 'RUNS', runs)
         yield type('EvalTiny', (), {'root': tiny.root, 'runs': runs, 'ids': tiny.ids, 'rows': tiny.rows})
 
 
 def gnn(**kw):
-    return RunConfig(model='gnn', **kw)
+    return RunConfig(**{'model': 'gnn', **kw})
 
 
 def preds(n=300, seed=0, signal=1.0, ties=True):
@@ -159,7 +158,6 @@ def build_v3_fake(tmp_path, monkeypatch):
     monkeypatch.setattr(report, 'RUNS', tmp_path)
     monkeypatch.setattr(report, 'v3_floors', lambda arch, seed=0: (FAKE_FLOORS, [FAKE_FLOORS] * 5))
     gate_tables.pooled.cache_clear()
-    gate_layouts.v3_cell.cache_clear()
     plan = {'all': {'gnn-noedges': (1.2, 5), 'gnn': (1.7, 5), 'gnn-shuffle': (1.2, 3)},
             'matched': {v: (1.2, 5) for v in V3_KW}}
     for arch, arms in plan.items():
@@ -168,20 +166,6 @@ def build_v3_fake(tmp_path, monkeypatch):
                 write_v3_run(tmp_path, arch, fold, signal, **V3_KW[variant], **V3_MASKED)
         for fold in range(5):
             write_v3_baseline(tmp_path, arch, fold, 1.3 if arch == 'all' else 0.6)
-
-
-def write_truncated_v3_run(root, arch, truncated_ids):
-    for fold in range(5):
-        d = write_v3_run(root, arch, fold, 1.5, **V3_MASKED)
-        for fname in ('predictions.csv', 'predictions_auc.csv'):
-            with (d / fname).open(newline='') as f:
-                rows = list(csv.DictReader(f))
-            with (d / fname).open('w', newline='') as f:
-                w = csv.DictWriter(f, fieldnames=[*rows[0], 'n_blocks_kept', 'n_blocks_total'])
-                w.writeheader()
-                for r in rows:
-                    cut = r['sample_id'] in truncated_ids
-                    w.writerow({**r, 'n_blocks_kept': 100 if cut else 50, 'n_blocks_total': 900 if cut else 50})
 
 
 CELLS = [(1, 'x86'), (1, 'x64'), (0, 'x86'), (0, 'x64')]
@@ -208,28 +192,6 @@ def build_v3_ab_fake(tmp_path, monkeypatch):
 def arch_preds(n=400, seed=0, signal=1.0):
     p = preds(n=n, seed=seed, signal=signal)
     return stats.Preds(p.ids, p.y, p.prob, p.pred, p.cluster, np.where(np.arange(n) % 3 == 0, 'x64', 'x86'))
-
-
-SG_REF = ('mask_blocks', 0.15)
-
-
-def build_subgraph_fake(root, monkeypatch, with_chain=None):
-    """kfold x86 seed 0: the whole-graph reference, cap 20k (as good), cap 5k (clearly worse); the no-edge reference and
-    its raw and presence weightings (rawlog missing)."""
-    monkeypatch.setattr(stats, 'RUNS', root)
-    gate_tables.pooled.cache_clear()
-    plan = {(SG_REF,): (1.6, 5), (SG_REF, ('subgraph', 'cap'), ('budget', 20000)): (1.6, 5),
-            (SG_REF, ('subgraph', 'cap'), ('budget', 5000)): (0.3, 5),
-            (SG_REF, ('control', 'no_edges')): (1.4, 5),
-            (SG_REF, ('control', 'no_edges'), ('encoder', 'raw')): (1.4, 5),
-            (SG_REF, ('control', 'no_edges'), ('encoder', 'presence')): (0.5, 5)}
-    build_fake(root, {kw: (signal, range(folds)) for kw, (signal, folds) in plan.items()})
-    if with_chain is not None:
-        (root / 'subgraph_chain.json').write_text(json.dumps(with_chain))
-
-
-CHAIN = {'pool': 'kfold x86', 'n_binaries': 1800, 'n_blocks': 10_000_000, 'n_chain_blocks': 41_000,
-         'reduction': 0.0041, 'mean_binary_reduction': 0.005, 'max_binary_reduction': 0.09}
 
 
 def needs_combined(fn):

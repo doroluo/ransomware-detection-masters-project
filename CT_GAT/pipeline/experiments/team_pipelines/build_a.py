@@ -11,8 +11,7 @@ and structure, edge_index, func_batch, y) with `sample_id` and `label` attached;
 blocks. Written through a temp file, so a killed build never leaves a half file that a rerun would skip. A rerun resumes:
 ids with a .pt are skipped. A sample that raises stops the build with its id (nothing is skipped; with --workers the
 samples already running are finished or dropped, none is logged as done unless its .pt exists). `build_log.csv`:
-sample_id, status, n_blocks_total, n_blocks_kept, seconds. Only `--mode gnn` exists: the CodeBERT variant of this
-pipeline is the cb500 arm of train_a, which reads our cache and block vectors instead of the raw exports.
+sample_id, status, n_blocks_total, n_blocks_kept, seconds. Only `--mode gnn` exists.
 """
 import argparse
 import csv

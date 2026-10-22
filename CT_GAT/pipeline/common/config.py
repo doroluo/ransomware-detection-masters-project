@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Literal, Optional
 
-from common.paths import CACHE, COMBINED_CACHE, DEFAULT_CACHE, EXPORT, RUNS, cache_for, protocol_in  # noqa: F401
+from common.paths import CACHE, COMBINED_CACHE, DEFAULT_CACHE, RUNS, cache_for, protocol_in  # noqa: F401
 
 DIRECTIONS = ('both', 'forward', 'backward', 'undirected')
 DIRECTION_SUFFIX = {'forward': 'fwd', 'backward': 'bwd', 'undirected': 'undir'}

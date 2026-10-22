@@ -1,10 +1,10 @@
-# Variants of Model 1, kfold x86, seeds 0 1 2, folds 0-4 (45 runs, seed by seed; the plan is not run by the change that adds it):
+# Variants of Model 1, kfold x86, seeds 0 1 2, folds 0-4 (30 runs, seed by seed; the plan is not run by the change that adds it):
 #   fivechannel      Janice Park's five-channel Model 1 on the .pt files of a pipeline-B build, 128 instructions per binary
 #   fivechannel -L512  the same with 512 instructions per binary
-#   tokenseq -thoof  Model 1 (plan model1) with the decision threshold chosen on out-of-fold predictions of the training binaries
 # fivechannel reads a pipeline-B build, the folder CT_GAT/processed/cfg_subgraphs (the Mendeley_x86_cfg_subgraphs_500blocks_v3.zip
-# unzipped at CT_GAT, or built once on the CPU with experiments/team_pipelines/build_b.py --source repo; GT_TEAM_B_BUILD overrides it), tokenseq the block export ours_cap0 (see the plan model1). The gate stage model1_variants reads these
-# arms next to TF-IDF, the header-imports LR, R7, R2, tokenseq (plan model1; also baselines) and the team sig500v3 arm when it exists.
+# unzipped at CT_GAT, or built once on the CPU with experiments/team_pipelines/build_b.py --source repo; GT_TEAM_B_BUILD overrides it).
+# The gate stage model1_variants reads these arms next to published runs read from the run directory (see the stage)
+# and the team sig500v3 arm when it exists.
 #     python -m experiments.queue --plan experiments/plans/model1_variants.txt
 
 train --model fivechannel --protocol kfold --arch x86 --fold 0 --seed 0
@@ -17,11 +17,6 @@ train --model fivechannel --protocol kfold --arch x86 --fold 1 --seed 0 --max-in
 train --model fivechannel --protocol kfold --arch x86 --fold 2 --seed 0 --max-instructions 512
 train --model fivechannel --protocol kfold --arch x86 --fold 3 --seed 0 --max-instructions 512
 train --model fivechannel --protocol kfold --arch x86 --fold 4 --seed 0 --max-instructions 512
-train --model tokenseq --protocol kfold --arch x86 --fold 0 --seed 0 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 1 --seed 0 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 2 --seed 0 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 3 --seed 0 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 4 --seed 0 --threshold-from oof
 train --model fivechannel --protocol kfold --arch x86 --fold 0 --seed 1
 train --model fivechannel --protocol kfold --arch x86 --fold 1 --seed 1
 train --model fivechannel --protocol kfold --arch x86 --fold 2 --seed 1
@@ -32,11 +27,6 @@ train --model fivechannel --protocol kfold --arch x86 --fold 1 --seed 1 --max-in
 train --model fivechannel --protocol kfold --arch x86 --fold 2 --seed 1 --max-instructions 512
 train --model fivechannel --protocol kfold --arch x86 --fold 3 --seed 1 --max-instructions 512
 train --model fivechannel --protocol kfold --arch x86 --fold 4 --seed 1 --max-instructions 512
-train --model tokenseq --protocol kfold --arch x86 --fold 0 --seed 1 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 1 --seed 1 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 2 --seed 1 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 3 --seed 1 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 4 --seed 1 --threshold-from oof
 train --model fivechannel --protocol kfold --arch x86 --fold 0 --seed 2
 train --model fivechannel --protocol kfold --arch x86 --fold 1 --seed 2
 train --model fivechannel --protocol kfold --arch x86 --fold 2 --seed 2
@@ -47,11 +37,6 @@ train --model fivechannel --protocol kfold --arch x86 --fold 1 --seed 2 --max-in
 train --model fivechannel --protocol kfold --arch x86 --fold 2 --seed 2 --max-instructions 512
 train --model fivechannel --protocol kfold --arch x86 --fold 3 --seed 2 --max-instructions 512
 train --model fivechannel --protocol kfold --arch x86 --fold 4 --seed 2 --max-instructions 512
-train --model tokenseq --protocol kfold --arch x86 --fold 0 --seed 2 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 1 --seed 2 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 2 --seed 2 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 3 --seed 2 --threshold-from oof
-train --model tokenseq --protocol kfold --arch x86 --fold 4 --seed 2 --threshold-from oof
 
 report
 gates model1_variants

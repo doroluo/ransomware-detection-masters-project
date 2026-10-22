@@ -1,4 +1,4 @@
-"""Where the CFG cache, the run directories, the block exports and the raw exports live on this machine.
+"""Where the CFG cache, the run directories and the raw exports live on this machine.
 
 Nothing here knows a machine-specific path. The effective registry (`registry()`) is the per-machine `datasets.json` followed
 by the datasets of `common/catalog.py` that the file does not name; a name in the file replaces the catalog's. `datasets.json`
@@ -18,8 +18,7 @@ Resolution of the cache of a run, first match wins:
   4. `UNSET`, a relative path that does not exist, so that a command for a protocol nobody lists fails with a missing-file
      error that names GT_CACHE.
 
-`GT_RUNS` overrides the run directories and `GT_EXPORT` the block exports (default: `export/` inside the run directories,
-so GT_RUNS alone moves both). The raw inputs a cache is built from (`sources`) are looked up by `source_for`: the
+`GT_RUNS` overrides the run directories. The raw inputs a cache is built from (`sources`) are looked up by `source_for`: the
 environment variable of that source, then the first dataset of the registry that defines it (the file's, then the catalog's).
 """
 import json
@@ -38,7 +37,7 @@ SOURCES = {
     'collections': ('GT_COLLECTIONS', 'the folder holding the unzipped collections (common/catalog.py COLLECTIONS)'),
     'folds': ('GT_FOLDS', 'the Mendeley family-holdout fold CSV (folds_mendeley.csv)'),
     'folds_v3': ('GT_FOLDS_V3', 'the folder with folds_all.csv and arch_matched.csv'),
-    'reader_root': ('GT_READER_ROOT', "the team's operand-role reader output"),
+    'reader_root': ('GT_READER_ROOT', "the team's operand-role reader output (nothing reads it now; kept so that a datasets.json that names it loads)"),
     'runs': ('GT_RUNS', 'the run directories'),
     'team_b_build': ('GT_TEAM_B_BUILD', 'a pipeline-B build folder of <sample_id>.pt files (experiments/team_pipelines/build_b.py), the input of --model fivechannel'),
 }
@@ -134,12 +133,6 @@ def runs_for(env=None, registry=None):
     return source_for('runs', env, registry)
 
 
-def export_for(env=None, registry=None):
-    """GT_EXPORT when set, else `export/` inside the run directory (`runs_for`)."""
-    env = os.environ if env is None else env
-    return Path(env['GT_EXPORT']) if env.get('GT_EXPORT') else runs_for(env, registry) / 'export'
-
-
 def _value_in(argv, flag):
     for i, a in enumerate(argv):
         if a.startswith(flag + '='):
@@ -155,7 +148,7 @@ def protocol_in(argv):
 
 def cache_in(argv, registry):
     """The value of --cache in a command line when it names a dataset of `registry`, else None (a command whose own --cache
-    is a directory, as side_io's, is not a dataset selection)."""
+    is a directory is not a dataset selection)."""
     value = _value_in(argv, '--cache')
     return value if value in registry else None
 
@@ -165,4 +158,3 @@ DEFAULT_CACHE = cache_for('bundle', env={}, registry=_REGISTRY)           # the 
 COMBINED_CACHE = cache_for('kfold_v3', env={}, registry=_REGISTRY)
 CACHE = cache_for(protocol_in(sys.argv[1:]), registry=_REGISTRY, name=cache_in(sys.argv[1:], _REGISTRY))
 RUNS = runs_for(registry=_REGISTRY)
-EXPORT = export_for(registry=_REGISTRY)

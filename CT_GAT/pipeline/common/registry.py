@@ -14,7 +14,7 @@ the run directory (`common/run_io.py`) are the loop's.
     forward(model, batch)     the logits [batch size] of a batch that is already on the device
     variant_tokens(cfg)       the dash-separated tokens of the run-name variant (`RunConfig.variant`) that the model's options
                     produce; the name itself stays `RunConfig.name`
-    run(cfg, out_name, **options)   optional: a model whose loop is not the registry's (Model 1: `tokenseq`, `fivechannel`) trains and writes its
+    run(cfg, out_name, **options)   optional: a model whose loop is not the registry's (Model 1: `fivechannel`) trains and writes its
                     run directory itself; `experiments.train.run` calls it after `check` and does not call `build`, `loader`
                     or `forward`
 
@@ -29,10 +29,18 @@ from typing import Any, Iterable, Protocol, runtime_checkable
 from common.manifests import Manifest
 
 MODELS = {
-    'gnn': 'reference.gnn.spec:GnnSpec',
-    'tokenseq': 'reference.token_sequence.spec:TokenSeqSpec',
     'fivechannel': 's03a_transformer.five_channel.spec:FiveChannelSpec',
 }
+REMOVED_MODELS = ('gnn', 'tokenseq')
+REFERENCE_BRANCH = 'jsonl-reference-models'
+
+
+def unknown_model_message(name):
+    """Why `name` has no spec: the earlier jsonl-only models are on a branch, anything else is a typo or a spec to add."""
+    if name in REMOVED_MODELS:
+        return (f'model {name!r} is not on this branch: the earlier jsonl-only models ({", ".join(REMOVED_MODELS)}) and their '
+                f'commands are on branch `{REFERENCE_BRANCH}`; the models here are {", ".join(MODELS)}')
+    return f'model {name!r} has no spec in common/registry.py MODELS ({", ".join(MODELS)}); add a ModelSpec and one line there'
 
 
 @dataclass
@@ -61,10 +69,10 @@ class ModelSpec(Protocol):
 
 
 def spec_for(cfg) -> ModelSpec:
-    """A new spec of `cfg.model`. A model `RunConfig` knows but no spec serves yet raises NotImplementedError."""
+    """A new spec of `cfg.model`. A model `RunConfig` still names (for the run directories on disk) but no spec serves raises
+    NotImplementedError."""
     if cfg.model not in MODELS:
-        raise NotImplementedError(f"model {cfg.model!r} has no spec in common/registry.py MODELS ({', '.join(MODELS)}); "
-                                  'add a ModelSpec and one line there')
+        raise NotImplementedError(unknown_model_message(cfg.model))
     module, _, attr = MODELS[cfg.model].partition(':')
     spec = getattr(importlib.import_module(module), attr)()
     if spec.name != cfg.model:
