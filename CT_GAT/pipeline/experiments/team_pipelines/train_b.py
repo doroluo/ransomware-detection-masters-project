@@ -22,6 +22,11 @@ directory, the hyperparameters; a new arm is a new row).
                      together (`s03c_cfg_transformer/block_transformer.py`). The stored block embeddings and the 77 block features
                      are not read. Recipe `HP_E2E`: the others' (AdamW weight decay 1e-4, batch 16, 40 epochs, patience 8) with lr 3e-4
                      instead of 1e-3, plus gradient clipping at 1.0 and the 12 GB GPU cap.
+  <build>-m1frozen   Model 3 on a frozen trained Model 1 (sig500v3, sig250, callwalk500, callwalk250; input `m1frozen`): the
+                     best_auc.pt of the per-block Model 1 of the same fold, seed, dataset and weighting (`fivechannel --per-block
+                     --max-instructions 64`, or --model1-run DIR) encodes the first 64 instructions of every block once, its
+                     weights never change, and only `FullBlockGAT` (in_dim 64) is trained on the block vectors (recipe `HP`). The
+                     run refuses a Model 1 whose manifest.json is not this run's train / val / test (`check_same_splits`).
   sig250[-feat|-emb|-e2e], callwalk500[-feat|-emb|-e2e], callwalk250[-feat|-emb|-e2e]
                      `RUNS/team/b_sig250_main`, `b_callwalk500_main` and `b_callwalk250_main`: builds of this repository's own files
                      (`build_b --source repo`) with `--sample signal --num-blocks 250`, `--sample callwalk --num-blocks 500` and
@@ -123,7 +128,8 @@ B_CALLWALK250_DIR = RUNS / 'team' / 'b_callwalk250_main'
 B_WHOLE_DIR = RUNS / 'team' / 'b_sigwhole_v3'
 FEATURES = ('all', 'feat', 'emb')
 E2E = 'e2e'               # the node input of the end-to-end arm: no graph features, the block's instructions (block_transformer.py)
-INPUTS = FEATURES + (E2E,)
+M1FROZEN = 'm1frozen'     # the node input of the frozen arm: block vectors of the fold's trained per-block Model 1, not updated
+INPUTS = FEATURES + (E2E, M1FROZEN)
 FEATURE_MODE = {'all': 'both', 'feat': 'features', 'emb': 'embeddings'}      # graph_full_loader._node_features modes
 KIND_COLUMNS = ('api_none_count', 'api_unresolved_count', 'api_known_count')
 MAIN_FIX_LABELS = ('main-fix', 'repo')       # the builds of the fixed s02 preprocess: the pinned fix commit, or this repository's files
@@ -149,15 +155,19 @@ ARM_TABLE = {
     'sig500v3-feat': Arm('signal', 500, 'feat', MAIN_FIX_LABELS, B_V3_DIR, HP),
     'sig500v3-emb': Arm('signal', 500, 'emb', MAIN_FIX_LABELS, B_V3_DIR, HP),
     'sig500v3-e2e': Arm('signal', 500, E2E, MAIN_FIX_LABELS, B_V3_DIR, HP_E2E),
+    'sig500v3-m1frozen': Arm('signal', 500, M1FROZEN, MAIN_FIX_LABELS, B_V3_DIR, HP),
     'sig250-feat': Arm('signal', 250, 'feat', REPO_LABELS, B_SIG250_DIR, HP),
     'sig250-emb': Arm('signal', 250, 'emb', REPO_LABELS, B_SIG250_DIR, HP),
     'sig250-e2e': Arm('signal', 250, E2E, REPO_LABELS, B_SIG250_DIR, HP_E2E),
+    'sig250-m1frozen': Arm('signal', 250, M1FROZEN, REPO_LABELS, B_SIG250_DIR, HP),
     'callwalk500-feat': Arm('callwalk', 500, 'feat', REPO_LABELS, B_CALLWALK500_DIR, HP),
     'callwalk500-emb': Arm('callwalk', 500, 'emb', REPO_LABELS, B_CALLWALK500_DIR, HP),
     'callwalk500-e2e': Arm('callwalk', 500, E2E, REPO_LABELS, B_CALLWALK500_DIR, HP_E2E),
+    'callwalk500-m1frozen': Arm('callwalk', 500, M1FROZEN, REPO_LABELS, B_CALLWALK500_DIR, HP),
     'callwalk250-feat': Arm('callwalk', 250, 'feat', REPO_LABELS, B_CALLWALK250_DIR, HP),
     'callwalk250-emb': Arm('callwalk', 250, 'emb', REPO_LABELS, B_CALLWALK250_DIR, HP),
     'callwalk250-e2e': Arm('callwalk', 250, E2E, REPO_LABELS, B_CALLWALK250_DIR, HP_E2E),
+    'callwalk250-m1frozen': Arm('callwalk', 250, M1FROZEN, REPO_LABELS, B_CALLWALK250_DIR, HP),
     'sigwhole': Arm('signal', None, 'all', MAIN_FIX_LABELS, B_WHOLE_DIR, HP_WHOLE),
     'sigwhole-feat': Arm('signal', None, 'feat', MAIN_FIX_LABELS, B_WHOLE_DIR, HP_WHOLE),
     'sigwhole-emb': Arm('signal', None, 'emb', MAIN_FIX_LABELS, B_WHOLE_DIR, HP_WHOLE),
@@ -228,7 +238,7 @@ def check_arm_dataset(arm, protocol='kfold', arch='x86', arch_balance=False):
 def build_family(arm):
     """The family of an arm in the name of its build directory: the arm without `-feat|-emb|-e2e` and without the `v3` of
     `sig500v3` (the s02-fix version is implied by the `repo` source): sig500v3-emb -> sig500, callwalk250-e2e -> callwalk250."""
-    return re.sub(r'-(feat|emb|e2e)$', '', arm).replace('sig500v3', 'sig500')
+    return re.sub(r'-(feat|emb|e2e|m1frozen)$', '', arm).replace('sig500v3', 'sig500')
 
 
 def default_build_dir(arm, protocol='kfold', arch='x86'):
@@ -476,8 +486,71 @@ def e2e_extras(graphs, test_ids, block_len, api_rows):
             'encoder': bt.ENCODER, 'gat': bt.GAT}
 
 
+def model1_run_dir(fold, seed, protocol='kfold', arch='x86', arch_balance=False):
+    """RUNS/<name> of the per-block Model 1 (`fivechannel --per-block --max-instructions BLOCK_LEN`) of the same fold, seed,
+    dataset and loss weighting."""
+    from common.config import RunConfig
+    cfg = RunConfig(protocol=protocol, fold=fold, arch=arch, seed=seed, model='fivechannel', max_instructions=BLOCK_LEN,
+                    per_block=True, arch_balance=arch_balance)
+    return RUNS / cfg.name
+
+
+def check_same_splits(model1_dir, manifest):
+    """SystemExit unless the Model 1 run's manifest.json holds exactly the train, val and test ids of `manifest`."""
+    path = Path(model1_dir) / 'manifest.json'
+    if not path.is_file():
+        raise SystemExit(f'{model1_dir} has no manifest.json (an unfinished Model 1 run)')
+    theirs = json.loads(path.read_text(encoding='utf-8'))
+    for split in ('train', 'val', 'test'):
+        ours = sorted(r['sample_id'] for r in getattr(manifest, split))
+        if sorted(theirs[split]) != ours:
+            raise SystemExit(f'{model1_dir}: its {split} split ({len(theirs[split])} ids) is not this run\'s ({len(ours)} ids); '
+                             f'the frozen encoder must come from the same fold and seed')
+
+
+def load_frozen_model1(model1_dir, manifest, smoke, log=print):
+    """Janice's `Model1TokenSequence` with the weights of the Model 1 run's best_auc.pt, in eval mode and with no gradient, after
+    `check_same_splits`. A smoke run without that run uses random weights (plumbing only); a full run refuses."""
+    from s03a_transformer.five_channel.model import Model1TokenSequence
+    model1_dir = Path(model1_dir)
+    ckpt = model1_dir / 'best_auc.pt'
+    if not ckpt.is_file():
+        if not smoke:
+            raise SystemExit(f'{ckpt} does not exist: train the per-block Model 1 of this fold and seed first (python -m '
+                             f'experiments.train --model fivechannel --per-block --max-instructions {BLOCK_LEN} ...)')
+        log(f'smoke: {ckpt} does not exist, the frozen encoder has random weights')
+        net, source = Model1TokenSequence(api_vocab_size=1, max_seq_len=BLOCK_LEN), None
+    else:
+        config = json.loads((model1_dir / 'config.json').read_text(encoding='utf-8'))
+        if not config.get('per_block') or config.get('max_instructions') != BLOCK_LEN:
+            raise SystemExit(f'{model1_dir} is not a per-block Model 1 at {BLOCK_LEN} instructions per block')
+        check_same_splits(model1_dir, manifest)
+        state = torch.load(ckpt, map_location='cpu')
+        net = Model1TokenSequence(api_vocab_size=int(state['embedder.api_embedding.weight'].shape[0]), max_seq_len=BLOCK_LEN)
+        net.load_state_dict(state)
+        source = str(ckpt)
+    net.eval()
+    for p in net.parameters():
+        p.requires_grad_(False)
+    return net, source
+
+
+@torch.no_grad()
+def frozen_graph(net, seq, device):
+    """The PyG Data of one `BlockSeqData`: `x` the frozen encoder's vector of every block (zero for an empty block), the edges kept."""
+    from torch_geometric.data import Data
+    from s03c_cfg_transformer import block_transformer as bt
+    n_blocks = int(seq.num_nodes)
+    ids, pad_mask, lengths = bt.pad_blocks(seq.insn_ids.to(device), seq.insn_block.to(device), n_blocks, BLOCK_LEN)
+    x = bt.encode_blocks(net, ids, pad_mask, lengths).float().cpu()
+    data = Data(x=x, edge_index=seq.edge_index, edge_attr=seq.edge_attr, y=seq.y, num_nodes=n_blocks)
+    data.edge_type = seq.edge_type
+    data.sample_id = seq.sample_id
+    return data
+
+
 def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, features=None, source=None, block_len=None,
-        protocol='kfold', arch='x86', arch_balance=False):
+        protocol='kfold', arch='x86', arch_balance=False, model1_run=None):
     if arm not in ARM_TABLE:
         raise ValueError(f'arm {arm}: one of {ARMS}')
     check_arm_dataset(arm, protocol, arch, arch_balance)
@@ -521,13 +594,23 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
     every = {a for i in want for a in api_ids[i]}
     log(f'api ids in the fold\'s training binaries: {len(seen)}; unseen in val/test binaries mapped to UNK_API: '
         f'{len(every - set(seen.tolist()))} of {len(every)} ids used')
-    e2e = features == E2E
-    if e2e:
+    e2e, frozen = features == E2E, features == M1FROZEN
+    if e2e or frozen:
         from s03c_cfg_transformer import block_transformer as bt      # imported here: it needs torch_geometric
+    if frozen:
+        model1_dir = Path(model1_run) if model1_run else model1_run_dir(fold, seed, protocol, arch, arch_balance)
+        frozen_net, frozen_source = load_frozen_model1(model1_dir, manifest, smoke, log)
+        frozen_net.to(device)
+        log(f'frozen Model 1 encoder: {frozen_source or "random weights (smoke)"}; same train/val/test as {model1_dir.name}')
     graphs = {}                                                  # second pass: each graph from its payload, which is then dropped
     for i in want:
         payload = load_slim(b_dir, i, protocol, arch)
-        graphs[i] = bt.make_e2e_graph(pp, gl, payload, seen, BLOCK_LEN) if e2e else make_graph(pp, gl, embedder, payload, seen, features)
+        if frozen:
+            graphs[i] = frozen_graph(frozen_net, bt.make_e2e_graph(pp, gl, payload, seen, BLOCK_LEN), device)
+        elif e2e:
+            graphs[i] = bt.make_e2e_graph(pp, gl, payload, seen, BLOCK_LEN)
+        else:
+            graphs[i] = make_graph(pp, gl, embedder, payload, seen, features)
     log_rows = read_build_log(b_dir)
     sizes = {i: (None, int(graphs[i].num_nodes), log_rows[i][0]) for i in want}
     in_dim, edge_dim = (bt.D_MODEL if e2e else int(graphs[want[0]].x.size(1))), int(graphs[want[0]].edge_attr.size(1))
@@ -545,6 +628,9 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
                                     api_rows))
     else:
         build_model = lambda: gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim)                 # noqa: E731
+    if frozen:
+        extra.update({'model1_checkpoint': frozen_source, 'model1_run': str(model1_dir), 'block_len': BLOCK_LEN})
+        del frozen_net
     reasons = sorted(set(excluded.values()))
     return run_arm(arm=arm, fold=fold, seed=seed, graphs=graphs, sizes=sizes,
                    build_model=build_model, hp=ARM_HP[arm], device=device,
@@ -573,11 +659,14 @@ def main(argv=None):
                     "arm's directory under the run directory when it exists, else the team_b_build source)")
     ap.add_argument('--smoke', type=int, help='train on N available training ids for 2 epochs into a temp directory')
     ap.add_argument('--device', choices=['cuda', 'cpu'])
+    ap.add_argument('--model1-run', type=Path, help="the -m1frozen arms: the Model 1 run directory whose best_auc.pt is frozen "
+                    f"(default: RUNS/<the fivechannel --per-block --max-instructions {BLOCK_LEN} run of this fold, seed and dataset>)")
     args = ap.parse_args(argv)
     arch = args.arch or DEFAULT_ARCH[args.protocol]
     out = run(args.arm, args.fold, args.seed, args.smoke, args.device,
               resolve_dir(args.build) if args.build else None, features=args.features, source=args.source,
-              block_len=args.block_len, protocol=args.protocol, arch=arch, arch_balance=args.arch_balance)
+              block_len=args.block_len, protocol=args.protocol, arch=arch, arch_balance=args.arch_balance,
+              model1_run=args.model1_run)
     if args.smoke:
         print(f"smoke: val AUC {out['val_auc']:.4f}, peak GPU {out['peak_gpu_mb']} MB, loss "
               f"{out['history'][0]['loss']} -> {out['history'][-1]['loss']}, temp dir {out['dir']} (not under {RUNS})")

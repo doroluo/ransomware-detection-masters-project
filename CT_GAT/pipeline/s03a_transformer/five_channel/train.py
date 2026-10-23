@@ -36,7 +36,13 @@ The API vocabulary of the build covers all the binaries of its dataset. Per fold
 Model: her `Model1TokenSequence` (d_model 64, 4 heads, 2 layers, `max_seq_len` = `--max-instructions`, 128 as she wrote it) on the
 first `max_instructions` instructions of a binary, batched by her `model1_collate_fn`; a binary without an instruction is one
 all-PAD tuple (an all-masked row would give NaN). Loss: cross entropy with the class weight N / (2 n_class) of the training
-labels (cell weights under --arch-balance). AdamW (RunConfig lr, weight_decay), gradient clip RunConfig.grad_clip, batches of BATCH_SIZE binaries, bf16 autocast on CUDA.
+labels (cell weights under --arch-balance).
+--per-block (run name suffix -pb) reads the first `max_instructions` instructions of every basic block (64, 128 or 512) instead of
+the first of the binary: the same network encodes each block on its own (her embedder, positions and encoder, her masked mean
+within the block, `block_transformer.encode_blocks`), the binary is the mean of its non-empty block vectors, and her `classifier`
+gives the logits; no new parameter and no edge (the input of the end-to-end Model 3 without its GAT). Blocks are encoded in
+groups of similar length of at most TOKENS_PER_CHUNK padded positions, which bounds the memory and does not change the result.
+AdamW (RunConfig lr, weight_decay), gradient clip RunConfig.grad_clip, batches of BATCH_SIZE binaries, bf16 autocast on CUDA.
 Each epoch records the validation AUC and the macro-F1 at 0.5; the F1 checkpoint is the epoch of the best macro-F1, the AUC
 checkpoint that of the best AUC, and training stops when the AUC has not improved for `patience` epochs. The AUC checkpoint's
 threshold is the GRID maximiser of the validation macro-F1 (`val_threshold_of`), or with --threshold-from oof the maximiser of the
@@ -69,6 +75,7 @@ from experiments.team_pipelines.common import DATASET_OF, DEFAULT_ARCH
 from experiments.team_pipelines.fit import cell_name
 from experiments.team_pipelines.train_b import check_build_dataset, read_excluded, remap_api
 from experiments.train import choose_thresholds
+from s03c_cfg_transformer.block_transformer import encode_blocks, rank_in_block
 from s04_evaluation.metrics import cell_weights
 
 from .model import Model1Dataset, Model1TokenSequence, model1_collate_fn, tok
@@ -76,15 +83,19 @@ from .model import Model1Dataset, Model1TokenSequence, model1_collate_fn, tok
 BATCH_SIZE = 32          # binaries per step (RunConfig.batch_size is the graph models' batch of graphs)
 SMOKE_EPOCHS = 2
 D_MODEL = 64             # her default
+TOKENS_PER_CHUNK = 16384  # --per-block: padded instruction positions encoded at once
 
 
 class Binary(NamedTuple):
-    """What a run keeps of one `.pt`: the first instructions [<= max_instructions, 5], the API ids (>= FIRST_API_ID) used by the
-    whole binary, its number of instructions and its label."""
+    """What a run keeps of one `.pt`: the instructions the model reads (the first max_instructions of the binary, or under
+    --per-block those of every block, blocks in order), the API ids (>= FIRST_API_ID) used by the whole binary, its number of
+    instructions and its label; under --per-block also the block of each kept instruction and the binary's number of blocks."""
     head: torch.Tensor
     api: torch.Tensor
     n_instructions: int
     label: int
+    block: torch.Tensor | None = None
+    n_blocks: int = 0
 
 
 def say(*args):
@@ -134,9 +145,17 @@ def build_done(build: Path):
     return set(json.loads(path.read_text(encoding='utf-8'))['done']) if path.is_file() else None
 
 
-def load_binaries(build: Path, labels: dict, max_instructions: int) -> dict:
+def per_block_head(ids, insn_to_block, n_blocks, block_len):
+    """(instructions, block) of the first `block_len` instructions of every block, blocks in order, the order within a block kept."""
+    order, block, position, _ = rank_in_block(insn_to_block, n_blocks)
+    keep = position < block_len
+    return ids[order][keep].clone(), block[keep].clone()
+
+
+def load_binaries(build: Path, labels: dict, max_instructions: int, per_block: bool = False) -> dict:
     """{sample_id: Binary} of the ids in `labels` ({sample_id: label}), read with her dataset class
-    (`Model1Dataset`) from the `<sample_id>.pt` files of `build`. A missing file, a tensor that is not [N, 5] or a label other
+    (`Model1Dataset`) from the `<sample_id>.pt` files of `build`; under `per_block` the `.pt` is read whole for its
+    `insn_to_block` and `block_features` (the blocks). A missing file, a tensor that is not [N, 5] or a label other
     than the fold's is an error."""
     dataset = Model1Dataset(build)
     where = {Path(f).stem: i for i, f in enumerate(dataset.files)}
@@ -156,9 +175,15 @@ def load_binaries(build: Path, labels: dict, max_instructions: int) -> dict:
             raise ValueError(f'{sid}.pt: instruction_ids {tuple(ids.shape)}, expected [N, 5]')
         if int(item['label']) != label:
             raise ValueError(f'{sid}.pt holds label {int(item["label"])}, the fold says {label}')
-        api = ids[:, 3]
-        head = ids[:max_instructions].clone() if len(ids) else torch.zeros((1, 5), dtype=torch.long)
-        out[sid] = Binary(head, torch.unique(api[api >= tok.FIRST_API_ID]), int(len(ids)), label)
+        api = torch.unique(ids[:, 3][ids[:, 3] >= tok.FIRST_API_ID])
+        if per_block:
+            sample = torch.load(dataset.files[where[sid]], weights_only=False)
+            n_blocks = int(sample['block_features'].shape[0])
+            head, block = per_block_head(ids, sample['insn_to_block'], n_blocks, max_instructions)
+            out[sid] = Binary(head, api, int(len(ids)), label, block, n_blocks)
+        else:
+            head = ids[:max_instructions].clone() if len(ids) else torch.zeros((1, 5), dtype=torch.long)
+            out[sid] = Binary(head, api, int(len(ids)), label)
     return out
 
 
@@ -170,8 +195,15 @@ def seen_api_ids(binaries: dict, train_ids) -> torch.Tensor:
 
 
 def make_items(binaries: dict, ids, seen: torch.Tensor) -> dict:
-    """{sample_id: item for `model1_collate_fn`} with the API ids outside `seen` mapped to UNK_API."""
-    return {i: {'instruction_ids': remap_api(tok, binaries[i].head, seen), 'label': torch.tensor(binaries[i].label)} for i in ids}
+    """{sample_id: item for `model1_collate_fn` (or `collate_blocks` under --per-block)} with the API ids outside `seen` mapped
+    to UNK_API."""
+    items = {}
+    for i in ids:
+        b = binaries[i]
+        items[i] = {'instruction_ids': remap_api(tok, b.head, seen), 'label': torch.tensor(b.label)}
+        if b.block is not None:
+            items[i].update(block=b.block, n_blocks=b.n_blocks)
+    return items
 
 
 def api_vocab_size(build: Path, binaries: dict) -> int:
@@ -184,8 +216,22 @@ def api_vocab_size(build: Path, binaries: dict) -> int:
     return max(size, biggest + 1)
 
 
-def collate(items, ids, max_instructions):
-    batch = model1_collate_fn([items[i] for i in ids], max_instructions=max_instructions)
+def collate_blocks(items, ids):
+    """One flat list of the kept instructions of the binaries `ids`: `insn_block` numbers the blocks of the batch, `block_owner`
+    gives the binary (0..len(ids)-1) of every block."""
+    heads, blocks, owners, offset = [], [], [], 0
+    for g, i in enumerate(ids):
+        item = items[i]
+        heads.append(item['instruction_ids'])
+        blocks.append(item['block'] + offset)
+        owners.append(torch.full((item['n_blocks'],), g, dtype=torch.long))
+        offset += item['n_blocks']
+    return {'instruction_ids': torch.cat(heads), 'insn_block': torch.cat(blocks), 'block_owner': torch.cat(owners),
+            'n_blocks': offset, 'label': torch.stack([items[i]['label'] for i in ids])}
+
+
+def collate(items, ids, cfg):
+    batch = collate_blocks(items, ids) if cfg.per_block else model1_collate_fn([items[i] for i in ids], max_instructions=cfg.max_instructions)
     batch['sample_ids'] = list(ids)
     return batch
 
@@ -198,7 +244,44 @@ def to_device(batch, device):
     return {k: v.to(device, non_blocking=True) if torch.is_tensor(v) else v for k, v in batch.items()}
 
 
+def per_block_logits(net, batch):
+    """--per-block: her network on each block of the batch (`encode_blocks`, groups of blocks of similar length, each padded to
+    its own longest block), the mean of the non-empty block vectors of each binary, and her `classifier`. A binary with no
+    instruction gets the zero vector."""
+    ids, n_blocks, owner = batch['instruction_ids'], batch['n_blocks'], batch['block_owner']
+    n_binaries = len(batch['label'])
+    order, block, position, lengths = rank_in_block(batch['insn_block'], n_blocks)
+    ids = ids[order]
+    filled = torch.nonzero(lengths > 0).flatten()
+    filled = filled[torch.argsort(lengths[filled], stable=True)]
+    sizes = lengths[filled].tolist()
+    local = torch.full((n_blocks,), -1, dtype=torch.long, device=ids.device)
+    picked, vectors, start = [], [], 0
+    while start < len(filled):
+        end = start + 1
+        while end < len(filled) and (end + 1 - start) * sizes[end] <= TOKENS_PER_CHUNK:
+            end += 1
+        chunk, width = filled[start:end], sizes[end - 1]
+        local.fill_(-1)
+        local[chunk] = torch.arange(len(chunk), device=ids.device)
+        sel = local[block] >= 0
+        x = torch.zeros(len(chunk), width, ids.shape[1], dtype=ids.dtype, device=ids.device)
+        x[local[block[sel]], position[sel]] = ids[sel]
+        pad_mask = torch.arange(width, device=ids.device)[None, :] >= lengths[chunk][:, None]
+        vectors.append(encode_blocks(net, x, pad_mask).float())
+        picked.append(chunk)
+        start = end
+    out = torch.zeros(n_blocks, net.d_model, device=ids.device)
+    if vectors:
+        out = out.index_copy(0, torch.cat(picked), torch.cat(vectors))
+    sums = torch.zeros(n_binaries, net.d_model, device=ids.device).index_add(0, owner, out)
+    counts = torch.zeros(n_binaries, device=ids.device).index_add(0, owner, (lengths > 0).float())
+    return net.classifier(sums / counts.clamp(min=1.0)[:, None])
+
+
 def forward(net, batch):
+    if 'insn_block' in batch:
+        return per_block_logits(net, batch)
     return net(batch['instruction_ids'], padding_mask=batch['padding_mask'])
 
 
@@ -210,7 +293,7 @@ def train_epoch(net, opt, items, ids, class_weight, cfg, epoch, device, seed):
     order = np.random.default_rng((seed, epoch, 7919)).permutation(len(ids))
     losses = []
     for start in range(0, len(ids), BATCH_SIZE):
-        batch = to_device(collate(items, [ids[i] for i in order[start:start + BATCH_SIZE]], cfg.max_instructions), device)
+        batch = to_device(collate(items, [ids[i] for i in order[start:start + BATCH_SIZE]], cfg), device)
         with autocast(device):
             logits = forward(net, batch)
         per_binary = F.cross_entropy(logits.float(), batch['label'], reduction='none')
@@ -233,7 +316,7 @@ def predict(net, items, ids, binaries, cfg, device):
     net.eval()
     probs = []
     for start in range(0, len(ids), BATCH_SIZE):
-        batch = to_device(collate(items, ids[start:start + BATCH_SIZE], cfg.max_instructions), device)
+        batch = to_device(collate(items, ids[start:start + BATCH_SIZE], cfg), device)
         with autocast(device):
             logits = forward(net, batch)
         probs.append(torch.softmax(logits.float(), dim=-1)[:, 1].cpu().numpy())
@@ -317,7 +400,7 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
     splits = {'train': run_manifest.train, 'val': run_manifest.val, 'test': run_manifest.test}
     ids = {s: [r['sample_id'] for r in rows] for s, rows in splits.items()}
     labels = {r['sample_id']: r['label'] for rows in splits.values() for r in rows}
-    binaries = load_binaries(build, labels, cfg.max_instructions)
+    binaries = load_binaries(build, labels, cfg.max_instructions, cfg.per_block)
     seen = seen_api_ids(binaries, ids['train'])
     every = set()
     for b in binaries.values():
@@ -336,7 +419,7 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
     opt = torch.optim.AdamW(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     cfg.save(out / 'config.json')
     log(f'{cfg.name}: train {len(ids["train"])} val {len(ids["val"])} test {len(ids["test"])} binaries, {len(excluded)} excluded, '
-        f'{n_params} parameters, max_instructions {cfg.max_instructions}, device {device}' + (f', smoke {smoke}' if smoke is not None else ''))
+        f'{n_params} parameters, max_instructions {cfg.max_instructions}' + (' per block' if cfg.per_block else '') + f', device {device}' + (f', smoke {smoke}' if smoke is not None else ''))
 
     history, best_f1, best_f1_epoch, best_auc, best_auc_epoch = [], -1.0, 0, -1.0, 0
     if device.type == 'cuda':
@@ -378,10 +461,13 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
         'val_auc': best_auc, 'mean_train_epoch_secs': float(np.mean([h['train_secs'] for h in history])),
         'epoch_secs_mean': float(np.mean([h['epoch_secs'] for h in history])),
         'peak_gpu_mb': max(h['peak_gpu_mb'] for h in history), 'build_dir': str(build), 'n_parameters': n_params,
-        'max_instructions': cfg.max_instructions, 'n_api_ids_train': int(len(seen)),
+        'max_instructions': cfg.max_instructions, 'per_block': cfg.per_block, 'n_api_ids_train': int(len(seen)),
         'n_api_ids_unseen_mapped': len(every - set(seen.tolist())), 'device': device.type, 'smoke': smoke,
-        'truncated_instructions': {s: sum(binaries[i].n_instructions > cfg.max_instructions for i in ids[s]) for s in splits},
-        'model': {'d_model': D_MODEL, 'max_seq_len': cfg.max_instructions, 'num_layers': 2, 'batch_size': BATCH_SIZE}}
+        'truncated_instructions': {s: sum(binaries[i].n_instructions > len(binaries[i].head) for i in ids[s]) for s in splits},
+        'instructions_read': {s: sum(len(binaries[i].head) for i in ids[s]) / max(1, sum(binaries[i].n_instructions for i in ids[s]))
+                              for s in splits},
+        'model': {'d_model': D_MODEL, 'max_seq_len': cfg.max_instructions, 'num_layers': 2, 'batch_size': BATCH_SIZE,
+                  'per_block': cfg.per_block}}
     if cfg.arch_balance:
         extra['arch_balance'] = True
         extra['cell_weights'] = {cell_name(r['label'], r['arch']): weight[r['sample_id']] for r in splits['train']}
@@ -410,7 +496,10 @@ def parse_config(argv=None):
                     'of by class (needs --arch all or matched; run name suffix -ab)')
     ap.add_argument('--fold', type=int, required=True)
     ap.add_argument('--seed', type=int, default=0)
-    ap.add_argument('--max-instructions', type=int, default=128)
+    ap.add_argument('--max-instructions', type=int, default=128,
+                    help='instructions read per binary, or per basic block with --per-block (64, 128 or 512)')
+    ap.add_argument('--per-block', action='store_true', help='read the first --max-instructions instructions of every block, encode '
+                    'each block, average the block vectors (run name suffix -pb)')
     ap.add_argument('--epochs', type=int, default=40)
     ap.add_argument('--patience', type=int, default=8)
     ap.add_argument('--threshold-from', choices=THRESHOLD_FROM, default='val',
@@ -421,7 +510,8 @@ def parse_config(argv=None):
     args = ap.parse_args(argv)
     try:
         cfg = RunConfig(protocol=args.protocol, fold=args.fold, arch=args.arch or DEFAULT_ARCH[args.protocol], seed=args.seed,
-                        model='fivechannel', max_instructions=args.max_instructions, epochs=args.epochs, patience=args.patience,
+                        model='fivechannel', max_instructions=args.max_instructions, per_block=args.per_block,
+                        epochs=args.epochs, patience=args.patience,
                         threshold_from=args.threshold_from, arch_balance=args.arch_balance)
     except ValueError as e:
         ap.error(str(e))
