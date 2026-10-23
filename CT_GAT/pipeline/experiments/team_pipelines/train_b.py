@@ -26,7 +26,10 @@ directory, the hyperparameters; a new arm is a new row).
                      best_auc.pt of the per-block Model 1 of the same fold, seed, dataset and weighting (`fivechannel --per-block
                      --max-instructions 64`, or --model1-run DIR) encodes the first 64 instructions of every block once, its
                      weights never change, and only `FullBlockGAT` (in_dim 64) is trained on the block vectors (recipe `HP`). The
-                     run refuses a Model 1 whose manifest.json is not this run's train / val / test (`check_same_splits`).
+                     run refuses a Model 1 whose manifest.json is not this run's train / val / test (`check_same_splits`), and one
+                     that trained on a build with another api_vocab.json than the arm's (`check_same_api_vocab`: API ids are
+                     numbered per build, so a Model 1 of another build gets the wrong embedding rows). The run name does not
+                     say which build the Model 1 used: train it with `--build` the arm's build.
   sig250[-feat|-emb|-e2e], callwalk500[-feat|-emb|-e2e], callwalk250[-feat|-emb|-e2e]
                      `RUNS/team/b_sig250_main`, `b_callwalk500_main` and `b_callwalk250_main`: builds of this repository's own files
                      (`build_b --source repo`) with `--sample signal --num-blocks 250`, `--sample callwalk --num-blocks 500` and
@@ -508,9 +511,56 @@ def check_same_splits(model1_dir, manifest):
                              f'the frozen encoder must come from the same fold and seed')
 
 
-def load_frozen_model1(model1_dir, manifest, smoke, log=print):
+def model1_build(model1_dir):
+    """The build directory the Model 1 run trained on, the `build_dir` of its metrics.json (a leading RUNS/ is the run directory).
+    SystemExit when the run has no metrics.json or records none: its build cannot be checked."""
+    path = Path(model1_dir) / 'metrics.json'
+    build = json.loads(path.read_text(encoding='utf-8')).get('build_dir') if path.is_file() else None
+    if not build:
+        raise SystemExit(f"{model1_dir} does not record the build it trained on (no build_dir in its metrics.json): the frozen "
+                         f"encoder's API embedding cannot be matched to this arm's build; train the Model 1 again (python -m "
+                         f"experiments.train --model fivechannel --per-block --max-instructions {BLOCK_LEN} --build <the arm's build> ...)")
+    return resolve_dir(Path(build))
+
+
+def api_names(build, role, model1_dir):
+    """The API names of the build's api_vocab.json (the position of a name is its id minus `tok.FIRST_API_ID`). SystemExit when the
+    build has no vocabulary file: nothing can be compared."""
+    from s03a_transformer.five_channel.model import tok
+    path = build_layout(build).vocab if Path(build).is_dir() else None
+    if path is None:
+        raise SystemExit(f"{model1_dir}: the {role} build {build} has no api_vocab.json (or is not a directory on this machine), so "
+                         f"its API ids cannot be compared with the other build's")
+    return list(tok.load_api_vocab(path).names)
+
+
+def check_same_api_vocab(model1_dir, b_dir):
+    """SystemExit unless the Model 1 run trained on a build whose api_vocab.json is that of `b_dir`, the arm's build: the same names
+    in the same order. API ids are numbered per build (the position in api_vocab.json), so a Model 1 of another build maps an id to
+    another API name and the frozen encoder embeds the wrong rows without an error (b_sig250_main has 4.6% of the names it shares with
+    b_sig500_v3 at the same position, b_callwalk500_main 19.6%). A vocabulary that only extends the Model 1's (`build_b --extend`
+    appends names) is refused too: the old ids agree, but the arm's new ids have no row in the Model 1's embedding, and an extended
+    build is another dataset, whose folds `check_same_splits` already refuses. Returns (the Model 1's build, the API rows that the
+    arm's build can hold: FIRST_API_ID + its names)."""
+    from s03a_transformer.five_channel.model import tok
+    theirs_dir = model1_build(model1_dir)
+    ours = api_names(b_dir, 'arm', model1_dir)
+    theirs = api_names(theirs_dir, 'Model 1', model1_dir)
+    if theirs != ours:
+        same = sum(a == b for a, b in zip(theirs, ours))
+        raise SystemExit(f"{model1_dir} trained on the build {theirs_dir} ({len(theirs)} API names), not on this arm's build "
+                         f"{b_dir} ({len(ours)} API names): API ids are numbered per build and {same} of the "
+                         f"{min(len(theirs), len(ours))} positions they share hold the same name, so the frozen encoder would read "
+                         f"the wrong API embeddings. Train the Model 1 on the arm's build (python -m experiments.train --model "
+                         f"fivechannel --per-block --max-instructions {BLOCK_LEN} --build {b_dir} ...) or name a run of that build "
+                         f"with --model1-run DIR")
+    return theirs_dir, tok.FIRST_API_ID + len(ours)
+
+
+def load_frozen_model1(model1_dir, manifest, smoke, log=print, *, b_dir):
     """Janice's `Model1TokenSequence` with the weights of the Model 1 run's best_auc.pt, in eval mode and with no gradient, after
-    `check_same_splits`. A smoke run without that run uses random weights (plumbing only); a full run refuses."""
+    `check_same_splits` and `check_same_api_vocab` against `b_dir`, the arm's build, and a refusal when the checkpoint's API embedding
+    has more rows than that build can hold. A smoke run without that run uses random weights (plumbing only); a full run refuses."""
     from s03a_transformer.five_channel.model import Model1TokenSequence
     model1_dir = Path(model1_dir)
     ckpt = model1_dir / 'best_auc.pt'
@@ -525,8 +575,13 @@ def load_frozen_model1(model1_dir, manifest, smoke, log=print):
         if not config.get('per_block') or config.get('max_instructions') != BLOCK_LEN:
             raise SystemExit(f'{model1_dir} is not a per-block Model 1 at {BLOCK_LEN} instructions per block')
         check_same_splits(model1_dir, manifest)
+        _, capacity = check_same_api_vocab(model1_dir, b_dir)
         state = torch.load(ckpt, map_location='cpu')
-        net = Model1TokenSequence(api_vocab_size=int(state['embedder.api_embedding.weight'].shape[0]), max_seq_len=BLOCK_LEN)
+        rows = int(state['embedder.api_embedding.weight'].shape[0])
+        if rows > capacity:
+            raise SystemExit(f'{ckpt} has {rows} API embedding rows, more than the {capacity} ids that {b_dir} can hold '
+                             f'(FIRST_API_ID + the names of its api_vocab.json): its Model 1 read ids that build does not have')
+        net = Model1TokenSequence(api_vocab_size=rows, max_seq_len=BLOCK_LEN)
         net.load_state_dict(state)
         source = str(ckpt)
     net.eval()
@@ -599,7 +654,7 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
         from s03c_cfg_transformer import block_transformer as bt      # imported here: it needs torch_geometric
     if frozen:
         model1_dir = Path(model1_run) if model1_run else model1_run_dir(fold, seed, protocol, arch, arch_balance)
-        frozen_net, frozen_source = load_frozen_model1(model1_dir, manifest, smoke, log)
+        frozen_net, frozen_source = load_frozen_model1(model1_dir, manifest, smoke, log, b_dir=b_dir)
         frozen_net.to(device)
         log(f'frozen Model 1 encoder: {frozen_source or "random weights (smoke)"}; same train/val/test as {model1_dir.name}')
     graphs = {}                                                  # second pass: each graph from its payload, which is then dropped
@@ -629,7 +684,8 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
     else:
         build_model = lambda: gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim)                 # noqa: E731
     if frozen:
-        extra.update({'model1_checkpoint': frozen_source, 'model1_run': str(model1_dir), 'block_len': BLOCK_LEN})
+        extra.update({'model1_checkpoint': frozen_source, 'model1_run': str(model1_dir), 'block_len': BLOCK_LEN,
+                      'model1_build': str(model1_build(model1_dir)) if frozen_source else None})
         del frozen_net
     reasons = sorted(set(excluded.values()))
     return run_arm(arm=arm, fold=fold, seed=seed, graphs=graphs, sizes=sizes,
