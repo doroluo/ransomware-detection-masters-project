@@ -28,7 +28,7 @@ HERE = Path(__file__).resolve().parent
 PLAN_FILES = sorted(q.PLANS.glob('*.txt'))
 FIXTURES = HERE / 'fixtures' / 'plans_dry'
 STUB = HERE / 'queue_stub.py'
-PLANS = ['model1_variants', 'team_b', 'team_builds', 'team_mendeley_all', 'team_v3']
+PLANS = ['model1_variants', 'team_b', 'team_builds', 'team_m1frozen', 'team_mendeley_all', 'team_v3', 'team_v3_m1frozen']
 FIVECHANNEL = 'train --protocol kfold --fold {} --arch x86 --seed 0 --model fivechannel'
 
 
@@ -55,7 +55,8 @@ def test_dry_run_prints_the_runs_of_the_recording(plan):
 
 def test_the_recordings_have_the_run_counts_of_the_experiments():
     counts = {p: sum(l.startswith('run ') for l in recorded(p)) for p in PLANS}
-    assert counts == {'model1_variants': 30, 'team_b': 15, 'team_builds': 135, 'team_mendeley_all': 345, 'team_v3': 390}
+    assert counts == {'model1_variants': 30, 'team_b': 15, 'team_builds': 135, 'team_m1frozen': 90, 'team_mendeley_all': 345, 'team_v3': 390,
+                      'team_v3_m1frozen': 120}
 
 
 @pytest.mark.parametrize('plan', PLANS)

@@ -684,8 +684,9 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
     else:
         build_model = lambda: gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim)                 # noqa: E731
     if frozen:
-        extra.update({'model1_checkpoint': frozen_source, 'model1_run': str(model1_dir), 'block_len': BLOCK_LEN,
-                      'model1_build': str(model1_build(model1_dir)) if frozen_source else None})
+        extra.update({'model1_checkpoint': frozen_source, 'model1_run': str(model1_dir), 'block_len': BLOCK_LEN})
+        if frozen_source:                       # the random-weights smoke has no Model 1 run to name
+            extra['model1_build'] = str(model1_build(model1_dir))
         del frozen_net
     reasons = sorted(set(excluded.values()))
     return run_arm(arm=arm, fold=fold, seed=seed, graphs=graphs, sizes=sizes,

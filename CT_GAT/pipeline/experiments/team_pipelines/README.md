@@ -239,7 +239,8 @@ python -m experiments.queue --plan experiments/plans/team_v3.txt --budget-min 24
 instructions on the signal-500 build and at 512 on the uncapped one, and the `-ab` twins of `sig500v3-*` and of the two Model 1
 groups on the signal build), 345 runs. `team_v3` is 13 groups per architecture (`sig500v3-*`, Model 1 at 128 and 512, `callwalk500-*`
 and the `-ab` twins of the signal groups), 390 runs. A line whose build is missing fails on its first run and is started again
-once the build is done.
+once the build is done. Model 3 on a frozen per-block Model 1 has its own two plans, `team_m1frozen` (90 runs) and
+`team_v3_m1frozen` (120 runs), described under "Arms" (the build rule: the Model 1 must have trained on the arm's build).
 
 ## What is here
 
@@ -419,7 +420,7 @@ python -m experiments.team_pipelines.train_a --fold k --seed s --arm gnn500 [--s
 ## train_b.py (the arms of `ARM_TABLE`)
 
 ```
-python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--features all|feat|emb|e2e] [--block-len 64] [--source LABEL] [--build DIR] [--smoke N] [--device cuda|cpu]
+python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--features all|feat|emb|e2e|m1frozen] [--block-len 64] [--source LABEL] [--build DIR] [--model1-run DIR] [--smoke N] [--device cuda|cpu]
 ```
 
 - Arms. `ARM_TABLE` has one row per arm (sampler, block budget, node input, the source labels its build may record, the default
@@ -433,6 +434,7 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   | `sig500v3-feat` (Model 2) | `b_sig500_v3` | `feat`, the 77 scaled block features | `main-fix`, `repo` | nothing |
   | `sig500v3-emb` (Model 3) | `b_sig500_v3` | `emb`, the 64-d pooled channel embedding | `main-fix`, `repo` | nothing |
   | `sig500v3-e2e` (Model 3, trained encoder) | `b_sig500_v3` | `e2e`, the instructions of each block (below) | `main-fix`, `repo` | nothing; lr 3e-4, gradient clip 1.0 (`HP_E2E`) |
+  | `sig500v3-m1frozen`, `sig250-m1frozen`, `callwalk500-m1frozen`, `callwalk250-m1frozen` (Model 3, frozen Model 1) | the build of the same family | `m1frozen`, the block vectors of the fold's trained per-block Model 1 (below) | as the build's | nothing; `HP`; a per-block Model 1 of the same build and fold, seed, dataset and weighting |
   | `sig250-feat`, `sig250-emb`, `sig250-e2e` | `b_sig250_main`, `signal`, 250 blocks | `feat`, `emb`, `e2e` | `repo` | nothing; `-e2e` as `sig500v3-e2e` |
   | `callwalk500-feat`, `-emb`, `-e2e` | `b_callwalk500_main`, `callwalk`, 500 blocks | `feat`, `emb`, `e2e` | `repo` | nothing; `-e2e` as `sig500v3-e2e` |
   | `callwalk250-feat`, `-emb`, `-e2e` | `b_callwalk250_main`, `callwalk`, 250 blocks | `feat`, `emb`, `e2e` | `repo` | nothing; `-e2e` as `sig500v3-e2e` |
@@ -476,6 +478,36 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   ```
   python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --fold F --seed S
   ```
+- Model 3 on a frozen Model 1 (`<build>-m1frozen`, Yanping's PR #32; the plans below use `sig500v3-m1frozen`). `fivechannel
+  --per-block --max-instructions 64` (run name suffix `-pb`, e.g. `kfold0_x86_fivechannel-L64-pb_s0`) trains Janice's Model 1 on the
+  first 64 instructions of every basic block: each block is encoded alone, the binary is the mean of its block vectors, and her
+  `classifier` gives the logits. The arm then loads that run's `best_auc.pt`, encodes every block once with it (weights never change,
+  eval mode, no gradient) and trains only `FullBlockGAT(in_dim=64)` on the block vectors with `HP`; `--model1-run DIR` names another run
+  (default: the run of the same fold, seed, dataset and `--arch-balance`, found by name). The arm exits unless the Model 1 has the same
+  train / val / test ids (`check_same_splits`) and **trained on the arm's build**. The build rule: API ids are numbered per build (the
+  position in its `api_vocab.json`), the run name does not say which build a Model 1 used (its default is whatever `--build` or
+  `team_b_build` resolves to), and a Model 1 of another build maps an id to another API name without any error. Against
+  `b_sig500_v3`, `b_sig250_main` has 4.6% of the shared names at the same position, `b_callwalk500_main` 19.6%,
+  `b_callwalk250_main` 4.6%, `b_sigwhole_v3` 1.4%. So `load_frozen_model1` reads the `build_dir` that the Model 1's `metrics.json`
+  records (a run without one is refused), compares the `api_vocab.json` of that build with the arm's (the same names in the same
+  order; a vocabulary that only extends the other is refused too, since the extended ids have no row in the Model 1's table and an
+  extended build is another dataset), and refuses a checkpoint whose API table is larger than the arm's build can hold. The message
+  names both builds and the fix: train the Model 1 with `--build` the arm's build, or give `--model1-run`. A smoke run without a
+  Model 1 checkpoint uses random weights and no check (plumbing only). `metrics.json` of the arm records `model1_run`,
+  `model1_checkpoint` and `model1_build`. The arms `sig250-m1frozen`, `callwalk500-m1frozen` and `callwalk250-m1frozen` exist but are
+  in no plan: each needs a per-block Model 1 trained on its own build. The plans: `team_m1frozen.txt` (kfold x86 on `b_sig500_v3`,
+  kfold all on `b_sig500_mendeley_all`, and the `--arch-balance` twins of the latter: 6 groups, 90 runs, then `report`, `gates team`
+  and `gates team_mendeley_all`) and `team_v3_m1frozen.txt` (kfold_v3 `all` and `matched` on `b_sig500_combined_v3`, plain and `-ab`:
+  8 groups, 120 runs, then `gates team_v3_all` and `gates team_v3_matched`), each fold's Model 1 line right before its arm's line:
+
+  ```
+  python -m experiments.queue --plan experiments/plans/team_m1frozen.txt --budget-min 1800
+  python -m experiments.queue --plan experiments/plans/team_v3_m1frozen.txt --budget-min 2400
+  ```
+
+  The four stages gain rows for the per-block Model 1 and `sig500v3-m1frozen` (and for Model 1 at 128 instructions in `gates team`,
+  which had none) and the pairs `emb -> m1frozen`, `m1frozen -> e2e` and Model 1 L128 -> per-block Model 1 (plain and `ab` where the
+  stage has twins); the earlier rows and pairs print as before. Tests: `tests/test_team_m1frozen.py`.
 - The arms of the builds of this repository's own files (`sig250-*`, `callwalk500-*`, `callwalk250-*`; each `-feat` Model 2, `-emb`
   Model 3 with fixed embeddings, `-e2e` Model 3 end to end with `HP_E2E`) have no `all` input and read only builds whose
   `settings.json` says `source: repo` and the arm's sampler and block count; a build of another sampler, budget or source is refused
@@ -613,7 +645,8 @@ is not complete, criteria 2-4 are computed on the ids it holds and marked partia
 `test_team_builds.py` (the nine new arms, their refusals, the rows and pairs of `gates team`, the plan), `test_datasets_build.py` and
 `test_datasets_train.py` (the dataset flags of `build_b`, `train_b` and Model 1), `test_eval_gates.py` (the stages
 `team_mendeley_all`, `team_v3_all` and `team_v3_matched`, their plans), `test_package_build.py`,
-`test_gat_port.py`, `test_model3_e2e.py`, `test_match_diagnosis.py` (CPU). They run everywhere
+`test_gat_port.py`, `test_model3_e2e.py`, `test_match_diagnosis.py`, `test_team_m1frozen.py` (the build guard of the `-m1frozen` arms, their
+two plans and stage rows) (CPU). They run everywhere
 on the tiny cache of `tests/tiny_cache.py` and on synthetic builds: every module imports without `torch_geometric`, `psutil`
 and the worktrees (a subprocess with fake packages that raise `ImportError`); the environment variables name the missing input;
 the pin check and `import_team` on a toy source; `paths_for` and `team_row` on a synthetic collection root (neither the bundle nor

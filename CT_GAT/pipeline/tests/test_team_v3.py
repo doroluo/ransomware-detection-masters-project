@@ -389,7 +389,7 @@ def test_team_gates_from_synthetic_v3_runs(tiny, tmp_path, monkeypatch):        
     v3, feat, emb = ('team sig500v3', 'team sig500v3 feat (Model 2)', 'team sig500v3 emb (Model 3)')
     for a, b in stage.pairs:
         if (b in (v3, feat, emb) or a in (v3, feat, emb)) and a != 'TF-IDF' and b not in ('team sigwhole', 'team sigwhole feat (Model 2)',
-                                                                                          'team sigwhole emb (Model 3)') and b not in team_stage.NEW:
+                                                                                          'team sigwhole emb (Model 3)') and b not in team_stage.NEW + (team_stage.M1FROZEN[1][0],):
             assert pair[(a, b)] != 'missing', (a, b)
     assert 'seeds [0, 1] only' in pair[('team sig500', v3)] and pair[('team sig500v2', v3)] in ('beats', 'does not beat')
     assert 'seeds [0, 1] only' in pair[(feat, emb)] and 'seeds [0, 1] only' in pair[('R7 typed, whole graph', emb)]

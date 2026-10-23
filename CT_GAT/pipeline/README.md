@@ -43,7 +43,7 @@ branch `jsonl-reference-models`; their results are in `docs/history/`.
 | 3c. Model 3 | `s03c_cfg_transformer/` | the block transformer trained end to end under the GAT | [`s03c_cfg_transformer/README.md`](s03c_cfg_transformer/README.md) |
 | 4. Evaluation | `s04_evaluation/` | metrics, validation thresholds, the paired bootstrap, `report.py` and the gate summaries | [`s04_evaluation/README.md`](s04_evaluation/README.md) |
 | | `common/` | `RunConfig` (the options of a run and its name), `paths.py` (where the data lives), `catalog.py` (the datasets), `manifests.py` (folds), the model registry, `run_io.py` (the run directory every model writes) | |
-| | `experiments/` | `train.py` (the training command of Model 1), `queue.py` and `plans/` (`model1_variants`, `team_b`, `team_builds`), `stages/` (the gate definitions `model1_variants` and `team`), `team_pipelines/` (the GAT trainers of Models 2 and 3 under our folds, `build_b.py` and `package_build.py`, which zips a finished build) | [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md) |
+| | `experiments/` | `train.py` (the training command of Model 1), `queue.py` and `plans/` (`model1_variants`, `team_b`, `team_builds`, `team_m1frozen`, `team_v3_m1frozen`, ...), `stages/` (the gate definitions `model1_variants` and `team`), `team_pipelines/` (the GAT trainers of Models 2 and 3 under our folds, `build_b.py` and `package_build.py`, which zips a finished build) | [`experiments/team_pipelines/README.md`](experiments/team_pipelines/README.md) |
 | | `docs/` | [`ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md), and `history/`: the plan, the results, the review, the literature review and the final gate tables | [`docs/history/README.md`](docs/history/README.md) |
 | | `tests/` | the test suite (`pytest.ini` has the markers) | |
 
@@ -393,8 +393,11 @@ The queue skips a finished run and retries a failed line once. The plans are `mo
 30 runs), `team_b` (Model 3 end to end, `train_b --arm sig500v3-e2e`, 3 seeds x 5 folds = 15 runs), `team_builds` (the nine arms
 `sig250-*`, `callwalk500-*` and `callwalk250-*`, 135 runs, then `report` and `gates team`, which pairs each callwalk arm with its signal
 arm and each 250-block arm with its 500-block arm), `team_mendeley_all` (Models 1 to 3 on the whole Mendeley dataset, 345 runs, then
-`gates team_mendeley_all`) and `team_v3` (the combined dataset, `--arch all` and `matched`, 390 runs, then `gates team_v3_all` and
-`gates team_v3_matched`).
+`gates team_mendeley_all`), `team_v3` (the combined dataset, `--arch all` and `matched`, 390 runs, then `gates team_v3_all` and
+`gates team_v3_matched`), `team_m1frozen` (Model 3 on a frozen per-block Model 1, `fivechannel --per-block --max-instructions 64`
+then `train_b --arm sig500v3-m1frozen` per fold: kfold x86 and all, plain and `-ab`, 90 runs, then `gates team` and
+`gates team_mendeley_all`) and `team_v3_m1frozen` (the same on the combined dataset, 120 runs, then `gates team_v3_all` and
+`gates team_v3_matched`); the arm exits unless its Model 1 trained on the arm's build (API ids are numbered per build).
 [`docs/ADDING_AN_EXPERIMENT.md`](docs/ADDING_AN_EXPERIMENT.md) shows how to add a model, a dataset, a control, a plan and a gates
 stage, and how to read the tables.
 

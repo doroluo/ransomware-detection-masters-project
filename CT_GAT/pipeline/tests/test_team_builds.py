@@ -114,14 +114,15 @@ def test_the_gate_rows_pairs_and_match_rate_builds_of_the_new_arms():
 
 def test_the_existing_gate_rows_and_pairs_are_unchanged():
     stage = gates.load_stage('team')
-    old_arms = [(n, g) for n, g in stage.arms if n not in team_stage.NEW]
+    added = team_stage.NEW + ('Model 1 five-channel L128',) + tuple(n for n, _ in team_stage.M1FROZEN)      # the rows of the new builds and of team_m1frozen.txt
+    old_arms = [(n, g) for n, g in stage.arms if n not in added]
     assert [n for n, _ in old_arms][:17] == [
         'TF-IDF', 'header-imports LR', 'R7 typed, whole graph', 'R2 no-edges, whole graph', 'ours b500 typed', 'ours b500 no-edges',
         'team gnn500', 'team cb500', 'team sig500', 'team sig500v2', 'team sig500v3', 'team sig500v3 feat (Model 2)',
         'team sig500v3 emb (Model 3)', 'team sig500v3 e2e (Model 3, trained encoder)', 'team sigwhole', 'team sigwhole feat (Model 2)',
         'team sigwhole emb (Model 3)'] and len(old_arms) == 19
-    old_pairs = [p for p in stage.pairs if p not in team_stage.SAMPLER + team_stage.BUDGET]
-    assert len(old_pairs) == len(stage.pairs) - 12 == 34 and old_pairs == list(stage.pairs)[:34]      # the 34 pairs of before, in order
+    old_pairs = [p for p in stage.pairs if p not in team_stage.SAMPLER + team_stage.BUDGET + team_stage.m1frozen_pairs()]
+    assert len(old_pairs) == len(stage.pairs) - 15 == 34 and old_pairs == list(stage.pairs)[:34]      # the 34 pairs of before, in order
     assert not [p for p in old_pairs if p[0] in team_stage.NEW or p[1] in team_stage.NEW]
 
 
