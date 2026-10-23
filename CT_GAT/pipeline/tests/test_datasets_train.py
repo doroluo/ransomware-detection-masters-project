@@ -617,7 +617,7 @@ def test_the_loss_is_the_class_weighted_mean_of_today_and_with_the_flag_the_cell
         reference = fc.new_net(cfg, fc.api_vocab_size(build, binaries), torch.device('cpu'))
         reference.load_state_dict(net.state_dict())
         order = np.random.default_rng((0, 1, 7919)).permutation(len(ids))
-        batch = fc.to_device(fc.collate(items, [ids[i] for i in order], 16), torch.device('cpu'))
+        batch = fc.to_device(fc.collate(items, [ids[i] for i in order], cfg), torch.device('cpu'))
         reference.train()
         torch.manual_seed(5)
         per_binary = torch.nn.functional.cross_entropy(fc.forward(reference, batch).float().detach(), batch['label'], reduction='none')
