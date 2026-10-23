@@ -84,6 +84,7 @@ BATCH_SIZE = 32          # binaries per step (RunConfig.batch_size is the graph 
 SMOKE_EPOCHS = 2
 D_MODEL = 64             # her default
 TOKENS_PER_CHUNK = 16384  # --per-block: padded instruction positions encoded at once
+AUTOCAST_ON_CPU = False   # `experiments.predict` sets it to rescore a run that was trained under bf16 autocast on cuda with bf16 on cpu
 
 
 class Binary(NamedTuple):
@@ -156,7 +157,8 @@ def load_binaries(build: Path, labels: dict, max_instructions: int, per_block: b
     """{sample_id: Binary} of the ids in `labels` ({sample_id: label}), read with her dataset class
     (`Model1Dataset`) from the `<sample_id>.pt` files of `build`; under `per_block` the `.pt` is read whole for its
     `insn_to_block` and `block_features` (the blocks). A missing file, a tensor that is not [N, 5] or a label other
-    than the fold's is an error."""
+    than the fold's is an error. A label of `None` is the one the file holds (`experiments.predict` scores binaries whose
+    label the fold does not name)."""
     dataset = Model1Dataset(build)
     where = {Path(f).stem: i for i, f in enumerate(dataset.files)}
     missing = sorted(set(labels) - set(where))
@@ -173,7 +175,9 @@ def load_binaries(build: Path, labels: dict, max_instructions: int, per_block: b
         ids = item['instruction_ids']
         if ids.dim() != 2 or ids.shape[1] != 5:
             raise ValueError(f'{sid}.pt: instruction_ids {tuple(ids.shape)}, expected [N, 5]')
-        if int(item['label']) != label:
+        if label is None:
+            label = int(item['label'])
+        elif int(item['label']) != label:
             raise ValueError(f'{sid}.pt holds label {int(item["label"])}, the fold says {label}')
         api = torch.unique(ids[:, 3][ids[:, 3] >= tok.FIRST_API_ID])
         if per_block:
@@ -237,7 +241,7 @@ def collate(items, ids, cfg):
 
 
 def autocast(device):
-    return torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == 'cuda')
+    return torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == 'cuda' or AUTOCAST_ON_CPU)
 
 
 def to_device(batch, device):

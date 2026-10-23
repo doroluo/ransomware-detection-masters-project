@@ -34,6 +34,7 @@ from s03b_cfg_feature.gat.gat_full_model import FullBlockGAT
 
 BLOCK_LEN = 64            # instructions per block the encoder reads (a longer block is cut: 0.97% of the blocks, 11% of the instructions)
 D_MODEL = 64
+AUTOCAST_ON_CPU = False      # `experiments.predict` sets it to rescore a run that was trained under bf16 autocast on cuda with bf16 on cpu
 ENCODER = 'Model1TokenSequence d64 h4 L2'
 GAT = 'FullBlockGAT hidden128 heads4 layers2'
 
@@ -106,7 +107,7 @@ class Model3EndToEnd(nn.Module):
         n_blocks = int(batch.num_nodes)
         ids, pad_mask, lengths = pad_blocks(batch.insn_ids, batch.insn_block, n_blocks, self.block_len)
         device = ids.device
-        with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == 'cuda'):
+        with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == 'cuda' or AUTOCAST_ON_CPU):
             pooled = encode_blocks(self.encoder, ids, pad_mask, lengths)
         return self.norm(pooled.float()).masked_fill((lengths == 0)[:, None], 0.0)
 

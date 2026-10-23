@@ -408,13 +408,22 @@ def slim(payload):
     return {k: payload[k] for k in keep}
 
 
+def read_slim(b_dir, sample_id):
+    """The slim payload of one sample of a build; `file_id` must be the sample's id. No cache index is read (`experiments.predict`
+    scores binaries that need not be in one)."""
+    payload = torch.load(Path(b_dir) / f'{sample_id}.pt', map_location='cpu', weights_only=False)
+    if payload['file_id'] != sample_id:
+        raise ValueError(f'{sample_id}.pt holds sample {payload["file_id"]}')
+    return slim(payload)
+
+
 def load_slim(b_dir, sample_id, protocol='kfold', arch='x86'):
     """The slim payload of one sample of a build; its label is checked against the cache index of the build's dataset (a matched
     run reads the all build)."""
-    payload = torch.load(Path(b_dir) / f'{sample_id}.pt', map_location='cpu', weights_only=False)
-    if payload['file_id'] != sample_id or int(payload['label']) != sample_rows(protocol, build_arch(arch))[sample_id]['label']:
+    payload = read_slim(b_dir, sample_id)
+    if int(payload['label']) != sample_rows(protocol, build_arch(arch))[sample_id]['label']:
         raise ValueError(f'{sample_id}.pt holds sample {payload["file_id"]} / label {payload["label"]}')
-    return slim(payload)
+    return payload
 
 
 def payload_api_ids(tok, payload):
@@ -625,6 +634,16 @@ def frozen_graph(net, seq, device):
     return data
 
 
+def new_model(features, in_dim, edge_dim, api_rows):
+    """The network an arm trains, untrained: the end-to-end `Model3EndToEnd` (`api_rows` rows of the API embedding) for the input
+    `e2e`, else Dorothy's `FullBlockGAT` on `in_dim` node features (`experiments.predict` builds the same network to load a run)."""
+    if features == E2E:
+        from s03c_cfg_transformer import block_transformer as bt
+        return bt.Model3EndToEnd(api_rows, BLOCK_LEN, edge_dim)
+    from s03b_cfg_feature.gat import gat_full_model as gm
+    return gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim)
+
+
 def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, features=None, source=None, block_len=None,
         protocol='kfold', arch='x86', arch_balance=False, model1_run=None, model1_build=None):
     if arm not in ARM_TABLE:
@@ -640,7 +659,7 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
     b_dir = default_build_dir(arm, protocol, arch) if b_dir is None else Path(b_dir)
     label = check_build(arm, b_dir, source, protocol, arch)
     device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
-    from s03b_cfg_feature.gat import gat_full_model as gm, graph_full_loader as gl      # imported here: no torch_geometric at import
+    from s03b_cfg_feature.gat import graph_full_loader as gl      # imported here: no torch_geometric at import
     pp, embedder, done = build_state(b_dir)
     manifest = fold_manifest(fold, seed, protocol, arch)
     excluded = read_excluded(b_dir)
@@ -697,13 +716,10 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
              'n_api_ids_unseen_mapped': len(every - set(seen.tolist())), 'build_dir': str(b_dir),
              'build_binaries': len(done), 'build_source': label, 'build_pins': build_pins(b_dir, label),
              'code_pins': dict(source_pins(code_source(label)))}
-    if e2e:
-        build_model = lambda: bt.Model3EndToEnd(api_rows, BLOCK_LEN, edge_dim)                  # noqa: E731
-        if not smoke:
-            extra.update(e2e_extras(graphs, [r['sample_id'] for r in manifest.test if r['sample_id'] not in excluded], BLOCK_LEN,
-                                    api_rows))
-    else:
-        build_model = lambda: gm.FullBlockGAT(in_dim=in_dim, edge_dim=edge_dim)                 # noqa: E731
+    build_model = lambda: new_model(features, in_dim, edge_dim, api_rows)                      # noqa: E731
+    if e2e and not smoke:
+        extra.update(e2e_extras(graphs, [r['sample_id'] for r in manifest.test if r['sample_id'] not in excluded], BLOCK_LEN,
+                                api_rows))
     if frozen:
         extra.update({'model1_checkpoint': frozen_source, 'model1_run': str(model1_dir), 'block_len': BLOCK_LEN})
         if frozen_source:                       # the random-weights smoke has no Model 1 run to name
