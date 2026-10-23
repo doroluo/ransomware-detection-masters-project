@@ -29,7 +29,9 @@ directory, the hyperparameters; a new arm is a new row).
                      run refuses a Model 1 whose manifest.json is not this run's train / val / test (`check_same_splits`), and one
                      that trained on a build with another api_vocab.json than the arm's (`check_same_api_vocab`: API ids are
                      numbered per build, so a Model 1 of another build gets the wrong embedding rows). The run name does not
-                     say which build the Model 1 used: train it with `--build` the arm's build.
+                     say which build the Model 1 used: train it with `--build` the arm's build. The guard finds that build in the `build_dir` of the
+                     Model 1's metrics.json, else in RUNS/team/<its folder name> (a path of the training machine is not on yours),
+                     else takes `--model1-build DIR`, which overrides both.
   sig250[-feat|-emb|-e2e], callwalk500[-feat|-emb|-e2e], callwalk250[-feat|-emb|-e2e]
                      `RUNS/team/b_sig250_main`, `b_callwalk500_main` and `b_callwalk250_main`: builds of this repository's own files
                      (`build_b --source repo`) with `--sample signal --num-blocks 250`, `--sample callwalk --num-blocks 500` and
@@ -101,7 +103,7 @@ import json
 import re
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import NamedTuple, Optional
 
 import torch
@@ -511,16 +513,30 @@ def check_same_splits(model1_dir, manifest):
                              f'the frozen encoder must come from the same fold and seed')
 
 
-def model1_build(model1_dir):
-    """The build directory the Model 1 run trained on, the `build_dir` of its metrics.json (a leading RUNS/ is the run directory).
-    SystemExit when the run has no metrics.json or records none: its build cannot be checked."""
+def locate_model1_build(model1_dir, explicit=None):
+    """The build folder to compare with the arm's: `explicit` (`--model1-build`, a leading RUNS/ is the run directory) when given, else the
+    `build_dir` of the Model 1 run's metrics.json (an absolute path on the machine that trained it, a leading RUNS/ the run directory)
+    when that folder exists here, else `TEAM_RUNS/<its last path component>` (where the root README has a teammate place the unzipped
+    build; a Windows or POSIX path both give the name). SystemExit when the run records no build_dir and none is given, or when
+    neither folder exists, naming the recorded path, the looked-up one and `--model1-build DIR`."""
+    if explicit:
+        return resolve_dir(Path(explicit))
     path = Path(model1_dir) / 'metrics.json'
-    build = json.loads(path.read_text(encoding='utf-8')).get('build_dir') if path.is_file() else None
-    if not build:
+    recorded = json.loads(path.read_text(encoding='utf-8')).get('build_dir') if path.is_file() else None
+    if not recorded:
         raise SystemExit(f"{model1_dir} does not record the build it trained on (no build_dir in its metrics.json): the frozen "
-                         f"encoder's API embedding cannot be matched to this arm's build; train the Model 1 again (python -m "
-                         f"experiments.train --model fivechannel --per-block --max-instructions {BLOCK_LEN} --build <the arm's build> ...)")
-    return resolve_dir(Path(build))
+                         f"encoder's API embedding cannot be matched to this arm's build; name the Model 1's build with "
+                         f"--model1-build DIR, or train the Model 1 again (python -m experiments.train --model fivechannel "
+                         f"--per-block --max-instructions {BLOCK_LEN} --build <the arm's build> ...)")
+    found = resolve_dir(Path(recorded))
+    if found.is_dir():
+        return found
+    here = TEAM_RUNS / PureWindowsPath(recorded).name
+    if here.is_dir():
+        return here
+    raise SystemExit(f"{model1_dir}: the Model 1 build {recorded} has no api_vocab.json (or is not a directory on this machine), and "
+                     f"{here} is not a directory either; place the unzipped build at {here} or name its folder with "
+                     f"--model1-build DIR")
 
 
 def api_names(build, role, model1_dir):
@@ -534,7 +550,7 @@ def api_names(build, role, model1_dir):
     return list(tok.load_api_vocab(path).names)
 
 
-def check_same_api_vocab(model1_dir, b_dir):
+def check_same_api_vocab(model1_dir, b_dir, model1_build=None):
     """SystemExit unless the Model 1 run trained on a build whose api_vocab.json is that of `b_dir`, the arm's build: the same names
     in the same order. API ids are numbered per build (the position in api_vocab.json), so a Model 1 of another build maps an id to
     another API name and the frozen encoder embeds the wrong rows without an error (b_sig250_main has 4.6% of the names it shares with
@@ -543,7 +559,7 @@ def check_same_api_vocab(model1_dir, b_dir):
     build is another dataset, whose folds `check_same_splits` already refuses. Returns (the Model 1's build, the API rows that the
     arm's build can hold: FIRST_API_ID + its names)."""
     from s03a_transformer.five_channel.model import tok
-    theirs_dir = model1_build(model1_dir)
+    theirs_dir = locate_model1_build(model1_dir, model1_build)
     ours = api_names(b_dir, 'arm', model1_dir)
     theirs = api_names(theirs_dir, 'Model 1', model1_dir)
     if theirs != ours:
@@ -562,7 +578,7 @@ def check_same_api_vocab(model1_dir, b_dir):
     return theirs_dir, tok.FIRST_API_ID + len(ours)
 
 
-def load_frozen_model1(model1_dir, manifest, smoke, log=print, *, b_dir):
+def load_frozen_model1(model1_dir, manifest, smoke, log=print, *, b_dir, model1_build=None):
     """Janice's `Model1TokenSequence` with the weights of the Model 1 run's best_auc.pt, in eval mode and with no gradient, after
     `check_same_splits` and `check_same_api_vocab` against `b_dir`, the arm's build, and a refusal when the checkpoint's API embedding
     has more rows than that build can hold. A smoke run without that run uses random weights (plumbing only); a full run refuses."""
@@ -580,7 +596,7 @@ def load_frozen_model1(model1_dir, manifest, smoke, log=print, *, b_dir):
         if not config.get('per_block') or config.get('max_instructions') != BLOCK_LEN:
             raise SystemExit(f'{model1_dir} is not a per-block Model 1 at {BLOCK_LEN} instructions per block')
         check_same_splits(model1_dir, manifest)
-        _, capacity = check_same_api_vocab(model1_dir, b_dir)
+        _, capacity = check_same_api_vocab(model1_dir, b_dir, model1_build)
         state = torch.load(ckpt, map_location='cpu')
         rows = int(state['embedder.api_embedding.weight'].shape[0])
         if rows > capacity:
@@ -610,7 +626,7 @@ def frozen_graph(net, seq, device):
 
 
 def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, features=None, source=None, block_len=None,
-        protocol='kfold', arch='x86', arch_balance=False, model1_run=None):
+        protocol='kfold', arch='x86', arch_balance=False, model1_run=None, model1_build=None):
     if arm not in ARM_TABLE:
         raise ValueError(f'arm {arm}: one of {ARMS}')
     check_arm_dataset(arm, protocol, arch, arch_balance)
@@ -659,7 +675,7 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
         from s03c_cfg_transformer import block_transformer as bt      # imported here: it needs torch_geometric
     if frozen:
         model1_dir = Path(model1_run) if model1_run else model1_run_dir(fold, seed, protocol, arch, arch_balance)
-        frozen_net, frozen_source = load_frozen_model1(model1_dir, manifest, smoke, log, b_dir=b_dir)
+        frozen_net, frozen_source = load_frozen_model1(model1_dir, manifest, smoke, log, b_dir=b_dir, model1_build=model1_build)
         frozen_net.to(device)
         log(f'frozen Model 1 encoder: {frozen_source or "random weights (smoke)"}; same train/val/test as {model1_dir.name}')
     graphs = {}                                                  # second pass: each graph from its payload, which is then dropped
@@ -691,7 +707,7 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
     if frozen:
         extra.update({'model1_checkpoint': frozen_source, 'model1_run': str(model1_dir), 'block_len': BLOCK_LEN})
         if frozen_source:                       # the random-weights smoke has no Model 1 run to name
-            extra['model1_build'] = str(model1_build(model1_dir))
+            extra['model1_build'] = str(locate_model1_build(model1_dir, model1_build))
         del frozen_net
     reasons = sorted(set(excluded.values()))
     return run_arm(arm=arm, fold=fold, seed=seed, graphs=graphs, sizes=sizes,
@@ -723,12 +739,15 @@ def main(argv=None):
     ap.add_argument('--device', choices=['cuda', 'cpu'])
     ap.add_argument('--model1-run', type=Path, help="the -m1frozen arms: the Model 1 run directory whose best_auc.pt is frozen "
                     f"(default: RUNS/<the fivechannel --per-block --max-instructions {BLOCK_LEN} run of this fold, seed and dataset>)")
+    ap.add_argument('--model1-build', type=Path, help="the -m1frozen arms: the build folder the Model 1 trained on, compared with the "
+                    "arm's (default: the build_dir its metrics.json records, else RUNS/team/<that folder's name> when the recorded "
+                    "path is not on this machine)")
     args = ap.parse_args(argv)
     arch = args.arch or DEFAULT_ARCH[args.protocol]
     out = run(args.arm, args.fold, args.seed, args.smoke, args.device,
               resolve_dir(args.build) if args.build else None, features=args.features, source=args.source,
               block_len=args.block_len, protocol=args.protocol, arch=arch, arch_balance=args.arch_balance,
-              model1_run=args.model1_run)
+              model1_run=args.model1_run, model1_build=args.model1_build)
     if args.smoke:
         print(f"smoke: val AUC {out['val_auc']:.4f}, peak GPU {out['peak_gpu_mb']} MB, loss "
               f"{out['history'][0]['loss']} -> {out['history'][-1]['loss']}, temp dir {out['dir']} (not under {RUNS})")

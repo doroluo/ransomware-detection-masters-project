@@ -16,7 +16,7 @@ import torch
 from common.config import RunConfig
 from common.manifests import Manifest
 from experiments import queue as q
-from experiments.team_pipelines import common as tp, fit, train_b
+from experiments.team_pipelines import build_b, common as tp, fit, train_b
 from experiments.team_pipelines.build_b import resolve_dir
 from s04_evaluation import gates
 from s03a_transformer.five_channel.model import Model1TokenSequence, tok
@@ -166,6 +166,117 @@ def test_the_arm_runs_on_a_synthetic_build_with_its_model1_and_refuses_another_v
     with pytest.raises(SystemExit, match='API ids are numbered per build') as e:
         train_b.run('sig500v3-m1frozen', 2, 1, smoke=6, device='cpu', b_dir=folder, log=QUIET, model1_run=run_other)
     assert str(other) in str(e.value) and str(folder) in str(e.value)
+
+
+# where the guard looks for the Model 1's build ------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def team(tmp_path, monkeypatch):
+    """A RUNS/team of this machine, empty: `locate_model1_build` looks there when the recorded path is not a folder here."""
+    folder = tmp_path / 'runs' / 'team'
+    folder.mkdir(parents=True)
+    monkeypatch.setattr(train_b, 'TEAM_RUNS', folder)
+    return folder
+
+
+THEIRS = [r'D:\training\gt_runs\team\b_sig500_v3', '/data/gt_runs/team/b_sig500_v3']          # a Windows and a POSIX path of the training machine
+
+
+def refused_with_build(run, arm_build, model1_build, match):
+    with pytest.raises(SystemExit, match=match) as e:
+        train_b.load_frozen_model1(run, manifest(), None, QUIET, b_dir=arm_build, model1_build=model1_build)
+    return str(e.value)
+
+
+def test_the_recorded_build_is_used_when_it_exists_here_even_if_runs_team_holds_a_folder_of_that_name(tmp_path, team):
+    build = vocab_build(tmp_path / 'recorded' / 'b_sig500_v3', NAMES)
+    vocab_build(team / 'b_sig500_v3', NAMES[::-1])                                            # same name, another vocabulary
+    run = model1_run(tmp_path / 'm1', build)
+    assert train_b.locate_model1_build(run) == build
+    assert train_b.check_same_api_vocab(run, build) == (build, tok.FIRST_API_ID + len(NAMES))
+
+
+@pytest.mark.parametrize('recorded', THEIRS)
+def test_a_recorded_path_of_another_machine_falls_back_to_runs_team_under_its_last_component(tmp_path, team, recorded):
+    """The teammate unzips the Drive's build into RUNS/team/<name> as the root README says; the Model 1's metrics.json holds the
+    path of the machine that trained it (a Windows or a POSIX path, whichever the teammate's OS is)."""
+    here = vocab_build(team / 'b_sig500_v3', NAMES)
+    run = model1_run(tmp_path / 'm1', recorded)
+    assert train_b.locate_model1_build(run) == here
+    net, source = train_b.load_frozen_model1(run, manifest(), None, QUIET, b_dir=vocab_build(tmp_path / 'arm', NAMES))
+    assert source and not net.training
+
+
+def test_a_leading_runs_in_the_recorded_path_is_the_run_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_b, 'RUNS', tmp_path / 'runs')                 # resolve_dir reads it
+    build = vocab_build(tmp_path / 'runs' / 'team' / 'b_x', NAMES)
+    assert train_b.locate_model1_build(model1_run(tmp_path / 'm1', 'RUNS/team/b_x')) == build
+
+
+@pytest.mark.parametrize('recorded', THEIRS)
+def test_a_build_found_nowhere_is_refused_naming_the_recorded_path_the_looked_up_one_and_the_fix(tmp_path, team, recorded):
+    run = model1_run(tmp_path / 'm1', recorded)
+    arm_build = vocab_build(tmp_path / 'arm', NAMES)
+    message = refused(run, arm_build, 'Model 1 build')
+    assert recorded in message and str(team / 'b_sig500_v3') in message and '--model1-build DIR' in message
+    with pytest.raises(SystemExit, match='Model 1 build'):                         # and the check on its own refuses the same way
+        train_b.check_same_api_vocab(run, arm_build)
+
+
+def test_model1_build_overrides_a_recorded_build_that_exists_and_one_that_is_missing(tmp_path, team):
+    arm_build = vocab_build(tmp_path / 'arm', NAMES)
+    right = vocab_build(tmp_path / 'right', NAMES)
+    elsewhere = vocab_build(tmp_path / 'elsewhere', NAMES[:3] + ['other.dll!X'] + NAMES[4:])
+    for k, recorded in enumerate((elsewhere, THEIRS[0])):                          # a build of another vocabulary / a path not here
+        run = model1_run(tmp_path / f'm1-{k}', recorded)
+        assert train_b.locate_model1_build(run, right) == right
+        net, source = train_b.load_frozen_model1(run, manifest(), None, QUIET, b_dir=arm_build, model1_build=right)
+        assert source and train_b.check_same_api_vocab(run, arm_build, right)[0] == right
+    no_record = model1_run(tmp_path / 'm1-none', arm_build, build_dir=False)
+    assert train_b.check_same_api_vocab(no_record, arm_build, right)[0] == right       # no metrics build_dir needed with the option
+    vocab_build(team / 'b_sig500_v3', NAMES[::-1])                       # RUNS/team does not win against the option
+    assert train_b.locate_model1_build(model1_run(tmp_path / 'm1-team', THEIRS[1]), right) == right
+
+
+def test_a_wrong_model1_build_is_refused_even_when_the_recorded_build_matches(tmp_path, team):
+    arm_build = vocab_build(tmp_path / 'arm', NAMES)
+    wrong = vocab_build(tmp_path / 'wrong', NAMES[:3] + ['other.dll!X'] + NAMES[4:])
+    run = model1_run(tmp_path / 'm1', arm_build)                                  # the recorded build is the arm's: fine without the option
+    train_b.load_frozen_model1(run, manifest(), None, QUIET, b_dir=arm_build)
+    message = refused_with_build(run, arm_build, wrong, 'trained on the build')
+    assert str(wrong) in message and str(arm_build) in message and '6 of the 7 positions' in message
+    extended = vocab_build(tmp_path / 'extended', NAMES + ['more.dll!Y'])
+    assert "extends the other's (8 vs 7 names)" in refused_with_build(run, arm_build, extended, 'trained on the build')
+    refused_with_build(run, arm_build, tmp_path / 'not-a-folder', r'Model 1 build .*not-a-folder.* has no api_vocab.json')
+
+
+def test_model1_build_is_a_train_b_option_passed_to_run(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(train_b, 'run', lambda *a, **k: seen.update(k) or {})
+    train_b.main(['--fold', '0', '--arm', 'sig500v3-m1frozen', '--model1-build', str(tmp_path / 'b')])
+    assert seen['model1_build'] == tmp_path / 'b'
+    seen.clear()
+    train_b.main(['--fold', '0', '--arm', 'sig500v3-m1frozen'])
+    assert seen['model1_build'] is None
+
+
+@needs_pyg
+def test_the_arm_records_the_model1_build_it_compared(tmp_path, monkeypatch, team, tiny):   # noqa: F811
+    rows = tp.sample_rows()
+    folder = synthetic_build(tmp_path / 'b', sorted(rows), rows, source='main-fix', sample='signal', num_blocks=500)
+    names = json.loads((folder / 'api_vocab.json').read_text())
+    here = vocab_build(team / 'b_trained_elsewhere', names)
+    run = model1_run(tmp_path / 'm1', r'C:\gone\team\b_trained_elsewhere', names=names)
+    tp.fold_manifest(2, 1, 'kfold', 'x86').save(run / 'manifest.json')
+    monkeypatch.setattr(fit, 'RUNS', tmp_path / 'runs')
+    got = {}
+    monkeypatch.setattr(train_b, 'run_arm', lambda **k: got.update(k['extra']) or {})
+    train_b.run('sig500v3-m1frozen', 2, 1, smoke=6, device='cpu', b_dir=folder, log=QUIET, model1_run=run)
+    assert got['model1_build'] == str(here)
+    other = vocab_build(tmp_path / 'other-copy', names)
+    train_b.run('sig500v3-m1frozen', 2, 1, smoke=6, device='cpu', b_dir=folder, log=QUIET, model1_run=run, model1_build=other)
+    assert got['model1_build'] == str(other)
 
 
 # the plans ------------------------------------------------------------------------------------------------------------------

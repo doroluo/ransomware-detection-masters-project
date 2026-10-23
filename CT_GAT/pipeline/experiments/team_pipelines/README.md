@@ -420,7 +420,7 @@ python -m experiments.team_pipelines.train_a --fold k --seed s --arm gnn500 [--s
 ## train_b.py (the arms of `ARM_TABLE`)
 
 ```
-python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--features all|feat|emb|e2e|m1frozen] [--block-len 64] [--source LABEL] [--build DIR] [--model1-run DIR] [--smoke N] [--device cuda|cpu]
+python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--features all|feat|emb|e2e|m1frozen] [--block-len 64] [--source LABEL] [--build DIR] [--model1-run DIR] [--model1-build DIR] [--smoke N] [--device cuda|cpu]
 ```
 
 - Arms. `ARM_TABLE` has one row per arm (sampler, block budget, node input, the source labels its build may record, the default
@@ -489,10 +489,12 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   `team_b_build` resolves to), and a Model 1 of another build maps an id to another API name without any error. Against
   `b_sig500_v3`, `b_sig250_main` has 4.6% of the shared names at the same position, `b_callwalk500_main` 19.6%,
   `b_callwalk250_main` 4.6%, `b_sigwhole_v3` 1.4%. So `load_frozen_model1` reads the `build_dir` that the Model 1's `metrics.json`
-  records (a run without one is refused), compares the `api_vocab.json` of that build with the arm's (the same names in the same
+  records (a run without one is refused unless `--model1-build` is given), compares the `api_vocab.json` of that build with the arm's (the same names in the same
   order; a vocabulary that only extends the other is refused too, since the extended ids have no row in the Model 1's table and an
   extended build is another dataset), and refuses a checkpoint whose API table is larger than the arm's build can hold. The message
-  names both builds and the fix: train the Model 1 with `--build` the arm's build, or give `--model1-run`. A smoke run without a
+  names both builds and the fix: train the Model 1 with `--build` the arm's build, or give `--model1-run`. When the recorded `build_dir` (a path of the
+  training machine) is not a folder on yours the guard looks in `RUNS/team/<its folder name>` and then refuses naming both paths, and
+  `--model1-build DIR` names the Model 1's build and overrides both. A smoke run without a
   Model 1 checkpoint uses random weights and no check (plumbing only). `metrics.json` of the arm records `model1_run`,
   `model1_checkpoint` and `model1_build`. The arms `sig250-m1frozen`, `callwalk500-m1frozen` and `callwalk250-m1frozen` exist but are
   in no plan: each needs a per-block Model 1 trained on its own build. The plans: `team_m1frozen.txt` (kfold x86 on `b_sig500_v3`,
