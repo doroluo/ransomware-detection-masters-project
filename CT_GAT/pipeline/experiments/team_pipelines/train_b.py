@@ -547,11 +547,16 @@ def check_same_api_vocab(model1_dir, b_dir):
     ours = api_names(b_dir, 'arm', model1_dir)
     theirs = api_names(theirs_dir, 'Model 1', model1_dir)
     if theirs != ours:
+        shared = min(len(theirs), len(ours))
         same = sum(a == b for a, b in zip(theirs, ours))
+        if same == shared:
+            why = (f"one build's vocabulary extends the other's ({len(theirs)} vs {len(ours)} names), so the Model 1 was trained "
+                   f"on another dataset's build (an extended build is another dataset)")
+        else:
+            why = (f"API ids are numbered per build and {same} of the {shared} positions they share hold the same name, so the "
+                   f"frozen encoder would read the wrong API embeddings")
         raise SystemExit(f"{model1_dir} trained on the build {theirs_dir} ({len(theirs)} API names), not on this arm's build "
-                         f"{b_dir} ({len(ours)} API names): API ids are numbered per build and {same} of the "
-                         f"{min(len(theirs), len(ours))} positions they share hold the same name, so the frozen encoder would read "
-                         f"the wrong API embeddings. Train the Model 1 on the arm's build (python -m experiments.train --model "
+                         f"{b_dir} ({len(ours)} API names): {why}. Train the Model 1 on the arm's build (python -m experiments.train --model "
                          f"fivechannel --per-block --max-instructions {BLOCK_LEN} --build {b_dir} ...) or name a run of that build "
                          f"with --model1-run DIR")
     return theirs_dir, tok.FIRST_API_ID + len(ours)

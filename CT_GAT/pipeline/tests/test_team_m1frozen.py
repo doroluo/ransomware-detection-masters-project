@@ -80,6 +80,7 @@ def test_a_run_name_does_not_say_the_build_so_another_vocabulary_is_refused_nami
     assert str(m1_build) in message and str(arm_build) in message                           # both builds
     assert '--model fivechannel --per-block --max-instructions 64' in message and f'--build {arm_build}' in message
     assert '--model1-run DIR' in message and '6 of the 7 positions' in message
+    assert 'so the frozen encoder would read the wrong API embeddings' in message and 'extends' not in message
 
 
 def test_a_vocabulary_in_another_order_is_refused(tmp_path):
@@ -95,8 +96,13 @@ def test_a_vocabulary_that_only_extends_the_other_is_refused(tmp_path, longer_is
     extended build is another dataset (kfold all against x86) whose folds `check_same_splits` refuses anyway."""
     short, long = vocab_build(tmp_path / 'short', NAMES[:4]), vocab_build(tmp_path / 'long', NAMES)
     arm_build, m1_build = (long, short) if longer_is_the_arm else (short, long)
-    refused(model1_run(tmp_path / 'm1', m1_build, names=json.loads((m1_build / 'api_vocab.json').read_text())), arm_build,
-            'API ids are numbered per build')
+    message = refused(model1_run(tmp_path / 'm1', m1_build, names=json.loads((m1_build / 'api_vocab.json').read_text())), arm_build,
+                      'trained on the build')
+    n_theirs, n_ours = (4, 7) if longer_is_the_arm else (7, 4)
+    assert f"one build's vocabulary extends the other's ({n_theirs} vs {n_ours} names)" in message
+    assert "trained on another dataset's build" in message and 'positions they share' not in message
+    assert 'wrong API embeddings' not in message
+    assert f'--build {arm_build}' in message and '--model1-run DIR' in message                    # the fix advice is kept
 
 
 def test_a_model1_run_without_a_recorded_build_is_refused(tmp_path):
