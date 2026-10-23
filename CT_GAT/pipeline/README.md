@@ -380,6 +380,19 @@ dataset or the combined dataset also prints the recall of each class x architect
 (majority class, x86 rule), and each paired difference a second time cell-balanced; `stats --protocol kfold --arch all --balanced`
 gives one such pair, and `report` prints the kfold rows of arch all in its cell-balanced section.
 
+**5. Scoring with a saved run.** A run folder with its weights (the `*_model_runs_v1.zip` of the Drive, unzipped into `runs/`) scores
+binaries without retraining, from the build the run was made from; the run folder is never written to.
+
+```bash
+python -m experiments.predict --run RUNS/kfold0_x86_gnn_s0_team-sig500v3-e2e --check
+python -m experiments.predict --run RUNS/kfold0_x86_gnn_s0_team-sig500v3-e2e --split test --out scores.csv
+python -m experiments.predict --run RUNS/kfold0_x86_fivechannel-L512_s0 --checkpoint f1 --build RUNS/team/b_sig500_v3 --ids <sample_id> <sample_id>
+```
+
+The first command rescores the run's validation and test binaries and exits with status 1 unless they reproduce its saved predictions. The
+second writes the test probabilities to `scores.csv`. The third scores named binaries of a build and stops, naming both sides, if the build
+differs from the run's in dataset, sampler, block budget or API vocabulary.
+
 **A whole experiment.** Each file in `experiments/plans/` is one experiment, as `train`, `train_b`, `report`, `val_threshold` and
 `gates` lines; its header names the CPU steps to run once before it, when it needs any (`team_b` and `team_builds` name none):
 
