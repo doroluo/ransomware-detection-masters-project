@@ -88,6 +88,7 @@ class RunConfig:
     seq_len: int = 512
     max_windows: int = 64
     max_instructions: int = 128
+    per_block: bool = False
     threshold_from: str = 'val'
     tag: str = ''
     cache: str = ''
@@ -113,6 +114,8 @@ class RunConfig:
             raise ValueError(f'max_instructions is at least 1: {self.max_instructions}')
         if self.model != 'fivechannel' and self.max_instructions != MAX_INSTRUCTIONS:
             raise ValueError("max_instructions needs model='fivechannel'")
+        if self.per_block and self.model != 'fivechannel':
+            raise ValueError("per_block needs model='fivechannel'")
         if self.threshold_from not in THRESHOLD_FROM:
             raise ValueError(f'threshold_from {self.threshold_from}: one of {THRESHOLD_FROM}')
         if self.threshold_from != 'val' and self.model not in ('tokenseq', 'fivechannel'):
@@ -228,7 +231,7 @@ class RunConfig:
                                             if n != default] + thoof)
         if self.model == 'fivechannel':
             return '-'.join(['fivechannel'] + ([f'L{self.max_instructions}'] if self.max_instructions != MAX_INSTRUCTIONS else [])
-                            + ab + thoof)
+                            + (['pb'] if self.per_block else []) + ab + thoof)
         parts = ['gnn']
         if self.control:
             parts.append(CONTROLS[self.control])
