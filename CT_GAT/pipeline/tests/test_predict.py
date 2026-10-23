@@ -10,6 +10,7 @@ import csv
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -208,6 +209,34 @@ def test_a_failed_check_exits_with_the_reason(world, tmp_path):
         predict.main(['--run', str(copy), '--build', str(build_of(world, kind)), '--check', '--out', str(tmp_path / 'o.csv')])
 
 
+def test_check_prints_the_auc_difference_and_allows_1e_3(world, tmp_path):
+    """|dAUC| = |now - saved| <= 1e-3 (an explicit bound, not 3-decimal rounding); the difference is printed for every run."""
+    kind = 'sig500v3-feat'
+    assert predict.AUC_TOLERANCE == 1e-3
+    for shift, passes in ((0.0, True), (9e-4, True), (-9e-4, True), (1.2e-3, False), (-1.2e-3, False)):
+        copy = tmp_path / f'auc{shift}'
+        shutil.copytree(run_of(world, kind), copy)
+        metrics = json.loads((copy / 'metrics.json').read_text(encoding='utf-8'))
+        metrics['selection']['auc']['test']['auc'] += shift
+        (copy / 'metrics.json').write_text(json.dumps(metrics), encoding='utf-8')
+        lines = []
+        if passes:
+            result = predict.predict(copy, build=build_of(world, kind), check=True, out=tmp_path / 'o.csv', log=lines.append)
+            assert abs(result['check']['dauc'] + shift) < 1e-9 and not result['check']['problems']      # now - saved
+        else:
+            with pytest.raises(SystemExit, match=r'CHECK FAILED: test AUC .* differs from the saved .* by .*\(> 0.001\)'):
+                predict.predict(copy, build=build_of(world, kind), check=True, out=tmp_path / 'o.csv', log=lines.append)
+        assert any(re.search(r'dAUC \(now - saved\) [+-]\d\.\d\de[+-]\d\d \(tolerance 0.001\)', l) for l in lines)
+
+
+@pytest.mark.parametrize('kind', KINDS)
+def test_every_check_prints_dauc(world, tmp_path, kind):
+    result, lines = go(world, kind, tmp_path, check=True)
+    if 'auc_now' in result['check']:
+        assert abs(result['check']['dauc']) <= predict.AUC_TOLERANCE
+        assert sum('dAUC (now - saved)' in l for l in lines) == 1
+
+
 # ---- refusals ------------------------------------------------------------------------------------------------------------------
 
 def test_a_folder_that_is_not_a_finished_run_with_weights_is_refused(world, tmp_path):
@@ -359,8 +388,96 @@ def test_a_frozen_run_needs_its_model1_folder_and_the_same_vocabulary(world, tmp
     theirs = json.loads((pb / 'metrics.json').read_text(encoding='utf-8'))
     theirs['build_dir'] = str(other)
     (pb / 'metrics.json').write_text(json.dumps(theirs), encoding='utf-8')
-    with pytest.raises(SystemExit, match='API vocabularies differ'):
+    with pytest.raises(SystemExit, match=r'trained on the build .*other-build.*API ids are numbered per build'):             # the trainer's guard
         predict.predict(run_of(world, kind), build=world.build, out=tmp_path / 'o.csv', model1_run=pb, log=quiet)
+
+
+def frozen_copy(world, tmp_path, name, run_metrics=None, model1_metrics=None):
+    """(a copy of the -m1frozen run, a copy of its per-block Model 1), their metrics.json updated by the dicts (None deletes a key)."""
+    out = []
+    for source, extra, label in ((run_of(world, 'm1frozen'), run_metrics, 'run'), (world.runs / PB, model1_metrics, 'pb')):
+        copy = tmp_path / f'{name}-{label}'
+        shutil.copytree(source, copy)
+        metrics = json.loads((copy / 'metrics.json').read_text(encoding='utf-8'))
+        for key, value in (extra or {}).items():
+            metrics.pop(key, None) if value is None else metrics.__setitem__(key, value)
+        (copy / 'metrics.json').write_text(json.dumps(metrics), encoding='utf-8')
+        out.append(copy)
+    return out
+
+
+def test_a_frozen_run_whose_model1_build_is_not_on_this_machine_uses_the_scored_build_it_shares_the_vocabulary_of(world, tmp_path, monkeypatch):
+    """A teammate has the run, its Model 1 and the build, but the Model 1's metrics.json names a path of the training machine."""
+    monkeypatch.setattr(train_b, 'TEAM_RUNS', tmp_path / 'no-team')
+    gone = str(tmp_path / 'trained-elsewhere' / 'b_sig500_v3')
+    run, pb = frozen_copy(world, tmp_path, 'gone', model1_metrics={'build_dir': gone})
+    assert json.loads((run / 'metrics.json').read_text(encoding='utf-8')).get('model1_build')        # the run passed the guard when it trained
+    result = predict.predict(run, build=world.build, check=True, model1_run=pb, out=tmp_path / 'o.csv', log=quiet)
+    assert not result['check']['problems'] and result['check']['max_dprob'] <= EXACT
+    # a run that did not record the Model 1 build it passed the guard with was never guarded: the guard's refusal, with the fix
+    bare_run, bare_pb = frozen_copy(world, tmp_path, 'bare', run_metrics={'model1_build': None}, model1_metrics={'build_dir': gone})
+    with pytest.raises(SystemExit, match=r'Model 1 build .*trained-elsewhere.*--model1-build DIR'):
+        predict.predict(bare_run, build=world.build, check=True, model1_run=bare_pb, out=tmp_path / 'o.csv', log=quiet)
+    # --model1-build names the Model 1's build explicitly, and a wrong one is the guard's refusal
+    assert not predict.predict(bare_run, build=world.build, check=True, model1_run=bare_pb, model1_build=world.build,
+                               out=tmp_path / 'o.csv', log=quiet)['check']['problems']
+    other = tmp_path / 'other-vocabulary'
+    shutil.copytree(world.build, other)
+    names = json.loads((other / 'api_vocab.json').read_text(encoding='utf-8'))
+    (other / 'api_vocab.json').write_text(json.dumps(names[::-1]), encoding='utf-8')
+    with pytest.raises(SystemExit, match='API ids are numbered per build'):
+        predict.predict(bare_run, build=world.build, check=True, model1_run=bare_pb, model1_build=other, out=tmp_path / 'o.csv', log=quiet)
+    predict.main(['--run', str(bare_run), '--build', str(world.build), '--check', '--model1-run', str(bare_pb), '--model1-build',
+                  str(world.build), '--out', str(tmp_path / 'cli.csv')])
+
+
+def test_with_no_build_of_the_run_on_this_machine_the_rescoring_finds_a_scored_build_of_another_vocabulary(world, tmp_path, monkeypatch):
+    """A teammate's machine: the run's `build_dir` and its Model 1's are both paths of the training machine. The scored build then
+    stands in for the Model 1's, so the guard cannot tell the vocabulary; `--check` (the rescoring of the run's own binaries) does."""
+    monkeypatch.setattr(train_b, 'TEAM_RUNS', tmp_path / 'no-team')
+    gone = str(tmp_path / 'trained-elsewhere' / 'b_sig500_v3')
+    run, pb = frozen_copy(world, tmp_path, 'noref', run_metrics={'build_dir': gone}, model1_metrics={'build_dir': gone})
+    assert predict.reference_build(predict.load_run(run)) is None
+    result = predict.predict(run, build=world.build, check=True, model1_run=pb, out=tmp_path / 'o.csv', log=quiet)
+    assert not result['check']['problems'] and result['check']['max_dprob'] <= EXACT
+    foreign = tmp_path / 'foreign'                                                            # the same ids, other payloads (as in the test above)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(manifests, 'CACHE', world.tmp / 'cache86')
+        clear_team_caches()
+        rows = tp.sample_rows()
+        synthetic_build(foreign, sorted(rows), rows, seed=5)
+        clear_team_caches()
+    for check in (True, False):                                                                # the probe, and --check
+        with pytest.raises(SystemExit, match='not the same build|does not give the run|CHECK FAILED'):
+            predict.predict(run, build=foreign, check=check, model1_run=pb, out=tmp_path / 'o.csv', log=quiet)
+
+
+def test_a_frozen_run_finds_its_model1_build_in_runs_team_before_it_falls_back_to_the_scored_build(world, tmp_path, monkeypatch):
+    team = tmp_path / 'team'
+    shutil.copytree(world.build, team / 'b_sig500_v3')
+    monkeypatch.setattr(train_b, 'TEAM_RUNS', team)
+    run, pb = frozen_copy(world, tmp_path, 'team', model1_metrics={'build_dir': str(tmp_path / 'trained-elsewhere' / 'b_sig500_v3')})
+    scorer = predict.make_scorer(predict.load_run(run), world.build, torch.device('cpu'), pb, quiet)
+    assert scorer.model1_build(pb, None) is None                                           # the guard finds it by itself
+    (team / 'b_sig500_v3' / 'api_vocab.json').write_text(json.dumps(['x.dll!A']), encoding='utf-8')      # and compares it with the scored build
+    with pytest.raises(SystemExit, match='trained on the build'):
+        predict.predict(run, build=world.build, check=True, model1_run=pb, out=tmp_path / 'o.csv', log=quiet)
+
+
+def test_the_scored_build_stands_in_for_the_model1_build_only_with_the_vocabulary_of_the_runs_own_build(world, tmp_path, monkeypatch):
+    """A build that extends the run's (allowed for scoring) is not the run's: the Model 1's missing build is then the guard's refusal."""
+    monkeypatch.setattr(train_b, 'TEAM_RUNS', tmp_path / 'no-team')
+    run, pb = frozen_copy(world, tmp_path, 'ext', model1_metrics={'build_dir': str(tmp_path / 'trained-elsewhere' / 'b')})
+    extended = tmp_path / 'extended'
+    shutil.copytree(world.build, extended)
+    names = json.loads((extended / 'api_vocab.json').read_text(encoding='utf-8'))
+    (extended / 'api_vocab.json').write_text(json.dumps(names + ['extra.dll!Z']), encoding='utf-8')
+    scorer = predict.make_scorer(predict.load_run(run), world.build, torch.device('cpu'), pb, quiet)
+    assert scorer.model1_build(pb, None) == scorer.build                                   # the run's own build
+    scorer.build = extended
+    assert scorer.model1_build(pb, None) is None                                           # so the guard refuses the missing build
+    with pytest.raises(SystemExit, match='Model 1 build .*trained-elsewhere.*--model1-build DIR'):
+        train_b.locate_model1_build(pb)
 
 
 def test_the_trainers_still_build_what_predict_loads(world):
@@ -411,6 +528,8 @@ def test_the_bf16_emulation_switches_the_trainers_autocast_on_and_restores_every
         old = {r['sample_id']: float(r['prob']) for r in read(copy / 'predictions_auc.csv')}
         assert max(abs(old[i] - p) for i, p in zip(out['ids'], out['probs'])) < 0.05             # bf16 rounding, not another model
     assert predict.default_tolerance(predict.load_run(run_of(world, 'sig500v3-feat')), False) == predict.TOLERANCE_FP32
+    assert (predict.TOLERANCE_FP32, predict.TOLERANCE_BF16, predict.TOLERANCE_FP32_OF_BF16) == (1e-4, 5e-3, 6e-2)   # measured worst 5.2e-2
+    assert predict.default_tolerance(predict.load_run(copy), False) == 6e-2
 
 
 # ---- real data (read only) ---------------------------------------------------------------------------------------------------------
@@ -436,7 +555,7 @@ def test_real_runs_are_reproduced_from_their_checkpoints_on_cpu(name, tmp_path):
     result = predict.predict(folder, out=tmp_path / 'o.csv', check=True)
     c = result['check']
     print(f'{name}: max |dprob| {c["max_dprob"]:.3g} (tolerance {c["tolerance"]:g}), test AUC saved {c["auc_saved"]:.6f} now '
-          f'{c["auc_now"]:.6f}, pred agreement {c["pred_agreement"]:.4f}, n {c["n"]}')
+          f'{c["auc_now"]:.6f}, dAUC {c["dauc"]:+.2e} (tolerance {predict.AUC_TOLERANCE:g}), pred agreement {c["pred_agreement"]:.4f}, n {c["n"]}')
     assert not c['problems'] and snapshot(folder) == before
 
 

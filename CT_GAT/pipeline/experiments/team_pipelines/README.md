@@ -558,8 +558,11 @@ budget or source; an `api_vocab.json` that differs from the run's build (or does
 checkpoint's embedding is refused as well, and when the run's build is not on the machine the vocabulary is tested by rescoring eight
 of the run's own validation binaries. A network trained under bf16 autocast on a GPU (Model 1, `-e2e`) is rescored on the CPU in
 bf16 as well (`--autocast`, default `auto`; the fused encoder fast path of torch is switched off meanwhile): measured on the
-published fold-0 runs the probabilities then agree to 2.5e-3 at most (up to 5e-2 in fp32), the GAT arms to 1.2e-6 in fp32. A
-`-m1frozen` run loads its Model 1 run through `load_frozen_model1`; `--model1-run` names the folder when `RUNS/` does not hold it.
+published fold-0 runs the probabilities then agree to 2.5e-3 at most (up to 5.2e-2 in fp32, which `--autocast off` rescores as a diagnostic), the GAT arms to 1.2e-6 in fp32.
+`--check` also requires the test AUC to be within 1e-3 of the one in `metrics.json` and prints the difference (dAUC, now minus
+saved). A `-m1frozen` run loads its Model 1 run through `load_frozen_model1`, the trainer's guard against the scored build;
+`--model1-run` names the folder when `RUNS/` does not hold it and `--model1-build` the build it trained on when neither the recorded
+path nor `RUNS/team/<its name>` exists.
 
 ## Teammate sources
 

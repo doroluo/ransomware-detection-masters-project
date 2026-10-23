@@ -2,7 +2,7 @@
 
 python -m experiments.predict --run RUNS/<run folder> [--checkpoint auc|f1] [--build DIR] [--split val|test|all] [--ids ID ...]
        [--out FILE] [--device cpu|cuda] [--check [--tolerance X]] [--autocast auto|bf16|off] [--threshold saved|val|X]
-       [--model1-run DIR]
+       [--model1-run DIR] [--model1-build DIR]
        (run from CT_GAT/pipeline; reads the run folder and the build, never writes there)
 
 A run folder is what `experiments.train --model fivechannel` and `experiments.team_pipelines.train_b` write (and what the
@@ -34,8 +34,11 @@ keep their meaning, a new id is not in the run's training set and becomes UNK_AP
 checkpoint's embedding has rows. When the run's build is not on this machine the vocabulary is verified by the run itself: up to 8
 of its own validation binaries are rescored and must reproduce their saved probabilities (within the tolerance below); `--check` is
 the whole of that test. A `-m1frozen` run also loads the Model 1 run it was made with (`--model1-run`, else `model1_run` of
-metrics.json when that folder exists, else `RUNS/<name of the per-block Model 1 of this fold and seed>`) and refuses a Model 1
-whose build vocabulary differs.
+metrics.json when that folder exists, else `RUNS/<name of the per-block Model 1 of this fold and seed>`) and passes it to the
+trainer's own guard (`train_b.load_frozen_model1`, the arm's build being the scored one), which refuses a Model 1 whose build
+vocabulary differs. The guard finds the Model 1's build in the `build_dir` of its metrics.json, else in `RUNS/team/<that folder's
+name>`; `--model1-build DIR` names it, and when it is nowhere on this machine and the scored build is the run's own, the scored
+build stands in for it (the run passed the guard when it trained).
 
 The `pred` column: `--threshold saved` (default) is the threshold the trainer used for that checkpoint's predictions file:
 `selection.auc.threshold_val` of metrics.json for `--checkpoint auc` (predictions_auc.csv), and the RunConfig threshold, 0.5, for
@@ -44,16 +47,17 @@ The `pred` column: `--threshold saved` (default) is the threshold the trainer us
 a number is any threshold. The summary says which one was used and why.
 
 --check rescoring the run's own validation and test binaries must reproduce its saved predictions file: the same ids, labels and
-splits, max |dprob| within the tolerance, the test AUC equal to 3 decimals (to the one in metrics.json) and `pred` agreeing in at least
-99.5% of the rows; the exit status is 1 otherwise.
+splits, max |dprob| within the tolerance, the test AUC within 1e-3 of the one in metrics.json (the printed dAUC is now minus
+saved) and `pred` agreeing in at least 99.5% of the rows; the exit status is 1 otherwise.
 
 Numerics. A network without a bf16 autocast part (the GAT arms `all`, `feat`, `emb`, `m1frozen`) is fp32 in training and here: the
 tolerance is 1e-4 (the probabilities are saved with 6 decimals) and the measured difference is about 1e-6. Model 1 and the `e2e` arms
-train under bf16 autocast on cuda, and an fp32 rescoring of such a run differs from its saved probabilities by up to 5e-2 (measured
-on six published runs; the same difference is 1.5e-6 between fp32 and fp64, so it is the bf16 rounding of the training run). With
-`--autocast auto` (default) the cpu runs those parts under bf16 autocast too (the trainers' `AUTOCAST_ON_CPU` switch; torch's fused
-encoder-layer fast path, which does not run under autocast, is off meanwhile): the measured difference is then at most 2.5e-3, the
-tolerance 5e-3. `--autocast off` rescoring in fp32 allows 1e-1; `--tolerance` overrides either. On cuda the trainers' own autocast runs.
+train under bf16 autocast on cuda, and an fp32 rescoring of such a run differs from its saved probabilities by up to 5.2e-2
+(measured on the published runs; the same difference is 1.5e-6 between fp32 and fp64, so it is the bf16 rounding of the training
+run). With `--autocast auto` (default) the cpu runs those parts under bf16 autocast too (the trainers' `AUTOCAST_ON_CPU` switch;
+torch's fused encoder-layer fast path, which does not run under autocast, is off meanwhile): the measured difference is then at
+most 2.5e-3, the tolerance 5e-3. `--autocast off` rescores in fp32 and allows 6e-2: a diagnostic of how far bf16 rounding moves a run, not the way to
+reproduce one. `--tolerance` overrides either. On cuda the trainers' own autocast runs.
 """
 import argparse
 import contextlib
@@ -77,7 +81,8 @@ from experiments.team_pipelines.build_b import resolve_dir
 RULES = {'auc': ('best_auc.pt', 'predictions_auc.csv'), 'f1': ('best.pt', 'predictions.csv')}
 PROBE_IDS = 8                  # own validation binaries rescored when the run's build is not on this machine
 AGREEMENT = 0.995              # --check: share of rows whose `pred` equals the saved one
-TOLERANCE_FP32, TOLERANCE_BF16, TOLERANCE_FP32_OF_BF16 = 1e-4, 5e-3, 1e-1     # see default_tolerance
+TOLERANCE_FP32, TOLERANCE_BF16, TOLERANCE_FP32_OF_BF16 = 1e-4, 5e-3, 6e-2     # see default_tolerance
+AUC_TOLERANCE = 1e-3           # --check: largest |test AUC now - saved|
 AUTOCAST_MODES = ('auto', 'bf16', 'off')
 CHUNK = 64                     # training binaries read at a time to collect their API ids
 SPLITS = ('val', 'test', 'all')
@@ -300,7 +305,7 @@ class TeamScorer:
     """The network of a `train_b` arm on the graphs of a build (`train_b`: build_state, check_repool, make_graph, make_e2e_graph,
     frozen_graph; `fit.predict` for the batches)."""
 
-    def __init__(self, run, b_dir, device, model1_run=None, log=say):
+    def __init__(self, run, b_dir, device, model1_run=None, log=say, model1_build=None):
         from s03b_cfg_feature.gat import graph_full_loader as gl, train_cfg
         self.run, self.device, self.gl, self.tc = run, device, gl, train_cfg
         self.build = Path(b_dir)
@@ -326,7 +331,7 @@ class TeamScorer:
         self.seen = torch.tensor(sorted(api), dtype=torch.long)
         self.frozen = None
         if self.features == train_b.M1FROZEN:
-            self.frozen = self.load_frozen(model1_run, log)
+            self.frozen = self.load_frozen(model1_run, log, model1_build)
         self.model = train_b.new_model(self.features, int(metrics['in_dim']), int(metrics['edge_dim']), self.rows)
         self.model.load_state_dict(state)
         self.model.to(device).eval()
@@ -338,7 +343,29 @@ class TeamScorer:
         log(f'{arm} {run.dir.name}: features {self.features}, {sum(p.numel() for p in self.model.parameters())} parameters, '
             f'{len(self.seen)} API ids in the {len(train_ids)} training binaries')
 
-    def load_frozen(self, model1_run, log):
+    def model1_build(self, model1_dir, explicit):
+        """The `model1_build` that `train_b.load_frozen_model1` is given: `--model1-build` when named, else None (the guard reads the
+        `build_dir` of the Model 1's metrics.json, else RUNS/team/<its folder name>), except when that build is not on this machine
+        and the scored build is the one the run was made from: then the scored build stands in for it. The run passed the same guard
+        when it trained (`model1_build` in its metrics.json), which required the Model 1's vocabulary to equal that of the run's
+        build, so the scored build is the Model 1's when it has the run's vocabulary. `check_build` compares them when the run's build
+        is here (a scored build whose vocabulary only extends the run's is not the run's: the guard gets no stand-in and refuses the
+        missing build). When it is not here, the rescoring of the run's own validation binaries (the probe, or `--check`) shows a
+        build that gives other inputs; an extension of the run's build gives the same inputs (its new ids are UNK_API), so it is
+        scored. A run without `model1_build` was not guarded and gets the guard's refusal."""
+        if explicit:
+            return explicit
+        try:
+            train_b.locate_model1_build(model1_dir)
+            return None
+        except SystemExit:
+            pass
+        ref = reference_build(self.run)
+        if not self.run.metrics.get('model1_build') or (ref is not None and vocab_names(self.build) != vocab_names(ref)):
+            return None
+        return self.build
+
+    def load_frozen(self, model1_run, log, model1_build=None):
         run = self.run
         c = run.cfg
         recorded = run.metrics.get('model1_run')
@@ -351,23 +378,8 @@ class TeamScorer:
                              f'run or pass --model1-run DIR')
         model1_dir = found
         manifest = Manifest(*[[{'sample_id': i} for i in run.manifest[s]] for s in ('train', 'val', 'test')], run.manifest.get('val_families', []))
-        net, source = train_b.load_frozen_model1(model1_dir, manifest, False, log)
-        rows = int(net.embedder.api_embedding.num_embeddings)
-        names = vocab_names(self.build)
-        if names is not None and first_api_id() + len(names) < rows:
-            raise SystemExit(f'{self.build} has {len(names)} API names; the frozen Model 1 {model1_dir} embeds {rows} ids')
-        theirs = (json.loads((model1_dir / 'metrics.json').read_text(encoding='utf-8')).get('build_dir')
-                  if (model1_dir / 'metrics.json').is_file() else None)
-        ref = reference_build(run)
-        if theirs and Path(theirs).is_dir() and ref is not None:
-            a, b = vocab_names(Path(theirs)), vocab_names(ref)
-            if a != b:
-                raise SystemExit(f'the frozen Model 1 {model1_dir} was trained on {theirs} and {run.dir.name} on {ref}: their API '
-                                 f'vocabularies differ, so the ids mean different APIs')
-        elif theirs and Path(theirs).is_dir():
-            if vocab_names(Path(theirs)) != names:
-                raise SystemExit(f'the frozen Model 1 {model1_dir} was trained on {theirs}, whose API vocabulary is not that of '
-                                 f'{self.build}')
+        net, source = train_b.load_frozen_model1(model1_dir, manifest, False, log, b_dir=self.build,
+                                                 model1_build=self.model1_build(model1_dir, model1_build))
         net.to(self.device)
         return net
 
@@ -399,10 +411,10 @@ class TeamScorer:
         return int(len(self.seen))
 
 
-def make_scorer(run, b_dir, device, model1_run=None, log=say):
+def make_scorer(run, b_dir, device, model1_run=None, log=say, model1_build=None):
     fit.configure_threads()
     scorer = (Model1Scorer(run, b_dir, device, log) if run.kind == 'model1'
-              else TeamScorer(run, b_dir, device, model1_run, log))
+              else TeamScorer(run, b_dir, device, model1_run, log, model1_build))
     want = run.metrics.get('n_api_ids_train')
     if want is not None and scorer.n_api_train != int(want):
         raise SystemExit(f'the training binaries of {run.dir.name} use {want} API ids in the build it was made from and {scorer.n_api_train} '
@@ -424,7 +436,7 @@ def trained_in_bf16(run):
 def bf16_emulated(run, device, mode):
     """True when this command runs the bf16 autocast part of the network in bf16 on the cpu: `--autocast auto` does for a run
     trained under bf16 autocast on cuda (its probabilities carry bf16 rounding that an fp32 rescoring does not reproduce:
-    measured up to 5e-2 on a poor model, 1e-2 on the others), `bf16` always (for a network that has such a part), `off` never.
+    measured up to 5.2e-2), `bf16` always (for a network that has such a part), `off` never.
     On cuda the trainers' own autocast runs and nothing is emulated."""
     if mode not in AUTOCAST_MODES:
         raise SystemExit(f'--autocast {mode}: one of {", ".join(AUTOCAST_MODES)}')
@@ -455,7 +467,7 @@ def numerics(emulated):
 def default_tolerance(run, emulated):
     """Largest |dprob| that --check allows. 1e-4 where the network is fp32 in training and here (the probabilities are saved with
     6 decimals; measured about 1e-6). For a run trained in bf16 on cuda: 5e-3 when this command runs bf16 too (`emulated`;
-    measured 1e-3 or below on cpu), 1e-1 for an fp32 rescoring of it (measured up to 5e-2)."""
+    measured up to 2.5e-3 on cpu), 6e-2 for an fp32 rescoring of it (`--autocast off`, a diagnostic; measured up to 5.2e-2)."""
     if not trained_in_bf16(run):
         return TOLERANCE_FP32
     return TOLERANCE_BF16 if emulated else TOLERANCE_FP32_OF_BF16
@@ -480,6 +492,7 @@ def compare(saved, ids, probs, labels, threshold, tolerance, auc_metrics=None):
         out['auc_csv'] = auc_of([old_labels[k] for k in test], old[test])
         out['auc_saved'] = out['auc_csv'] if auc_metrics is None else auc_metrics
         out['auc_now'] = auc_of([old_labels[k] for k in test], probs[test])
+        out['dauc'] = out['auc_now'] - out['auc_saved']
     return out
 
 
@@ -546,7 +559,7 @@ def check_out(run, out):
 # ---- the command ---------------------------------------------------------------------------------------------------------------
 
 def predict(run_dir, checkpoint='auc', build=None, split='all', ids=None, out=None, device='cpu', check=False, tolerance=None,
-            threshold='saved', model1_run=None, autocast='auto', log=say):
+            threshold='saved', model1_run=None, autocast='auto', log=say, model1_build=None):
     """Score binaries with the weights of a run (module docstring); returns a dict with the probabilities, the rows written and,
     for `check`, its numbers. SystemExit for every refusal and for a failed check."""
     if checkpoint not in RULES:
@@ -564,7 +577,7 @@ def predict(run_dir, checkpoint='auc', build=None, split='all', ids=None, out=No
         raise SystemExit(f'the build {b_dir} is not a directory: pass --build DIR (a build_b folder or an unzipped preprocessed zip)')
     saved_list = saved_rows(run)
     saved = {r['sample_id']: r for r in saved_list}
-    scorer = make_scorer(run, b_dir, device, model1_run, log)
+    scorer = make_scorer(run, b_dir, device, model1_run, log, model1_build)
     emulated = bf16_emulated(run, device, autocast)
     tol = default_tolerance(run, emulated) if tolerance is None else float(tolerance)
     saved_thr = threshold_of(run, 'saved')[0]
@@ -593,8 +606,9 @@ def predict(run_dir, checkpoint='auc', build=None, split='all', ids=None, out=No
             problems.append('the labels of the build differ from the saved ones')
         if numbers['max_dprob'] > tol:
             problems.append(f'max |dprob| {numbers["max_dprob"]:.3g} > tolerance {tol:g} (worst {numbers["worst"]})')
-        if 'auc_now' in numbers and round(numbers['auc_now'], 3) != round(numbers['auc_saved'], 3):
-            problems.append(f'test AUC {numbers["auc_now"]:.6f} != saved {numbers["auc_saved"]:.6f} at 3 decimals')
+        if 'auc_now' in numbers and abs(numbers['auc_now'] - numbers['auc_saved']) > AUC_TOLERANCE:
+            problems.append(f'test AUC {numbers["auc_now"]:.6f} differs from the saved {numbers["auc_saved"]:.6f} by '
+                            f'{numbers["auc_now"] - numbers["auc_saved"]:+.2e} (> {AUC_TOLERANCE:g})')
         if numbers['pred_agreement'] < AGREEMENT:
             problems.append(f'pred agreement {numbers["pred_agreement"]:.4f} < {AGREEMENT}')
         result['check'] = {**numbers, 'problems': problems}
@@ -611,7 +625,7 @@ def predict(run_dir, checkpoint='auc', build=None, split='all', ids=None, out=No
         log(f'check against {RULES[run.rule][1]}: n {c["n"]}, max |dprob| {c["max_dprob"]:.3g} (tolerance {c["tolerance"]:g}, worst '
             f'{c["worst"]}), test AUC saved {c.get("auc_saved", float("nan")):.6f} (metrics.json; '
             f'{c.get("auc_csv", float("nan")):.6f} from the csv) / now {c.get("auc_now", float("nan")):.6f}, '
-            f'pred agreement {c["pred_agreement"]:.4f} (at {saved_thr})')
+            f'dAUC (now - saved) {c.get("dauc", float("nan")):+.2e} (tolerance {AUC_TOLERANCE:g}), pred agreement {c["pred_agreement"]:.4f} (at {saved_thr})')
         if problems:
             raise SystemExit('CHECK FAILED: ' + '; '.join(problems))
         log('CHECK PASSED')
@@ -632,17 +646,19 @@ def main(argv=None):
     ap.add_argument('--check', action='store_true', help="rescore the run's own validation and test binaries and compare with its "
                     'saved predictions; exit 1 when they differ')
     ap.add_argument('--autocast', choices=AUTOCAST_MODES, default='auto', help="auto: for a run trained under bf16 autocast on cuda "
-                    "(Model 1, the e2e arms) run those parts in bf16 on the cpu too (the probabilities then agree to about 1e-3, "
-                    "against up to 5e-2 in fp32); bf16: always; off: fp32")
-    ap.add_argument('--tolerance', type=float, help='--check: largest |dprob| allowed (default 1e-4, 1e-2 for a bf16-autocast run '
-                    'trained on cuda)')
+                    "(Model 1, the e2e arms) run those parts in bf16 on the cpu too (the probabilities then agree to 2.5e-3 at most, "
+                    "against up to 5.2e-2 in fp32); bf16: always; off: fp32, a diagnostic")
+    ap.add_argument('--tolerance', type=float, help='--check: largest |dprob| allowed (default 1e-4; for a bf16-autocast run '
+                    'trained on cuda 5e-3, or 6e-2 with --autocast off)')
     ap.add_argument('--threshold', default='saved', help="the pred threshold: saved (the trainer's for this checkpoint), val "
                     "(metrics.json selection.<rule>.threshold_val) or a number")
     ap.add_argument('--model1-run', type=Path, help='-m1frozen runs: the folder of the per-block Model 1 run that was frozen')
+    ap.add_argument('--model1-build', type=Path, help="-m1frozen runs: the build the Model 1 trained on (default: the build_dir of its "
+                    "metrics.json, else RUNS/team/<that folder's name>, else the build being scored)")
     args = ap.parse_args(argv)
     try:
         return predict(args.run, args.checkpoint, args.build, args.split, args.ids, args.out, args.device, args.check, args.tolerance,
-                       args.threshold, args.model1_run, args.autocast)
+                       args.threshold, args.model1_run, args.autocast, model1_build=args.model1_build)
     except FileNotFoundError as e:                  # a missing build folder or sample file, a teammate source: the message says which
         raise SystemExit(str(e)) from None
 
