@@ -302,7 +302,8 @@ def test_the_gates_pair_the_arm_with_emb_r7_and_tfidf_only():
     stage = gates.load_stage('team')
     emb = 'team sig500v3 emb (Model 3)'
     assert dict(stage.arms)[E2E] == team_group(ARM)
-    assert [a for a, b in stage.pairs if b == E2E] == ['TF-IDF', 'R7 typed, whole graph', emb]
+    assert [a for a, b in stage.pairs if b == E2E] == ['TF-IDF', 'R7 typed, whole graph', emb,
+                                                       'team sig500v3 m1frozen (Model 3, frozen Model 1)']      # and the frozen-Model-1 arm (team_m1frozen.txt)
     assert [b for a, b in stage.pairs if a == E2E] == ['team callwalk500 e2e (Model 3, trained encoder)',      # only the sampler and budget
                                                        'team sig250 e2e (Model 3, trained encoder)']      # pairs of the other builds
     assert len(stage.pairs) == len(set(stage.pairs))

@@ -1,0 +1,113 @@
+# Model 3 on a frozen Model 1 (`-m1frozen`, Yanping's PR #32): per run the per-block Model 1 of the fold (`train --model fivechannel
+# --per-block --max-instructions 64`, run name suffix `-pb`: it encodes the first 64 instructions of every block with Janice's
+# network, averages the block vectors and classifies) and then `train_b --arm sig500v3-m1frozen`, which encodes each block once with
+# that Model 1's best_auc.pt and trains only Dorothy's GAT on the block vectors; it exits unless the Model 1 is of the same fold,
+# seed, dataset, loss weighting and BUILD (API ids are numbered per build: the `--build` of the Model 1 line is the build the arm
+# reads by default, and the arm compares the two api_vocab.json). Seeds 0 1 2, folds 0-4 (15 pairs per group, seed by seed, each
+# Model 1 before its arm).
+#   kfold x86 on RUNS/team/b_sig500_v3 (2 groups, 30 runs); kfold all on RUNS/team/b_sig500_mendeley_all (2 groups, 30 runs); the
+#   same with --arch-balance (the `-ab` twins: cell weights in both the Model 1 loss and the arm's, 2 groups, 30 runs).
+# 6 groups, 90 runs. `gates team` and `gates team_mendeley_all` pair `emb -> m1frozen` (what the frozen Model 1's block vectors
+# change against the pooled embedding), `m1frozen -> e2e` (what training the encoder adds) and Model 1 L128 -> per-block Model 1.
+# The same arm on the combined dataset is `team_v3_m1frozen.txt`.
+#     python -m experiments.queue --plan experiments/plans/team_m1frozen.txt --budget-min 1800
+
+# --arch x86 (kfold): signal 500, b_sig500_v3
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 0 --seed 0 --build RUNS/team/b_sig500_v3
+train_b --fold 0 --seed 0 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 1 --seed 0 --build RUNS/team/b_sig500_v3
+train_b --fold 1 --seed 0 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 2 --seed 0 --build RUNS/team/b_sig500_v3
+train_b --fold 2 --seed 0 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 3 --seed 0 --build RUNS/team/b_sig500_v3
+train_b --fold 3 --seed 0 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 4 --seed 0 --build RUNS/team/b_sig500_v3
+train_b --fold 4 --seed 0 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 0 --seed 1 --build RUNS/team/b_sig500_v3
+train_b --fold 0 --seed 1 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 1 --seed 1 --build RUNS/team/b_sig500_v3
+train_b --fold 1 --seed 1 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 2 --seed 1 --build RUNS/team/b_sig500_v3
+train_b --fold 2 --seed 1 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 3 --seed 1 --build RUNS/team/b_sig500_v3
+train_b --fold 3 --seed 1 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 4 --seed 1 --build RUNS/team/b_sig500_v3
+train_b --fold 4 --seed 1 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 0 --seed 2 --build RUNS/team/b_sig500_v3
+train_b --fold 0 --seed 2 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 1 --seed 2 --build RUNS/team/b_sig500_v3
+train_b --fold 1 --seed 2 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 2 --seed 2 --build RUNS/team/b_sig500_v3
+train_b --fold 2 --seed 2 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 3 --seed 2 --build RUNS/team/b_sig500_v3
+train_b --fold 3 --seed 2 --arm sig500v3-m1frozen --protocol kfold
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --fold 4 --seed 2 --build RUNS/team/b_sig500_v3
+train_b --fold 4 --seed 2 --arm sig500v3-m1frozen --protocol kfold
+
+# --arch all (kfold): signal 500, b_sig500_mendeley_all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 0 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 0 --seed 0 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 1 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 1 --seed 0 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 2 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 2 --seed 0 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 3 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 3 --seed 0 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 4 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 4 --seed 0 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 0 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 0 --seed 1 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 1 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 1 --seed 1 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 2 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 2 --seed 1 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 3 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 3 --seed 1 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 4 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 4 --seed 1 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 0 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 0 --seed 2 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 1 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 1 --seed 2 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 2 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 2 --seed 2 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 3 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 3 --seed 2 --arm sig500v3-m1frozen --protocol kfold --arch all
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --fold 4 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 4 --seed 2 --arm sig500v3-m1frozen --protocol kfold --arch all
+
+# --arch all (kfold), arch-balanced twins
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 0 --seed 0 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 1 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 1 --seed 0 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 2 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 2 --seed 0 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 3 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 3 --seed 0 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 4 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 4 --seed 0 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 0 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 0 --seed 1 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 1 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 1 --seed 1 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 2 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 2 --seed 1 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 3 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 3 --seed 1 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 4 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 4 --seed 1 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 0 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 0 --seed 2 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 1 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 1 --seed 2 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 2 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 2 --seed 2 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 3 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 3 --seed 2 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+train --model fivechannel --per-block --max-instructions 64 --protocol kfold --arch all --arch-balance --fold 4 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 4 --seed 2 --arm sig500v3-m1frozen --protocol kfold --arch all --arch-balance
+
+report
+gates team
+gates team_mendeley_all

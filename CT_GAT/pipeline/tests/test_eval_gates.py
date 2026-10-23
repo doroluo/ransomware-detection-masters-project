@@ -140,7 +140,7 @@ def test_team_groups_are_the_names_the_trainers_write():
         assert [b for a, b in pairs if a == ref and b in first] == ['team gnn500', 'team cb500', 'team sig500'] + v2
     assert ('team sig500', 'team sig500v2') in pairs
     assert ('path 2: typed, CodeBERT vectors', 'team cb500') in pairs and ('R7 typed, whole graph', 'ours b500 typed') in pairs
-    assert len(pairs) == len(set(pairs)) == 34 + 12 and s.extra == 'operating_points' and s.seeds == (0, 1, 2)    # 12: callwalk / 250 pairs
+    assert len(pairs) == len(set(pairs)) == 34 + 12 + 3 and s.extra == 'operating_points' and s.seeds == (0, 1, 2)    # 12: callwalk / 250 pairs, 3: m1frozen
     assert not [p for p in pairs[:34] if 'sig250' in ' '.join(p) or 'callwalk' in ' '.join(p)]                 # the first 34 are as before
     assert s.options['match_rate_builds'][:2] == (('b_sig500_v3', 'team/b_sig500_v3'), ('b_sigwhole_v3', 'team/b_sigwhole_v3'))
     assert [b for b, _ in s.options['match_rate_builds'][2:]] == ['b_sig250_main', 'b_callwalk500_main', 'b_callwalk250_main']
@@ -309,6 +309,9 @@ def test_the_dataset_stage_pairs_are_the_comparisons_of_the_plan():
     assert set(stage('team_v3_matched').pairs) == v3 and [a for a, _ in stage('team_v3_matched').arms] == [a for a, _ in stage('team_v3_all').arms]
 
 
+M1FROZEN_PLAN = {'team_mendeley_all': 'team_m1frozen', 'team_v3': 'team_v3_m1frozen'}
+
+
 @pytest.mark.parametrize('plan,stage_names', [('team_mendeley_all', ('team_mendeley_all',)), ('team_v3', ('team_v3_all', 'team_v3_matched'))])
 def test_a_dataset_plan_trains_fifteen_runs_of_each_group_its_stages_read(plan, stage_names):
     groups = plan_groups(plan)
@@ -316,6 +319,9 @@ def test_a_dataset_plan_trains_fifteen_runs_of_each_group_its_stages_read(plan, 
     read = {g for name in stage_names for _, g in stage(name).arms}
     assert set(groups) <= read                                                      # every trained group is a row of a stage
     unread = read - set(groups)
+    frozen = {g for g in plan_groups(M1FROZEN_PLAN[plan]) if g in read}                 # the rows that the m1frozen plan trains (test_team_m1frozen.py)
+    assert len(frozen) == (4 if plan == 'team_mendeley_all' else 8) and frozen <= unread
+    unread -= frozen
     if plan == 'team_mendeley_all':
         assert unread == {'tfidf'} and len(groups) == 23
     else:                                                                           # the published rows, and the 250-block builds that are not part of the plan

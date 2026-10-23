@@ -31,7 +31,7 @@ from tiny_cache import tiny  # noqa: F401  (a fixture)
 
 FOLDS = range(5)
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ('build_a', 'build_b', 'common', 'compare_builds', 'fit', 'match_acceptance', 'match_diagnosis', 'match_rates',
+MODULES = ('build_a', 'build_b', 'check_splits', 'common', 'compare_builds', 'fit', 'match_acceptance', 'match_diagnosis', 'match_rates',
            'measure_rss', 'package_build', 'train_a', 'train_b')
 
 

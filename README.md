@@ -108,7 +108,7 @@ python -m experiments.train --model fivechannel --protocol kfold_v3 --arch match
 ## Plans and tables
 
 A plan in `experiments/plans/` is one experiment for `experiments.queue`: `model1_variants`, `team_b`, `team_builds` (135 runs),
-`team_mendeley_all` (345 runs, whole Mendeley dataset) and `team_v3` (390 runs, combined dataset). `report` writes `RESULTS.md` in the
+`team_mendeley_all` (345 runs, whole Mendeley dataset), `team_v3` (390 runs, combined dataset), `team_m1frozen` (90) and `team_v3_m1frozen` (120 runs: Model 3 on a frozen Model 1). `report` writes `RESULTS.md` in the
 run directory. `gates` prints the arms of a stage and names the missing folds and seeds; `--stage team` also compares with published
 arms, which print as missing unless the published runs are in `GT_RUNS`, and `team_mendeley_all`, `team_v3_all` and `team_v3_matched`
 add the recall of each class and architecture. GPU runs differ in the last digits (CUDA scatter is nondeterministic), so compare models

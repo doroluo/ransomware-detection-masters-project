@@ -51,6 +51,34 @@ def model1_rows(protocol, arch, lengths=MODEL1_LENGTHS, arch_balance=False):
                   model1_group(protocol, arch, instructions, tag, arch_balance)) for label, instructions, tag in lengths)
 
 
+M1FROZEN_LABEL = 'm1frozen (Model 3, frozen Model 1)'
+PER_BLOCK_LABEL = 'Model 1 five-channel L64 per block'      # `fivechannel --per-block --max-instructions 64`, run name suffix -pb
+M1_LABEL = 'Model 1 five-channel L128'                       # the first 128 instructions of the binary (her default)
+
+
+def per_block_group(protocol, arch, arch_balance=False):
+    """RunConfig.group of the per-block Model 1: `kfold_all_fivechannel-L64-pb-ab`."""
+    return RunConfig(protocol=protocol, fold=0, arch=arch, model='fivechannel', max_instructions=64, per_block=True,
+                     arch_balance=arch_balance).group
+
+
+def m1frozen_rows(protocol, arch, arch_balance=False):
+    """The per-block Model 1 and Model 3 on its frozen encoder (`sig500v3-m1frozen`), the plans team_m1frozen.txt and
+    team_v3_m1frozen.txt: (`Model 1 five-channel L64 per block`, group), (`team sig500v3 m1frozen (Model 3, frozen Model 1)`, group)."""
+    ab = AB if arch_balance else ''
+    return ((PER_BLOCK_LABEL + ab, per_block_group(protocol, arch, arch_balance)),
+            (team_label('sig500v3', M1FROZEN_LABEL, arch_balance), team_group('sig500v3-m1frozen', protocol, arch, arch_balance)))
+
+
+def m1frozen_pairs(arch_balance=False):
+    """emb -> m1frozen (what the frozen Model 1's block vectors change against the pooled embedding), m1frozen -> e2e (what training
+    the encoder adds) and Model 1 at 128 instructions -> the per-block Model 1."""
+    ab = AB if arch_balance else ''
+    emb, e2e = (team_label('sig500v3', name, arch_balance) for _, name in INPUTS[1:])
+    per_block, frozen = (label for label, _ in m1frozen_rows('kfold', 'all', arch_balance))
+    return ((emb, frozen), (frozen, e2e), (M1_LABEL + ab, per_block))
+
+
 def input_pairs(builds=BUILDS, arch_balance=False):
     """feat -> emb (what the stored block embedding adds to the block features) and emb -> e2e (what training the encoder adds)."""
     pairs = []
@@ -104,4 +132,6 @@ def team_v3_parts(arch):
              + input_pairs() + input_pairs(('sig500v3',), arch_balance=True) + sampler_pairs() + budget_pairs()
              + ((model1[0][0], model1[1][0]),))
     builds = tuple((f'b_{family}_combined_v3', f'team/b_{family}_combined_v3') for family in ('sig500', 'callwalk500'))
-    return published + team + model1 + twins, pairs, builds
+    frozen, frozen_twins = m1frozen_rows(protocol, arch), m1frozen_rows(protocol, arch, arch_balance=True)
+    pairs += m1frozen_pairs() + m1frozen_pairs(arch_balance=True)
+    return published + team + model1 + twins + frozen + frozen_twins, pairs, builds

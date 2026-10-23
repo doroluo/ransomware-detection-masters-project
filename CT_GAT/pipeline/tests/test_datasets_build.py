@@ -232,6 +232,9 @@ def test_the_run_names_of_every_dataset_are_distinct_and_those_of_kfold_x86_are_
                       'kfold_v3_matched_gnn_team-sig500v3-feat', 'kfold_v3_matched_gnn-ab_team-sig500v3-feat'}
 
 
+M1FROZEN_RECORDINGS = {'team_m1frozen', 'team_v3_m1frozen'}
+
+
 def test_the_new_run_names_collide_with_nothing_known():
     names = set(all_run_names())
     new = {n for n, (protocol, arch, _, _) in all_run_names().items() if (protocol, arch) != ('kfold', 'x86')}
@@ -242,6 +245,8 @@ def test_the_new_run_names_collide_with_nothing_known():
     for fixture in (HERE / 'fixtures').rglob('*'):
         if fixture.is_file() and fixture.suffix in ('.txt', '.json', '.csv', '.md'):
             tokens = set(re.findall(r'[\w-]*kfold[\w-]*', fixture.read_text(encoding='utf-8', errors='replace')))
+            if fixture.parent.name == 'plans_dry' and fixture.stem in M1FROZEN_RECORDINGS:
+                continue       # these name runs of the x86 dataset next to runs of the new ones: test_team_m1frozen.py compares their full run names
             if fixture.parent.name == 'plans_dry' and fixture.stem in recordings:
                 assert not [t for t in tokens if re.match(r'kfold\d_x86_', t)], fixture                      # none is a run of the x86 dataset
                 assert {t for t in tokens if '_team-' in t} <= new and tokens & new, fixture             # every team run is one of the new names
