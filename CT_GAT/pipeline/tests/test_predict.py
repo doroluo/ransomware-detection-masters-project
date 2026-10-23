@@ -452,6 +452,36 @@ def test_with_no_build_of_the_run_on_this_machine_the_rescoring_finds_a_scored_b
             predict.predict(run, build=foreign, check=check, model1_run=pb, out=tmp_path / 'o.csv', log=quiet)
 
 
+def test_a_stand_in_build_is_probed_even_when_the_runs_build_is_here_and_a_wrong_model1_is_refused(world, tmp_path, monkeypatch):
+    """The guard compares vocabularies, not weights: with the Model 1's build stood in by the scored one, a Model 1 whose API
+    embedding rows are permuted passes it. Plain scoring (no --check) must still refuse it, before it scores anything."""
+    from s02_preprocess.tokenize_asm_gz import FIRST_API_ID
+    monkeypatch.setattr(train_b, 'TEAM_RUNS', tmp_path / 'no-team')
+    gone = str(tmp_path / 'trained-elsewhere' / 'b_sig500_v3')
+    run, pb = frozen_copy(world, tmp_path, 'wrong', model1_metrics={'build_dir': gone})
+    assert predict.reference_build(predict.load_run(run)) is not None                         # the run's build is on this machine
+    lines = []
+    result = predict.predict(run, build=world.build, model1_run=pb, out=tmp_path / 'ok.csv', log=lines.append)    # the right Model 1
+    assert any(l.startswith('build identity:') for l in lines)
+    assert float(np.abs(result['probs'] - np.array([float(r['prob']) for r in predict.saved_rows(predict.load_run(run))])).max()) <= EXACT
+    state = torch.load(pb / 'best_auc.pt', map_location='cpu')
+    key = 'embedder.api_embedding.weight'
+    state[key] = torch.cat([state[key][:FIRST_API_ID], state[key][FIRST_API_ID:].flip(0)])
+    assert not torch.equal(state[key], torch.load(world.runs / PB / 'best_auc.pt', map_location='cpu')[key])
+    torch.save(state, pb / 'best_auc.pt')
+    out = tmp_path / 'wrong.csv'
+    for kw in ({}, {'ids': predict.load_run(run).ids('val')[:2]}):
+        with pytest.raises(SystemExit, match=r'stands in for the build of the frozen Model 1.*max \|dprob\|'):
+            predict.predict(run, build=world.build, model1_run=pb, out=out, log=quiet, **kw)
+    assert not out.exists()
+    with pytest.raises(SystemExit, match='stands in'):                                          # --check is refused by the probe as well
+        predict.predict(run, build=world.build, model1_run=pb, check=True, out=out, log=quiet)
+    # an explicit --model1-build is the user's statement, not the stand-in: the probe is not forced on it
+    lines.clear()
+    predict.predict(run, build=world.build, model1_run=world.runs / PB, model1_build=world.build, out=tmp_path / 'e.csv', log=lines.append)
+    assert not any(l.startswith('build identity:') for l in lines)
+
+
 def test_a_frozen_run_finds_its_model1_build_in_runs_team_before_it_falls_back_to_the_scored_build(world, tmp_path, monkeypatch):
     team = tmp_path / 'team'
     shutil.copytree(world.build, team / 'b_sig500_v3')

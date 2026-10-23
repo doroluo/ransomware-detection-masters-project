@@ -38,7 +38,9 @@ metrics.json when that folder exists, else `RUNS/<name of the per-block Model 1 
 trainer's own guard (`train_b.load_frozen_model1`, the arm's build being the scored one), which refuses a Model 1 whose build
 vocabulary differs. The guard finds the Model 1's build in the `build_dir` of its metrics.json, else in `RUNS/team/<that folder's
 name>`; `--model1-build DIR` names it, and when it is nowhere on this machine and the scored build is the run's own, the scored
-build stands in for it (the run passed the guard when it trained).
+build stands in for it (the run passed the guard when it trained). The guard then cannot tell which Model 1 weights were loaded, so
+whenever the scored build stands in, the 8 validation binaries are rescored before anything else, with or without the run's build,
+and a Model 1 that does not reproduce them is refused (`--check` is still the whole test).
 
 The `pred` column: `--threshold saved` (default) is the threshold the trainer used for that checkpoint's predictions file:
 `selection.auc.threshold_val` of metrics.json for `--checkpoint auc` (predictions_auc.csv), and the RunConfig threshold, 0.5, for
@@ -329,7 +331,7 @@ class TeamScorer:
                     raise SystemExit(f'{self.build} does not reproduce its own block embeddings ({e}); it is not the build the '
                                      f'run was made from') from None
         self.seen = torch.tensor(sorted(api), dtype=torch.long)
-        self.frozen = None
+        self.frozen, self.standin = None, False
         if self.features == train_b.M1FROZEN:
             self.frozen = self.load_frozen(model1_run, log, model1_build)
         self.model = train_b.new_model(self.features, int(metrics['in_dim']), int(metrics['edge_dim']), self.rows)
@@ -352,7 +354,8 @@ class TeamScorer:
         is here (a scored build whose vocabulary only extends the run's is not the run's: the guard gets no stand-in and refuses the
         missing build). When it is not here, the rescoring of the run's own validation binaries (the probe, or `--check`) shows a
         build that gives other inputs; an extension of the run's build gives the same inputs (its new ids are UNK_API), so it is
-        scored. A run without `model1_build` was not guarded and gets the guard's refusal."""
+        scored. A run without `model1_build` was not guarded and gets the guard's refusal. `self.standin` records that the stand-in
+        was used: nothing then verifies the Model 1 checkpoint itself, and `predict` runs the probe."""
         if explicit:
             return explicit
         try:
@@ -378,8 +381,9 @@ class TeamScorer:
                              f'run or pass --model1-run DIR')
         model1_dir = found
         manifest = Manifest(*[[{'sample_id': i} for i in run.manifest[s]] for s in ('train', 'val', 'test')], run.manifest.get('val_families', []))
-        net, source = train_b.load_frozen_model1(model1_dir, manifest, False, log, b_dir=self.build,
-                                                 model1_build=self.model1_build(model1_dir, model1_build))
+        used = self.model1_build(model1_dir, model1_build)
+        self.standin = used is not None and not model1_build
+        net, source = train_b.load_frozen_model1(model1_dir, manifest, False, log, b_dir=self.build, model1_build=used)
         net.to(self.device)
         return net
 
@@ -497,7 +501,8 @@ def compare(saved, ids, probs, labels, threshold, tolerance, auc_metrics=None):
 
 
 def probe(run, scorer, saved, threshold, tolerance, log):
-    """The vocabulary test when the run's build is not here: rescore a few validation binaries (both classes) of the run itself."""
+    """The identity test when nothing else verifies the inputs (the run's build is not here, or the scored build stands in for the
+    Model 1's build): rescore a few validation binaries (both classes) of the run itself."""
     val = [r for r in saved if r['split'] == 'val']
     pick = [r['sample_id'] for lab in ('1', '0') for r in [x for x in val if x['label'] == lab][:PROBE_IDS // 2]]
     if not pick:
@@ -506,9 +511,16 @@ def probe(run, scorer, saved, threshold, tolerance, log):
     old = np.array([float(next(r['prob'] for r in val if r['sample_id'] == i)) for i in pick])
     worst = float(np.abs(probs - old).max())
     if worst > tolerance:
-        raise SystemExit(f'{scorer.build}: the build of {run.dir.name} is not on this machine, so its vocabulary was tested by rescoring '
-                         f'{len(pick)} of the run\'s own binaries: max |dprob| {worst:.3g} > {tolerance:g}. This build does not give the '
-                         f'run\'s inputs (another API vocabulary, sampler or budget)')
+        if getattr(scorer, 'standin', False):
+            why = (f"the scored build stands in for the build of the frozen Model 1, which is not on this machine, so the Model 1 "
+                   f"checkpoint was tested by rescoring {len(pick)} of the run's own binaries")
+            what = ("This build does not give the run's inputs (another API vocabulary, sampler or budget), or the Model 1 weights "
+                    "loaded are not the run's")
+        else:
+            why = (f"the build of {run.dir.name} is not on this machine, so its vocabulary was tested by rescoring {len(pick)} of "
+                   f"the run's own binaries")
+            what = "This build does not give the run's inputs (another API vocabulary, sampler or budget)"
+        raise SystemExit(f'{scorer.build}: {why}: max |dprob| {worst:.3g} > {tolerance:g}. {what}')
     log(f'build identity: {len(pick)} of the run\'s own validation binaries rescored, max |dprob| {worst:.3g} <= {tolerance:g}')
 
 
@@ -589,7 +601,7 @@ def predict(run_dir, checkpoint='auc', build=None, split='all', ids=None, out=No
         want = [i for s in (('val', 'test') if split == 'all' else (split,)) for i in run.ids(s)]
     scorer.has(want)
     with numerics(emulated):
-        if scorer.ref is None and not check:
+        if (scorer.ref is None and not check) or getattr(scorer, 'standin', False):
             probe(run, scorer, saved_list, saved_thr, tol, log)
         probs, sizes, labels = scorer.score(want)
     rows, by_split = table(run, want, probs, sizes, labels, saved, index_meta(run.cfg, [i for i in want if i not in saved]))
