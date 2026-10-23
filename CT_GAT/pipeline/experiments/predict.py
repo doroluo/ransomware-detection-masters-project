@@ -640,8 +640,11 @@ def main(argv=None):
                     "(metrics.json selection.<rule>.threshold_val) or a number")
     ap.add_argument('--model1-run', type=Path, help='-m1frozen runs: the folder of the per-block Model 1 run that was frozen')
     args = ap.parse_args(argv)
-    return predict(args.run, args.checkpoint, args.build, args.split, args.ids, args.out, args.device, args.check, args.tolerance,
-                   args.threshold, args.model1_run, args.autocast)
+    try:
+        return predict(args.run, args.checkpoint, args.build, args.split, args.ids, args.out, args.device, args.check, args.tolerance,
+                       args.threshold, args.model1_run, args.autocast)
+    except FileNotFoundError as e:                  # a missing build folder or sample file, a teammate source: the message says which
+        raise SystemExit(str(e)) from None
 
 
 if __name__ == '__main__':

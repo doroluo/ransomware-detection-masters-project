@@ -440,6 +440,16 @@ def test_real_runs_are_reproduced_from_their_checkpoints_on_cpu(name, tmp_path):
     assert not c['problems'] and snapshot(folder) == before
 
 
+def test_a_run_whose_build_is_nowhere_stops_with_a_message(world, tmp_path, monkeypatch):
+    copy = tmp_path / 'run'
+    shutil.copytree(run_of(world, 'model1'), copy)
+    metrics = json.loads((copy / 'metrics.json').read_text(encoding='utf-8'))
+    (copy / 'metrics.json').write_text(json.dumps({**metrics, 'build_dir': str(tmp_path / 'gone')}), encoding='utf-8')
+    monkeypatch.setenv('GT_TEAM_B_BUILD', str(tmp_path / 'nowhere'))
+    with pytest.raises(SystemExit, match='is not a directory'):
+        predict.main(['--run', str(copy), '--out', str(tmp_path / 'o.csv')])
+
+
 def test_the_module_imports_without_torch_geometric(tmp_path):
     fake = tmp_path / 'fake'
     (fake / 'torch_geometric').mkdir(parents=True)
