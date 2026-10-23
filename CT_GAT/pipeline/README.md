@@ -380,6 +380,25 @@ dataset or the combined dataset also prints the recall of each class x architect
 (majority class, x86 rule), and each paired difference a second time cell-balanced; `stats --protocol kfold --arch all --balanced`
 gives one such pair, and `report` prints the kfold rows of arch all in its cell-balanced section.
 
+**5. Scoring with a saved run.** A run folder that holds its weights (`best_auc.pt`, `best.pt`; the `*_model_runs_v1.zip` of the Drive,
+unzipped into `runs/`) scores binaries without retraining. The command reads the run and its build (the `build_dir` of `metrics.json`
+when that folder exists here, else `CT_GAT/processed/cfg_subgraphs`) and writes a CSV in the columns of `predictions_auc.csv`; it never
+writes into the run folder.
+
+```bash
+python -m experiments.predict --run RUNS/kfold0_x86_gnn_s0_team-sig500v3-e2e --check
+python -m experiments.predict --run RUNS/kfold0_x86_gnn_s0_team-sig500v3-e2e --split test --out scores.csv
+python -m experiments.predict --run RUNS/kfold0_x86_fivechannel-L512_s0 --checkpoint f1 --build RUNS/team/b_sig500_v3 --ids <sample_id> <sample_id>
+```
+
+The first command rescores the run's validation and test binaries and compares them with its saved predictions (same ids, labels and
+splits; largest difference of a probability 1e-4, or 5e-3 for a network trained under bf16 autocast on a GPU, which the CPU emulates;
+test AUC equal to 3 decimals; `pred` equal in 99.5% of the rows), with exit status 1 otherwise. The second writes the probabilities of
+the test binaries. The third scores named binaries of a build, which must be of the run's dataset, sampler, block budget and API
+vocabulary, else the command stops naming both sides. The `pred` column uses the threshold of that checkpoint's saved predictions (the
+validation threshold for `--checkpoint auc`, 0.5 for `f1`) and the summary names it; a `-m1frozen` run also needs its Model 1 run folder
+(`--model1-run DIR`).
+
 **A whole experiment.** Each file in `experiments/plans/` is one experiment, as `train`, `train_b`, `report`, `val_threshold` and
 `gates` lines; its header names the CPU steps to run once before it, when it needs any (`team_b` and `team_builds` name none):
 

@@ -546,6 +546,21 @@ python -m experiments.team_pipelines.train_b --fold k --seed s --arm <arm> [--fe
   patience 8 on the validation ransomware F1 at 0.5. Both selection rules, outputs and `--smoke` as in train_a.
   `n_segments_total` is empty (the build does not record the function count); `n_blocks_total` comes from `build_log.csv`.
 
+## Scoring with a saved run (`experiments/predict.py`)
+
+`python -m experiments.predict --run RUNS/<run folder> [--check]` loads `best_auc.pt` (or `best.pt` with `--checkpoint f1`) of a run of
+any arm of `ARM_TABLE` (inputs `all`, `feat`, `emb`, `e2e`, `m1frozen`, their `-ab` twins, the sigwhole arms) or of the five-channel
+Model 1 (`-L512`, `-ab`, `-pb`, the `whole` tag) on kfold x86, kfold all and kfold_v3 all or matched. It builds the network with
+`train_b.new_model` (or `five_channel.train.new_net`) and the input with the trainer's own `make_graph`, `make_e2e_graph`, `frozen_graph`
+and `load_binaries`; the API ids of the run's training binaries (`manifest.json`) are the seen set, so a validation or test binary
+sees the vocabulary it saw in training. `check_build` and `check_build_dataset` refuse a build of another dataset, sampler, block
+budget or source; an `api_vocab.json` that differs from the run's build (or does not extend it) or has fewer ids than the
+checkpoint's embedding is refused as well, and when the run's build is not on the machine the vocabulary is tested by rescoring eight
+of the run's own validation binaries. A network trained under bf16 autocast on a GPU (Model 1, `-e2e`) is rescored on the CPU in
+bf16 as well (`--autocast`, default `auto`; the fused encoder fast path of torch is switched off meanwhile): measured on the
+published fold-0 runs the probabilities then agree to 2.5e-3 at most (up to 5e-2 in fp32), the GAT arms to 1.2e-6 in fp32. A
+`-m1frozen` run loads its Model 1 run through `load_frozen_model1`; `--model1-run` names the folder when `RUNS/` does not hold it.
+
 ## Teammate sources
 
 `common.SOURCES` holds two sha256-pinned sources and the repository's own copy of Yanping's files; `import_team(module, source=...)`
