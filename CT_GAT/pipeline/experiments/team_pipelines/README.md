@@ -176,8 +176,8 @@ cost the same, since the cost is `load_cfg` and the listing pass. The zips are m
 | `Mendeley_all_cfg_subgraphs_callwalk_500blocks_v3.zip` | 1.29 GB | `55336eb6247f5b3a1f70d23f1e05a727583f94cd6624f24e6205cd20ef12f511` | `CT_GAT/` | the same, arms `callwalk500-*` |
 | `Mendeley_all_cfg_subgraphs_callwalk_250blocks_v3.zip` | 0.69 GB | `75cbc91378e134fbae62b823945b3b549ede3f00bf5348f91fb557470f6ab8f2` | `CT_GAT/` | the same, arms `callwalk250-*` |
 | `Mendeley_all_cfg_subgraphs_uncapped_v3.zip` | 3.44 GB (18.2 GB unpacked) | `6423d217a8f096ea2a9ce458d7a0699a7d668e7af196bc786965228382aeae27` | `CT_GAT/` | the same, arms `sigwhole-*` |
-| `combined_v3_cfg_subgraphs_signal_500blocks_v3.zip` | pending | pending | `CT_GAT/` | `--protocol kfold_v3 --arch all` and `matched`, arms `sig500v3-*`, Model 1 |
-| `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` | pending | pending | `CT_GAT/` | the same, arms `callwalk500-*` |
+| `combined_v3_cfg_subgraphs_signal_500blocks_v3.zip` | 3.00 GB | `91815b5a4a31345b474e6c72fbb0d2f66d2a9d08776c1172871cb73de44d53bc` | `CT_GAT/` | `--protocol kfold_v3 --arch all` and `matched`, arms `sig500v3-*`, Model 1 |
+| `combined_v3_cfg_subgraphs_callwalk_500blocks_v3.zip` | 3.05 GB | `eb727c93166f3c613cc950fa4b7663527376144dd3dcf007d0f4ce1e1ae39420` | `CT_GAT/` | the same, arms `callwalk500-*` |
 
 The five `Mendeley_x86_...` zips keep their names, sizes and checksums, and serve the x86 arms only. A `Mendeley_all_...` zip holds
 the x86 payloads too, but the x86 arms refuse it (above).
