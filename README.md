@@ -105,6 +105,9 @@ python -m experiments.team_pipelines.train_b --arm sig500v3-e2e --protocol kfold
 python -m experiments.train --model fivechannel --protocol kfold_v3 --arch matched --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_combined_v3
 ```
 
+A finished run folder with its weights (the `*_model_runs_v1.zip` of the Drive, unzipped into `runs/`) scores binaries without retraining:
+`python -m experiments.predict --run RUNS/<run> --check` reproduces its saved predictions, and `--build DIR --ids ...` scores others.
+
 ## Plans and tables
 
 A plan in `experiments/plans/` is one experiment for `experiments.queue`: `model1_variants`, `team_b`, `team_builds` (135 runs),
