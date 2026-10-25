@@ -330,6 +330,14 @@ def all_ids(protocol='kfold', arch='x86'):
     return sorted(ids)
 
 
+def dataset_excluded(excluded, manifest):
+    """The entries of `excluded` ({sample_id: reason}) whose id is in a split of `manifest`. A pipeline-B build excludes ids of
+    the whole dataset it was made for (kfold_v3 `all`); a run on a part of it (`matched`) leaves out, and so records, only the
+    excluded ids that part holds: `write_run` refuses an excluded id that is in no split of the fold."""
+    here = {r['sample_id'] for r in manifest.train + manifest.val + manifest.test}
+    return {i: reason for i, reason in excluded.items() if i in here}
+
+
 @lru_cache(maxsize=2)
 def _rows_of(bundle):
     with (Path(bundle) / 'samples.csv').open(encoding='utf-8', newline='') as f:
