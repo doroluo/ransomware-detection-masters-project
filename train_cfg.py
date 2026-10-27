@@ -1,10 +1,15 @@
-"""Train a graph-attention classifier on CFG graphs.
+"""CFG with feature counting + GAT.
+
+Each node is one basic block of the IDA control-flow graph. Its vector is a
+count of opcodes, API groups, and block structure, not a learned embedding.
+``BlockGAT`` attends over the directed CFG edges and classifies the binary.
 
 Reads either layout:
 
 * ``processed_graphs/gnn/{train,test}/<sha256>.pt`` from ``construct_blocks.py``
-* a flat directory of ``preprocess_full.py`` subgraphs, such as
-  ``CT_GAT/processed/cfg_subgraphs`` or ``cfg_subgraphs_signal``
+  (opcode mix, API-group counts, size, and degree)
+* a flat directory of ``preprocess_full.py`` subgraphs, using the handcrafted
+  block-feature counts (``--feature-mode features``)
 
 The flat directory stores the train/test flag inside each file. This script
 holds out 15% of the training graphs for early stopping, then scores the
@@ -84,11 +89,12 @@ def stratified_holdout(graphs, fraction, seed):
 
 
 class BlockGAT(nn.Module):
-    """Project block features, then attend over the function CFGs.
+    """GAT over a CFG whose nodes are counted block features.
 
-    ``edge_dim`` is set for ``preprocess_full.py`` subgraphs, whose edges carry
-    the relation one-hot plus the back-edge bit. Compact and CodeBERT graphs
-    leave it unset and attend on connectivity alone.
+    ``edge_dim`` is set when the graph carries ``edge_attr``: the relation
+    one-hot plus the back-edge bit, on both the counted ``construct_blocks.py``
+    graphs and ``preprocess_full.py`` subgraphs. CodeBERT graphs have no edge
+    attributes and attend on connectivity alone.
     """
 
     def __init__(self, in_dim, hidden=128, heads=4, dropout=0.2, edge_dim=None):
@@ -346,9 +352,13 @@ def main():
     parser.add_argument("--graphs", default="processed_graphs/gnn")
     parser.add_argument(
         "--feature-mode",
-        choices=("both", "embeddings", "features"),
-        default="both",
-        help="Which preprocess_full.py block vector to use. Ignored for construct_blocks graphs.",
+        choices=("features", "both", "embeddings"),
+        default="features",
+        help=(
+            "Which preprocess_full.py block vector to use. "
+            "features is the counted block vector (opcode, operand, behaviour, API). "
+            "Ignored for construct_blocks graphs, which are already counts."
+        ),
     )
     parser.add_argument(
         "--raw-features",

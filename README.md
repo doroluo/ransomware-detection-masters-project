@@ -4,7 +4,7 @@
 flowchart TD
     A["IDA export: jsonl.gz CFG and asm.gz listing (s01_ida_export)"] --> P["preprocess_full builds: one .pt sample per binary (s02_preprocess)"]
     P --> M1["Model 1: five-channel token transformer (s03a_transformer)"]
-    P --> M2["Model 2: team GAT on the 77 block features (s03b_cfg_feature)"]
+    P --> M2["Model 2: CFG with feature counting + GAT (s03b_cfg_feature)"]
     P --> M3["Model 3: end-to-end block transformer + GAT (s03c_cfg_transformer)"]
     A --> B["CFG cache from the jsonl.gz alone: blocks, typed edges, call edges, tokens; folds and labels (s02_preprocess/cache)"]
     B -->|"folds and labels"| M1
@@ -21,7 +21,7 @@ flowchart TD
 | 1. IDA export | `s01_ida_export/` | writes the `.jsonl.gz` CFG export and the `.asm.gz` listing of each binary (inside IDA, on the VM) |
 | 2. Preprocessing | `s02_preprocess/` | `preprocess_full.py` selects blocks, aligns their instructions with the listing and writes one `.pt` sample per binary; `cache/` builds the CFG cache, folds and labels from the `.jsonl.gz` exports |
 | 3a. Model 1 | `s03a_transformer/` | the five-channel transformer over the instruction sequence |
-| 3b. Model 2 | `s03b_cfg_feature/` | the team GAT on the 77 block features |
+| 3b. Model 2 | `s03b_cfg_feature/` | CFG with feature counting + GAT: counted block features over the control-flow graph |
 | 3c. Model 3 | `s03c_cfg_transformer/` | the block transformer trained end to end under the GAT |
 | 4. Evaluation | `s04_evaluation/` | metrics, validation thresholds, the paired bootstrap and the result tables |
 
@@ -131,7 +131,7 @@ python -m pytest -m "not real_data and not gpu"
 
 * Model 3 with fixed block embeddings on the uncapped samples (`sigwhole-emb`): 0.981. At 500 blocks per binary (`sig500v3-emb`): 0.966.
   Trained end to end (`sig500v3-e2e`) it has no 3-seed result yet; its plan is `team_b`.
-* Model 2 on the uncapped samples (`sigwhole-feat`): 0.970. At 500 blocks per binary (`sig500v3-feat`): 0.954.
+* Model 2, CFG with feature counting + GAT, on the uncapped samples (`sigwhole-feat`): 0.970. At 500 blocks per binary (`sig500v3-feat`): 0.954.
 * Model 1: 0.919 to 0.926; it reads the first 128 or 512 instructions of each binary.
 * Published comparisons, from runs of the earlier jsonl-only code on the branch `jsonl-reference-models`: a logistic regression on the
   PE import table 0.985 (seed 0), TF-IDF over the instruction tokens 0.982 (seed 0), the typed GNN (R7) 0.979; Model 3 on the uncapped
@@ -143,29 +143,23 @@ python -m pytest -m "not real_data and not gpu"
 `build_b --source repo` (a 500-block build in 4 to 5 h), `preprocess_full.py`, the IDA export, and every zip with its size,
 checksum and arms. The plan, the result tables and the review are in `docs/history/`.
 
-# CFG autotokenizer
+# CFG with feature counting + GAT
 
-Root scripts on this branch tokenize IDA Pro CFG blocks and train a basic-block graph network. The CFG zip is [here](https://drive.google.com/drive/folders/19bufYY6xL3eUWbv0abOYgvC_wi5Ak1eO?usp=drive_link).
+Root scripts on this branch build a control-flow graph whose nodes are counted block features and train a graph-attention network on it. The CFG zip is [here](https://drive.google.com/drive/folders/19bufYY6xL3eUWbv0abOYgvC_wi5Ak1eO?usp=drive_link).
 
 IDA Pro exports live in `data/Combined_Goodware` and `data/Combined_Ransomware`. Each recommended sample is a `<sha256>.jsonl.gz` CFG (schema `ida-cfg-research/2.1`), listed in `splits/train.csv` and `splits/test.csv`. Unassigned samples stay in `splits/unassigned.csv` and are not used.
 
 ```bash
-pip install torch torch-geometric transformers
+pip install torch torch-geometric
 python construct_blocks.py --count-only
 python construct_blocks.py --limit 4
 python construct_blocks.py
-```
-
-Graphs are written to `processed_graphs/{train,test}/<sha256>.pt`. Each node is a CodeBERT vector of one basic block. Edges are the intra-function CFG. The block budget (default 500) keeps blocks that reference imports first.
-
-Opcode and API-call features train on every recommended sample:
-
-```bash
-python construct_blocks.py --gnn
 python train_cfg.py --epochs 20
-python inspect_graph.py processed_graphs/train/<sha256>.pt
+python inspect_graph.py processed_graphs/gnn/train/<sha256>.pt
 ```
 
-Those graphs land in `processed_graphs/gnn/{train,test}/<sha256>.pt`. Each node is one basic block (opcode mix, crypto/file/registry/process/network API counts, and block degree). The checkpoint is `checkpoints/best_gnn.pt`. `train_cfg.py --graphs processed_graphs` trains on the CodeBERT vectors instead.
+Graphs land in `processed_graphs/gnn/{train,test}/<sha256>.pt`. Each node is one basic block: opcode mix, crypto/file/registry/process/network API counts, and block size and degree. Edges are the directed intra-function CFG, with the relation one-hot and the back-edge bit. `train_cfg.py` is the GAT. The checkpoint is `checkpoints/best_gnn.pt`. The same GAT on the 77 counted features of a `preprocess_full.py` build is `python train_cfg.py --graphs CT_GAT/processed/cfg_subgraphs`.
+
+`python construct_blocks.py --codebert` writes frozen CodeBERT block vectors to `processed_graphs/` instead. That path is not this model.
 
 Earlier experiments: [CNN-ViT/README.md](CNN-ViT/README.md), [CT_GAT/README.md](CT_GAT/README.md), and [CT_GAT/block_level_counting/README.md](CT_GAT/block_level_counting/README.md).

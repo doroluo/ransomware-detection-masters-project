@@ -8,9 +8,9 @@ whose node matrix is the block vector and whose edges carry the typed one-hot
 relation and the DFS back-edge flag.
 
 Node features (``feature_mode``):
-  - ``both``        : [block_embeddings | block_features]  (default)
+  - ``features``    : handcrafted feature counts only (default: CFG with feature counting)
+  - ``both``        : [block_embeddings | block_features]
   - ``embeddings``  : learned 5-channel pooled vector only
-  - ``features``    : handcrafted feature vector only
 
 Edges:
   - ``edge_index``  : the sampled directed CFG
@@ -109,7 +109,7 @@ def _edge_attr(payload: dict) -> torch.Tensor:
     return torch.cat([one_hot, back], dim=1)
 
 
-def load_full_graph(path: str | Path, feature_mode: str = "both", scale: bool = True) -> Data:
+def load_full_graph(path: str | Path, feature_mode: str = "features", scale: bool = True) -> Data:
     """Read one ``preprocess_full.py`` payload into a PyG ``Data`` graph."""
     path = Path(path)
     payload = torch.load(path, map_location="cpu", weights_only=False)
@@ -137,7 +137,7 @@ def load_full_graph(path: str | Path, feature_mode: str = "both", scale: bool = 
 
 def load_dir(
     graph_dir: str | Path = GRAPH_DIR,
-    feature_mode: str = "both",
+    feature_mode: str = "features",
     scale: bool = True,
 ) -> list[Data]:
     """Load every ``<sha256>.pt`` in ``graph_dir``."""
@@ -185,7 +185,7 @@ def split_graphs(graphs: list[Data], val_fraction: float = 0.15, seed: int = 0):
 
 def get_loaders(
     graph_dir: str | Path = GRAPH_DIR,
-    feature_mode: str = "both",
+    feature_mode: str = "features",
     batch_size: int = BATCH_SIZE,
     val_fraction: float = 0.15,
     seed: int = 0,

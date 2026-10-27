@@ -1,6 +1,6 @@
-# Stage 3b: Model 2, the team GAT on the 77 block features
+# Stage 3b: Model 2, CFG with feature counting + GAT
 
-Model 2 is Dorothy's GAT over the graph of a binary with the 77 features of each block, trained on our folds by
+Model 2 is Dorothy's GAT over the control-flow graph, with the 77 counted features of each block. It is trained on our folds by
 `experiments/team_pipelines/train_b.py` (the `-feat` arms; the `-emb` arms give the GAT the 64-d block embeddings instead).
 Every command runs from `CT_GAT/pipeline`; the arms, build layouts and commands are in
 [`../experiments/team_pipelines/README.md`](../experiments/team_pipelines/README.md):

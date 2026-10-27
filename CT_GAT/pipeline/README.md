@@ -14,7 +14,7 @@ The diagram above is the team's plan; the one below is the code as it stands.
 flowchart TD
     A["IDA export: jsonl.gz CFG and asm.gz listing (s01_ida_export)"] --> P["preprocess_full builds: one .pt sample per binary (s02_preprocess)"]
     P --> M1["Model 1: five-channel token transformer (s03a_transformer)"]
-    P --> M2["Model 2: team GAT on the 77 block features (s03b_cfg_feature)"]
+    P --> M2["Model 2: CFG with feature counting + GAT (s03b_cfg_feature)"]
     P --> M3["Model 3: end-to-end block transformer + GAT (s03c_cfg_transformer)"]
     A --> B["CFG cache from the jsonl.gz alone: blocks, typed edges, call edges, tokens; folds and labels (s02_preprocess/cache)"]
     B -->|"folds and labels"| M1
@@ -39,7 +39,7 @@ branch `jsonl-reference-models`; their results are in `docs/history/`.
 | 1. IDA export | `s01_ida_export/` | the IDAPython extractor that writes the `*.jsonl.gz` CFG export and the `*.asm.gz` listing of a binary (runs inside IDA, on the VM) | [`s01_ida_export/README.md`](s01_ida_export/README.md) |
 | 2. Preprocessing | `s02_preprocess/` | two routes. `preprocess_full.py` and `tokenize_asm_gz.py` (flat scripts) select blocks from the CFG, align their instructions with the listing and write one `.pt` sample per binary: five-channel token rows, 77 block features, 64-d block embeddings, edges. `cache/` reads only the `.jsonl.gz` exports: the CFG cache builder and checker, and the fold CSVs | [`s02_preprocess/README.md`](s02_preprocess/README.md) |
 | 3a. Model 1 | `s03a_transformer/` | Janice Park's five-channel transformer over the instruction sequence (`five_channel/`), on the `.pt` samples | [`s03a_transformer/README.md`](s03a_transformer/README.md) |
-| 3b. Model 2 | `s03b_cfg_feature/` | the team GAT on the 77 block features | [`s03b_cfg_feature/README.md`](s03b_cfg_feature/README.md) |
+| 3b. Model 2 | `s03b_cfg_feature/` | CFG with feature counting + GAT: the 77 counted block features over the CFG | [`s03b_cfg_feature/README.md`](s03b_cfg_feature/README.md) |
 | 3c. Model 3 | `s03c_cfg_transformer/` | the block transformer trained end to end under the GAT | [`s03c_cfg_transformer/README.md`](s03c_cfg_transformer/README.md) |
 | 4. Evaluation | `s04_evaluation/` | metrics, validation thresholds, the paired bootstrap, `report.py` and the gate summaries | [`s04_evaluation/README.md`](s04_evaluation/README.md) |
 | | `common/` | `RunConfig` (the options of a run and its name), `paths.py` (where the data lives), `catalog.py` (the datasets), `manifests.py` (folds), the model registry, `run_io.py` (the run directory every model writes) | |
@@ -316,7 +316,7 @@ python s02_preprocess/preprocess_full.py --limit 2 --num-blocks 32 --seed 0
 The options (sampling, library functions, caps, resuming) are in [`s02_preprocess/README.md`](s02_preprocess/README.md).
 
 **3. Models 2 and 3**, the team GAT under the same folds, on the same `CT_GAT/processed/cfg_subgraphs` folder as Model 1. The arm
-sets the node input: `sig500v3-feat` is Model 2 (the 77 block features and the CFG) and `sig500v3-e2e` is Model 3 (Janice's block
+sets the node input: `sig500v3-feat` is Model 2 (CFG with feature counting + GAT: the 77 block features) and `sig500v3-e2e` is Model 3 (Janice's block
 transformer trained end to end under the GAT, learning rate 3e-4). `sig500v3-emb` is the fixed-embedding variant of Model 3: the
 stored 64-d pooled embeddings and the CFG, with nothing trained before the GAT. `--smoke 8` trains 8 binaries for 2 epochs and scores every validation binary the build holds (no test
 binaries). A full run wants a CUDA GPU:

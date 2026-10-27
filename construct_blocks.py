@@ -1,4 +1,4 @@
-"""Build basic-block graphs from the IDA Pro CFG exports.
+"""Build basic-block CFGs with counted features for the block GAT.
 
 Reads the recommended train and test rows in:
 
@@ -6,17 +6,20 @@ Reads the recommended train and test rows in:
     data/Combined_Ransomware/splits/{train,test}.csv
 
 Each row points at a gzip JSONL export (schema ida-cfg-research/2.1).
-Two outputs:
+The default graph is CFG with feature counting: one node per basic block,
+opcode and API-group counts plus size and degree, and the directed
+intra-function CFG. Graphs land in
+``processed_graphs/gnn/{train,test}/<sha256>.pt``. ``train_cfg.py`` trains
+the GAT on them.
 
-* CodeBERT graphs in ``processed_graphs/{train,test}/<sha256>.pt``
-* ``--gnn`` subgraphs in ``processed_graphs/gnn/{train,test}/<sha256>.pt``
+The subgraph keeps import-referencing functions, up to a block budget.
+Schema 2.1 edges are bare block-id pairs, so each kept edge is labeled
+fallthrough, cond_taken, jmp, indirect, extern, other, or unknown.
+``edge_attr`` is that relation one-hot plus the DFS back-edge bit (8
+columns), which ``train_cfg.py`` and ``FullBlockGAT`` read as ``edge_dim``.
 
-The GNN subgraph keeps import-referencing functions, up to a block budget,
-and stores the same directed CFG the block GAT trains on. Schema 2.1 edges
-are bare block-id pairs, so each kept edge is labeled fallthrough, cond_taken,
-jmp, indirect, extern, other, or unknown. ``edge_attr`` is that relation
-one-hot plus the DFS back-edge bit (8 columns), which ``train_cfg.py`` and
-``FullBlockGAT`` read as ``edge_dim``.
+``--codebert`` writes a different graph, a frozen CodeBERT vector per block,
+to ``processed_graphs/{train,test}/<sha256>.pt``.
 """
 
 import argparse
@@ -30,7 +33,21 @@ from pathlib import Path
 
 import torch
 from torch_geometric.data import Data, Dataset
-from transformers import AutoModel, AutoTokenizer
+
+
+def _load_codebert(lm_model_name, device):
+    """Load CodeBERT only for ``--codebert``. The feature-counting graphs do not use it."""
+    try:
+        from transformers import AutoModel, AutoTokenizer
+    except ImportError as exc:
+        raise SystemExit(
+            "construct_blocks.py --codebert needs the transformers package. "
+            "The default feature-counting graphs do not."
+        ) from exc
+    tokenizer = AutoTokenizer.from_pretrained(lm_model_name)
+    lm_model = AutoModel.from_pretrained(lm_model_name).to(device)
+    lm_model.eval()
+    return tokenizer, lm_model
 
 
 SCHEMA = "ida-cfg-research/2.1"
@@ -734,8 +751,7 @@ class MendeleyCFGDataset(Dataset):
 
     def _model(self):
         if self._lm_model is None:
-            self._tokenizer = AutoTokenizer.from_pretrained(self.lm_model_name)
-            self._lm_model = AutoModel.from_pretrained(self.lm_model_name).to(self.device)
+            self._tokenizer, self._lm_model = _load_codebert(self.lm_model_name, self.device)
             self._lm_model.eval()
         return self._tokenizer, self._lm_model
 
@@ -820,9 +836,7 @@ def preprocess_and_save_dataset(
             try:
                 if lm_model is None:
                     print(f"    Loading {lm_model_name} on {device}...")
-                    tokenizer = AutoTokenizer.from_pretrained(lm_model_name)
-                    lm_model = AutoModel.from_pretrained(lm_model_name).to(device)
-                    lm_model.eval()
+                    tokenizer, lm_model = _load_codebert(lm_model_name, device)
                 started = time.time()
                 graph = graph_from_export(
                     row, tokenizer, lm_model, device, max_blocks_per_binary, batch_size
@@ -923,34 +937,38 @@ def main():
     parser.add_argument(
         "--gnn",
         action="store_true",
-        help=(
-            "Build signal CFG subgraphs for the block GAT: opcode/API node features "
-            "and typed edges (relation one-hot plus the back-edge bit)."
-        ),
+        help="Build the feature-counting CFG graphs. This is the default; the flag remains so older commands still work.",
+    )
+    parser.add_argument(
+        "--codebert",
+        action="store_true",
+        help="Build frozen CodeBERT block embeddings instead of opcode and API counts.",
     )
     args = parser.parse_args()
+    if args.codebert and args.gnn:
+        parser.error("pass either --codebert or --gnn, not both")
 
     count_dataset_graphs(args.data_root)
     if args.count_only:
         return
-    if args.gnn:
-        build_gnn_dataset(
+    if args.codebert:
+        preprocess_and_save_dataset(
             data_root=args.data_root,
-            output_dir=args.output_dir or "processed_graphs/gnn",
-            max_blocks_per_binary=128 if args.max_blocks is None else args.max_blocks,
+            output_dir=args.output_dir or "processed_graphs",
+            max_blocks_per_binary=500 if args.max_blocks is None else args.max_blocks,
             limit=args.limit,
+            device=args.device,
+            lm_model_name=args.model,
             overwrite=args.overwrite,
+            batch_size=args.batch_size,
         )
         return
-    preprocess_and_save_dataset(
+    build_gnn_dataset(
         data_root=args.data_root,
-        output_dir=args.output_dir or "processed_graphs",
-        max_blocks_per_binary=500 if args.max_blocks is None else args.max_blocks,
+        output_dir=args.output_dir or "processed_graphs/gnn",
+        max_blocks_per_binary=128 if args.max_blocks is None else args.max_blocks,
         limit=args.limit,
-        device=args.device,
-        lm_model_name=args.model,
         overwrite=args.overwrite,
-        batch_size=args.batch_size,
     )
 
 

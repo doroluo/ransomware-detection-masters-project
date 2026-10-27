@@ -1,7 +1,11 @@
-"""Train ``FullBlockGAT`` on the rich subgraphs from ``preprocess_full.py``.
+"""Train ``FullBlockGAT`` on counted block features over the CFG.
 
 Pipeline: ``preprocess_full.py`` -> ``processed/cfg_subgraphs/*.pt`` ->
-``graph_full_loader.get_loaders`` -> ``gat_full_model.FullBlockGAT``.
+``graph_full_loader.get_loaders`` (feature counts) -> ``gat_full_model.FullBlockGAT``.
+
+This is CFG with feature counting + GAT: each node is the handcrafted block
+count vector, and the GAT attends over the typed CFG edges. ``--feature-mode
+embeddings`` or ``both`` swaps in the learned block vectors.
 
 The harness mirrors the root ``train_cfg.py``: a class-weighted loss, early
 stopping on validation ransomware F1, a decision threshold tuned on validation,
@@ -243,7 +247,7 @@ def train(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--graphs", default=str(GRAPH_DIR))
-    parser.add_argument("--feature-mode", choices=("both", "embeddings", "features"), default="both")
+    parser.add_argument("--feature-mode", choices=("features", "both", "embeddings"), default="features")
     parser.add_argument(
         "--raw-features",
         action="store_true",
