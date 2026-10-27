@@ -1,0 +1,21 @@
+{
+  "_comment": "Optional: every key has a default (common/catalog.py: the committed folds, CT_GAT/data, CT_GAT/cache/<dataset>), so a machine that unzips the collections into CT_GAT/data needs no datasets.json. Copy to datasets.json (gitignored) and edit the paths to override them on this machine; the order is environment variable, then this file, then the default. A relative path is relative to this file. 'cache' is the folder build_cache writes (samples/, index.csv, vocab.json); 'protocols' are the --protocol values that read it by default; --cache <name> picks a dataset by name, GT_CACHE (a folder) beats both. 'sources' are the raw inputs a cache is built from, and where runs go; each has an environment variable that wins (GT_BUNDLE, GT_COLLECTIONS, GT_FOLDS, GT_FOLDS_V3, GT_RUNS, GT_TEAM_B_BUILD).",
+
+  "v2": {
+    "cache": "C:/Users/you/Downloads/graph_transformer_cache_v2",
+    "protocols": ["bundle", "kfold"],
+    "sources": {
+      "bundle": "C:/Users/you/Downloads/Mendeley_GNN_v1",
+      "collections": "C:/Users/you/Downloads/ida_collections_balanced",
+      "folds": "C:/Users/you/Downloads/family_holdout/folds_mendeley.csv",
+      "folds_v3": "C:/Users/you/Downloads/family_holdout_v3",
+      "team_b_build": "C:/Users/you/Downloads/graph_transformer_runs/team/b_sig500_v2",
+      "runs": "C:/Users/you/Downloads/graph_transformer_runs"
+    }
+  },
+
+  "combined": {
+    "cache": "C:/Users/you/Downloads/graph_transformer_cache_combined",
+    "protocols": ["kfold_v3"]
+  }
+}

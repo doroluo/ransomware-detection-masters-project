@@ -1,0 +1,110 @@
+"""A tiny collection folder in the layout `preprocess_full.py --root` reads: `splits/{train,test}.csv`, one `.asm.gz` listing
+and one `.jsonl.gz` CFG per sample. Each sample is one function that calls one import, so a run needs no real data."""
+import csv
+import gzip
+import json
+from pathlib import Path
+
+SCHEMA = 'ida-cfg-research/2.1'
+IMAGEBASE = 0x400000
+CSV_FIELDS = ['sample_id', 'collection', 'label', 'architecture', 'asm_status', 'asm_path']
+
+
+def listing(apis):
+    """An IDA listing of `sub_401000`: a prologue, one `call ds:<api>` for each name, an epilogue."""
+    lines = ['; Imagebase     : 400000', '; Imports from KERNEL32.dll']
+    lines += [f'                extrn {api}:dword ; CODE XREF: sub_401000+3↑p' for api in apis]
+    lines += ['', 'sub_401000      proc near', '                push    ebp', '                mov     ebp, esp']
+    lines += [f'                call    ds:{api} ; KERNEL32' for api in apis]
+    lines += ['                pop     ebp', '                retn', 'sub_401000      endp', '']
+    return '\n'.join(lines)
+
+
+def cfg_records(sample_id, apis, library=False):
+    rows = [(0x1000, 'push'), (0x1001, 'mov')] + [(0x1003 + 6 * i, 'call') for i in range(len(apis))]
+    end = 0x1003 + 6 * len(apis)
+    rows += [(end, 'pop'), (end + 1, 'retn')]
+    instructions = []
+    for rva, mnemonic in rows:
+        row = {'rva': hex(rva), 'mnemonic': mnemonic, 'size': 1}
+        if mnemonic == 'call':
+            row.update(is_call=True, import_ids=[(rva - 0x1003) // 6])
+        instructions.append(row)
+    block = {'id': 0, 'start_rva': hex(rows[0][0]), 'end_rva': hex(rows[-1][0] + 1), 'instructions': instructions}
+    return [
+        {'record': 'header', 'schema': SCHEMA, 'sha256': sample_id, 'imagebase': hex(IMAGEBASE),
+         'pe': {'imports': [{'name': api, 'dll': 'KERNEL32.dll'} for api in apis]}},
+        {'record': 'function', 'id': 0, 'name': 'sub_401000', 'rva': '0x1000', 'blocks': [block], 'edges': [],
+         'library': library},
+        {'record': 'footer', 'complete': True},
+    ]
+
+
+def write_gz(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(path, 'wt', encoding='utf-8', newline='\n') as handle:
+        handle.write(text)
+
+
+def write_collection(root, samples, cfg_root=None, with_cfg_path=False, extra_columns=None, drop_columns=()):
+    """samples: [(sample_id, split, label, [api, ...])], each optionally followed by a dict of extra CSV columns. The CFG sits next to the listing, or under `cfg_root` (same
+    relative path) when it is given; `with_cfg_path` also puts it in a `cfg_path` column (relative to the root)."""
+    root = Path(root)
+    fields = [name for name in CSV_FIELDS + (['cfg_path'] if with_cfg_path else []) + list(extra_columns or [])
+              if name not in drop_columns]
+    rows = {'train': [], 'test': []}
+    for sample_id, split, label, apis, *more in samples:
+        asm_rel = f'samples/{split}/fam/{sample_id}.asm.gz'
+        cfg_rel = f'samples/{split}/fam/{sample_id}.jsonl.gz'
+        write_gz(root / asm_rel, listing(apis))
+        write_gz((root if cfg_root is None else Path(cfg_root)) / cfg_rel,
+                 '\n'.join(json.dumps(record) for record in cfg_records(sample_id, apis)) + '\n')
+        row = {'sample_id': sample_id, 'collection': root.name, 'label': label, 'architecture': 'x86',
+               'asm_status': 'ok', 'asm_path': asm_rel}
+        if with_cfg_path:
+            row['cfg_path'] = cfg_rel
+        row.update(more[0] if more else {})
+        rows[split].append(row)
+    (root / 'splits').mkdir(parents=True, exist_ok=True)
+    for split, split_rows in rows.items():
+        with (root / 'splits' / f'{split}.csv').open('w', newline='', encoding='utf-8') as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields, extrasaction='ignore')
+            writer.writeheader()
+            writer.writerows(split_rows)
+    return root
+
+
+COLLECTION_OF = {('mendeley', 1): 'Mendeley_Ransomware', ('mendeley', 0): 'Mendeley_Goodware',
+                 ('ransomware_balanced', 1): 'Ransomware_Balanced', ('balanced_goodware', 0): 'Balanced_Goodware'}
+COLLECTION_FIELDS = ['sample_id', 'collection', 'corpus', 'label', 'architecture', 'family', 'identity_group', 'eligible_for_gnn',
+                     'recommended_split', 'representation', 'cfg_path', 'asm_status', 'asm_path']
+
+
+def collections(root, rows):
+    """The four collection folders under `root` (`Mendeley_Ransomware`, `Mendeley_Goodware`, `Ransomware_Balanced`,
+    `Balanced_Goodware`) for index rows (tests/tiny_cache.py) with `sample_id`, `corpus`, `label`, `arch`, `family` and
+    `identity_group`: a `samples.csv` row per binary (`cfg_path` and `asm_path` relative to its folder), the CFG and the listing
+    it names, and `provenance/identity_aliases.json`, the layout `build_cache.corpus_samples` reads. Returns `root`."""
+    root = Path(root)
+    by_folder = {}
+    for r in rows:
+        by_folder.setdefault(COLLECTION_OF[(r['corpus'], int(r['label']))], []).append(r)
+    for folder, members in by_folder.items():
+        csv_rows = []
+        for r in sorted(members, key=lambda r: r['sample_id']):
+            sample_id, apis = r['sample_id'], ['CreateFileW']
+            cfg_rel, asm_rel = f'samples/{sample_id}.jsonl.gz', f'samples/{sample_id}.asm.gz'
+            write_gz(root / folder / cfg_rel, '\n'.join(json.dumps(record) for record in cfg_records(sample_id, apis)) + '\n')
+            write_gz(root / folder / asm_rel, listing(apis))
+            csv_rows.append({'sample_id': sample_id, 'collection': folder, 'corpus': r['corpus'], 'label': r['label'],
+                             'architecture': r['arch'], 'family': r['family'], 'identity_group': r['identity_group'],
+                             'eligible_for_gnn': 1, 'recommended_split': 'train', 'representation': 'plain',
+                             'cfg_path': cfg_rel, 'asm_status': 'ok', 'asm_path': asm_rel})
+        with (root / folder / 'samples.csv').open('w', newline='', encoding='utf-8') as handle:
+            writer = csv.DictWriter(handle, fieldnames=COLLECTION_FIELDS)
+            writer.writeheader()
+            writer.writerows(csv_rows)
+        aliases = [{'sha256': r['sample_id'], 'cohort_sha256': r['sample_id'], 'current_representation': 'plain'} for r in members]
+        (root / folder / 'provenance').mkdir(parents=True, exist_ok=True)
+        (root / folder / 'provenance' / 'identity_aliases.json').write_text(json.dumps(aliases), encoding='utf-8')
+    return root

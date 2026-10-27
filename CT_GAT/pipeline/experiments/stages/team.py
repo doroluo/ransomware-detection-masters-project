@@ -1,0 +1,147 @@
+"""Stage team.
+
+Stage team reads the teammates' GAT pipelines run under our folds (experiments/team_pipelines). The rows that
+read the published runs of the earlier models and baselines (TF-IDF, the header-imports LR, R7, R2, our b500 arms, team cb500 and
+path 2 on the CodeBERT vectors) need no model code, only their run directories; the code that wrote them is on branch
+`jsonl-reference-models`. The stage reads: TF-IDF, the header-imports LR, R7 and R2 with 15% block masking, our matched cap-500 arms (typed and
+no-edges, `--subgraph cap --budget 500 --tag b500`), team gnn500, cb500, sig500, sig500v2, the three sig500v3 arms (`feat` is
+Model 2, `emb` Model 3), Model 3 trained end to end on the same build (`e2e`: Janice's transformer encodes each block's instructions
+under Dorothy's GAT, both trained together), the three uncapped sigwhole arms and main's five-channel Model 1 on the uncapped build
+(`--model fivechannel --max-instructions 512 --tag whole`), and path 2 on the CodeBERT vectors. The pooled seed-0 table adds accuracy,
+precision, recall and the confusion matrix of every arm (ransomware = positive class, AUC checkpoint at its validation threshold)
+and a line per v3 build with its match rates (`options['match_rate_builds']`: the builds and their folders); each team arm is
+paired against TF-IDF, R7 and our b500 typed arm, cb500 against path 2 (same vectors, their GAT against our GNN), sig500v2 (the
+rebuild with Yanping's streaming preprocess) against sig500, R7 and TF-IDF, sig500v3 against sig500v2 and sig500, R7 and our b500
+no-edges arm (v3 pairs are read on the binaries both arms have), feat against emb, e2e against emb (what training the encoder
+adds), R7 and TF-IDF, each sigwhole arm against its sig500v3 counterpart and against R7, sigwhole emb against feat, and our b500
+typed arm against R7 (what the 500-block cap costs). The nine arms of the three builds of this repository's own files
+(`sig250`, `callwalk500`, `callwalk250`; each with `feat`, `emb` and `e2e`) are paired in two ways: each callwalk arm against the
+signal arm of the same budget and input (the sampler), each 250-block arm against its 500-block one (the budget); each of these
+builds has a match-rate line. The
+paired differences use the seeds 0 1 2 complete in both arms and carry the pre-registered rule of PLAN_GNN.md section 5.
+The last rows are Model 1 at 128 instructions (`fivechannel`), the per-block Model 1 (`fivechannel --per-block
+--max-instructions 64`) and `sig500v3-m1frozen` (Model 3 on that Model 1's frozen encoder, experiments/plans/team_m1frozen.txt),
+with the pairs emb -> m1frozen, m1frozen -> e2e and Model 1 L128 -> per-block Model 1.
+Missing arms print as missing.
+"""
+from common.config import RunConfig
+from experiments.stages.common import CB_VEC, CB_VEC_ARMS, M1_LABEL, PATHS_X86, m1frozen_pairs, m1frozen_rows
+from s04_evaluation.stage import MIN_AUC, MIN_F1, NI_AUC, NI_F1, Stage, beats, non_inferior, variant_of, x86_group
+
+X86 = dict(protocol='kfold', arch='x86', fold=0, model='gnn')
+SEEDS = (0, 1, 2)
+CAP = dict(X86, mask_blocks=0.15, subgraph='cap', budget=500, tag='b500')
+
+
+def team_group(arm):
+    """RunConfig.group of a team arm (`kfold_x86_gnn_team-<arm>`), the one experiments/team_pipelines/common.team_config names."""
+    return RunConfig(**X86, tag=f'team-{arm}').group
+
+
+BUILDS = ('sig250', 'callwalk500', 'callwalk250')      # the builds of this repository's own files, besides b_sig500_v3 and b_sigwhole_v3
+INPUTS = (('feat', 'feat (Model 2)'), ('emb', 'emb (Model 3)'), ('e2e', 'e2e (Model 3, trained encoder)'))
+M1FROZEN = m1frozen_rows('kfold', 'x86')      # the per-block Model 1 and the arm on its frozen encoder (plans/team_m1frozen.txt)
+FIVECHANNEL_WHOLE = RunConfig(**dict(X86, model='fivechannel'), max_instructions=512, tag='whole').group    # kfold_x86_fivechannel-L512_whole
+ARMS = (('TF-IDF', 'tfidf'), ('header-imports LR', 'imports-header'),
+        ('R7 typed, whole graph', x86_group(variant_of(**PATHS_X86))),
+        ('R2 no-edges, whole graph', x86_group(variant_of(**PATHS_X86, control='no_edges'))),
+        ('ours b500 typed', RunConfig(**CAP).group),
+        ('ours b500 no-edges', RunConfig(**CAP, control='no_edges').group),
+        ('team gnn500', team_group('gnn500')), ('team cb500', team_group('cb500')),
+        ('team sig500', team_group('sig500')), ('team sig500v2', team_group('sig500v2')),
+        ('team sig500v3', team_group('sig500v3')),
+        ('team sig500v3 feat (Model 2)', team_group('sig500v3-feat')),
+        ('team sig500v3 emb (Model 3)', team_group('sig500v3-emb')),
+        ('team sig500v3 e2e (Model 3, trained encoder)', team_group('sig500v3-e2e')),
+        ('team sigwhole', team_group('sigwhole')),
+        ('team sigwhole feat (Model 2)', team_group('sigwhole-feat')),
+        ('team sigwhole emb (Model 3)', team_group('sigwhole-emb')),
+        *((f'team {build} {name}', team_group(f'{build}-{arm}')) for build in BUILDS for arm, name in INPUTS),
+        ('fivechannel-L512 whole', FIVECHANNEL_WHOLE),
+        ('path 2: typed, CodeBERT vectors', x86_group(variant_of(**CB_VEC_ARMS))),
+        (M1_LABEL, RunConfig(**dict(X86, model='fivechannel')).group), *M1FROZEN)
+V2 = 'team sig500v2'
+V3 = ('team sig500v3', 'team sig500v3 feat (Model 2)', 'team sig500v3 emb (Model 3)')
+E2E = 'team sig500v3 e2e (Model 3, trained encoder)'
+WHOLE = ('team sigwhole', 'team sigwhole feat (Model 2)', 'team sigwhole emb (Model 3)')
+WHOLE_ROWS = WHOLE + ('fivechannel-L512 whole',)
+NEW = tuple(f'team {build} {name}' for build in BUILDS for _, name in INPUTS)      # sig250, callwalk500, callwalk250 x feat, emb, e2e
+SAMPLER = tuple((f'team {signal} {name}', f'team {walk} {name}')      # signal -> callwalk at the same budget and input
+                for signal, walk in (('sig500v3', 'callwalk500'), ('sig250', 'callwalk250')) for _, name in INPUTS)
+BUDGET = tuple((f'team {big} {name}', f'team {small} {name}')      # 500 blocks -> 250 blocks, same sampler and input
+               for big, small in (('sig500v3', 'sig250'), ('callwalk500', 'callwalk250')) for _, name in INPUTS)
+MATCH_RATE_BUILDS = (('b_sig500_v3', 'team/b_sig500_v3'), ('b_sigwhole_v3', 'team/b_sigwhole_v3'),
+                     *((f'b_{build}_main', f'team/b_{build}_main') for build in BUILDS))   # (name, folder under the run directory)
+TEAM_OF = tuple(a for a, _ in ARMS if a.startswith('team ') and a != V2 and a not in V3 + (E2E,) + WHOLE + NEW + (M1FROZEN[1][0],))
+COST = ('R7 typed, whole graph', 'ours b500 typed')
+PAIRS = (tuple(('TF-IDF', a) for a in TEAM_OF) + tuple(('R7 typed, whole graph', a) for a in TEAM_OF)
+         + tuple(('ours b500 typed', a) for a in TEAM_OF)
+         + (('path 2: typed, CodeBERT vectors', 'team cb500'), COST)
+         + (('team sig500', V2), ('R7 typed, whole graph', V2), ('TF-IDF', V2))
+         + ((V2, V3[0]), ('team sig500', V3[0]))
+         + tuple(('R7 typed, whole graph', a) for a in V3) + tuple(('ours b500 no-edges', a) for a in V3)
+         + ((V3[1], V3[2]),)
+         + (('TF-IDF', E2E), ('R7 typed, whole graph', E2E), (V3[2], E2E))
+         + tuple(zip(V3, WHOLE)) + tuple(('R7 typed, whole graph', a) for a in WHOLE_ROWS)
+         + ((WHOLE[1], WHOLE[2]),)
+         + SAMPLER + BUDGET + m1frozen_pairs())
+
+
+def rule(first, second, result, info):
+    """The rule column. Our cap-500 arm against the whole graph: non-inferiority of stage subgraph (lower bounds above
+    -0.01 dAUC and -0.02 dmacro-F1). Every other pair: the pre-registered minimum effect (`beats`, 3 seeds); with fewer seeds
+    in both arms (TF-IDF has seed 0 only) the word is a direction, not the test."""
+    seeds = info['seeds']
+    if (first, second) == COST:
+        return 'non-inferior' if non_inferior(result) else 'not shown non-inferior'
+    word = 'beats' if beats(result) else 'does not beat'
+    return word if len(seeds) == len(SEEDS) else f'{word} (seeds {seeds} only: a direction, not the test)'
+
+
+def base_intro(resamples):
+    return ("kfold x86 on the v2 cache, 15% block masking on every GNN arm of ours. `ours b500` is `--subgraph cap --budget 500 "
+            "--tag b500` (whole functions ranked non-library, API references, size, up to 500 blocks per binary: the budget "
+            "the teammates' pipelines use), typed and with `--control no_edges`. `team gnn500` is the teammates' BlockGAT "
+            "on their 57-d opcode / API-group / structure features, `team cb500` the same GAT on the CodeBERT vectors "
+            f"`{CB_VEC}` of the same 500 blocks, `team sig500` their edge-typed GAT on the 141-d subgraph features "
+            "(`experiments/team_pipelines`), `team sig500v2` the same trainer on a rebuild of those subgraphs with Yanping's "
+            "streaming `preprocess_full` (main c7899f0, including the two listings sig500 had to leave out; sig500 against "
+            "sig500v2 is read on the binaries both have), `team sig500v3` the same trainer on a third build with the `endp` and "
+            "library-function fixes (source main-fix, 8a971b7's s02 pins; `b_sig500_v3`), whose two ablations feed the GAT only the "
+            "77 handcrafted block features (`feat`, Model 2: block features + CFG) or only the 64-d pooled channel embedding "
+            "(`emb`, Model 3: block embeddings + CFG); every v3 pair is read on the binaries both arms have, all trained on "
+            "our folds and validation split. `team sig500v3 e2e` is Model 3 with the encoder trained: on the same build, Janice's "
+            "`Model1TokenSequence` reads the first 64 instructions of every block and Dorothy's GAT combines the block vectors, "
+            "trained together (`s03c_cfg_transformer/block_transformer.py`); it is paired against `emb` (the same GAT on the frozen "
+            "pooled embedding), R7 and TF-IDF. `team sigwhole`, `sigwhole feat` and `sigwhole emb` are the same three arms on the uncapped "
+            "rebuild (`b_sigwhole_v3`, every non-library block of every binary, trained with a per-batch node budget), paired against "
+            "their 500-block v3 counterparts and against R7; `fivechannel-L512 whole` is Janice's five-channel Model 1 (main's code, "
+            "512 instructions) on the same uncapped build. `team sig250` is the signal sampler at 250 blocks per binary (its "
+            "feat, emb and e2e arms as for sig500v3), `team callwalk500` and `team callwalk250` the same trainers on subgraphs "
+            "from the callwalk sampler, a seeded walk over the CFG and call edges that spans functions, at 500 and 250 blocks; "
+            "they are paired callwalk against signal at the same budget and input (callwalk500 against sig500v3, callwalk250 "
+            "against sig250: the sampler) and 250 against 500 blocks of the same sampler (the budget). The pooled table is seed 0; "
+            f"the paired differences, second minus first for the AUC checkpoint at its validation threshold, use the seeds "
+            f"complete in both arms (queue seeds {list(SEEDS)}), with the 95% paired cluster bootstrap interval "
+            f"({resamples} resamples). Pre-registered rule (PLAN_GNN.md section 5): a second arm beats the first when dAUC >= "
+            f"{MIN_AUC} and dmacro-F1 >= {MIN_F1} pooled, both 95% intervals excluding zero, over 3 seeds x 5 folds; TF-IDF "
+            "and the header-imports LR exist for seed 0 only, so the pairs against TF-IDF carry one seed and the word in the "
+            f"rule column is a direction. The cost of the 500-block cap (R7 whole graph against ours b500 typed) is read "
+            f"as non-inferiority: lower bound of dAUC above -{NI_AUC} and of dmacro-F1 above -{NI_F1}. A missing arm or fold "
+            "is stated.")
+
+
+def intro(resamples):
+    return base_intro(resamples) + '\n\n' + (
+        "`team sig500v3 m1frozen` is Model 3 on a frozen Model 1 (Yanping's PR #32, experiments/plans/team_m1frozen.txt):"
+        " the per-block Model 1 of the same fold, seed, dataset, weighting and build (`fivechannel --per-block --max-"
+        "instructions 64`, the row `Model 1 five-channel L64 per block`: it encodes the first 64 instructions of every "
+        "block with Janice's network, averages the block vectors and classifies) encodes each block once, its weights "
+        "never change, and only Dorothy's GAT trains on the block vectors; the arm exits unless the Model 1 trained on "
+        "the arm's build, since API ids are numbered per build. It is paired against `emb` (the pooled embedding in its "
+        "place) and `e2e` (what training the encoder adds), and the per-block Model 1 against Model 1 at 128 instructions"
+        " (the first instructions of every block against those of the binary).")
+
+
+STAGE = Stage('team', intro=intro, arms=ARMS, pairs=PAIRS, seeds=SEEDS, rule=rule, extra='operating_points',
+              options={'match_rate_builds': MATCH_RATE_BUILDS})

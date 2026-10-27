@@ -1,0 +1,363 @@
+# Models 1 to 3 on the whole Mendeley dataset: `--protocol kfold --arch all`, the 2,411 binaries (1,810 x86 and 601 x64) of the
+# `mendeley_x86` cache, seeds 0 1 2, folds 0-4 (15 runs per group, seed by seed). Each build is the x86 build of the same name extended
+# with the 601 x64 ids (`build_b --extend`, experiments/team_pipelines/README.md), in `RUNS/team/b_<family>_mendeley_all`:
+#   b_sig500_mendeley_all, b_sig250_mendeley_all, b_callwalk500_mendeley_all, b_callwalk250_mendeley_all, b_sigwhole_mendeley_all
+# Groups: the three inputs `-feat` (Model 2), `-emb` and `-e2e` (Model 3) of each of the four capped builds (12), `sigwhole`,
+# `sigwhole-feat` and `sigwhole-emb` on the uncapped one (3), and Model 1 (`fivechannel`) at 128 and 512 instructions on the
+# 500-block signal build and at 512 on the uncapped one (3): 18 groups, 270 runs. The `-ab` twins (`--arch-balance`: each class x
+# architecture cell weighted equally) of `sig500v3-feat|emb|e2e` and of the two Model 1 groups follow the signal-500 block: 5 groups,
+# 75 runs. The other twins are added the same way, one line pattern per group.
+# The queue takes the builds in this order, so a build that is still being made comes last; a line whose build is missing or
+# unfinished fails on its first run and is started again once the build is done. On the whole Mendeley dataset the architecture is a
+# label proxy (x86: 1,134 ransomware / 676 goodware; x64: 108 / 493; the x86 rule alone scores 0.650 macro-F1), so read the stage
+# `team_mendeley_all` by its per-architecture recalls and cell-balanced columns, not by its AUC alone.
+#     python -m experiments.queue --plan experiments/plans/team_mendeley_all.txt --budget-min 1800
+
+train_b --fold 0 --seed 0 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm sig500v3-feat --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm sig500v3-emb --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm sig500v3-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm sig500v3-e2e --protocol kfold --arch all
+train --model fivechannel --protocol kfold --arch all --fold 0 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 1 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 2 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 3 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 4 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 0 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 1 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 2 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 3 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 4 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 0 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 1 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 2 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 3 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --fold 4 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 0 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 1 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 2 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 3 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 4 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 0 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 1 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 2 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 3 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 4 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 0 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 1 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 2 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 3 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --fold 4 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 0 --seed 0 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 1 --seed 0 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 2 --seed 0 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 3 --seed 0 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 4 --seed 0 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 0 --seed 1 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 1 --seed 1 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 2 --seed 1 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 3 --seed 1 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 4 --seed 1 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 0 --seed 2 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 1 --seed 2 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 2 --seed 2 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 3 --seed 2 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 4 --seed 2 --arm sig500v3-feat --protocol kfold --arch all --arch-balance
+train_b --fold 0 --seed 0 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 1 --seed 0 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 2 --seed 0 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 3 --seed 0 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 4 --seed 0 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 0 --seed 1 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 1 --seed 1 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 2 --seed 1 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 3 --seed 1 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 4 --seed 1 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 0 --seed 2 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 1 --seed 2 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 2 --seed 2 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 3 --seed 2 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 4 --seed 2 --arm sig500v3-emb --protocol kfold --arch all --arch-balance
+train_b --fold 0 --seed 0 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 1 --seed 0 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 2 --seed 0 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 3 --seed 0 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 4 --seed 0 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 0 --seed 1 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 1 --seed 1 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 2 --seed 1 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 3 --seed 1 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 4 --seed 1 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 0 --seed 2 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 1 --seed 2 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 2 --seed 2 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 3 --seed 2 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train_b --fold 4 --seed 2 --arm sig500v3-e2e --protocol kfold --arch all --arch-balance
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 1 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 2 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 3 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 4 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 0 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 1 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 2 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 3 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 4 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 0 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 1 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 2 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 3 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --arch-balance --fold 4 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 0 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 1 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 2 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 3 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 4 --seed 0 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 0 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 1 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 2 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 3 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 4 --seed 1 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 0 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 1 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 2 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 3 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --arch-balance --fold 4 --seed 2 --build RUNS/team/b_sig500_mendeley_all
+train_b --fold 0 --seed 0 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm sig250-feat --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm sig250-emb --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm sig250-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm callwalk500-feat --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm callwalk500-emb --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm callwalk500-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm callwalk250-feat --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm callwalk250-emb --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm callwalk250-e2e --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm sigwhole --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm sigwhole --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm sigwhole --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm sigwhole --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm sigwhole --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm sigwhole --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm sigwhole --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm sigwhole --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm sigwhole --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm sigwhole --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm sigwhole --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm sigwhole --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm sigwhole --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm sigwhole --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm sigwhole --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm sigwhole-feat --protocol kfold --arch all
+train_b --fold 0 --seed 0 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 1 --seed 0 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 2 --seed 0 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 3 --seed 0 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 4 --seed 0 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 0 --seed 1 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 1 --seed 1 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 2 --seed 1 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 3 --seed 1 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 4 --seed 1 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 0 --seed 2 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 1 --seed 2 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 2 --seed 2 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 3 --seed 2 --arm sigwhole-emb --protocol kfold --arch all
+train_b --fold 4 --seed 2 --arm sigwhole-emb --protocol kfold --arch all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 0 --seed 0 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 1 --seed 0 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 2 --seed 0 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 3 --seed 0 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 4 --seed 0 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 0 --seed 1 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 1 --seed 1 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 2 --seed 1 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 3 --seed 1 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 4 --seed 1 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 0 --seed 2 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 1 --seed 2 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 2 --seed 2 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 3 --seed 2 --build RUNS/team/b_sigwhole_mendeley_all
+train --model fivechannel --protocol kfold --arch all --max-instructions 512 --tag whole --fold 4 --seed 2 --build RUNS/team/b_sigwhole_mendeley_all
+
+report
+gates team_mendeley_all
