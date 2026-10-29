@@ -120,3 +120,21 @@ def test_disk_preparation_matches_resident_inputs_and_does_not_read_test(tmp_pat
         study.main(argv)
         assert json.loads((out/'budget.json').read_text())['used_seconds']==budget
         assert json.loads((out/'status.json').read_text())['state']=='queue_finished'
+
+
+def test_locked_rolling_reports_keep_snapshots_without_stopping(tmp_path,monkeypatch):
+    from pathlib import Path
+    from experiments.grid_study.study import report
+    (tmp_path/'REPORT.md').write_text('previous report')
+    (tmp_path/'results.csv').write_text('previous csv')
+    def locked(*args, **kwargs):
+        raise PermissionError('simulated Windows viewer lock')
+    monkeypatch.setattr(Path,'replace',locked)
+    metrics=runner.metrics([0,1],[.1,.9])
+    result=dict(seed=0,epochs_run=2,best_epoch=2,spec=grids.base_spec(2),validation=metrics,
+                validation_fixed=metrics,epoch_seconds_mean=1.)
+    report(tmp_path,[dict(model=2,stage='optimizer',blocks='500',result=result,path='trial',reused=False)])
+    assert (tmp_path/'REPORT.md').read_text()=='previous report'
+    assert 'Budgeted model search' in (tmp_path/'REPORT.md.tmp').read_text()
+    assert 'metric_auc' in (tmp_path/'results.csv.tmp').read_text()
+    assert (tmp_path/'results.csv').read_text()=='previous csv'

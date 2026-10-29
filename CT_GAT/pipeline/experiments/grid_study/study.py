@@ -59,6 +59,14 @@ def reuse_trial(paths, contract, out):
     return None
 
 
+def publish_report(temp, target):
+    """A viewer may deny rename on Windows; retain the completed snapshot without aborting training."""
+    try:
+        temp.replace(target)
+    except PermissionError:
+        print(f'Report is locked: {target}; latest snapshot retained at {temp}; training continues.', flush=True)
+
+
 def report(root, records):
     """Rewrite a tidy, atomic analysis table after every completed configuration."""
     rows = []
@@ -74,7 +82,7 @@ def report(root, records):
         temp = root/'results.csv.tmp'
         with temp.open('w',newline='',encoding='utf-8') as f:
             w = csv.DictWriter(f,fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
-        temp.replace(root/'results.csv')
+        publish_report(temp,root/'results.csv')
     lines = ['# Budgeted model search', '',
              'Models 1 and 3 train their position-aware instruction Transformers end to end. Model 2 uses handcrafted features.',
              'Screening is validation-only. Coverage pilots have a separate equal epoch budget and do not select the primary model.',
@@ -94,7 +102,7 @@ def report(root, records):
                 values = [r['test'][metric] for r in rr]
                 cells.append(f'{statistics.mean(values):.4f}' + (f' ± {statistics.stdev(values):.4f}' if len(values)>1 else ''))
             lines.append(f"| {model} | {pool} | {','.join(str(r['seed']) for r in rr)} | " + ' | '.join(cells) + ' |')
-    temp = root/'REPORT.md.tmp'; temp.write_text('\n'.join(lines)+'\n',encoding='utf-8'); temp.replace(root/'REPORT.md')
+    temp = root/'REPORT.md.tmp'; temp.write_text('\n'.join(lines)+'\n',encoding='utf-8'); publish_report(temp,root/'REPORT.md')
 
 
 def parser():
