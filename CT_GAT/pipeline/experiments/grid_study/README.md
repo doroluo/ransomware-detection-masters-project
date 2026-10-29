@@ -21,6 +21,8 @@ python grid_search.py --wide --models 2 --dataset combined --build C:/data/b_sig
 
 `--build-250` and `--build-uncapped` are optional: omitted builds are recorded as pending coverage, while the 500-block search proceeds. To prepare them, see below. `--plan-only` prints case counts without training. `--smoke 8 --device cpu --wait-build-hours 0 --out runs/smoke_wide` exercises small real-data subsets without touching test tensors. For a single model use `--models 1`, `--models 2`, or `--models 3`.
 
+To run all three models locally, use `--models 1 2 3` with one shared `--gpu-hours 30` budget. The runner trains them sequentially. A short RTX 5080 overlap test showed substantial per-model slowdown; see [the concurrency measurement](CONCURRENCY.md). Existing active studies require a new plan/output when adding a model; preserve completed trials, partial checkpoints and the cumulative budget when migrating.
+
 The existing `python grid_search.py --models ...` small grid remains available; **add `--wide` for this expanded search.** Repeat exactly the same wide command and output directory to resume. Use a new output directory when changing the grid, source, cohort, budget, or training protocol.
 
 ## What is searched
