@@ -1,5 +1,7 @@
 # Grid searches for Models 1, 2 and 3
 
+For the expanded 30-hour staged grids, use `python grid_search.py --wide` and follow [the wide-grid guide](../grid_study/README.md). Model 3 is trained end to end; the frozen-Transformer arm is excluded.
+
 Run from `CT_GAT/pipeline`. The default grid is **3 learning rates x 2 dropout values**.
 Model 3 repeats the grid for **mean and CLS pooling**, giving 12 configurations.
 These runners are additive; historical trainers, checkpoints and reports are unchanged.

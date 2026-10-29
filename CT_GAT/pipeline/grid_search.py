@@ -12,8 +12,12 @@ from experiments.model_grid.runner import main as run_model, parser as model_par
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if "--wide" in argv:
+        from experiments.grid_study.study import main as wide_main
+        return wide_main([v for v in argv if v != "--wide"])
     if '--help' in argv or '-h' in argv:
         print(__doc__)
+        print("Use --wide for the budgeted coarse search; --wide --help lists its options.")
         print('\nAdditional options: --models 1 2 3 (default: all); --out runs/model_grid (output root).')
         print(model_parser(1).format_help())
         return

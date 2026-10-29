@@ -521,3 +521,7 @@ The tables and their derivation: [`docs/history/RESULTS.md`](docs/history/RESULT
 ([team](docs/history/gates_team.md), [model1_variants](docs/history/gates_model1_variants.md), and the stages of earlier code:
 [noapi](docs/history/gates_noapi.md), [v3](docs/history/gates_v3.md), [paths_codebert](docs/history/gates_paths_codebert.md),
 [model1](docs/history/gates_model1.md), [imports](docs/history/gates_imports_header.md), [subgraph](docs/history/gates_subgraph.md)).
+
+### Expanded budgeted model grids
+
+Use `python grid_search.py --wide --models 1 3 ... --gpu-hours 30` for the expanded staged search. [Commands, hyperparameter ranges, coverage builds, resume and result files](experiments/grid_study/README.md). Model 3 trains its instruction Transformer and GAT end to end; there is no frozen-Transformer arm in this search.
