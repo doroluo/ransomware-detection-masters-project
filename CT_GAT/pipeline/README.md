@@ -67,6 +67,14 @@ CT_GAT/
         requirements.txt  datasets.json.example
 ```
 
+## Model 1/2/3 hyperparameter grids
+
+Run `python grid_search.py --help` from this folder. Use `--models 1 3` to run Models 1 and 3 sequentially on one GPU,
+and `--models 2` on a teammate's GPU. The [grid-search guide](experiments/model_grid/README.md) gives complete commands,
+dataset requirements, resume rules, and the validation/test protocol. Model 1 uses positional instruction encoding;
+Model 2 retains handcrafted features; Model 3 compares mean and CLS instruction summaries before the existing GAT.
+The default is a 3-learning-rate by 2-dropout grid, followed by three-seed confirmation on one outer fold.
+
 ## Setup
 
 Python 3.12 and the packages of [`requirements.txt`](requirements.txt), which adds the CPU wheel index of PyTorch:
