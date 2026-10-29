@@ -138,3 +138,61 @@ def test_locked_rolling_reports_keep_snapshots_without_stopping(tmp_path,monkeyp
     assert 'Budgeted model search' in (tmp_path/'REPORT.md.tmp').read_text()
     assert 'metric_auc' in (tmp_path/'results.csv.tmp').read_text()
     assert (tmp_path/'results.csv').read_text()=='previous csv'
+
+
+def test_budget_locked_display_preserves_time_and_deadline(tmp_path, monkeypatch):
+    from pathlib import Path
+    path = tmp_path/'budget.json'
+    b = Budget(path, .000015, shares={'screen': 1.})
+    original = Path.replace
+    def locked(self, target):
+        if Path(target) == path:
+            raise PermissionError('simulated Windows lock')
+        return original(self, target)
+    monkeypatch.setattr(Path, 'replace', locked)
+    stop = tmp_path/'STOP'
+    with pytest.raises(BudgetExhausted):
+        with b.charge('screen', stop, 'trial'):
+            deadline = time.monotonic()+2
+            while not stop.exists() and time.monotonic()<deadline: time.sleep(.005)
+            assert stop.exists()
+            raise InterruptedError('checkpoint boundary')
+    assert json.loads(path.read_text())['used_seconds']['screen'] == 0
+    # Incomplete newest record cannot erase the last durable accounting record.
+    (tmp_path/'budget.journal'/'99999999999999999999_partial.json').write_text('{')
+    again = Budget(path, .000015, shares={'screen': 1.})
+    assert again.doc['used_seconds'] == b.doc['used_seconds']
+    assert again.remaining('screen') <= 0
+
+
+def test_budget_recovers_newer_legacy_temp_and_refuses_corruption(tmp_path):
+    path = tmp_path/'budget.json'
+    b = Budget(path, 1, shares={'screen': 1.})
+    record = copy.deepcopy(b.doc)
+    record['used_seconds']['screen'] = 123.5
+    path.with_suffix('.json.tmp').write_text(json.dumps(record))
+    again = Budget(path, 1, shares={'screen': 1.})
+    assert again.doc['used_seconds']['screen'] == 123.5
+    bad = tmp_path/'bad.json'
+    bad.write_text('{')
+    with pytest.raises(RuntimeError, match='refusing to reset'):
+        Budget(bad, 1, shares={'screen': 1.})
+
+
+def test_budget_ledger_failure_requests_checkpoint_stop(tmp_path, monkeypatch):
+    b = Budget(tmp_path/'budget.json', .000015, shares={'screen': 1.})
+    original = b._persist
+    calls = []
+    def fail_once():
+        calls.append(1)
+        if len(calls) == 2:
+            raise OSError('simulated disk full')
+        original()
+    monkeypatch.setattr(b, '_persist', fail_once)
+    stop = tmp_path/'STOP'
+    with pytest.raises(OSError, match='ledger write failed'):
+        with b.charge('screen', stop, 'trial'):
+            deadline = time.monotonic()+2
+            while not stop.exists() and time.monotonic()<deadline: time.sleep(.005)
+            assert stop.exists()
+    assert b.doc['used_seconds']['screen'] > 0

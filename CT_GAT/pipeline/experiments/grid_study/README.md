@@ -68,7 +68,7 @@ The runner verifies identical split IDs across caps and rejects silent sample re
 
 - Root `results.csv`: all completed settings, complete hyperparameters, seeds, validation/test stage, detection rate, FPR, AUC, macro-F1, timing, and original result paths.
 - Root `REPORT.md`: rolling stage counts and test mean ± sample SD across seeds; these are one outer fold, not five-fold CV or confidence intervals.
-- Root `status.json`, `budget.json`, `plan.json`, `primary_selection.json`: current work, cumulative time, exact sources/protocol and frozen primary choices.
+- Root `status.json`, `budget.json`, `plan.json`, `primary_selection.json`: current work, cumulative time, exact sources/protocol and frozen primary choices. Budget accounting is durably saved first in checksummed `budget.journal/*.json` snapshots (the latest eight are retained). A Windows viewer may leave `budget.json` stale; resume recovers the newest valid cumulative record, including legacy `budget.json.tmp`, without resetting consumed time. A ledger write failure requests a checkpoint stop. Rolling report locks retain the newest report at `REPORT.md.tmp` or `results.csv.tmp`.
 - Per trial: `config.json`, `history.json`, `best.pt`, `last.pt`, `metrics.json`, and prediction CSVs. Each epoch is checkpointed. Interrupted cases have history/checkpoints but no completed `metrics.json`.
 - Per stage: `planned_cases.json` and `selection.json`, including planned/completed counts and whether the grid is partial.
 - Per input: `dataset.json` with split IDs/payload hashes/exclusions and `coverage.json` with retained instruction/API/block counts.
