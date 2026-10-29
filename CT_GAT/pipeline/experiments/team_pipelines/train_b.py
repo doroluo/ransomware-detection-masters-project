@@ -95,7 +95,8 @@ train_full_gat.py (AdamW lr 1e-3, weight decay 1e-4, class-weighted cross-entrop
 validation ransomware F1 at 0.5), fit.py for the loop and both selection rules. Only ids listed in the build's checkpoint
 are used (their embedder state is the one saved with it); a full run needs all 1,810, less the ids the build excluded
 (`build_b --exclude`, read from the build's settings): those are left out of training, validation and test and recorded in
-metrics.json (`excluded`, `excluded_reason`). --smoke N: N available training ids, 2 epochs, temp dir only.
+metrics.json (`excluded`, `excluded_reason`); a run on a part of the build's dataset (`matched` of the `all` build) records only
+the excluded ids that part holds (`common.dataset_excluded`). --smoke N: N available training ids, 2 epochs, temp dir only.
 """
 import argparse
 import csv
@@ -112,8 +113,8 @@ from common.config import RUNS
 from common.manifests import run_command
 from common.paths import MissingSource, source_for
 from experiments.team_pipelines.build_b import dataset_of, load_vocab_embedder, resolve_dir
-from experiments.team_pipelines.common import (DATASET_OF, DEFAULT_ARCH, DEFAULT_SOURCE, SOURCE_CODE, code_source, fold_manifest,
-                                               import_team, sample_rows, source_label_ok, source_pins)
+from experiments.team_pipelines.common import (DATASET_OF, DEFAULT_ARCH, DEFAULT_SOURCE, SOURCE_CODE, code_source, dataset_excluded,
+                                               fold_manifest, import_team, sample_rows, source_label_ok, source_pins)
 from experiments.team_pipelines.fit import run_arm, smoke_ids
 
 UNCAPPED_BLOCKS = 1_000_000     # build_b --num-blocks of the uncapped build (every non-library block)
@@ -662,7 +663,7 @@ def run(arm, fold, seed, smoke=None, device=None, b_dir=None, log=print, feature
     from s03b_cfg_feature.gat import graph_full_loader as gl      # imported here: no torch_geometric at import
     pp, embedder, done = build_state(b_dir)
     manifest = fold_manifest(fold, seed, protocol, arch)
-    excluded = read_excluded(b_dir)
+    excluded = dataset_excluded(read_excluded(b_dir), manifest)      # the build's excluded ids that this protocol and arch hold
     want = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test if r['sample_id'] not in excluded]
     t0 = time.time()
     split = None
