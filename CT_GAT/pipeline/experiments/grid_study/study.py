@@ -200,7 +200,13 @@ class Study:
                                             self.device,self.sources,evaluate_test=test)
             except BudgetExhausted:
                 return None
-            except (torch.OutOfMemoryError,FloatingPointError) as exc:
+            except (torch.OutOfMemoryError,FloatingPointError,RuntimeError) as exc:
+                # PyTorch gradient clipping reports numerical failure as RuntimeError.
+                # Preserve its fail-fast behavior without aborting unrelated grid cases.
+                gradient_failure=(str(exc).startswith('The total norm of order ')
+                                  and 'for gradients from `parameters` is non-finite' in str(exc))
+                if not isinstance(exc,(torch.OutOfMemoryError,FloatingPointError)) and not gradient_failure:
+                    raise
                 runner.atomic_json(folder/'failure.json',dict(error=type(exc).__name__,message=str(exc),
                                    spec=spec,model=model,stage=stage,blocks=blocks,not_a_valid_result=True))
                 gc.collect()

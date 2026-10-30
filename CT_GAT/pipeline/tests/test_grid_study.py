@@ -255,3 +255,32 @@ def test_primary_results_and_all_ready_caps_precede_missing_build_wait(tmp_path,
     with pytest.raises(ValueError,match='primary selection changed'):
         obj.run()
     assert not any(e[0]=='confirm' for e in events)
+
+
+def test_nonfinite_gradient_records_failed_trial_but_unrelated_runtime_error_propagates(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from experiments.grid_study import study
+    args=study.parser().parse_args(['--models','1','--build',str(tmp_path/'build'),
+        '--index',str(tmp_path/'index.csv'),'--out',str(tmp_path/'out'),'--device','cpu'])
+    obj=study.Study(args)
+    monkeypatch.setattr(obj,'prepare',lambda *a:SimpleNamespace(fingerprint='fixed-data'))
+    def nonfinite(*a,**k):
+        p=torch.nn.Parameter(torch.ones(1));p.grad=torch.full_like(p,float('nan'))
+        torch.nn.utils.clip_grad_norm_([p],1.,error_if_nonfinite=True)
+    monkeypatch.setattr(runner,'run_trial',nonfinite)
+    spec=grids.base_spec(1)
+    result=obj.trial(1,spec,'coverage','coverage',args.build,'250',2,0)
+    assert result is None
+    failures=list(args.out.glob('model1/coverage_250/*/failure.json'))
+    assert len(failures)==1
+    record=json.loads(failures[0].read_text())
+    assert record['error']=='RuntimeError' and record['not_a_valid_result'] is True
+    assert not (failures[0].parent/'metrics.json').exists()
+    assert not obj.records
+    def unrelated(*a,**k):raise RuntimeError('unrelated device or programming error')
+    monkeypatch.setattr(runner,'run_trial',unrelated)
+    # A recorded failure is not silently retried or converted to a score.
+    assert obj.trial(1,spec,'coverage','coverage',args.build,'250',2,0) is None
+    with pytest.raises(RuntimeError,match='unrelated device'):
+        obj.trial(1,dict(spec,lr=spec['lr']*2),'coverage','coverage',args.build,'250',2,0)
+    assert len(list(args.out.glob('model1/coverage_250/*/failure.json')))==1

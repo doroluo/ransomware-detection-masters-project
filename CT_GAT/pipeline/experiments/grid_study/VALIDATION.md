@@ -15,3 +15,5 @@ No frozen-Transformer Model 3 arm is included. The expanded 30-hour search and i
 - Tests verify that every validation-selection stage finishes and all primary choices are frozen before any confirmation/test call; all 12 confirmations precede a missing-build wait; all eight ready 250/500 cap cases precede that wait; deferred uncapped cases resume when the build appears; and changing frozen choices on resume is rejected before another test call.
 - Existing data-isolation, budget persistence, Windows display-lock recovery and checkpoint-stop tests still pass. No model-grid training, model, packing or metric source file changed.
 - This is a scheduling improvement, not a measured per-epoch speedup. It overlaps useful GPU work with CPU preprocessing and brings primary results forward. Full uncapped coverage remains conditional on build completion and its phase budget.
+
+- Numerical-failure follow-up: **27 tests passed**. An actual non-finite gradient passed to PyTorch gradient clipping is recorded as a failed trial without a fabricated metric; unrelated RuntimeErrors still propagate. The completed primary evaluations are unaffected.
