@@ -1,6 +1,7 @@
 """Thirty-hour coarse search. Frozen-Transformer Model 3 is deliberately absent."""
 import argparse
 from contextlib import nullcontext
+from torch.nn.attention import SDPBackend, sdpa_kernel
 import csv
 import gc
 import hashlib
@@ -81,7 +82,7 @@ def report(root, records):
     if rows:
         temp = root/'results.csv.tmp'
         with temp.open('w',newline='',encoding='utf-8') as f:
-            w = csv.DictWriter(f,fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
+            w = csv.DictWriter(f,fieldnames=list(dict.fromkeys(key for row in rows for key in row))); w.writeheader(); w.writerows(rows)
         publish_report(temp,root/'results.csv')
     lines = ['# Budgeted model search', '',
              'Models 1 and 3 train their position-aware instruction Transformers end to end. Model 2 uses handcrafted features.',
@@ -195,7 +196,10 @@ class Study:
                 # CPU activation offload preserves the model/gradients, while making full-graph pilots more feasible.
                 # Apply to ALL coverage caps so their memory policy matches.
                 offload=torch.autograd.graph.save_on_cpu(pin_memory=True) if stage=='coverage' and self.device.type=='cuda' else nullcontext()
-                with self.budget.charge(phase,folder.parent.parent/'STOP',folder), offload:
+                # CPU offload can compact a padded attention bias, violating fused-backend strides.
+                # Record the backend in the spec so these are new trials, never resumed fused ones.
+                attention=sdpa_kernel(SDPBackend.MATH) if spec.get('attention_backend')=='math' else nullcontext()
+                with self.budget.charge(phase,folder.parent.parent/'STOP',folder), offload, attention:
                     result=runner.run_trial(model,spec,seed,epochs,contract['patience'],data,folder,
                                             self.device,self.sources,evaluate_test=test)
             except BudgetExhausted:
@@ -256,6 +260,8 @@ class Study:
         # Hold optimizer choice, reference architecture, batch size and epochs fixed across caps.
         for base in self.optimizer_choices[model]:
             spec=dict(base,batch_size=1)
+            if model in (1,3):
+                spec['attention_backend']='math'
             result=self.trial(model,spec,'coverage','coverage',build,blocks,self.a.coverage_epochs,self.a.screen_seed)
             if result is not None: rr.append(result)
         runner.atomic_json(statuspath,dict(state='complete' if len(rr)==len(self.optimizer_choices[model]) else 'partial',

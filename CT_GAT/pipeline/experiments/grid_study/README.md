@@ -91,3 +91,5 @@ python -m experiments.grid_study.plot --out runs/wide_combined
 This writes learning-rate/detection/FPR plots under `figures/`, separated by weight decay and pooling. They show completed validation settings; one-seed screens have no seed error bars. Hyperparameter sensitivity is not a causal measure of feature or ransomware-behavior importance. Block/API attribution still requires a separately reviewed behavior evaluation.
 
 To stop gracefully, create `STOP` in `runs/wide_combined/model1` (or `model2` / `model3`) for the active model; remove your STOP file before resuming. Existing results are never discarded. Do not edit source files underneath an active queue; use a separate checkout for further changes.
+
+Coverage Transformer pilots use the math SDPA backend with CPU activation offload. The backend is recorded in each pilot specification, producing a new trial ID rather than resuming an incompatible fused-attention checkpoint. The same policy applies to 250, 500 and uncapped inputs. Primary screening/confirmation are unchanged.

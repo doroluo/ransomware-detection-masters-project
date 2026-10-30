@@ -228,7 +228,12 @@ def test_primary_results_and_all_ready_caps_precede_missing_build_wait(tmp_path,
         if stage=='coverage':
             assert obj.data is None and obj.data_key is None
             assert sum(e[0]=='confirm' for e in events)==12
-            assert spec==dict(next(b for b in bases[model] if b['pooling']==spec['pooling']),batch_size=1)
+            expected=dict(next(b for b in bases[model] if b['pooling']==spec['pooling']),batch_size=1)
+            if model in (1,3): expected['attention_backend']='math'
+            assert spec==expected
+            if model in (1,3):
+                fused={k:v for k,v in spec.items() if k!='attention_backend'}
+                assert grids.trial_id(spec,2,0,False)!=grids.trial_id(fused,2,0,False)
         events.append((stage,model,blocks))
         return dict(completed=True)
     def wait(seconds):
@@ -284,3 +289,25 @@ def test_nonfinite_gradient_records_failed_trial_but_unrelated_runtime_error_pro
     with pytest.raises(RuntimeError,match='unrelated device'):
         obj.trial(1,dict(spec,lr=spec['lr']*2),'coverage','coverage',args.build,'250',2,0)
     assert len(list(args.out.glob('model1/coverage_250/*/failure.json')))==1
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA activation-offload regression')
+def test_math_attention_offload_preserves_gradients_for_odd_block_length():
+    from contextlib import nullcontext
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+    from experiments.model_grid.models import BlockTransformer
+    torch.manual_seed(123)
+    net=BlockTransformer(128,block_length=64,dropout=0.,pooling='mean',width=32,layers=2).cuda().train()
+    ids=torch.ones((4,31,5),dtype=torch.long,device='cuda')
+    pad=torch.zeros((4,31),dtype=torch.bool,device='cuda');pad[1,17:]=True
+    gradients=[]
+    for offload in (False,True):
+        net.zero_grad(set_to_none=True)
+        ctx=torch.autograd.graph.save_on_cpu(pin_memory=True) if offload else nullcontext()
+        with sdpa_kernel(SDPBackend.MATH),ctx,torch.autocast('cuda',dtype=torch.bfloat16):
+            loss=net(ids,pad).square().mean()
+        loss.backward()
+        gradients.append([p.grad.detach().clone() for p in net.parameters() if p.grad is not None])
+        assert all(torch.isfinite(g).all() for g in gradients[-1])
+    assert len(gradients[0])==len(gradients[1])
+    for a,b in zip(*gradients):torch.testing.assert_close(a,b,rtol=0,atol=0)
