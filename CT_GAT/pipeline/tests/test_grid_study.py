@@ -196,3 +196,62 @@ def test_budget_ledger_failure_requests_checkpoint_stop(tmp_path, monkeypatch):
             while not stop.exists() and time.monotonic()<deadline: time.sleep(.005)
             assert stop.exists()
     assert b.doc['used_seconds']['screen'] > 0
+
+
+@pytest.mark.parametrize('wait_hours', [0, 1])
+def test_primary_results_and_all_ready_caps_precede_missing_build_wait(tmp_path, monkeypatch, wait_hours):
+    from types import SimpleNamespace
+    from experiments.grid_study import study
+    args=study.parser().parse_args(['--models','1','2','3','--build',str(tmp_path/'b500'),
+        '--build-250',str(tmp_path/'b250'),'--build-uncapped',str(tmp_path/'full'),
+        '--index',str(tmp_path/'index.csv'),'--out',str(tmp_path/'out'),
+        '--wait-build-hours',str(wait_hours)])
+    for cap,build in [(250,args.build_250),(500,args.build)]:
+        build.mkdir();(build/'build_summary.json').write_text('{}')
+        (build/'settings.json').write_text(json.dumps(dict(num_blocks=cap,sample='signal')))
+    obj=study.Study(args)
+    events=[]
+    bases={m:[grids.base_spec(m)] for m in args.models}
+    bases[3]=[dict(bases[3][0],pooling=p) for p in ['mean','cls']]
+    def screen(model,phase,stage,specs):
+        assert not any(e[0]=='confirm' for e in events)
+        events.append(('screen',model,stage))
+        return copy.deepcopy(bases[model])
+    def trial(model,spec,phase,stage,build,blocks,epochs,seed,test=False):
+        if test:
+            frozen=json.loads((args.out/'primary_selection.json').read_text())
+            assert frozen['coverage_pilots_used_for_selection'] is False
+            assert frozen['specs']['3']==bases[3]
+            assert ('screen',3,'instruction') in events
+            assert not any(e[0]=='wait' for e in events)
+            obj.data=SimpleNamespace(test_loaded=True);obj.data_key='confirmation'
+        if stage=='coverage':
+            assert obj.data is None and obj.data_key is None
+            assert sum(e[0]=='confirm' for e in events)==12
+            assert spec==dict(next(b for b in bases[model] if b['pooling']==spec['pooling']),batch_size=1)
+        events.append((stage,model,blocks))
+        return dict(completed=True)
+    def wait(seconds):
+        assert seconds==20
+        # All eight ready cap cases across all three models precede the first wait.
+        assert sum(e[0]=='coverage' for e in events)==8
+        assert sum(e[0]=='confirm' for e in events)==12
+        events.append(('wait',))
+        args.build_uncapped.mkdir()
+        (args.build_uncapped/'build_summary.json').write_text('{}')
+        (args.build_uncapped/'settings.json').write_text(json.dumps(dict(num_blocks=0,sample='signal')))
+    monkeypatch.setattr(obj,'screen',screen);monkeypatch.setattr(obj,'trial',trial)
+    monkeypatch.setattr(study.time,'sleep',wait)
+    obj.run()
+    state=json.loads((args.out/'status.json').read_text())
+    assert state['state']=='queue_finished'
+    assert len(state['pending_coverage'])==(3 if wait_hours==0 else 0)
+    assert sum(e[0]=='wait' for e in events)==wait_hours
+    # A resume cannot silently select new parameters after outer-test evaluation.
+    frozen=json.loads((args.out/'primary_selection.json').read_text())
+    frozen['specs']['1'][0]['width']=999
+    (args.out/'primary_selection.json').write_text(json.dumps(frozen))
+    events.clear()
+    with pytest.raises(ValueError,match='primary selection changed'):
+        obj.run()
+    assert not any(e[0]=='confirm' for e in events)

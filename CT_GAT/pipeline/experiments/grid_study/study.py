@@ -227,6 +227,35 @@ class Study:
         runner.atomic_json(phase_dir/'selection.json',status)
         return chosen
 
+    def coverage_case(self, model, blocks, build, wait=False):
+        """Run ready coverage work first; only the final pass may wait for inputs."""
+        statuspath=self.root/f'model{model}'/f'coverage_{blocks}'/'status.json'
+        if wait and build is not None:
+            deadline=self.build_deadlines.setdefault(str(build),time.monotonic()+self.a.wait_build_hours*3600)
+            while (not (build/'build_summary.json').exists()
+                   and self.budget.remaining('coverage')>0 and time.monotonic()<deadline):
+                if (self.root/f'model{model}'/'STOP').exists():
+                    raise InterruptedError('STOP file while waiting for coverage build')
+                runner.atomic_json(self.root/'status.json',dict(state='waiting_for_coverage_build',model=model,
+                                   blocks=blocks,path=str(build),gpu_budget_charged=False))
+                time.sleep(20)
+        if build is None or not (build/'build_summary.json').exists():
+            runner.atomic_json(statuspath,dict(state='pending_build',path=str(build)))
+            return False
+        settings=json.loads((build/'settings.json').read_text())
+        expected=0 if blocks=='uncapped' else int(blocks)
+        if settings.get('num_blocks') != expected or settings.get('sample') != 'signal':
+            raise ValueError(f'{blocks} build has the wrong cap/selector: {build}')
+        rr=[]
+        # Hold optimizer choice, reference architecture, batch size and epochs fixed across caps.
+        for base in self.optimizer_choices[model]:
+            spec=dict(base,batch_size=1)
+            result=self.trial(model,spec,'coverage','coverage',build,blocks,self.a.coverage_epochs,self.a.screen_seed)
+            if result is not None: rr.append(result)
+        runner.atomic_json(statuspath,dict(state='complete' if len(rr)==len(self.optimizer_choices[model]) else 'partial',
+                           completed=len(rr),epochs=self.a.coverage_epochs,validation_only=True))
+        return True
+
     def run(self):
         for model in self.a.models:
             chosen=self.screen(model,'optimizer','optimizer',grids.optimizer(model,self.a.learning_rates,self.a.dropouts,self.a.weight_decays))
@@ -235,43 +264,34 @@ class Study:
             if model not in self.choices: continue
             chosen=self.screen(model,'architecture','architecture',grids.architecture(model,self.choices[model][0]))
             if chosen: self.choices[model]=chosen
+        # Instruction-limit selection uses validation and must finish before any outer test read.
         for model in self.a.models:
-            if model not in self.choices: continue
-            if model==3:
+            if model==3 and model in self.choices:
                 chosen=self.screen(model,'coverage','instruction',grids.instruction(model,self.choices[model][0]))
                 if chosen: self.choices[model]=chosen
-            # Hold optimizer choice, reference architecture, batch size and epoch budget fixed across caps.
-            for blocks,build in [('250',self.a.build_250),('500',self.a.build),('uncapped',self.a.build_uncapped)]:
-                statuspath=self.root/f'model{model}'/f'coverage_{blocks}'/'status.json'
-                deadline=self.build_deadlines.setdefault(str(build),time.monotonic()+self.a.wait_build_hours*3600)
-                while (build is not None and not (build/'build_summary.json').exists()
-                       and self.budget.remaining('coverage')>0 and time.monotonic()<deadline):
-                    if (self.root/f'model{model}'/'STOP').exists():
-                        raise InterruptedError('STOP file while waiting for coverage build')
-                    runner.atomic_json(self.root/'status.json',dict(state='waiting_for_coverage_build',model=model,
-                                       blocks=blocks,path=str(build),gpu_budget_charged=False))
-                    time.sleep(20)
-                if build is None or not (build/'build_summary.json').exists():
-                    runner.atomic_json(statuspath,dict(state='pending_build',path=str(build)))
-                    continue
-                settings=json.loads((build/'settings.json').read_text())
-                expected=0 if blocks=='uncapped' else int(blocks)
-                if settings.get('num_blocks') != expected or settings.get('sample') != 'signal':
-                    raise ValueError(f'{blocks} build has the wrong cap/selector: {build}')
-                rr=[]
-                for base in self.optimizer_choices[model]:
-                    spec=dict(base,batch_size=1)
-                    result=self.trial(model,spec,'coverage','coverage',build,blocks,self.a.coverage_epochs,self.a.screen_seed)
-                    if result is not None: rr.append(result)
-                runner.atomic_json(statuspath,dict(state='complete' if len(rr)==len(self.optimizer_choices[model]) else 'partial',
-                                   completed=len(rr),epochs=self.a.coverage_epochs,validation_only=True))
-        runner.atomic_json(self.root/'primary_selection.json',dict(specs=self.choices,block_cap=500,
-                           rule='Staged validation selection; frozen before any new outer test evaluation',
-                           coverage_pilots_used_for_selection=False))
+        selection=dict(specs=self.choices,block_cap=500,
+                       rule='Staged validation selection; frozen before any new outer test evaluation',
+                       coverage_pilots_used_for_selection=False)
+        selection=json.loads(json.dumps(selection))
+        selection_path=self.root/'primary_selection.json'
+        if selection_path.exists() and json.loads(selection_path.read_text())!=selection:
+            raise ValueError('primary selection changed after freezing; refusing to reuse held-out evaluations')
+        runner.atomic_json(selection_path,selection)
+        # Primary results need only the ready 500-block build. Do not idle behind uncapped preprocessing.
         if not self.a.smoke:
             for model in self.a.models:
                 for seed,spec in itertools.product(self.a.seeds,self.choices.get(model,[])):
                     self.trial(model,spec,'confirm','confirm',self.a.build,'500',self.a.confirm_epochs,seed,test=True)
+        # Avoid carrying a confirmation dataset with loaded test samples into validation-only pilots.
+        self.data=None; self.data_key=None; gc.collect()
+        deferred=[]
+        for model in self.a.models:
+            if model not in self.choices: continue
+            for blocks,build in [('250',self.a.build_250),('500',self.a.build),('uncapped',self.a.build_uncapped)]:
+                if not self.coverage_case(model,blocks,build) and build is not None:
+                    deferred.append((model,blocks,build))
+        for model,blocks,build in deferred:
+            self.coverage_case(model,blocks,build,wait=True)
         pending=list(self.root.glob('model*/coverage_*/status.json'))
         pending=[str(p) for p in pending if json.loads(p.read_text())['state']!='complete']
         runner.atomic_json(self.root/'status.json',dict(state='queue_finished',completed=len(self.records),

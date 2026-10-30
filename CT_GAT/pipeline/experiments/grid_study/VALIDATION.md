@@ -8,3 +8,10 @@
 - The narrow study completed 6 Model 1 and 12 Model 3 screens. Model 1 three-seed confirmation is complete; Model 3 confirmation was checkpoint-paused because the expanded grid supersedes that selection. Narrow cases are reused only after exact input/training contract checks.
 
 No frozen-Transformer Model 3 arm is included. The expanded 30-hour search and its final confirmation remain ongoing work. Per-stage files report planned/completed counts, partial grids and failures.
+
+## Scheduler follow-up, 2026-10-29
+
+- Model-grid and expanded-study suites: **26 passed**. Added scheduling tests with both zero-wait and delayed-build scenarios.
+- Tests verify that every validation-selection stage finishes and all primary choices are frozen before any confirmation/test call; all 12 confirmations precede a missing-build wait; all eight ready 250/500 cap cases precede that wait; deferred uncapped cases resume when the build appears; and changing frozen choices on resume is rejected before another test call.
+- Existing data-isolation, budget persistence, Windows display-lock recovery and checkpoint-stop tests still pass. No model-grid training, model, packing or metric source file changed.
+- This is a scheduling improvement, not a measured per-epoch speedup. It overlaps useful GPU work with CPU preprocessing and brings primary results forward. Full uncapped coverage remains conditional on build completion and its phase budget.

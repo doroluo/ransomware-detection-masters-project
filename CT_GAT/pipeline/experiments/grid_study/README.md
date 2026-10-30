@@ -46,6 +46,14 @@ Primary screening uses 12 epochs per configuration and seed 0. Coverage uses **2
 
 The default 30-hour budget reserves 8 hours for optimizer screening, 8 for architecture screening, 6 for instruction-limit and coverage work, and 8 for repeat-seed confirmation. This is shared across the selected local models; it is not 30 hours per model or a combined budget across two computers. Data preparation, waiting and report writing are excluded. Active model/training/validation/checkpoint/test wall time is counted conservatively, not hardware utilization time. It is checkpointed every two seconds. The runner stops at an epoch boundary, so a phase/total limit can overrun by its final epoch. Unused phase allocations are not automatically spent elsewhere. Architecture grids visit single-axis changes before interactions; budget-limited grids are explicitly marked partial. Finishing the queue does not mean every planned setting completed.
 
+## Scheduling ready work
+
+The queue completes optimizer, architecture and Model 3 instruction-limit selection on validation, then freezes `primary_selection.json` before any new outer-test evaluation. It next runs the three-seed confirmations on the ready 500-block build. Coverage pilots do not select the primary models, so they need not block these results while an uncapped build is being prepared.
+
+After confirmation, the queue runs every ready 250/500/uncapped coverage case across all models before waiting for missing builds. Each build's wait timeout starts when the queue actually reaches its deferred wait. Validation-only coverage receives fresh prepared inputs so it does not inherit test tensors loaded for confirmation. A resume refuses to overwrite a different frozen primary selection.
+
+The instruction-limit search now has priority within the same six-hour instruction/coverage allowance; the remaining allowance serves coverage pilots. This scheduling priority can change which optional pilots fit into a time-limited study, but changes no per-trial model, optimizer, data, split, epoch count, seed, pooling pairing or numerical implementation. Existing study plans need an explicit audited scheduler-only source amendment before resuming under this version; ordinary source/plan checks remain strict.
+
 ## Coverage inputs
 
 250 blocks can be derived **exactly** from the existing signal selector's ranked prefix. This uses the manifest's selection order and then preserves canonical tensor/instruction order; it does not take the first 250 rows of a canonically ordered graph. Original edges are induced on the retained blocks, and instruction ownership/API tokens remain attached to their original instructions.
