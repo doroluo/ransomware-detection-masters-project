@@ -47,7 +47,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from common.config import RUNS
-from experiments.team_pipelines.common import (evaluate, fold_manifest, sample_rows, team_config,
+from experiments.team_pipelines.common import (dataset_excluded, evaluate, fold_manifest, sample_rows, team_config,
                                                val_threshold_of, write_run)
 from s04_evaluation.metrics import cell_weights
 
@@ -282,7 +282,7 @@ def run_arm(*, arm, fold, seed, graphs, sizes, build_model, hp, device, smoke=No
         log(f'smoke {cfg.name}: train {len(train_ids)} val {len(val_ids)} (temp dir {out}, 2 epochs, device {device}, '
             f'{threads} torch threads)')
     else:
-        skip = set(excluded)
+        skip = set(dataset_excluded(dict.fromkeys(excluded), manifest))
         need = [r['sample_id'] for r in manifest.train + manifest.val + manifest.test if r['sample_id'] not in skip]
         missing = [i for i in need if i not in graphs]
         if missing:

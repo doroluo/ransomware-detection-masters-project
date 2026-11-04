@@ -27,7 +27,8 @@ else the `team_b_build` source: GT_TEAM_B_BUILD, datasets.json, else `CT_GAT/pro
 preprocessed zip at `CT_GAT/` or `build_b --source repo` puts it), read through `Model1Dataset`. The folds are ours
 (`common.manifests.make_manifest` on the CFG cache index: the 5-fold x86 family holdout, the validation carve of the run seed,
 the same train / val / test ids as the GNN and the teammates' arms of that seed); a binary the build left out on purpose
-(`settings.json` `excluded`) is out of all three splits and recorded in metrics.json, as for the teammates' arms.
+(`settings.json` `excluded`) is out of all three splits and recorded in metrics.json, as for the teammates' arms (under `--arch matched` only the excluded
+ids of the matched subset, `dataset_excluded`).
 
 The API vocabulary of the build covers all the binaries of its dataset. Per fold it is made a training-set one again, with the logic of
 `experiments/team_pipelines/train_b.py`: every API id (>= FIRST_API_ID) that no training binary of the fold uses becomes UNK_API
@@ -71,7 +72,7 @@ from common.manifests import Manifest, load_index, make_manifest, run_command
 from common.paths import MissingSource, source_for
 from common.run_io import evaluate, write_run
 from experiments.team_pipelines.build_b import resolve_dir
-from experiments.team_pipelines.common import DATASET_OF, DEFAULT_ARCH
+from experiments.team_pipelines.common import DATASET_OF, DEFAULT_ARCH, dataset_excluded
 from experiments.team_pipelines.fit import cell_name
 from experiments.team_pipelines.train_b import check_build_dataset, read_excluded, remap_api
 from experiments.train import choose_thresholds
@@ -395,7 +396,7 @@ def run(cfg: RunConfig, build=None, device=None, smoke=None, out_root=None, log=
     out.mkdir(parents=True, exist_ok=True)
 
     manifest = make_manifest(cfg, load_index(protocol=cfg.protocol))
-    excluded = read_excluded(build)
+    excluded = dataset_excluded(read_excluded(build), manifest)
     keep = lambda rows: [r for r in rows if r['sample_id'] not in excluded]
     run_manifest = Manifest(keep(manifest.train), keep(manifest.val), keep(manifest.test), manifest.val_families)
     if smoke is not None:
