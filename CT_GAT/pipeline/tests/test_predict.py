@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import numpy as np
@@ -123,7 +124,7 @@ def test_rescoring_the_runs_own_binaries_reproduces_its_saved_predictions_to_1e_
     assert list(new[0]) == list(old[0])                                                       # the columns of the saved predictions
     for a, b in zip(old, new):
         assert (a['split'], a['label'], a['arch'], a['family'], a['fold']) == (b['split'], b['label'], b['arch'], b['family'], b['fold'])
-        assert abs(float(a['prob']) - float(b['prob'])) <= EXACT
+        assert abs(Decimal(a['prob']) - Decimal(b['prob'])) <= Decimal(str(EXACT))
         assert (a['n_segments_total'], a['n_blocks_kept'], a['n_blocks_total']) == (b['n_segments_total'], b['n_blocks_kept'], b['n_blocks_total'])
     check = result['check']
     assert check['max_dprob'] <= EXACT and not check['problems'] and check['pred_agreement'] == 1.0
