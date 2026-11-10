@@ -198,9 +198,13 @@ def publish(config, state, bootstrap=0):
     complete = sum(v.get('state') in ('complete', 'complete_with_resource_limits', 'complete_with_trial_failures') for v in jobs.values())
     active = [name for name, value in jobs.items() if value.get('state') == 'running']
     errors = [name for name, value in jobs.items() if value.get('state') in ('failed', 'resource_infeasible', 'blocked')]
+    skipped = [name for name, value in jobs.items() if value.get('state') == 'skipped']
+    progress = f'Completed jobs: {complete}/{len(jobs)}.'
+    if skipped:
+        progress = f'Completed jobs: {complete}/{len(jobs) - len(skipped)} scheduled; {len(skipped)} skipped ({len(jobs)} original jobs).'
     text = ['# Final-paper campaign status', '', f'Campaign state: {state.get("state", "running")}',
         f'First results checkpoint: {config["meeting_date"]}. Extended campaign target: {config["extended_date"]}. Paper due: {config["paper_due"]}.',
-        f'Completed jobs: {complete}/{len(jobs)}. Completed held-out seed/fold runs: {len(rows)}.',
+        f'{progress} Completed held-out seed/fold runs: {len(rows)}.',
         f'Active jobs: {", ".join(active) or "none"}.', '',
         'The first priorities are complete validation grids, three-seed primary results across all five grouped folds, and the first controlled 250/500 signal/callwalk comparisons.',
         'Further block counts, uncapped feasibility, and ablations follow within the declared total budget.', '',
@@ -212,6 +216,9 @@ def publish(config, state, bootstrap=0):
         f'Campaign folder: {root}', '']
     if errors:
         text += ['Jobs requiring attention or reporting a limit:', *[f'- {j}' for j in errors], '']
+    if skipped:
+        text += ['Jobs excluded from the remaining schedule:',
+            *[f'- {name}: {jobs[name]["reason"]}' for name in sorted(skipped)], '']
     text += ['Validation search progress:', '']
     for fold in config['folds']:
         folder = root / 'selection' / f'fold{fold}'
@@ -233,7 +240,8 @@ def publish(config, state, bootstrap=0):
         result_figures(root, rows)
     except ImportError:
         pass  # Numeric results remain available without plotting dependencies.
-    return dict(completed_test_cases=len(rows), jobs_completed=complete, active=active, errors=errors)
+    return dict(completed_test_cases=len(rows), jobs_completed=complete,
+        jobs_scheduled=len(jobs) - len(skipped), jobs_skipped=len(skipped), active=active, errors=errors)
 
 
 def main(argv=None):

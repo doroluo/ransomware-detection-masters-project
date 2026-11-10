@@ -25,13 +25,24 @@ from .report import publish
 
 PIPELINE = Path(__file__).resolve().parents[2]
 DONE = {'complete', 'complete_with_resource_limits', 'complete_with_trial_failures'}
-TERMINAL = DONE | {'failed', 'resource_infeasible', 'blocked'}
+TERMINAL = DONE | {'failed', 'resource_infeasible', 'blocked', 'skipped'}
 
 
 def source_snapshot():
     return dict(scientific=runner.source_hashes(),
         campaign={p.name: file_sha256(p) for p in Path(__file__).parent.glob('*.py')},
         utility_scripts={p.name: file_sha256(p) for p in Path(__file__).parent.glob('*.ps1')})
+
+
+def apply_job_skips(config, state):
+    requested = config.get('skip_jobs', {})
+    if any(state['jobs'][name]['state'] == 'running' for name in requested):
+        raise ValueError('Cannot skip a running job; stop it at a checkpoint first')
+    for name, reason in requested.items():
+        record = state['jobs'][name]
+        if record['state'] in ('pending', 'skipped'):
+            record.update(state='skipped', reason=reason)
+            record.setdefault('skipped_utc', datetime.now(timezone.utc).isoformat())
 
 
 def save_state(root, state):
@@ -266,6 +277,11 @@ def write_plan_document(config, root):
         'Memory/numerical failures and unexecuted dependent cases remain visible. No samples are silently removed to make a trial fit.',
         'All configurations, histories, predictions and final best weights are retained. Completed screening optimizer states/unselected weights may be compacted; interrupted checkpoints remain resumable.',
         'Packed working caches are temporary and removable only inside the marked campaign cache directory. Original datasets and historical results are preserved.', '']
+    if config.get('skip_jobs'):
+        lines += ['## Schedule exclusions', '',
+            f'{len(config["skip_jobs"])} jobs excluded from dispatch. '
+            f'{c["skipped_representation_confirmations"]} representation confirmations removed from the original schedule.',
+            *[f'- {name}: {reason}' for name, reason in sorted(config['skip_jobs'].items())], '']
     reports = root / 'reports'; reports.mkdir(parents=True, exist_ok=True)
     (reports / 'EXPERIMENT_PLAN.md').write_text('\n'.join(lines), encoding='utf-8')
     runner.atomic_json(reports / 'PLAN.json', dict(config=config, counts=c))
@@ -297,6 +313,7 @@ def run(config, once=False):
             record.update(state=success_state(job))
         elif record.get('state') == 'running':
             record.update(state='pending', note='Previous process exited before a complete marker; resume checkpoints')
+    apply_job_skips(config, state)
     write_plan_document(config, root)
     last_report = 0.; stopping = False
     if os.name == 'nt':
@@ -338,7 +355,7 @@ def run(config, once=False):
                 record = state['jobs'][job['id']]
                 if record['state'] != 'pending':
                     continue
-                if any(state['jobs'][d]['state'] in ('failed', 'resource_infeasible', 'blocked') for d in job['dependencies']):
+                if any(state['jobs'][d]['state'] in TERMINAL - DONE for d in job['dependencies']):
                     record.update(state='blocked', note='Required job did not complete')
             if not stopping:
                 for role, maximum in (('gpu', 1), ('cpu', 2)):
@@ -370,7 +387,7 @@ def run(config, once=False):
             checkpoint = elapsed >= config['checkpoint_hours'] and not state.get('meeting_checkpoint_published')
             finished = not processes and all(v['state'] in TERMINAL for v in state['jobs'].values())
             if finished:
-                state['state'] = 'complete' if all(v['state'] in DONE for v in state['jobs'].values()) else 'finished_with_limits_or_failures'
+                state['state'] = 'complete' if all(v['state'] in DONE | {'skipped'} for v in state['jobs'].values()) else 'finished_with_limits_or_failures'
             if stopping and not processes:
                 state['state'] = 'stopped_at_budget' if elapsed >= config['maximum_hours'] else 'stopped'
             save_state(root, state)

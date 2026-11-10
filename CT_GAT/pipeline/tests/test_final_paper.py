@@ -239,6 +239,41 @@ def test_campaign_graph_is_bounded_and_has_per_fold_selections(tmp_path):
         if job['id'].startswith(('primary_', 'compare_', 'ablate_')):
             fold = int(next(x[1:] for x in job['id'].split('_') if x.startswith('f') and x[1:].isdigit()))
             assert f'select_f{fold}' in job['dependencies']
+    config['skip_jobs'] = {f'compare_uncapped_f{fold}_m{model}': 'Previously exceeded GPU memory'
+        for fold in range(1, 5) for model in (2, 3)}
+    amended = jobs_for(config)
+    validate_plan(config, amended)
+    assert amended == jobs
+    assert counts(config)['representation_confirmations'] == 504
+    assert counts(config)['skipped_representation_confirmations'] == 36
+    config['skip_jobs']['missing'] = 'Typo'
+    with pytest.raises(ValueError, match='existing jobs'):
+        validate_plan(config, amended)
+
+
+def test_schedule_skips_are_idempotent_and_preserve_completed_outcomes():
+    import copy
+    from experiments.final_paper.campaign import apply_job_skips, TERMINAL
+    config = dict(skip_jobs=dict(pending='User requested exclusion', completed='Keep result', infeasible='Keep failure'))
+    state = dict(jobs=dict(pending=dict(state='pending', attempts=0),
+        completed=dict(state='complete', finished=42), infeasible=dict(state='complete_with_resource_limits')))
+    apply_job_skips(config, state)
+    assert state['jobs']['pending']['state'] == 'skipped'
+    assert state['jobs']['pending']['attempts'] == 0
+    assert state['jobs']['completed'] == dict(state='complete', finished=42)
+    assert state['jobs']['infeasible']['state'] == 'complete_with_resource_limits'
+    before = copy.deepcopy(state)
+    apply_job_skips(config, state)
+    assert state == before
+    assert 'skipped' in TERMINAL
+
+
+def test_schedule_skips_refuse_running_jobs_before_mutating_pending_records():
+    from experiments.final_paper.campaign import apply_job_skips
+    state = dict(jobs=dict(pending=dict(state='pending'), active=dict(state='running')))
+    with pytest.raises(ValueError, match='running job'):
+        apply_job_skips(dict(skip_jobs=dict(pending='Exclude', active='Exclude')), state)
+    assert state['jobs']['pending']['state'] == 'pending'
 
 
 def test_cache_cleanup_guard_rejects_original_inputs_and_unmarked_dirs(tmp_path):

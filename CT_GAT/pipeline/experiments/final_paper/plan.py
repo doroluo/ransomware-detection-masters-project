@@ -87,6 +87,11 @@ def validate_plan(config, jobs):
     names = {j['id'] for j in jobs}
     if len(names) != len(jobs):
         raise ValueError('Duplicate job identifiers')
+    skipped = config.get('skip_jobs', {})
+    if not isinstance(skipped, dict) or not set(skipped) <= names:
+        raise ValueError('Schedule exclusions must name existing jobs')
+    if any(not isinstance(reason, str) or not reason.strip() for reason in skipped.values()):
+        raise ValueError('Every schedule exclusion requires a reason')
     if config['folds'] != [0, 1, 2, 3, 4] or len(config['seeds']) != 3:
         raise ValueError('Paper preset requires five outer folds and three declared seeds')
     if not 0 < config['checkpoint_hours'] <= config['maximum_hours'] <= 480:
@@ -104,9 +109,15 @@ def validate_plan(config, jobs):
 
 def counts(config):
     folds, seeds = len(config['folds']), len(config['seeds'])
+    skipped_cases = {}
+    for kind in ('primary', 'compare', 'ablate'):
+        skipped_cases[kind] = sum((2 if name.endswith('_m3') else 1) * seeds
+            for name in config.get('skip_jobs', {}) if name.startswith(kind + '_'))
     return dict(staged_selection_entries_per_fold=509,
         staged_selection_entries_total=509 * folds,
-        primary_confirmations=4 * folds * seeds,
-        representation_confirmations=4 * len(REPRESENTATIONS) * folds * seeds,
-        ablation_confirmations=(3 + 3 + 4 * 2) * folds * seeds,
+        primary_confirmations=4 * folds * seeds - skipped_cases['primary'],
+        original_representation_confirmations=4 * len(REPRESENTATIONS) * folds * seeds,
+        skipped_representation_confirmations=skipped_cases['compare'],
+        representation_confirmations=4 * len(REPRESENTATIONS) * folds * seeds - skipped_cases['compare'],
+        ablation_confirmations=(3 + 3 + 4 * 2) * folds * seeds - skipped_cases['ablate'],
         note='Stage entries include exact reusable duplicates; failed/infeasible cases never receive fabricated metrics.')
