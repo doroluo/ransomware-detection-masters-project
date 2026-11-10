@@ -261,7 +261,7 @@ def write_plan_document(config, root):
         '- Fold-selected primary recipes are transferred unchanged within this separate series. Results are not mixed with the original-vocabulary primary series.',
         '- Logical batch size stays fixed. Graph microbatches of one accumulate sample-weighted gradients before an optimizer step.',
         '- The math attention backend, CPU activation offload and Model 3 activation checkpointing are recorded and held fixed across compared graph sizes.',
-        f'- Up to {c["representation_confirmations"]} seed/fold/representation confirmations; infeasible runs receive no accuracy score.', '',
+        f'- Up to {c["paper_representation_confirmations"]} paper-series seed/fold/representation confirmations; infeasible runs receive no accuracy score.', '',
         '## Ablations', '',
         '- Models 1/3: API identity removal, behavior-channel removal and deterministic within-input instruction shuffling.',
         '- Model 2: API-kind count removal, behavior-count removal and edge-free graph control.',
@@ -277,6 +277,11 @@ def write_plan_document(config, root):
         'Memory/numerical failures and unexecuted dependent cases remain visible. No samples are silently removed to make a trial fit.',
         'All configurations, histories, predictions and final best weights are retained. Completed screening optimizer states/unselected weights may be compacted; interrupted checkpoints remain resumable.',
         'Packed working caches are temporary and removable only inside the marked campaign cache directory. Original datasets and historical results are preserved.', '']
+    if 'uncapped' in config.get('excluded_representations', []):
+        lines = [line.replace('; shared uncapped eligible-block input', '')
+            .replace('Larger caps, uncapped feasibility and ablations follow.', 'Larger caps and ablations follow.')
+            for line in lines]
+        lines += ['Uncapped is excluded from the paper comparison series. Historical outcomes are retained in the raw archive.', '']
     if config.get('skip_jobs'):
         lines += ['## Schedule exclusions', '',
             f'{len(config["skip_jobs"])} jobs excluded from dispatch. '

@@ -134,7 +134,9 @@ def publish(config, state, bootstrap=0):
     excluded = json.loads((Path(config['builds']['signal500']) / 'settings.json').read_text())['excluded']
     expected = {sid: int(row['label']) for sid, row in index.items()
                 if row.get('fold_v3') not in ('', None) and sid not in excluded}
-    rows = collect(root)
+    all_rows = collect(root)
+    excluded_representations = set(config.get('excluded_representations', []))
+    rows = [row for row in all_rows if row['representation'] not in excluded_representations]
     write_csv(reports / 'RESULTS.csv', rows)
     groups = {}
     for row in rows:
@@ -147,6 +149,9 @@ def publish(config, state, bootstrap=0):
         'These existing outer folds have historical results; they are not a new external holdout.', '',
         '| Series | Representation | Ablation | Model | Pooling | Fold | Seeds | AUC | Detection | FPR |',
         '|---|---|---|---|---|---|---|---|---|---|']
+    if excluded_representations:
+        lines[6:6] = ['Paper comparisons exclude ' + ', '.join(sorted(excluded_representations)) +
+            '. Completed raw results remain in the campaign archive.', '']
     for key, records in groups.items():
         for fold in config['folds']:
             rr = [r for r in records if r['fold'] == fold]
@@ -180,7 +185,10 @@ def publish(config, state, bootstrap=0):
     write_csv(reports / 'OOF_SUMMARY.csv', oof_rows)
     ci_rows = []
     for path in reports.glob('CI_*.json'):
-        doc = json.loads(path.read_text()); entry = dict(doc['group'])
+        doc = json.loads(path.read_text())
+        if doc['group']['representation'] in excluded_representations:
+            continue
+        entry = dict(doc['group'])
         entry.update(bootstrap_repeats=doc['repeats'], grouping=doc['grouping'], scope=doc['scope'])
         for metric, interval in doc['intervals'].items():
             entry[metric + '_ci_lower'], entry[metric + '_ci_upper'] = interval
@@ -204,10 +212,11 @@ def publish(config, state, bootstrap=0):
         progress = f'Completed jobs: {complete}/{len(jobs) - len(skipped)} scheduled; {len(skipped)} skipped ({len(jobs)} original jobs).'
     text = ['# Final-paper campaign status', '', f'Campaign state: {state.get("state", "running")}',
         f'First results checkpoint: {config["meeting_date"]}. Extended campaign target: {config["extended_date"]}. Paper due: {config["paper_due"]}.',
-        f'{progress} Completed held-out seed/fold runs: {len(rows)}.',
+        f'{progress} Completed held-out seed/fold runs: {len(all_rows)}.',
+        f'Paper-included runs: {len(rows)}; archived excluded runs: {len(all_rows) - len(rows)}.',
         f'Active jobs: {", ".join(active) or "none"}.', '',
         'The first priorities are complete validation grids, three-seed primary results across all five grouped folds, and the first controlled 250/500 signal/callwalk comparisons.',
-        'Further block counts, uncapped feasibility, and ablations follow within the declared total budget.', '',
+        'Further block counts and ablations follow within the declared total budget.', '',
         'Selection is validation-only. Each outer fold has its own search; test scores never choose configurations.',
         'The new comparison series uses a shared semantic API vocabulary fitted only from training representations.',
         'Microbatch accumulation keeps the effective batch size fixed across graph sizes. Memory failures receive no invented scores.', '',
@@ -219,6 +228,9 @@ def publish(config, state, bootstrap=0):
     if skipped:
         text += ['Jobs excluded from the remaining schedule:',
             *[f'- {name}: {jobs[name]["reason"]}' for name in sorted(skipped)], '']
+    if excluded_representations:
+        text += ['Representations excluded from paper tables and charts: ' +
+            ', '.join(sorted(excluded_representations)) + '.', '']
     text += ['Validation search progress:', '']
     for fold in config['folds']:
         folder = root / 'selection' / f'fold{fold}'
@@ -240,7 +252,8 @@ def publish(config, state, bootstrap=0):
         result_figures(root, rows)
     except ImportError:
         pass  # Numeric results remain available without plotting dependencies.
-    return dict(completed_test_cases=len(rows), jobs_completed=complete,
+    return dict(completed_test_cases=len(all_rows), included_test_cases=len(rows),
+        excluded_test_cases=len(all_rows) - len(rows), jobs_completed=complete,
         jobs_scheduled=len(jobs) - len(skipped), jobs_skipped=len(skipped), active=active, errors=errors)
 
 

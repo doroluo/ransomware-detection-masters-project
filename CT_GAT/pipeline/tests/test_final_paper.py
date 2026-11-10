@@ -246,6 +246,9 @@ def test_campaign_graph_is_bounded_and_has_per_fold_selections(tmp_path):
     assert amended == jobs
     assert counts(config)['representation_confirmations'] == 504
     assert counts(config)['skipped_representation_confirmations'] == 36
+    config['excluded_representations'] = ['uncapped']
+    assert counts(config)['paper_representation_confirmations'] == 480
+    validate_plan(config, amended)
     config['skip_jobs']['missing'] = 'Typo'
     with pytest.raises(ValueError, match='existing jobs'):
         validate_plan(config, amended)
@@ -266,6 +269,33 @@ def test_schedule_skips_are_idempotent_and_preserve_completed_outcomes():
     apply_job_skips(config, state)
     assert state == before
     assert 'skipped' in TERMINAL
+
+
+def test_published_tables_exclude_uncapped_but_count_archived_results(tmp_path, monkeypatch):
+    import csv
+    from experiments.final_paper import report
+    root = tmp_path / 'campaign'
+    root.mkdir()
+    index = tmp_path / 'index.csv'
+    index.write_text('sample_id,label,fold_v3\nsample,0,0\n')
+    build = tmp_path / 'build'
+    build.mkdir()
+    (build / 'settings.json').write_text(json.dumps(dict(excluded={})))
+    base = dict(series='comparisons', ablation='none', model=1, pooling='mean', fold=0, seed=0,
+        auc=.9, pr_auc=.9, accuracy=.8, detection_rate=.8, fpr=.2, macro_f1=.8)
+    raw = [dict(base, representation='signal500'), dict(base, representation='uncapped')]
+    monkeypatch.setattr(report, 'collect', lambda _: raw)
+    config = dict(root=str(root), index=str(index), builds=dict(signal500=str(build)),
+        folds=list(range(5)), seeds=[0, 1, 2], meeting_date='2026-11-10', extended_date='2026-11-23',
+        paper_due='2026-12-07', excluded_representations=['uncapped'])
+    summary = report.publish(config, dict(jobs={}))
+    assert summary['completed_test_cases'] == 2
+    assert summary['included_test_cases'] == 1
+    assert summary['excluded_test_cases'] == 1
+    for name in ('RESULTS.csv', 'PER_FOLD_SUMMARY.csv'):
+        with (root / 'reports' / name).open(newline='') as handle:
+            assert {r['representation'] for r in csv.DictReader(handle)} == {'signal500'}
+    assert len(raw) == 2
 
 
 def test_schedule_skips_refuse_running_jobs_before_mutating_pending_records():

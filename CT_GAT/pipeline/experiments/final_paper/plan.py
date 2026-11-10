@@ -92,6 +92,9 @@ def validate_plan(config, jobs):
         raise ValueError('Schedule exclusions must name existing jobs')
     if any(not isinstance(reason, str) or not reason.strip() for reason in skipped.values()):
         raise ValueError('Every schedule exclusion requires a reason')
+    excluded = config.get('excluded_representations', [])
+    if not isinstance(excluded, list) or any(rep not in REPRESENTATIONS for rep in excluded):
+        raise ValueError('Paper exclusions must name known representations')
     if config['folds'] != [0, 1, 2, 3, 4] or len(config['seeds']) != 3:
         raise ValueError('Paper preset requires five outer folds and three declared seeds')
     if not 0 < config['checkpoint_hours'] <= config['maximum_hours'] <= 480:
@@ -119,5 +122,7 @@ def counts(config):
         original_representation_confirmations=4 * len(REPRESENTATIONS) * folds * seeds,
         skipped_representation_confirmations=skipped_cases['compare'],
         representation_confirmations=4 * len(REPRESENTATIONS) * folds * seeds - skipped_cases['compare'],
+        paper_representation_confirmations=4 * sum(rep not in config.get('excluded_representations', [])
+            for rep in REPRESENTATIONS) * folds * seeds,
         ablation_confirmations=(3 + 3 + 4 * 2) * folds * seeds - skipped_cases['ablate'],
         note='Stage entries include exact reusable duplicates; failed/infeasible cases never receive fabricated metrics.')
