@@ -249,6 +249,13 @@ def test_campaign_graph_is_bounded_and_has_per_fold_selections(tmp_path):
     config['excluded_representations'] = ['uncapped']
     assert counts(config)['paper_representation_confirmations'] == 480
     validate_plan(config, amended)
+    config['remote_jobs'] = {'compare_signal500_f3_m3': 'RX 9070 XT'}
+    validate_plan(config, amended)
+    assert counts(config)['paper_representation_confirmations'] == 480
+    config['remote_jobs']['compare_uncapped_f3_m3'] = 'RX 9070 XT'
+    with pytest.raises(ValueError, match='Remote assignments'):
+        validate_plan(config, amended)
+    del config['remote_jobs']['compare_uncapped_f3_m3']
     config['skip_jobs']['missing'] = 'Typo'
     with pytest.raises(ValueError, match='existing jobs'):
         validate_plan(config, amended)
