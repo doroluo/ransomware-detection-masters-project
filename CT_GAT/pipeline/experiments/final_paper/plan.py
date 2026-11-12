@@ -92,6 +92,12 @@ def validate_plan(config, jobs):
         raise ValueError('Schedule exclusions must name existing jobs')
     if any(not isinstance(reason, str) or not reason.strip() for reason in skipped.values()):
         raise ValueError('Every schedule exclusion requires a reason')
+    remote = config.get('remote_jobs', {})
+    transferable = {j['id'] for j in jobs if j['id'].startswith(('compare_', 'ablate_'))}
+    if not isinstance(remote, dict) or not set(remote) <= transferable - set(skipped):
+        raise ValueError('Remote assignments must name scheduled comparison or ablation jobs')
+    if any(not isinstance(worker, str) or not worker.strip() for worker in remote.values()):
+        raise ValueError('Every remote assignment requires a worker name')
     excluded = config.get('excluded_representations', [])
     if not isinstance(excluded, list) or any(rep not in REPRESENTATIONS for rep in excluded):
         raise ValueError('Paper exclusions must name known representations')

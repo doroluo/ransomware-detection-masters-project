@@ -287,6 +287,10 @@ def write_plan_document(config, root):
             f'{len(config["skip_jobs"])} jobs excluded from dispatch. '
             f'{c["skipped_representation_confirmations"]} representation confirmations removed from the original schedule.',
             *[f'- {name}: {reason}' for name, reason in sorted(config['skip_jobs'].items())], '']
+    if config.get('remote_jobs'):
+        lines += ['## Remote assignments', '',
+            'Assigned jobs stay in the experiment plan and wait for completed remote results.',
+            *[f'- {name}: {worker}' for name, worker in sorted(config['remote_jobs'].items())], '']
     reports = root / 'reports'; reports.mkdir(parents=True, exist_ok=True)
     (reports / 'EXPERIMENT_PLAN.md').write_text('\n'.join(lines), encoding='utf-8')
     runner.atomic_json(reports / 'PLAN.json', dict(config=config, counts=c))
@@ -299,6 +303,7 @@ def run(config, once=False):
     if source_snapshot() != expected_sources:
         raise ValueError('Campaign source changed; use a reviewed new campaign rather than mix implementations')
     by_id = {j['id']: j for j in jobs}
+    remote_jobs = config.get('remote_jobs', {})
     state = load_state(root) or dict(
         state='running', jobs={j['id']: dict(state='pending', attempts=0) for j in jobs},
         started_utc=config['started_utc'], stop_tag='campaign:' + uuid.uuid4().hex)
@@ -362,6 +367,12 @@ def run(config, once=False):
                     continue
                 if any(state['jobs'][d]['state'] in TERMINAL - DONE for d in job['dependencies']):
                     record.update(state='blocked', note='Required job did not complete')
+            for name, worker in remote_jobs.items():
+                record = state['jobs'][name]
+                if record['state'] == 'pending':
+                    complete = success_state(by_id[name])
+                    if complete:
+                        record.update(state=complete, finished=time.time(), remote_worker=worker)
             if not stopping:
                 for role, maximum in (('gpu', 1), ('cpu', 2)):
                     active = sum(by_id[name]['role'] == role for name in processes)
@@ -369,7 +380,7 @@ def run(config, once=False):
                         if active >= maximum:
                             break
                         record = state['jobs'][job['id']]
-                        if job['role'] != role or record['state'] != 'pending':
+                        if job['role'] != role or record['state'] != 'pending' or job['id'] in remote_jobs:
                             continue
                         if not all(state['jobs'][d]['state'] in DONE for d in job['dependencies']):
                             continue
@@ -393,6 +404,10 @@ def run(config, once=False):
             finished = not processes and all(v['state'] in TERMINAL for v in state['jobs'].values())
             if finished:
                 state['state'] = 'complete' if all(v['state'] in DONE | {'skipped'} for v in state['jobs'].values()) else 'finished_with_limits_or_failures'
+            elif not stopping:
+                waiting = not processes and all(
+                    v['state'] in TERMINAL or name in remote_jobs for name, v in state['jobs'].items())
+                state['state'] = 'waiting_for_remote' if waiting else 'running'
             if stopping and not processes:
                 state['state'] = 'stopped_at_budget' if elapsed >= config['maximum_hours'] else 'stopped'
             save_state(root, state)

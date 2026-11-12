@@ -207,6 +207,8 @@ def publish(config, state, bootstrap=0):
     active = [name for name, value in jobs.items() if value.get('state') == 'running']
     errors = [name for name, value in jobs.items() if value.get('state') in ('failed', 'resource_infeasible', 'blocked')]
     skipped = [name for name, value in jobs.items() if value.get('state') == 'skipped']
+    remote_pending = [name for name in sorted(config.get('remote_jobs', {}))
+                      if jobs.get(name, {}).get('state') == 'pending']
     progress = f'Completed jobs: {complete}/{len(jobs)}.'
     if skipped:
         progress = f'Completed jobs: {complete}/{len(jobs) - len(skipped)} scheduled; {len(skipped)} skipped ({len(jobs)} original jobs).'
@@ -223,6 +225,9 @@ def publish(config, state, bootstrap=0):
         'Files: SUMMARY.md, RESULTS.csv, PER_FOLD_SUMMARY.csv, OOF_SUMMARY.csv and STATUS.json.', '',
         'Create STOP in the campaign folder to stop dispatch and request an epoch-boundary checkpoint; rerun RESUME.ps1 to continue.',
         f'Campaign folder: {root}', '']
+    if remote_pending:
+        text += ['Jobs awaiting remote results:',
+            *[f'- {name}: {config["remote_jobs"][name]}' for name in remote_pending], '']
     if errors:
         text += ['Jobs requiring attention or reporting a limit:', *[f'- {j}' for j in errors], '']
     if skipped:
@@ -254,7 +259,8 @@ def publish(config, state, bootstrap=0):
         pass  # Numeric results remain available without plotting dependencies.
     return dict(completed_test_cases=len(all_rows), included_test_cases=len(rows),
         excluded_test_cases=len(all_rows) - len(rows), jobs_completed=complete,
-        jobs_scheduled=len(jobs) - len(skipped), jobs_skipped=len(skipped), active=active, errors=errors)
+        jobs_scheduled=len(jobs) - len(skipped), jobs_skipped=len(skipped), active=active,
+        remote_pending=remote_pending, errors=errors)
 
 
 def main(argv=None):
