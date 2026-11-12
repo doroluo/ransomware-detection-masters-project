@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import hashlib
 from pathlib import Path
 
+import torch
 from torch import nn
 from torch_geometric.nn import GATConv
 
@@ -41,10 +42,13 @@ def make_model(model, api_size, spec, seed):
     if model in (2, 3) and spec['gat_head_policy'] == 'all_layers':
         graph = network if model == 2 else network.gat
         previous = graph.convs[-1]
-        graph.convs[-1] = GATConv(
-            previous.in_channels, previous.out_channels, heads=spec['gat_heads'],
-            concat=False, dropout=spec['attention_dropout'], edge_dim=graph.edge_dim,
-        )
+        # The paired mean/CLS arms retain identical GAT initialization.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(seed + 17012)
+            graph.convs[-1] = GATConv(
+                previous.in_channels, previous.out_channels, heads=spec['gat_heads'],
+                concat=False, dropout=spec['attention_dropout'], edge_dim=graph.edge_dim,
+            )
     for module in network.modules():
         if isinstance(module, nn.MultiheadAttention):
             module.dropout = spec['attention_dropout']

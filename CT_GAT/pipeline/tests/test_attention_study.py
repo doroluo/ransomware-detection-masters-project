@@ -77,6 +77,16 @@ def test_factory_restores_after_failure():
     assert paper_trial.make_model is original
 
 
+def test_paired_model3_pooling_keeps_all_gat_initial_weights_equal():
+    specs = candidates(3, dict(grids.base_spec(3), gat_layers=2, gat_hidden=8),
+                       heads=(12,), dropouts=(0.2,))
+    torch.manual_seed(0)
+    mean = make_model(3, 128, specs[0], 0)
+    torch.manual_seed(0)
+    cls = make_model(3, 128, specs[1], 0)
+    assert all(torch.equal(value, cls.gat.state_dict()[key]) for key, value in mean.gat.state_dict().items())
+
+
 def test_original_one_layer_head_labels_are_reported_accurately():
     spec = dict(grids.base_spec(3), gat_layers=1, gat_heads=8, dropout=0.1)
     assert effective_attention(3, spec)['effective_gat_heads'] == '[1]'
