@@ -298,7 +298,30 @@ def main(argv=None):
         print(json.dumps({key: report[key] for key in ('profile', 'state', 'step_seconds',
                                                        'parameter_device', 'gradient_device') if key in report}), flush=True)
     atomic_json(args.out / 'summary.json', summary)
-    print(f'Return summary.json, environment.json, and the logs under {args.out}', flush=True)
+    environment_path = args.out / 'environment.json'
+    environment = json.loads(environment_path.read_text()) if environment_path.exists() else {}
+    lines = [
+        f"GPU {environment.get('gpu', 'unavailable')}",
+        f"PyTorch {environment.get('torch', 'unavailable')}, HIP {environment.get('hip', 'unavailable')}",
+        f"Platform {environment.get('platform', 'unavailable')}",
+    ]
+    for report in summary:
+        if report['state'] == 'complete':
+            stages = {}
+            for measurement in report['measurements']:
+                stages[measurement['phase']] = stages.get(measurement['phase'], 0) + measurement['seconds']
+            lines += [
+                f"{report['profile']} completed, logical batch seconds {report['step_seconds']}",
+                f"  Parameter device {report['parameter_device']}, gradient device {report['gradient_device']}",
+                "  Phase seconds " + json.dumps(stages, sort_keys=True),
+            ]
+        else:
+            phase = (report.get('last_progress') or {}).get('phase', report.get('message', 'See log'))
+            lines.append(f"{report['profile']} {report['state']}, last detail {phase}")
+    text = "\n".join(lines) + "\n"
+    (args.out / 'summary.txt').write_text(text, encoding='utf-8')
+    print(text, flush=True)
+    print(f'Return summary.txt and the JSON reports under {args.out}', flush=True)
     return 0 if any(r['state'] == 'complete' for r in summary) else 1
 
 

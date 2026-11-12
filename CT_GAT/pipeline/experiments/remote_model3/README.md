@@ -22,7 +22,7 @@ All three retain the same architecture, learning rate, logical batch size, instr
 
 Each profile runs in a fresh process and has a 120-second timeout including initialization. On timeout, the supervisor terminates that diagnostic worker and its descendants. It does not attach to other training jobs.
 
-Outputs are written to a new throughput_check subfolder inside the handoff directory. Return summary.json, environment.json, the profile JSON reports, progress JSON files, and logs. These record the PyTorch/HIP versions, actual model and gradient devices, input hashes, graph sizes, and phase timings. A timeout report preserves the last operation reached.
+Outputs are written to a new throughput_check subfolder inside the handoff directory. The terminal prints a compact summary that is also saved as summary.txt. Return that text plus summary.json, environment.json, the profile JSON reports, progress JSON files, and logs. These record the PyTorch/HIP versions, actual model and gradient devices, input hashes, graph sizes, and phase timings. A timeout report preserves the last operation reached.
 
 The selected examples come from the middle and large end of each class's training set. Source tensors are opened with weights_only=True. Packed graph caches are created locally for the benchmark and read through the original disk loader to include the cost of graph deserialization.
 
