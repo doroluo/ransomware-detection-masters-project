@@ -47,7 +47,7 @@ def make_model(model, api_size, spec, seed):
     return original_make_model(model, api_size, spec, seed)
 
 
-def run_trial(model_id, spec, seed, epochs, patience, data, out, device, sources, evaluate_test=False):
+def run_trial(model_id, spec, seed, epochs, patience, data, out, device, sources, evaluate_test=False, progress_seconds=0):
     out.mkdir(parents=True, exist_ok=True)
     contract = dict(model=model_id, spec=spec, seed=seed, epochs=epochs, patience=patience,
                     dataset_fingerprint=data.fingerprint, source_hashes=sources, evaluate_test=evaluate_test,
@@ -83,6 +83,17 @@ def run_trial(model_id, spec, seed, epochs, patience, data, out, device, sources
         history, start_epoch, best_key, stale = last['history'], last['epoch'] + 1, tuple(last['best_key']), last['stale']
         restore_rng(last['rng'])
     start_time = time.perf_counter()
+    last_progress = 0.
+
+    def progress(phase, force=False, **details):
+        nonlocal last_progress
+        now = time.perf_counter()
+        if progress_seconds and (force or now - last_progress >= progress_seconds):
+            row = dict(phase=phase, seed=seed, elapsed_seconds=now - start_time, **details)
+            atomic_json(out/'progress.json', row)
+            print(json.dumps(dict(run=out.name, **row)), flush=True)
+            last_progress = now
+
     for epoch in range(start_epoch, epochs + 1):
         if stale >= patience:
             break
@@ -92,28 +103,41 @@ def run_trial(model_id, spec, seed, epochs, patience, data, out, device, sources
         order = np.random.default_rng([seed, epoch, 7919]).permutation(train_ids).tolist()
         tick = time.perf_counter()
         total = 0.
-        for part in batches(order, spec['batch_size']):
+        done = 0
+        progress('training', force=True, epoch=epoch, samples_done=done, samples_total=len(order))
+        for batch_index, part in enumerate(batches(order, spec['batch_size'])):
             # A logical batch has exactly one optimizer step. Microbatches contribute
             # sample-weighted gradients, including a short final logical batch.
             opt.zero_grad(set_to_none=True)
-            for micro in batches(part, spec.get('micro_batch_size', len(part))):
+            for micro_index, micro in enumerate(batches(part, spec.get('micro_batch_size', len(part)))):
+                if batch_index == 0 and micro_index == 0:
+                    progress('load_and_transfer', force=True, epoch=epoch)
                 batch, y = collate(model_id, [data.samples[s] for s in micro], device)
+                if batch_index == 0 and micro_index == 0:
+                    progress('forward', force=True, epoch=epoch)
                 logits = forward(model_id, net, batch)
                 weighted = F.cross_entropy(logits, y, reduction='none') * class_weight[y]
                 loss = weighted.sum() / len(part)
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f'nonfinite loss in {out.name}, epoch {epoch}')
+                if batch_index == 0 and micro_index == 0:
+                    progress('backward', force=True, epoch=epoch)
                 loss.backward()
                 total += float(weighted.detach().sum())
                 del batch, y, logits, loss, weighted
             torch.nn.utils.clip_grad_norm_(net.parameters(), 1., error_if_nonfinite=True)
             opt.step()
+            done += len(part)
+            progress('training', epoch=epoch, samples_done=done, samples_total=len(order),
+                     training_seconds=time.perf_counter() - tick)
+        progress('validation', force=True, epoch=epoch, samples_done=done, samples_total=len(order))
         val = predict(model_id, net, data, 'val', spec.get('micro_batch_size', spec['batch_size']), device)
         score = metrics(val[1], val[2])
         key = (score['auc'], score['macro_f1'])
         row = dict(epoch=epoch, train_loss=total / len(order), seconds=time.perf_counter() - tick,
                    val_auc=score['auc'], val_macro_f1=score['macro_f1'])
         history.append(row)
+        progress('saving_checkpoints', force=True, epoch=epoch)
         if key > best_key:
             best_key, stale = key, 0
             save_checkpoint(out/'best.pt', {'model': cpu_state(net), 'epoch': epoch, 'fingerprint': fingerprint})
@@ -123,6 +147,7 @@ def run_trial(model_id, spec, seed, epochs, patience, data, out, device, sources
                          history=history, best_key=best_key, stale=stale, rng=rng_state(), fingerprint=fingerprint))
         atomic_json(out/'history.json', history)
         print(json.dumps(dict(run=out.name, seed=seed, **row)), flush=True)
+        progress('epoch_complete', force=True, **row)
     best = torch.load(out/'best.pt', map_location='cpu', weights_only=False)
     net.load_state_dict(best['model'])
     val = predict(model_id, net, data, 'val', spec.get('micro_batch_size', spec['batch_size']), device)
