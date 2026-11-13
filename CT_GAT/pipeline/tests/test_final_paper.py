@@ -226,6 +226,50 @@ def test_resource_errors_do_not_hide_programming_errors():
     assert not resource_failure(RuntimeError('mat1 and mat2 shapes cannot be multiplied'))
 
 
+def test_remote_execution_preserves_frozen_recipe_and_microbatch():
+    from experiments.final_paper.controlled import controlled_spec, execution_spec
+    base = grids.base_spec(3)
+    original = controlled_spec(base, 3)
+    assert execution_spec(base, 3, 'none', 'original') == original
+    resident = execution_spec(base, 3, 'none', 'gpu-resident')
+    assert resident['activation_checkpoint'] is False and resident['activation_offload'] is False
+    assert resident['micro_batch_size'] == 1
+    assert all(resident[k] == v for k, v in original.items()
+               if k not in ('activation_checkpoint', 'activation_offload'))
+
+
+def test_full_epoch_qualification_never_reads_test_and_reports_progress(controlled_build, monkeypatch):
+    from experiments.final_paper import controlled
+    root, splits = controlled_build
+    canonical.fit_common_vocabulary({'source': root}, root / 'index.csv', 'combined', 0, 0, root / 'fitted.json')
+    spec = dict(grids.base_spec(3), width=8, transformer_heads=2, transformer_layers=1,
+                gat_hidden=8, gat_heads=2, gat_layers=1, block_length=4, block_chunk=2,
+                batch_size=2, dropout=0.)
+    (root / 'selection.json').write_text(json.dumps(dict(fold=0, val_seed=0,
+        outer_test_tensors_loaded=False, specs={'3': [dict(spec, pooling=p) for p in ('mean', 'cls')]})))
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Qualification opened the held-out test set')
+    monkeypatch.setattr(ControlledPrepared, 'load_test', forbidden)
+    out = root / 'qualification'
+    args = ['--model', '3', '--build', str(root), '--index', str(root / 'index.csv'),
+            '--selection', str(root / 'selection.json'), '--vocabulary', str(root / 'fitted.json'),
+            '--fold', '0', '--out', str(out), '--cache', str(root / 'cache'), '--device', 'cpu',
+            '--threads', '1', '--execution-profile', 'gpu-resident', '--qualification',
+            '--epochs', '1', '--seeds', '0', '--progress-seconds', '30']
+    assert controlled.main(args) == 0
+    assert json.loads((out / 'status.json').read_text())['state'] == 'complete'
+    assert json.loads((out / 'status.json').read_text())['test_evaluated'] is False
+    cases = list((out / 'trials').iterdir())
+    assert len(cases) == 1
+    assert json.loads((cases[0] / 'progress.json').read_text())['phase'] == 'epoch_complete'
+    assert len(json.loads((cases[0] / 'history.json').read_text())) == 1
+    result = json.loads((cases[0] / 'metrics.json').read_text())
+    assert 'test' not in result and result['spec']['pooling'] == 'mean'
+    assert controlled.main(args) == 0  # Completed qualification is reusable.
+    with pytest.raises(SystemExit):
+        controlled.main(args + ['--smoke', '8'])
+
+
 def test_campaign_graph_is_bounded_and_has_per_fold_selections(tmp_path):
     from experiments.final_paper.plan import REPRESENTATIONS, counts, jobs_for, validate_plan
     config = dict(root=str(tmp_path), builds={k: str(tmp_path / k) for k in REPRESENTATIONS},
