@@ -1,0 +1,26 @@
+{
+  "export_date_pacific": "2026-11-24",
+  "study_code_commit": "0eafa0d4",
+  "spreadsheet_runtime_bundle": "26.1112.11217",
+  "paper_held_out_results": 744,
+  "attention_confirmations": 60,
+  "successful_validation_stage_entries": 3139,
+  "selected_recipes": 40,
+  "verification": {
+    "historical_scores_preserved": true,
+    "new_raw_records_match_sources": true,
+    "pooled_predictions_recomputed": true,
+    "formula_errors": 0,
+    "pytest": "1 passed"
+  },
+  "sha256": {
+    "reports/final_paper/Final_Paper_Results_With_Hyperparameters_2026-11-24.xlsx": "8fff7d9eec48e0ba7a59083dfac21aacdffc2cac74c47dc941d10b4bd7925a12",
+    "reports/final_paper/layout.json": "ce9e6854f668d5756c226b563cf2d5d80037fa1c5074ca1ff6b316f4379493a3",
+    "CT_GAT/pipeline/reporting/final_export/export.mjs": "a6b68016dcf20c97339f48b39c83f99ed9a0d80e4493f878a09a1ef72f38e30c",
+    "CT_GAT/pipeline/reporting/final_export/prepare.py": "f21c8de010ab455c33985c9bd45391b723d9a386de525164c3eb8906a3b1aa88",
+    "CT_GAT/pipeline/reporting/final_export/verify.py": "74389a3709f52e38c50d87be0b60fbcef5b56bdbe87e9caf754be577fe6422b2",
+    "CT_GAT/pipeline/reporting/final_export/assets/baseline.xlsx": "f398d193cf8ce66b2c940f4db123c21f6e046ea75802ff55057ba0ea21ce83c0",
+    "CT_GAT/pipeline/reporting/final_export/assets/baseline_layout.json": "d0aa81888a5454c50e186205e457806c0a27672a70c4469a11bea34ad2826fd4",
+    "CT_GAT/pipeline/reporting/final_export/assets/attention_records.json.gz": "4d67313e0a16245276522fbbe16f068efe4c0d105363fab6f311b7500b0f3dd3"
+  }
+}
