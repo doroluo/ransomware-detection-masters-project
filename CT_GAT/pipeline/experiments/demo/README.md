@@ -106,8 +106,15 @@ CPU validation replays cover five saved validation predictions per model. The ob
 
 Compatible IDA export preparation is tested with synthetic export/listing pairs. No previously unseen external executable was supplied for this handoff, so actual external-file results remain to be measured. GPU execution was not requalified during packaging. No training run was started or interrupted.
 
-## Graphs and analysis
+## Local graphs and verification
 
-The [five-figure package](../../../../reports/hyperparameters_20261124/READ_ME_FIRST.txt) covers overall test metrics, optimizer settings, architecture/input limits/batch size, attention interactions, and block-budget sampling. PNGs are suitable for slides; SVGs retain vector graphics and editable text. CSV files preserve plotted numbers. Validation-stage curves and held-out metrics are explicitly distinguished.
+Generated figures are kept local and are not included in the source branch or release assets. To rebuild them from the saved workbook, install the optional plotting dependencies and run from `CT_GAT/pipeline`:
+
+```powershell
+python -m pip install -r reporting/final_export/plot_requirements.txt
+python reporting/final_export/build_hyperparameter_figures.py
+```
+
+The default output is the ignored `demo_results/hyperparameter_graphs` folder. The five figures cover overall test metrics, optimizer settings, architecture/input limits/batch size, attention interactions, and block-budget sampling. They are saved as PNG and SVG, with CSV files preserving plotted numbers. Validation-stage curves and held-out metrics are explicitly distinguished.
 
 The [verification report](../../../../reports/demo_models_20261125/replay_verification.json) records the local CPU replay checks. The [family recipe table](../../../../reports/demo_models_20261125/best_family_recipes.csv) records every fold-specific recipe for the selected model families; the small downloadable bundle supplies the fixed demo members only.

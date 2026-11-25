@@ -8,8 +8,7 @@ from this folder (`CT_GAT/pipeline`) as `python -m <package>.<module>`; the test
 
 The [demo guide](experiments/demo/README.md) provides frozen checkpoint downloads, exact recipes, and one inference command
 for all three models using compatible IDA CFG/assembly exports. It also accepts existing project-preprocessed tensors.
-The commands do not retrain models or execute the input binary. The accompanying
-[hyperparameter graphs](../../reports/hyperparameters_20261124/READ_ME_FIRST.txt) distinguish validation tuning from overall held-out results.
+The commands do not retrain models or execute the input binary.
 
 ## Pipeline
 

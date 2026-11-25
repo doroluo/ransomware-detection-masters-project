@@ -259,3 +259,6 @@ CT_GAT/pipeline/datasets.json
 CT_GAT/pipeline/runs/
 CT_GAT/pipeline/demo_models/
 CT_GAT/pipeline/demo_results/
+
+# Generated hyperparameter figures stay local.
+reports/hyperparameters_*/
