@@ -4,6 +4,13 @@ The ransomware classifiers of this project, from the IDA export of a binary to t
 from this folder (`CT_GAT/pipeline`) as `python -m <package>.<module>`; the tests are in `tests/`. The root
 [`README.md`](../../README.md) is the short run guide.
 
+## Pretrained M1, M2 and M3 demos
+
+The [demo guide](experiments/demo/README.md) provides frozen checkpoint downloads, exact recipes, and one inference command
+for all three models using compatible IDA CFG/assembly exports. It also accepts existing project-preprocessed tensors.
+The commands do not retrain models or execute the input binary. The accompanying
+[hyperparameter graphs](../../reports/hyperparameters_20261124/READ_ME_FIRST.txt) distinguish validation tuning from overall held-out results.
+
 ## Pipeline
 
 <img width="741" height="750" alt="Team pipeline diagram" src="https://github.com/user-attachments/assets/dbb96697-ee9c-457b-a7c7-5f1022c492e9" />

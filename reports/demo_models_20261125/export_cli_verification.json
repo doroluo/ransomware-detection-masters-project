@@ -1,0 +1,13 @@
+{
+  "synthetic_exports_only": true,
+  "real_external_sample_tested": false,
+  "device": "cpu",
+  "pretrained_models_tested": [
+    1,
+    2,
+    3
+  ],
+  "all_model_cli_passed": true,
+  "existing_output_guard_tested": true,
+  "note": "Integration smoke test with hand-written IDA-compatible CFG/listing and actual published checkpoint candidates. No accuracy claim from synthetic inputs."
+}

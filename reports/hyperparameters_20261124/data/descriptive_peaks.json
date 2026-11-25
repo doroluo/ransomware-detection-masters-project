@@ -1,0 +1,533 @@
+[
+  {
+    "analysis": "optimizer / M1",
+    "parameter": "lr",
+    "metric": "accuracy",
+    "highest_mean_level": 0.001,
+    "highest_mean": 0.8446067470931078,
+    "lowest_mean": 0.7751786116263761,
+    "range": 0.06942813546673166
+  },
+  {
+    "analysis": "optimizer / M2",
+    "parameter": "lr",
+    "metric": "accuracy",
+    "highest_mean_level": 0.001,
+    "highest_mean": 0.8568434984820301,
+    "lowest_mean": 0.792786684620391,
+    "range": 0.06405681386163908
+  },
+  {
+    "analysis": "optimizer / M3 mean",
+    "parameter": "lr",
+    "metric": "accuracy",
+    "highest_mean_level": 0.0001,
+    "highest_mean": 0.832853896326703,
+    "lowest_mean": 0.516790000063326,
+    "range": 0.31606389626337705
+  },
+  {
+    "analysis": "optimizer / M3 CLS",
+    "parameter": "lr",
+    "metric": "accuracy",
+    "highest_mean_level": 0.0001,
+    "highest_mean": 0.8028632505654735,
+    "lowest_mean": 0.533518332602632,
+    "range": 0.26934491796284143
+  },
+  {
+    "analysis": "optimizer / M1",
+    "parameter": "dropout",
+    "metric": "accuracy",
+    "highest_mean_level": 0.1,
+    "highest_mean": 0.8266026292956064,
+    "lowest_mean": 0.8107077622659998,
+    "range": 0.01589486702960652
+  },
+  {
+    "analysis": "optimizer / M2",
+    "parameter": "dropout",
+    "metric": "accuracy",
+    "highest_mean_level": 0.0,
+    "highest_mean": 0.8750678052820609,
+    "lowest_mean": 0.7366070288492089,
+    "range": 0.13846077643285193
+  },
+  {
+    "analysis": "optimizer / M3 mean",
+    "parameter": "dropout",
+    "metric": "accuracy",
+    "highest_mean_level": 0.0,
+    "highest_mean": 0.8124654156523967,
+    "lowest_mean": 0.6666657879907584,
+    "range": 0.14579962766163834
+  },
+  {
+    "analysis": "optimizer / M3 CLS",
+    "parameter": "dropout",
+    "metric": "accuracy",
+    "highest_mean_level": 0.0,
+    "highest_mean": 0.8004374278411587,
+    "lowest_mean": 0.6134844084535997,
+    "range": 0.18695301938755893
+  },
+  {
+    "analysis": "optimizer / M1",
+    "parameter": "weight_decay",
+    "metric": "accuracy",
+    "highest_mean_level": 0.01,
+    "highest_mean": 0.8211345970695327,
+    "lowest_mean": 0.8156398360826669,
+    "range": 0.005494760986865854
+  },
+  {
+    "analysis": "optimizer / M2",
+    "parameter": "weight_decay",
+    "metric": "accuracy",
+    "highest_mean_level": 0.01,
+    "highest_mean": 0.8316088132100994,
+    "lowest_mean": 0.8208704410256872,
+    "range": 0.010738372184412204
+  },
+  {
+    "analysis": "optimizer / M3 mean",
+    "parameter": "weight_decay",
+    "metric": "accuracy",
+    "highest_mean_level": 0.0001,
+    "highest_mean": 0.7563388300941801,
+    "lowest_mean": 0.75310633990809,
+    "range": 0.0032324901860901756
+  },
+  {
+    "analysis": "optimizer / M3 CLS",
+    "parameter": "weight_decay",
+    "metric": "accuracy",
+    "highest_mean_level": 0.0,
+    "highest_mean": 0.7382971493303122,
+    "lowest_mean": 0.7291653973950106,
+    "range": 0.00913175193530158
+  },
+  {
+    "analysis": "optimizer / M1",
+    "parameter": "lr",
+    "metric": "auc",
+    "highest_mean_level": 0.001,
+    "highest_mean": 0.9276676105544204,
+    "lowest_mean": 0.8551531529265803,
+    "range": 0.07251445762784003
+  },
+  {
+    "analysis": "optimizer / M2",
+    "parameter": "lr",
+    "metric": "auc",
+    "highest_mean_level": 0.001,
+    "highest_mean": 0.9605305290186822,
+    "lowest_mean": 0.9169954467716367,
+    "range": 0.0435350822470455
+  },
+  {
+    "analysis": "optimizer / M3 mean",
+    "parameter": "lr",
+    "metric": "auc",
+    "highest_mean_level": 0.0001,
+    "highest_mean": 0.9454784275214405,
+    "lowest_mean": 0.672272896202982,
+    "range": 0.2732055313184585
+  },
+  {
+    "analysis": "optimizer / M3 CLS",
+    "parameter": "lr",
+    "metric": "auc",
+    "highest_mean_level": 0.0003,
+    "highest_mean": 0.9446681496798653,
+    "lowest_mean": 0.6745898126190472,
+    "range": 0.2700783370608182
+  },
+  {
+    "analysis": "optimizer / M1",
+    "parameter": "dropout",
+    "metric": "auc",
+    "highest_mean_level": 0.1,
+    "highest_mean": 0.9139131642260756,
+    "lowest_mean": 0.8860199190503296,
+    "range": 0.027893245175745984
+  },
+  {
+    "analysis": "optimizer / M2",
+    "parameter": "dropout",
+    "metric": "auc",
+    "highest_mean_level": 0.0,
+    "highest_mean": 0.9616198611498579,
+    "lowest_mean": 0.9085215391229322,
+    "range": 0.05309832202692566
+  },
+  {
+    "analysis": "optimizer / M3 mean",
+    "parameter": "dropout",
+    "metric": "auc",
+    "highest_mean_level": 0.0,
+    "highest_mean": 0.9142524226998612,
+    "lowest_mean": 0.8347876633666607,
+    "range": 0.07946475933320052
+  },
+  {
+    "analysis": "optimizer / M3 CLS",
+    "parameter": "dropout",
+    "metric": "auc",
+    "highest_mean_level": 0.0,
+    "highest_mean": 0.9043698133436684,
+    "lowest_mean": 0.817110721015958,
+    "range": 0.08725909232771034
+  },
+  {
+    "analysis": "optimizer / M1",
+    "parameter": "weight_decay",
+    "metric": "auc",
+    "highest_mean_level": 0.0001,
+    "highest_mean": 0.9042755955296058,
+    "lowest_mean": 0.9020904846133866,
+    "range": 0.0021851109162192017
+  },
+  {
+    "analysis": "optimizer / M2",
+    "parameter": "weight_decay",
+    "metric": "auc",
+    "highest_mean_level": 0.01,
+    "highest_mean": 0.9420669571285443,
+    "lowest_mean": 0.9387929041486839,
+    "range": 0.003274052979860387
+  },
+  {
+    "analysis": "optimizer / M3 mean",
+    "parameter": "weight_decay",
+    "metric": "auc",
+    "highest_mean_level": 0.0001,
+    "highest_mean": 0.8850890140829868,
+    "lowest_mean": 0.8778156521641662,
+    "range": 0.007273361918820553
+  },
+  {
+    "analysis": "optimizer / M3 CLS",
+    "parameter": "weight_decay",
+    "metric": "auc",
+    "highest_mean_level": 0.01,
+    "highest_mean": 0.8718375217756883,
+    "lowest_mean": 0.8685827952241154,
+    "range": 0.003254726551572884
+  },
+  {
+    "analysis": "architecture / M1",
+    "parameter": "width",
+    "metric": "auc",
+    "highest_mean_level": 64.0,
+    "highest_mean": 0.9244428199776827,
+    "lowest_mean": 0.888476472530677,
+    "range": 0.035966347447005775
+  },
+  {
+    "analysis": "architecture / M3 mean",
+    "parameter": "width",
+    "metric": "auc",
+    "highest_mean_level": 32.0,
+    "highest_mean": 0.959461393402943,
+    "lowest_mean": 0.9213841510527001,
+    "range": 0.0380772423502429
+  },
+  {
+    "analysis": "architecture / M3 CLS",
+    "parameter": "width",
+    "metric": "auc",
+    "highest_mean_level": 64.0,
+    "highest_mean": 0.9534185206986698,
+    "lowest_mean": 0.911021511065771,
+    "range": 0.04239700963289883
+  },
+  {
+    "analysis": "architecture / M1",
+    "parameter": "transformer_layers",
+    "metric": "auc",
+    "highest_mean_level": 2.0,
+    "highest_mean": 0.9269462421966089,
+    "lowest_mean": 0.8786248245048213,
+    "range": 0.04832141769178766
+  },
+  {
+    "analysis": "architecture / M3 mean",
+    "parameter": "transformer_layers",
+    "metric": "auc",
+    "highest_mean_level": 1.0,
+    "highest_mean": 0.9617332359584665,
+    "lowest_mean": 0.9256574649361747,
+    "range": 0.03607577102229176
+  },
+  {
+    "analysis": "architecture / M3 CLS",
+    "parameter": "transformer_layers",
+    "metric": "auc",
+    "highest_mean_level": 1.0,
+    "highest_mean": 0.9558555683827519,
+    "lowest_mean": 0.9187132140099713,
+    "range": 0.03714235437278057
+  },
+  {
+    "analysis": "architecture / M2",
+    "parameter": "gat_hidden",
+    "metric": "auc",
+    "highest_mean_level": 128.0,
+    "highest_mean": 0.9639976087052131,
+    "lowest_mean": 0.9523423988150792,
+    "range": 0.01165520989013391
+  },
+  {
+    "analysis": "architecture / M3 mean",
+    "parameter": "gat_hidden",
+    "metric": "auc",
+    "highest_mean_level": 128.0,
+    "highest_mean": 0.9525669608090098,
+    "lowest_mean": 0.9388934748974095,
+    "range": 0.013673485911600336
+  },
+  {
+    "analysis": "architecture / M3 CLS",
+    "parameter": "gat_hidden",
+    "metric": "auc",
+    "highest_mean_level": 128.0,
+    "highest_mean": 0.9427747471448298,
+    "lowest_mean": 0.9332772017031719,
+    "range": 0.009497545441657929
+  },
+  {
+    "analysis": "architecture / M2",
+    "parameter": "gat_layers",
+    "metric": "auc",
+    "highest_mean_level": 2.0,
+    "highest_mean": 0.9654539394637305,
+    "lowest_mean": 0.9469100049118226,
+    "range": 0.018543934551907837
+  },
+  {
+    "analysis": "architecture / M3 mean",
+    "parameter": "gat_layers",
+    "metric": "auc",
+    "highest_mean_level": 1.0,
+    "highest_mean": 0.9486085901987852,
+    "lowest_mean": 0.9416182639107663,
+    "range": 0.006990326288018878
+  },
+  {
+    "analysis": "architecture / M3 CLS",
+    "parameter": "gat_layers",
+    "metric": "auc",
+    "highest_mean_level": 1.0,
+    "highest_mean": 0.9417033120131723,
+    "lowest_mean": 0.9352823568330942,
+    "range": 0.006420955180078014
+  },
+  {
+    "analysis": "heads / M1",
+    "parameter": "transformer_heads",
+    "metric": "auc",
+    "highest_mean_level": 4.0,
+    "highest_mean": 0.9534307255755567,
+    "lowest_mean": 0.9388193418371967,
+    "range": 0.014611383738360018
+  },
+  {
+    "analysis": "heads / M3 mean",
+    "parameter": "transformer_heads",
+    "metric": "auc",
+    "highest_mean_level": 4.0,
+    "highest_mean": 0.9697360720374663,
+    "lowest_mean": 0.9639642199136549,
+    "range": 0.005771852123811372
+  },
+  {
+    "analysis": "heads / M3 CLS",
+    "parameter": "transformer_heads",
+    "metric": "auc",
+    "highest_mean_level": 4.0,
+    "highest_mean": 0.9707734539619551,
+    "lowest_mean": 0.9668627294713051,
+    "range": 0.003910724490649997
+  },
+  {
+    "analysis": "heads / M2",
+    "parameter": "gat_heads",
+    "metric": "auc",
+    "highest_mean_level": 4.0,
+    "highest_mean": 0.9788745689344824,
+    "lowest_mean": 0.966007488168535,
+    "range": 0.012867080765947447
+  },
+  {
+    "analysis": "heads / M3 mean",
+    "parameter": "gat_heads",
+    "metric": "auc",
+    "highest_mean_level": 8.0,
+    "highest_mean": 0.971524997296562,
+    "lowest_mean": 0.9583066142362957,
+    "range": 0.013218383060266348
+  },
+  {
+    "analysis": "heads / M3 CLS",
+    "parameter": "gat_heads",
+    "metric": "auc",
+    "highest_mean_level": 4.0,
+    "highest_mean": 0.9698940034767038,
+    "lowest_mean": 0.9670802883473302,
+    "range": 0.002813715129373673
+  },
+  {
+    "analysis": "architecture / M1",
+    "parameter": "sequence_length",
+    "metric": "auc",
+    "highest_mean_level": 1024.0,
+    "highest_mean": 0.9234658278352352,
+    "lowest_mean": 0.9019278510478664,
+    "range": 0.021537976787368796
+  },
+  {
+    "analysis": "instruction / M3 mean",
+    "parameter": "block_length",
+    "metric": "auc",
+    "highest_mean_level": 64.0,
+    "highest_mean": 0.9786343503512773,
+    "lowest_mean": 0.965513289222554,
+    "range": 0.013121061128723355
+  },
+  {
+    "analysis": "instruction / M3 CLS",
+    "parameter": "block_length",
+    "metric": "auc",
+    "highest_mean_level": 64.0,
+    "highest_mean": 0.9732205491321084,
+    "lowest_mean": 0.9619408044943086,
+    "range": 0.011279744637799793
+  },
+  {
+    "analysis": "batch / M1",
+    "parameter": "batch_size",
+    "metric": "auc",
+    "highest_mean_level": 32.0,
+    "highest_mean": 0.9549056435314874,
+    "lowest_mean": 0.9374602362826927,
+    "range": 0.01744540724879473
+  },
+  {
+    "analysis": "batch / M2",
+    "parameter": "batch_size",
+    "metric": "auc",
+    "highest_mean_level": 16.0,
+    "highest_mean": 0.9803354036813776,
+    "lowest_mean": 0.9699908688618162,
+    "range": 0.010344534819561435
+  },
+  {
+    "analysis": "batch / M3 mean",
+    "parameter": "batch_size",
+    "metric": "auc",
+    "highest_mean_level": 8.0,
+    "highest_mean": 0.9785408954191127,
+    "lowest_mean": 0.9115884826456694,
+    "range": 0.06695241277344333
+  },
+  {
+    "analysis": "batch / M3 CLS",
+    "parameter": "batch_size",
+    "metric": "auc",
+    "highest_mean_level": 8.0,
+    "highest_mean": 0.9740938693602673,
+    "lowest_mean": 0.9106204271744452,
+    "range": 0.06347344218582207
+  },
+  {
+    "analysis": "attention / M1",
+    "parameter": "transformer_heads",
+    "metric": "auc",
+    "highest_mean_level": 4.0,
+    "highest_mean": 0.942782269270019,
+    "lowest_mean": 0.929049506124496,
+    "range": 0.013732763145522964
+  },
+  {
+    "analysis": "attention / M3 mean",
+    "parameter": "transformer_heads",
+    "metric": "auc",
+    "highest_mean_level": 8.0,
+    "highest_mean": 0.9664686468584222,
+    "lowest_mean": 0.9647492328045485,
+    "range": 0.001719414053873658
+  },
+  {
+    "analysis": "attention / M3 CLS",
+    "parameter": "transformer_heads",
+    "metric": "auc",
+    "highest_mean_level": 12.0,
+    "highest_mean": 0.9623901434749504,
+    "lowest_mean": 0.956482991933526,
+    "range": 0.005907151541424405
+  },
+  {
+    "analysis": "attention / M2",
+    "parameter": "gat_heads",
+    "metric": "auc",
+    "highest_mean_level": 8.0,
+    "highest_mean": 0.9721054044243296,
+    "lowest_mean": 0.9685482367444159,
+    "range": 0.003557167679913653
+  },
+  {
+    "analysis": "attention / M3 mean",
+    "parameter": "gat_heads",
+    "metric": "auc",
+    "highest_mean_level": 4.0,
+    "highest_mean": 0.9672731891987165,
+    "lowest_mean": 0.9633000230180958,
+    "range": 0.003973166180620713
+  },
+  {
+    "analysis": "attention / M3 CLS",
+    "parameter": "gat_heads",
+    "metric": "auc",
+    "highest_mean_level": 12.0,
+    "highest_mean": 0.9614803611929551,
+    "lowest_mean": 0.9586581541808463,
+    "range": 0.0028222070121087794
+  },
+  {
+    "analysis": "attention / M1",
+    "parameter": "attention_dropout",
+    "metric": "auc",
+    "highest_mean_level": 0.1,
+    "highest_mean": 0.9385565942844636,
+    "lowest_mean": 0.9349458108439175,
+    "range": 0.003610783440546106
+  },
+  {
+    "analysis": "attention / M2",
+    "parameter": "attention_dropout",
+    "metric": "auc",
+    "highest_mean_level": 0.0,
+    "highest_mean": 0.9708320757964501,
+    "lowest_mean": 0.9695748945901266,
+    "range": 0.0012571812063235654
+  },
+  {
+    "analysis": "attention / M3 mean",
+    "parameter": "attention_dropout",
+    "metric": "auc",
+    "highest_mean_level": 0.0,
+    "highest_mean": 0.9667949472412306,
+    "lowest_mean": 0.9645564214316702,
+    "range": 0.00223852580956041
+  },
+  {
+    "analysis": "attention / M3 CLS",
+    "parameter": "attention_dropout",
+    "metric": "auc",
+    "highest_mean_level": 0.0,
+    "highest_mean": 0.9615697859759806,
+    "lowest_mean": 0.9580963861712745,
+    "range": 0.0034733998047061787
+  }
+]

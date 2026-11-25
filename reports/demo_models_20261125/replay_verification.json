@@ -1,0 +1,286 @@
+{
+  "device": "cpu",
+  "validation_only": true,
+  "training_performed": false,
+  "checkpoint_selection": "fixed fold0 seed0",
+  "prediction_checks": [
+    {
+      "model": 1,
+      "sample_id": "002dd9b7cbf8ca2a09434f8c4abd85631efe922ab8daa1219d86d83a0228aeda",
+      "saved_score": 0.47292691469192505,
+      "replay_score": 0.4692162275314331,
+      "absolute_difference": 0.0037106871604919434,
+      "threshold": 0.18,
+      "coverage": {
+        "instructions_in_build": 5066,
+        "instructions_used": 1024,
+        "blocks_in_build": 1000,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 118,
+        "api_instructions_used": 69,
+        "unmatched_in_build": 134
+      }
+    },
+    {
+      "model": 1,
+      "sample_id": "004ede55a972e10d9a21bcf338b4907d6eed65bf5ad6abbbd5aec7d8484bdedf",
+      "saved_score": 0.9978843331336975,
+      "replay_score": 0.9978843331336975,
+      "absolute_difference": 0.0,
+      "threshold": 0.18,
+      "coverage": {
+        "instructions_in_build": 16894,
+        "instructions_used": 1024,
+        "blocks_in_build": 1000,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 94,
+        "api_instructions_used": 50,
+        "unmatched_in_build": 0
+      }
+    },
+    {
+      "model": 1,
+      "sample_id": "0099963e7285aeafc09e4214a45a6a210253d514cbd0d4b0c3997647a0afe879",
+      "saved_score": 0.9979169964790344,
+      "replay_score": 0.9979169964790344,
+      "absolute_difference": 0.0,
+      "threshold": 0.18,
+      "coverage": {
+        "instructions_in_build": 17677,
+        "instructions_used": 1024,
+        "blocks_in_build": 905,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 203,
+        "api_instructions_used": 57,
+        "unmatched_in_build": 32
+      }
+    },
+    {
+      "model": 1,
+      "sample_id": "012bd119b1a7aeeca8fb89cf81e97b9072d45017f3630b0224b38b4e48b0cdd1",
+      "saved_score": 0.011508150026202202,
+      "replay_score": 0.011508149094879627,
+      "absolute_difference": 9.313225746154785e-10,
+      "threshold": 0.18,
+      "coverage": {
+        "instructions_in_build": 5313,
+        "instructions_used": 1024,
+        "blocks_in_build": 1000,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 328,
+        "api_instructions_used": 57,
+        "unmatched_in_build": 0
+      }
+    },
+    {
+      "model": 1,
+      "sample_id": "01c647838c374e91e8f9fe967fd25235d72264414bb0d5b82c4fbd4151a9717f",
+      "saved_score": 0.9979169964790344,
+      "replay_score": 0.9979169964790344,
+      "absolute_difference": 0.0,
+      "threshold": 0.18,
+      "coverage": {
+        "instructions_in_build": 17677,
+        "instructions_used": 1024,
+        "blocks_in_build": 905,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 203,
+        "api_instructions_used": 57,
+        "unmatched_in_build": 32
+      }
+    },
+    {
+      "model": 2,
+      "sample_id": "002dd9b7cbf8ca2a09434f8c4abd85631efe922ab8daa1219d86d83a0228aeda",
+      "saved_score": 0.9999998807907104,
+      "replay_score": 0.9999998807907104,
+      "absolute_difference": 0.0,
+      "threshold": 0.19999999999999998,
+      "coverage": {
+        "instructions_in_build": 3722,
+        "instructions_used": 3722,
+        "blocks_in_build": 750,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 114,
+        "api_instructions_used": 114,
+        "unmatched_in_build": 132
+      }
+    },
+    {
+      "model": 2,
+      "sample_id": "004ede55a972e10d9a21bcf338b4907d6eed65bf5ad6abbbd5aec7d8484bdedf",
+      "saved_score": 1.0,
+      "replay_score": 1.0,
+      "absolute_difference": 0.0,
+      "threshold": 0.19999999999999998,
+      "coverage": {
+        "instructions_in_build": 15019,
+        "instructions_used": 15019,
+        "blocks_in_build": 750,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 94,
+        "api_instructions_used": 94,
+        "unmatched_in_build": 0
+      }
+    },
+    {
+      "model": 2,
+      "sample_id": "0099963e7285aeafc09e4214a45a6a210253d514cbd0d4b0c3997647a0afe879",
+      "saved_score": 1.0,
+      "replay_score": 1.0,
+      "absolute_difference": 0.0,
+      "threshold": 0.19999999999999998,
+      "coverage": {
+        "instructions_in_build": 11847,
+        "instructions_used": 11847,
+        "blocks_in_build": 750,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 203,
+        "api_instructions_used": 203,
+        "unmatched_in_build": 13
+      }
+    },
+    {
+      "model": 2,
+      "sample_id": "012bd119b1a7aeeca8fb89cf81e97b9072d45017f3630b0224b38b4e48b0cdd1",
+      "saved_score": 0.06489989161491394,
+      "replay_score": 0.06489995867013931,
+      "absolute_difference": 6.705522537231445e-08,
+      "threshold": 0.19999999999999998,
+      "coverage": {
+        "instructions_in_build": 4070,
+        "instructions_used": 4070,
+        "blocks_in_build": 750,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 260,
+        "api_instructions_used": 260,
+        "unmatched_in_build": 0
+      }
+    },
+    {
+      "model": 2,
+      "sample_id": "01c647838c374e91e8f9fe967fd25235d72264414bb0d5b82c4fbd4151a9717f",
+      "saved_score": 1.0,
+      "replay_score": 1.0,
+      "absolute_difference": 0.0,
+      "threshold": 0.19999999999999998,
+      "coverage": {
+        "instructions_in_build": 11847,
+        "instructions_used": 11847,
+        "blocks_in_build": 750,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 203,
+        "api_instructions_used": 203,
+        "unmatched_in_build": 13
+      }
+    },
+    {
+      "model": 3,
+      "sample_id": "002dd9b7cbf8ca2a09434f8c4abd85631efe922ab8daa1219d86d83a0228aeda",
+      "saved_score": 1.0,
+      "replay_score": 1.0,
+      "absolute_difference": 0.0,
+      "threshold": 0.1,
+      "coverage": {
+        "instructions_in_build": 2643,
+        "instructions_used": 2624,
+        "blocks_in_build": 500,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 112,
+        "api_instructions_used": 112,
+        "unmatched_in_build": 90
+      }
+    },
+    {
+      "model": 3,
+      "sample_id": "004ede55a972e10d9a21bcf338b4907d6eed65bf5ad6abbbd5aec7d8484bdedf",
+      "saved_score": 1.0,
+      "replay_score": 1.0,
+      "absolute_difference": 0.0,
+      "threshold": 0.1,
+      "coverage": {
+        "instructions_in_build": 13023,
+        "instructions_used": 4143,
+        "blocks_in_build": 500,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 94,
+        "api_instructions_used": 25,
+        "unmatched_in_build": 0
+      }
+    },
+    {
+      "model": 3,
+      "sample_id": "0099963e7285aeafc09e4214a45a6a210253d514cbd0d4b0c3997647a0afe879",
+      "saved_score": 1.0,
+      "replay_score": 1.0,
+      "absolute_difference": 0.0,
+      "threshold": 0.1,
+      "coverage": {
+        "instructions_in_build": 9518,
+        "instructions_used": 4646,
+        "blocks_in_build": 500,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 203,
+        "api_instructions_used": 200,
+        "unmatched_in_build": 0
+      }
+    },
+    {
+      "model": 3,
+      "sample_id": "012bd119b1a7aeeca8fb89cf81e97b9072d45017f3630b0224b38b4e48b0cdd1",
+      "saved_score": 0.008306887932121754,
+      "replay_score": 0.008306781761348248,
+      "absolute_difference": 1.0617077350616455e-07,
+      "threshold": 0.1,
+      "coverage": {
+        "instructions_in_build": 2650,
+        "instructions_used": 2650,
+        "blocks_in_build": 500,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 140,
+        "api_instructions_used": 140,
+        "unmatched_in_build": 0
+      }
+    },
+    {
+      "model": 3,
+      "sample_id": "01c647838c374e91e8f9fe967fd25235d72264414bb0d5b82c4fbd4151a9717f",
+      "saved_score": 1.0,
+      "replay_score": 1.0,
+      "absolute_difference": 0.0,
+      "threshold": 0.1,
+      "coverage": {
+        "instructions_in_build": 9518,
+        "instructions_used": 4646,
+        "blocks_in_build": 500,
+        "instructions_in_raw_cfg": null,
+        "blocks_in_raw_cfg": null,
+        "api_instructions_in_build": 203,
+        "api_instructions_used": 200,
+        "unmatched_in_build": 0
+      }
+    }
+  ],
+  "maximum_difference": 0.0037106871604919434,
+  "saved_threshold_decisions_match": true,
+  "maximum_allowed_difference": {
+    "1": 0.005,
+    "2": 1e-05,
+    "3": 0.005
+  },
+  "validation_test_note": "59 related CPU tests passed with the optional orjson module disabled; this host has a stale optional dependency folder. Standard-library JSON fallback was exercised without editing frozen model/sampling sources."
+}

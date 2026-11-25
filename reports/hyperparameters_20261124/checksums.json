@@ -1,0 +1,21 @@
+{
+  "manifest.json": "8fe889bd0ef134b85f2d92eef860d8e6ccb2b79625436318be84dee59e5652b7",
+  "README.md": "48da863a863e4c63a9ba2bb092ed1adddba9f40e16aad39943567e4260846d05",
+  "READ_ME_FIRST.txt": "55bb9761f0fcded4f1a585b749336d5c1b123a056a587d4d2a1efe7b12a5a915",
+  "verification.json": "34e92c6551c3fff0c47e7e8857931dd119a89b1f71a4c7036b8b28903a29e59d",
+  "data/attention_interaction_heatmap.csv": "27ed9487264e60c5e9f6f35c561319be34f229053d1ee7e9c4678fd6d8504257",
+  "data/block_budget_test_metrics.csv": "bf8df6b8f29870893ee4d5616b73c6cabb2f3440ccf31186d6eb3bcd13488123",
+  "data/descriptive_peaks.json": "5e76d877b71f285eecf2f1f36cfd2df2a439ca3ac99703c28aaa95d0afa4ddea",
+  "data/marginal_validation_curves.csv": "38e452bcd927c0aa05b405ed21423077995f28d0827f2770730c7d8e0d08763a",
+  "data/overall_test_metrics.csv": "6af3768c23dd4afa39c828c0815544f9b02f4a1887a63ebc8204a917f5bbbeb2",
+  "png/01_overall_held_out_performance.png": "f139047626f6141d671e9354368192f9f10825ebe51b4265738455fb79b3e696",
+  "png/02_learning_rate_dropout_weight_decay.png": "46976f7a770e0d357f9e4980185b584b8740136c0b4f5f5aabe59afd1aa4f7df",
+  "png/03_architecture_instruction_limits_batch.png": "81ce1e7009734c8906b4a89043ddf15cf6ee28720b9525eae632ab22fd348997",
+  "png/04_attention_heads_dropout_interactions.png": "371e39de954fd15724023cae848d694a706cd4a4d3e731d357ab44e68e935dba",
+  "png/05_block_budget_sampling_test_performance.png": "a37ab25a6ce074d18cec6b193af7f9230052e108621d9923de7f513825ff2a6d",
+  "svg/01_overall_held_out_performance.svg": "220e07a1b42380317e6946b43f7984d1e1aad49cc47a43758c5ec0e3e63d584a",
+  "svg/02_learning_rate_dropout_weight_decay.svg": "1e35040b64c59f42bed10ae9a5736e7d8c8768b4c8c7a00017715063b1bd6d48",
+  "svg/03_architecture_instruction_limits_batch.svg": "a6ee14d1d5e50654f1b9856ad405796536a3ac17e3bdb37ab2a1a1bebbaf08f3",
+  "svg/04_attention_heads_dropout_interactions.svg": "2489ebcae26bfe31f5437f8a93fd5da48a613ef5b8214be91f684c226c54e62a",
+  "svg/05_block_budget_sampling_test_performance.svg": "c3c23a3e58c96da804fc12e90c5074cbcab5cdfa545e9ebd6ff6684357ced915"
+}

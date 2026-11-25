@@ -1,0 +1,16 @@
+model,family,fold_recipe,demo_weights_included,pooling,transformer_width,transformer_layers,transformer_heads,gat_hidden,gat_layers,actual_gat_heads,instruction_limit,feature_dropout,attention_dropout,learning_rate,weight_decay,logical_batch,seed0_saved_threshold
+1,signal1000,0,True,mean,64,1,4,,,,1024,0.0,0.0,0.001,0.0,32,0.18
+1,signal1000,1,False,mean,128,4,4,,,,128,0.0,0.0,0.0003,0.01,32,0.46
+1,signal1000,2,False,mean,32,1,4,,,,1024,0.1,0.1,0.003,0.0001,64,0.76
+1,signal1000,3,False,mean,64,1,4,,,,1024,0.1,0.1,0.001,0.01,32,0.02
+1,signal1000,4,False,mean,128,1,2,,,,1024,0.1,0.1,0.001,0.01,32,0.08
+2,signal750,0,True,graph_mean_max,,,,128,2,"[4, 1]",,0.0,0.0,0.003,0.0,32,0.19999999999999998
+2,signal750,1,False,graph_mean_max,,,,128,2,"[4, 1]",,0.0,0.0,0.0003,0.0,16,0.32
+2,signal750,2,False,graph_mean_max,,,,256,1,[1],,0.0,0.0,0.003,0.01,16,0.7000000000000001
+2,signal750,3,False,graph_mean_max,,,,128,2,"[8, 1]",,0.1,0.1,0.001,0.0,16,0.02
+2,signal750,4,False,graph_mean_max,,,,256,3,"[4, 4, 1]",,0.0,0.0,0.0003,0.0001,16,0.24
+3,signal500,0,True,mean,96,1,4,128,2,"[12, 12]",64,0.1,0.0,0.001,0.0,8,0.1
+3,signal500,1,False,mean,96,2,8,256,1,[4],64,0.0,0.1,0.0003,0.0,8,0.24
+3,signal500,2,False,mean,96,2,4,256,1,[8],128,0.0,0.1,0.0003,0.0,8,0.36000000000000004
+3,signal500,3,False,mean,96,2,8,128,2,"[2, 2]",64,0.1,0.2,0.001,0.0001,8,0.06
+3,signal500,4,False,mean,96,3,2,256,1,[12],64,0.0,0.0,0.0003,0.0001,8,0.06

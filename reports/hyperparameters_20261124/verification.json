@@ -1,0 +1,12 @@
+{
+  "numeric_plot_rows_verified": 374,
+  "figures": 5,
+  "formats": [
+    "PNG",
+    "SVG"
+  ],
+  "source_workbook_unchanged": true,
+  "original_validation_rows": 2545,
+  "attention_validation_rows": 594,
+  "models_trained": 0
+}

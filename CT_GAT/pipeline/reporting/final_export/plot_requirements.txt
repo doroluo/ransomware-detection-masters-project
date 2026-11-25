@@ -1,0 +1,2 @@
+# Optional figure rebuilding only; inference does not need this dependency.
+matplotlib==3.11.2
